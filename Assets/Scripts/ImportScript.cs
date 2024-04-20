@@ -30,8 +30,8 @@ public class ImportScript : MonoBehaviour
     void Start()
     {
         print(Application.persistentDataPath);
-        //print(testInit());
-        print(Marshal.PtrToStringAuto(testGenerate(Application.persistentDataPath+"/Assets/")));
+        print(testInit());
+        // print(Marshal.PtrToStringAuto(testGenerate(Application.persistentDataPath+"/Assets/")));
     }
 
     // Update is called once per frame
