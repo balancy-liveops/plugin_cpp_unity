@@ -3,21 +3,26 @@ using System.Runtime.InteropServices;
 using Balancy;
 using Balancy.Core;
 using Balancy.Models;
+using Balancy.Models.SmartObjects;
 using UnityEngine;
 
 public class ImportScript : MonoBehaviour
 {
     void Start()
     {
-        PrintSizeAndOffsets<Notifications.InitNotificationLocalReady>();
-        PrintSizeAndOffsets<Notifications.InitNotificationCloudSynched>();
-        PrintSizeAndOffsets<Notifications.InitNotificationAuthFailed>();
-        PrintSizeAndOffsets<Notifications.InitNotificationCloudProfileFailed>();
+        Debug.LogError($"PATH = {Application.persistentDataPath}");
+        // PrintSizeAndOffsets<Notifications.InitNotificationLocalReady>();
+        // PrintSizeAndOffsets<Notifications.InitNotificationCloudSynched>();
+        // PrintSizeAndOffsets<Notifications.InitNotificationAuthFailed>();
+        // PrintSizeAndOffsets<Notifications.InitNotificationCloudProfileFailed>();
         InitFinal();
     }
 
+    private double t1;
+
     private void InitFinal()
     {
+        t1 = Time.realtimeSinceStartupAsDouble;
         var config = CreateAppConfig();
         Balancy.Main.Init(config);
     }
@@ -28,11 +33,11 @@ public class ImportScript : MonoBehaviour
         {
             ApiGameId = "6f5d4614-36c0-11ef-9145-066676c39f77",
             PublicKey = "MzA5MGY0NWUwNGE5MTk5ZDU4MDAzNT",
-            Environment = Constants.Environment.Production,
+            Environment = Constants.Environment.Development,
             UpdateType = UpdateType.FullUpdate,
             UpdatePeriod = 600,
-            OnSaveFileInCache = SaveInCache,
-            OnSaveFileInResources = SaveInResources,
+            // OnSaveFileInCache = SaveInCache,
+            // OnSaveFileInResources = SaveInResources,
             OnStatusUpdate = OnStatusUpdate,
             AutoLogin = 1,
             CustomId = "My_Custom_Id"
@@ -56,12 +61,16 @@ public class ImportScript : MonoBehaviour
         {
             case Notifications.NotificationType.LocalReady:
                 var localReady = Marshal.PtrToStructure<Notifications.InitNotificationLocalReady>(notificationPtr);
-                Debug.LogError("**==> Local loaded. Size = " + Marshal.SizeOf(typeof(Notifications.InitNotificationLocalReady)));
+                double t2 = Time.realtimeSinceStartupAsDouble;
+                Debug.LogError("**==> Local loaded. Size = " + Marshal.SizeOf(typeof(Notifications.InitNotificationLocalReady)) + $" in {(t2-t1)*1000} ms");
                 var model = DataManager.GetModelByUnnyId("684");
-                // Debug.LogError($"Model = {model} !!");
-                var maxStack = DataManager.GetIntParam(model, "maxStack");
-                var maxStack2 = DataManager.GetIntParam(model, "maxStack2");
-                Debug.LogError($"Model = {model} ; maxStack = {maxStack} >>2>> {maxStack2}");
+                Debug.LogError($"Model = {model} !!");
+                var model2 = DataManager.GetModelByUnnyId<Item>("684");
+                Debug.LogError($"Model2 = {model2} > {model2?.MaxStack}!!");
+                
+                // var maxStack = DataManager.GetIntParam(model, "maxStack");
+                // var maxStack2 = DataManager.GetIntParam(model, "maxStack2");
+                // Debug.LogError($"Model = {model} ; maxStack = {maxStack} >>2>> {maxStack2}");
 
                 // var model2 = DataManager.GetModelByUnnyId<BaseModel>("684");
                 break;

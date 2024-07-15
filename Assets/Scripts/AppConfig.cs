@@ -3,8 +3,6 @@ using System.Runtime.InteropServices;
 
 namespace Balancy
 {
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    public delegate void FileSystemCallback(string path, string data);
     
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     public delegate void StatusUpdateCallback(IntPtr notification);
@@ -31,8 +29,6 @@ namespace Balancy
         public UpdateType UpdateType = UpdateType.FullUpdate;
         public int UpdatePeriod = 600;
 
-        public FileSystemCallback OnSaveFileInCache = null;
-        public FileSystemCallback OnSaveFileInResources = null;
         public StatusUpdateCallback OnStatusUpdate = null;
 
         public LaunchType LaunchType = LaunchType.Local | LaunchType.Cloud | LaunchType.AutoRetry;
@@ -75,11 +71,16 @@ namespace Balancy
 
         public enum Platform
         {
-            Windows,
-            Mac,
-            Linux,
-            iOS,
-            Android
+            Unknown = 1,
+            //            Vkontakte = 3,
+            Facebook = 4,
+            //            Odnoklassniki = 5,
+            FbInstant = 6,
+
+            AndroidGooglePlay = 7,
+            IosAppStore = 8,
+            AmazonStore = 14,
+            Yoomoney = 15
         }
     }
 }

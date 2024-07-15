@@ -46,9 +46,11 @@
   </ItemGroup>
   <ItemGroup>
      <Compile Include="Assets/Scripts/UnityUtils.cs" />
+     <Compile Include="Assets/Scripts/UnityFileManager.cs" />
      <Compile Include="Assets/Scripts/Main.cs" />
      <Compile Include="Assets/Scripts/ImportScript.cs" />
      <Compile Include="Assets/Scripts/AppConfig.cs" />
+     <Compile Include="Assets/Scripts/Item.cs" />
      <Compile Include="Assets/Scripts/Notifications.cs" />
      <Compile Include="Assets/Scripts/DataManager.cs" />
      <Compile Include="Assets/Scripts/BaseModel.cs" />

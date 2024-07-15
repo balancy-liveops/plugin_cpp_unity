@@ -8,15 +8,31 @@ namespace Balancy
     {
         public static void Init(AppConfig appConfig)
         {
-            LibraryMethods.General.setLogCallback(LogMessage);
-            CheckConfig(appConfig);
+            if (!CheckConfig(appConfig))
+                return;
+            
+            LibraryMethods.General.balancySetLogCallback(LogMessage);
+            UnityFileManager.Init();
+            
             IntPtr configPtr = Marshal.AllocHGlobal(Marshal.SizeOf(appConfig));
             Marshal.StructureToPtr(appConfig, configPtr, false);
             LibraryMethods.General.balancyInit(configPtr);
         }
 
-        private static void CheckConfig(AppConfig appConfig)
+        private static bool CheckConfig(AppConfig appConfig)
         {
+            if (string.IsNullOrEmpty(appConfig.ApiGameId))
+            {
+                Debug.LogError("Please provide Api Game Id in Config;");
+                return false;
+            }
+            
+            if (string.IsNullOrEmpty(appConfig.PublicKey))
+            {
+                Debug.LogError("Please provide Public Key in Config;");
+                return false;
+            }
+            
             if (string.IsNullOrEmpty(appConfig.DeviceId))
                 appConfig.DeviceId = Balancy.UnityUtils.GetUniqId();
 
@@ -28,6 +44,8 @@ namespace Balancy
 
             if (string.IsNullOrEmpty(appConfig.CustomId))
                 appConfig.CustomId = string.Empty;
+
+            return true;
         }
         
         
