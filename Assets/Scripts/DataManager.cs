@@ -36,10 +36,9 @@ namespace Balancy
             if (pointer == IntPtr.Zero)
                 return null;
 
-            var templateName = BaseModel.GetStringParam(pointer, "unnyTemplateName");
+            var templateName = BaseModel.GetTemplateName(pointer);
             Debug.LogError($"TEMPLATE NAME = {templateName}");
             var modelBase = CreateModel(pointer, unnyId, templateName);
-            modelBase.InitData();
             return modelBase as T;
         }
 
@@ -50,12 +49,19 @@ namespace Balancy
         
         private static BaseModel CreateModel(IntPtr pointer,string unnyId, string templateName)
         {
+            BaseModel model = InstantiateByType(templateName);
+            model.SetData(pointer, unnyId, templateName);
+            model.InitData();
+            return model;
+        }
+        
+        private static BaseModel InstantiateByType(string templateName)
+        {
             switch (templateName)
             {
-                case "SmartObjects.Item":
-                    return new Item(pointer, unnyId, templateName);
-                default:
-                    return new BaseModel(pointer, unnyId, templateName);
+                case "SmartObjects.Item": return new Item();
+                case "MyCustomTemplate": return new MyCustomTemplate();
+                default: return new BaseModel();
             }
         }
     }

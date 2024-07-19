@@ -38,11 +38,18 @@ namespace Balancy
         {
             //Getters
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-            public static extern IntPtr balancyGetModelByUnnyId(string unnyId);    
+            public static extern IntPtr balancyGetModelByUnnyId(string unnyId);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyGetTemplateName(IntPtr instance);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern IntPtr balancyGetObjectParam(IntPtr instance, string paramName);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyGetObjectArrayParam(IntPtr instance, string paramName, out int size);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern int balancyGetIntParam(IntPtr instance, string paramName);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancyGetLongParam(IntPtr instance, string paramName);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern float balancyGetFloatParam(IntPtr instance, string paramName);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
@@ -53,6 +60,8 @@ namespace Balancy
     
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern IntPtr balancyGetIntArrayParam(IntPtr instance, string paramName, out int size);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyGetLongArrayParam(IntPtr instance, string paramName, out int size);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern IntPtr balancyGetFloatArrayParam(IntPtr instance, string paramName, out int size);
 

@@ -11,14 +11,10 @@ namespace Balancy.Models.SmartObjects
 
         // public readonly ItemType Type;
 
-        public Item(IntPtr p, string unnyId, string templateName) : base(p, unnyId, templateName)
-        {
-        }
-
         public override void InitData()
         {
             base.InitData();
-            _maxStack = GetIntParam(Pointer, "maxStack");
+            _maxStack = GetIntParam("maxStack");
         }
     }
 }

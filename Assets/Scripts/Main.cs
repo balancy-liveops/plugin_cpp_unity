@@ -48,7 +48,6 @@ namespace Balancy
             return true;
         }
         
-        
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.General.LogCallback))]
         private static void LogMessage(int level, string message)
         {

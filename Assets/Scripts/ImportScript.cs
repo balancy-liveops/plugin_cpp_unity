@@ -25,6 +25,75 @@ public class ImportScript : MonoBehaviour
         t1 = Time.realtimeSinceStartupAsDouble;
         var config = CreateAppConfig();
         Balancy.Main.Init(config);
+        TestItem();
+    }
+
+    private void TestItem()
+    {
+        var myTemplate = DataManager.GetModelByUnnyId<MyCustomTemplate>("684");
+        Debug.Log($"myTemplate.TestInt = {myTemplate.TestInt}");
+        Debug.Log($"myTemplate.TestBool = {myTemplate.TestBool}");
+        Debug.Log($"myTemplate.TestDuration = {myTemplate.TestDuration}");
+        Debug.Log($"myTemplate.TestFloat = {myTemplate.TestFloat}");
+        Debug.Log($"myTemplate.TestLong = {myTemplate.TestLong}");
+        Debug.Log($"myTemplate.TestString = {myTemplate.TestString}");
+        
+        Debug.LogWarning($"TestIntArr Size = {myTemplate.TestIntArr.Length}");
+        for (int i = 0;i<myTemplate.TestIntArr.Length;i++)
+            Debug.Log($"{i}) {myTemplate.TestIntArr[i]}");
+        
+        Debug.LogWarning($"TestFloatArr Size = {myTemplate.TestFloatArr.Length}");
+        for (int i = 0;i<myTemplate.TestFloatArr.Length;i++)
+            Debug.Log($"{i}) {myTemplate.TestFloatArr[i]}");
+        
+        Debug.LogWarning($"TestBoolArr Size = {myTemplate.TestBoolArr.Length}");
+        for (int i = 0;i<myTemplate.TestBoolArr.Length;i++)
+            Debug.Log($"{i}) {myTemplate.TestBoolArr[i]}");
+        
+        Debug.LogWarning($"TestLongArr Size = {myTemplate.TestLongArr.Length}");
+        for (int i = 0;i<myTemplate.TestLongArr.Length;i++)
+            Debug.Log($"{i}) {myTemplate.TestLongArr[i]}");
+        
+        Debug.LogWarning($"TestDurationArr Size = {myTemplate.TestDurationArr.Length}");
+        for (int i = 0;i<myTemplate.TestDurationArr.Length;i++)
+            Debug.Log($"{i}) {myTemplate.TestDurationArr[i]}");
+        
+        Debug.LogWarning($"TestStringArr Size = {myTemplate.TestStringArr.Length}");
+        for (int i = 0;i<myTemplate.TestStringArr.Length;i++)
+            Debug.Log($"{i}) {myTemplate.TestStringArr[i]}");
+        
+        Debug.Log($"myTemplate.TestDate = {myTemplate.TestDate.Time}");
+        Debug.Log($"myTemplate.testProduct = {myTemplate.TestProduct.ProductId} : {myTemplate.TestProduct.Price}");
+        
+        Debug.Log($"myTemplate.Sprite = {myTemplate.Sprite.Id}");
+        Debug.Log($"myTemplate.TestInj = {myTemplate.TestInj.X} ; {myTemplate.TestInj.Y} ; {myTemplate.TestInj.Z}");
+        
+        Debug.Log($"myTemplate.Color = {myTemplate.Color.Value}");
+        Debug.Log($"myTemplate.Loc = {myTemplate.Loc.Key}");
+        
+        Debug.LogWarning($"TestDateArr Size = {myTemplate.TestDateArr.Length}");
+        for (int i = 0;i<myTemplate.TestDateArr.Length;i++)
+            Debug.Log($"{i}) {myTemplate.TestDateArr[i].Time}");
+        
+        Debug.LogWarning($"TestInjArr Size = {myTemplate.TestInjArr.Length}");
+        for (int i = 0;i<myTemplate.TestInjArr.Length;i++)
+            Debug.Log($"{i}) {myTemplate.TestInjArr[i].X} : {myTemplate.TestInjArr[i].Y} : {myTemplate.TestInjArr[i].Z}");
+        
+        Debug.LogWarning($"SpriteArr Size = {myTemplate.SpriteArr.Length}");
+        for (int i = 0;i<myTemplate.SpriteArr.Length;i++)
+            Debug.Log($"{i}) {myTemplate.SpriteArr[i].Id}");
+        
+        Debug.LogWarning($"ProductArr Size = {myTemplate.ProductArr.Length}");
+        for (int i = 0;i<myTemplate.ProductArr.Length;i++)
+            Debug.Log($"{i}) {myTemplate.ProductArr[i].ProductId} ;price = {myTemplate.ProductArr[i].Price}");
+        
+        Debug.LogWarning($"LocArr Size = {myTemplate.LocArr.Length}");
+        for (int i = 0;i<myTemplate.LocArr.Length;i++)
+            Debug.Log($"{i}) {myTemplate.LocArr[i].Key}");
+        
+        Debug.LogWarning($"Colors Size = {myTemplate.Colors.Length}");
+        for (int i = 0;i<myTemplate.Colors.Length;i++)
+            Debug.Log($"{i}) {myTemplate.Colors[i].Value}");
     }
 
     private AppConfig CreateAppConfig()
