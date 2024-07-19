@@ -25,12 +25,11 @@ public class ImportScript : MonoBehaviour
         t1 = Time.realtimeSinceStartupAsDouble;
         var config = CreateAppConfig();
         Balancy.Main.Init(config);
-        TestItem();
     }
 
     private void TestItem()
     {
-        var myTemplate = DataManager.GetModelByUnnyId<MyCustomTemplate>("684");
+        var myTemplate = DataManager.GetModelByUnnyId<MyCustomTemplate>("814");
         Debug.Log($"myTemplate.TestInt = {myTemplate.TestInt}");
         Debug.Log($"myTemplate.TestBool = {myTemplate.TestBool}");
         Debug.Log($"myTemplate.TestDuration = {myTemplate.TestDuration}");
@@ -132,20 +131,22 @@ public class ImportScript : MonoBehaviour
                 var localReady = Marshal.PtrToStructure<Notifications.InitNotificationLocalReady>(notificationPtr);
                 double t2 = Time.realtimeSinceStartupAsDouble;
                 Debug.LogError("**==> Local loaded. Size = " + Marshal.SizeOf(typeof(Notifications.InitNotificationLocalReady)) + $" in {(t2-t1)*1000} ms");
-                var model = DataManager.GetModelByUnnyId("684");
-                Debug.LogError($"Model = {model} !!");
-                var model2 = DataManager.GetModelByUnnyId<Item>("684");
-                Debug.LogError($"Model2 = {model2} > {model2?.MaxStack}!!");
+                // var model = DataManager.GetModelByUnnyId("814");
+                // Debug.LogError($"Model = {model} !!");
+                // var model2 = DataManager.GetModelByUnnyId<MyCustomTemplate>("814");
+                // Debug.LogError($"Model2 = {model2} > {model2?.TestInt}!!");
                 
                 // var maxStack = DataManager.GetIntParam(model, "maxStack");
                 // var maxStack2 = DataManager.GetIntParam(model, "maxStack2");
                 // Debug.LogError($"Model = {model} ; maxStack = {maxStack} >>2>> {maxStack2}");
 
                 // var model2 = DataManager.GetModelByUnnyId<BaseModel>("684");
+                // TestItem();
                 break;
             case Notifications.NotificationType.CloudSynched:
                 var cloudSynched = Marshal.PtrToStructure<Notifications.InitNotificationCloudSynched>(notificationPtr);
                 Debug.LogError($"**==> Cloud Synched. DICT = {cloudSynched.WereDictUpdated}, Profiles = {cloudSynched.WereProfilesUpdated}" + " Size = " + Marshal.SizeOf(typeof(Notifications.InitNotificationCloudSynched)));
+                TestItem();
                 break;
             case Notifications.NotificationType.AuthFailed:
                 var authFailed = Marshal.PtrToStructure<Notifications.InitNotificationAuthFailed>(notificationPtr);
