@@ -67,8 +67,12 @@ namespace Balancy.Models
 
         protected T GetObjectParam<T>(string paramName) where T: JsonBasedObject, new()
         {
+            var ptr = GetObjectParamPrivate(paramName);
+            if (ptr == IntPtr.Zero)
+                return null;
+            
             var obj = new T();
-            obj.SetData(GetObjectParamPrivate(paramName));
+            obj.SetData(ptr);
             obj.InitData();
             return obj;
         }
@@ -85,6 +89,13 @@ namespace Balancy.Models
             T[] result = new T[size];
             for (int i = 0; i < size; i++)
             {
+                var p = list[i];
+                if (p == IntPtr.Zero)
+                {
+                    result[i] = null;
+                    continue;
+                }
+
                 var obj = new T();
                 obj.SetData(list[i]);
                 obj.InitData();
@@ -185,9 +196,12 @@ namespace Balancy.Models
 
         protected string[] GetStringArrayParam(string name)
         {
-            int size;
-            IntPtr ptr = LibraryMethods.Models.balancyGetStringArrayParam(_pointer, name, out size);
-
+            IntPtr ptr = LibraryMethods.Models.balancyGetStringArrayParam(_pointer, name, out var size);
+            return ReadStringArrayValues(ptr, size);
+        }
+        
+        internal static string[] ReadStringArrayValues(IntPtr ptr, int size)
+        {
             if (ptr == IntPtr.Zero || size <= 0)
                 return Array.Empty<string>();
             

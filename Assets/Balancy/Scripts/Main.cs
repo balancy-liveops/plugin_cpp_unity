@@ -12,11 +12,19 @@ namespace Balancy
                 return;
             
             LibraryMethods.General.balancySetLogCallback(LogMessage);
+            LibraryMethods.General.balancySetDataUpdatedCallback(DataUpdated);
             UnityFileManager.Init();
             
             IntPtr configPtr = Marshal.AllocHGlobal(Marshal.SizeOf(appConfig));
             Marshal.StructureToPtr(appConfig, configPtr, false);
             LibraryMethods.General.balancyInit(configPtr);
+        }
+
+        private static void DataUpdated(bool dictsChanged, bool profileChanged)
+        {
+            Debug.LogError($"DataUpdated = {dictsChanged} ; {profileChanged}");
+            if (dictsChanged)
+                DataManager.RefreshAll();
         }
 
         private static bool CheckConfig(AppConfig appConfig)

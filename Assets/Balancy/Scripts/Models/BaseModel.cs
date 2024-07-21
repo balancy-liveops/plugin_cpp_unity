@@ -21,5 +21,12 @@ namespace Balancy.Models
             _unnyId = unnyId;
             _unnyTemplateName = templateName;
         }
+
+        public static string GetClassName<T>()
+        {
+            var fullName = typeof(T).FullName;
+            var className = fullName?.Replace("Balancy.Models.", "");
+            return className;
+        }
     }
 }

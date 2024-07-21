@@ -27,9 +27,10 @@ public class ImportScript : MonoBehaviour
         Balancy.Main.Init(config);
     }
 
-    private void TestItem()
+    private void TestItem(string unnyId)
     {
-        var myTemplate = DataManager.GetModelByUnnyId<MyCustomTemplate>("814");
+        var myTemplate = DataManager.GetModelByUnnyId<MyCustomTemplate>(unnyId);
+        Debug.Log($"myTemplate.unnyId = {myTemplate.UnnyId}");
         Debug.Log($"myTemplate.TestInt = {myTemplate.TestInt}");
         Debug.Log($"myTemplate.TestBool = {myTemplate.TestBool}");
         Debug.Log($"myTemplate.TestDuration = {myTemplate.TestDuration}");
@@ -61,14 +62,15 @@ public class ImportScript : MonoBehaviour
         for (int i = 0;i<myTemplate.TestStringArr.Length;i++)
             Debug.Log($"{i}) {myTemplate.TestStringArr[i]}");
         
-        Debug.Log($"myTemplate.TestDate = {myTemplate.TestDate.Time}");
-        Debug.Log($"myTemplate.testProduct = {myTemplate.TestProduct.ProductId} : {myTemplate.TestProduct.Price}");
+        // return;
+        Debug.Log($"myTemplate.TestDate = {myTemplate.TestDate?.Time}");
+        Debug.Log($"myTemplate.testProduct = {myTemplate.TestProduct?.ProductId} : {myTemplate.TestProduct?.Price}");
         
-        Debug.Log($"myTemplate.Sprite = {myTemplate.Sprite.Id}");
-        Debug.Log($"myTemplate.TestInj = {myTemplate.TestInj.X} ; {myTemplate.TestInj.Y} ; {myTemplate.TestInj.Z}");
+        Debug.Log($"myTemplate.Sprite = {myTemplate.Sprite?.Id}");
+        Debug.Log($"myTemplate.TestInj = {myTemplate.TestInj?.X} ; {myTemplate.TestInj?.Y} ; {myTemplate.TestInj?.Z}");
         
-        Debug.Log($"myTemplate.Color = {myTemplate.Color.Value}");
-        Debug.Log($"myTemplate.Loc = {myTemplate.Loc.Key}");
+        Debug.Log($"myTemplate.Color = {myTemplate.Color?.Value}");
+        Debug.Log($"myTemplate.Loc = {myTemplate.Loc?.Key}");
         
         Debug.LogWarning($"TestDateArr Size = {myTemplate.TestDateArr.Length}");
         for (int i = 0;i<myTemplate.TestDateArr.Length;i++)
@@ -93,6 +95,26 @@ public class ImportScript : MonoBehaviour
         Debug.LogWarning($"Colors Size = {myTemplate.Colors.Length}");
         for (int i = 0;i<myTemplate.Colors.Length;i++)
             Debug.Log($"{i}) {myTemplate.Colors[i].Value}");
+    }
+
+    private void TestItems()
+    {
+        var tmpYes = DataManager.GetModels<MyCustomTemplate>(true);
+        var tmpNo = DataManager.GetModels<MyCustomTemplate>(false);
+
+        if (tmpYes != null)
+        {
+            Debug.LogError($"tmpYes: {tmpYes.Length}");
+            foreach (var m in tmpYes)
+                Debug.LogWarning($">>> {m.UnnyId}");
+        }
+
+        if (tmpNo != null)
+        {
+            Debug.LogError($"tmpNo: {tmpNo.Length}");
+            foreach (var m in tmpNo)
+                Debug.LogWarning($">>> {m.UnnyId}");
+        }
     }
 
     private AppConfig CreateAppConfig()
@@ -146,7 +168,17 @@ public class ImportScript : MonoBehaviour
             case Notifications.NotificationType.CloudSynched:
                 var cloudSynched = Marshal.PtrToStructure<Notifications.InitNotificationCloudSynched>(notificationPtr);
                 Debug.LogError($"**==> Cloud Synched. DICT = {cloudSynched.WereDictUpdated}, Profiles = {cloudSynched.WereProfilesUpdated}" + " Size = " + Marshal.SizeOf(typeof(Notifications.InitNotificationCloudSynched)));
-                TestItem();
+                try
+                {
+                    // TestItem("814");
+                    // TestItem("872");
+                    TestItems();
+                }
+                catch (Exception e)
+                {
+                    Debug.LogError("OOPS " + e.Message);
+                }
+
                 break;
             case Notifications.NotificationType.AuthFailed:
                 var authFailed = Marshal.PtrToStructure<Notifications.InitNotificationAuthFailed>(notificationPtr);

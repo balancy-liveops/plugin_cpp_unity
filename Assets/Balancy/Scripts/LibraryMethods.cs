@@ -24,6 +24,18 @@ namespace Balancy
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
 #endif
             public static extern void balancySetLogCallback(LogCallback callback);
+            
+            
+            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+            public delegate void DataUpdatedCallback(bool dictsChanged, bool profileChanged);
+            
+#if UNITY_IPHONE && !UNITY_EDITOR
+        [DllImport ("__Internal")]
+#else
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+#endif
+            public static extern void balancySetDataUpdatedCallback(DataUpdatedCallback callback);
+            
 
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             // public static extern void balancyInit([In] AppConfig config);
@@ -32,6 +44,9 @@ namespace Balancy
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyInitUnityFileHelper(string persistentDataPath, LoadFileCallback loadFromResources);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyGetInheritance(out int size);
         }
 
         public static class Models
@@ -39,6 +54,14 @@ namespace Balancy
             //Getters
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern IntPtr balancyGetModelByUnnyId(string unnyId);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyGetModels(string templateName, bool includeChildren, out int size);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyGetModelUnnyIds(string templateName, bool includeChildren, out int size);
+            
+            
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern IntPtr balancyGetTemplateName(IntPtr instance);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
