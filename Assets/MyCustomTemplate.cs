@@ -69,6 +69,12 @@ namespace Balancy.Models
 		
 		private UnnyColor[] colors;
 		public UnnyColor[] Colors => colors;
+
+		private string unnyIdSelfLink;
+		public MyCustomTemplate SelfLink => GetModelByUnnyId<MyCustomTemplate>(unnyIdSelfLink);
+		
+		private string[] unnyIdSelfLinkArray;
+		public MyCustomTemplate[] SelfLinkArray => GetModelsByUnnyIds<MyCustomTemplate>(unnyIdSelfLinkArray);
 		
 		public override void InitData()
 		{
@@ -104,6 +110,9 @@ namespace Balancy.Models
 			
 			locArr = GetLocalizedStrings("locArr");
 			colors = GetColors("unnyIdTestLinkArr");
+
+			unnyIdSelfLink = GetStringParam("unnyIdSelfLink");
+			unnyIdSelfLinkArray = GetStringArrayParam("unnyIdSelfLinkArray");
 		}
 		
 		

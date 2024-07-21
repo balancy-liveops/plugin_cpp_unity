@@ -28,5 +28,21 @@ namespace Balancy.Models
             var className = fullName?.Replace("Balancy.Models.", "");
             return className;
         }
+
+        protected T GetModelByUnnyId<T>(string unnyId) where T: BaseModel
+        {
+            return DataManager.GetModelByUnnyId<T>(unnyId);
+        }
+
+        protected T[] GetModelsByUnnyIds<T>(string[] unnyIds) where T : BaseModel
+        {
+            if (unnyIds == null || unnyIds.Length == 0)
+                return Array.Empty<T>();
+
+            var storeItems = new T[unnyIds.Length];
+            for (int i = 0; i < unnyIds.Length; i++)
+                storeItems[i] = GetModelByUnnyId<T>(unnyIds[i]);
+            return storeItems;
+        }
     }
 }

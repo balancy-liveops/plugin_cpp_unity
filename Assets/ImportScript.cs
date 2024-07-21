@@ -95,6 +95,13 @@ public class ImportScript : MonoBehaviour
         Debug.LogWarning($"Colors Size = {myTemplate.Colors.Length}");
         for (int i = 0;i<myTemplate.Colors.Length;i++)
             Debug.Log($"{i}) {myTemplate.Colors[i].Value}");
+        
+        
+        Debug.LogError($"LINK = {myTemplate.SelfLink?.UnnyId} - {myTemplate.SelfLink?.TestString}" );
+        var links = myTemplate.SelfLinkArray;
+        Debug.LogWarning($"SelfLinkArray Size = {links.Length}");
+        for (int i = 0;i<links.Length;i++)
+            Debug.Log($"{i}) {links[i].UnnyId} - {links[i].TestString}");
     }
 
     private void TestItems()
@@ -170,9 +177,9 @@ public class ImportScript : MonoBehaviour
                 Debug.LogError($"**==> Cloud Synched. DICT = {cloudSynched.WereDictUpdated}, Profiles = {cloudSynched.WereProfilesUpdated}" + " Size = " + Marshal.SizeOf(typeof(Notifications.InitNotificationCloudSynched)));
                 try
                 {
-                    // TestItem("814");
+                    TestItem("814");
                     // TestItem("872");
-                    TestItems();
+                    // TestItems();
                 }
                 catch (Exception e)
                 {
