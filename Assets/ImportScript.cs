@@ -150,53 +150,25 @@ public class ImportScript : MonoBehaviour
     {
         Debug.LogError($"OnSaveFileInResources at {path} : {data}");
     }
-    
-    private void OnStatusUpdate(IntPtr notificationPtr)
+
+    private void OnStatusUpdate(Notifications.NotificationBase notification)
     {
-        var notification = Marshal.PtrToStructure<Notifications.StatusNotificationBase>(notificationPtr);
-        switch (notification.Type)
+        switch (notification)
         {
-            case Notifications.NotificationType.LocalReady:
-                var localReady = Marshal.PtrToStructure<Notifications.InitNotificationLocalReady>(notificationPtr);
+            case Notifications.InitNotificationLocalReady localReady:
                 double t2 = Time.realtimeSinceStartupAsDouble;
                 Debug.LogError("**==> Local loaded. Size = " + Marshal.SizeOf(typeof(Notifications.InitNotificationLocalReady)) + $" in {(t2-t1)*1000} ms");
-                // var model = DataManager.GetModelByUnnyId("814");
-                // Debug.LogError($"Model = {model} !!");
-                // var model2 = DataManager.GetModelByUnnyId<MyCustomTemplate>("814");
-                // Debug.LogError($"Model2 = {model2} > {model2?.TestInt}!!");
-                
-                // var maxStack = DataManager.GetIntParam(model, "maxStack");
-                // var maxStack2 = DataManager.GetIntParam(model, "maxStack2");
-                // Debug.LogError($"Model = {model} ; maxStack = {maxStack} >>2>> {maxStack2}");
-
-                // var model2 = DataManager.GetModelByUnnyId<BaseModel>("684");
-                // TestItem();
                 break;
-            case Notifications.NotificationType.CloudSynched:
-                var cloudSynched = Marshal.PtrToStructure<Notifications.InitNotificationCloudSynched>(notificationPtr);
+            case Notifications.InitNotificationCloudSynched cloudSynched:
                 Debug.LogError($"**==> Cloud Synched. DICT = {cloudSynched.WereDictUpdated}, Profiles = {cloudSynched.WereProfilesUpdated}" + " Size = " + Marshal.SizeOf(typeof(Notifications.InitNotificationCloudSynched)));
-                try
-                {
-                    TestItem("814");
-                    // TestItem("872");
-                    // TestItems();
-                }
-                catch (Exception e)
-                {
-                    Debug.LogError("OOPS " + e.Message);
-                }
-
+                // TestItem("814");
+                TestItem("872");
+                // TestItems();
                 break;
-            case Notifications.NotificationType.AuthFailed:
-                var authFailed = Marshal.PtrToStructure<Notifications.InitNotificationAuthFailed>(notificationPtr);
-                // string authFailedMessage = Marshal.PtrToStringAnsi(authFailed.Message); // Manually marshal string
-                // Debug.Log($"Auth failed. {authFailedMessage}");
+            case Notifications.InitNotificationAuthFailed authFailed:
                 Debug.LogError($"**==> Auth failed. {authFailed.Message} " + " Size = " + Marshal.SizeOf(typeof(Notifications.InitNotificationAuthFailed)));
                 break;
-            case Notifications.NotificationType.CloudProfileFailed:
-                var profileFailed = Marshal.PtrToStructure<Notifications.InitNotificationCloudProfileFailed>(notificationPtr);
-                // string profileFailedMessage = Marshal.PtrToStringAnsi(profileFailed.Message); // Manually marshal string
-                // Debug.Log($"Profile load failed. {profileFailedMessage}");
+            case Notifications.InitNotificationCloudProfileFailed profileFailed:
                 Debug.LogError($"**==> Profile load failed. {profileFailed.Message}" + " Size = " + Marshal.SizeOf(typeof(Notifications.InitNotificationCloudProfileFailed)));
                 break;
             default:

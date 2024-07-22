@@ -1,12 +1,14 @@
 using System;
 using System.Runtime.InteropServices;
+using Balancy.Core;
 
 namespace Balancy
 {
     
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    public delegate void StatusUpdateCallback(IntPtr notification);
+    internal delegate void StatusUpdateCallback(IntPtr notification);
     
+    public delegate void StatusUpdateNotificationCallback(Notifications.StatusNotificationBase notification);
     
     [Flags]
     public enum LaunchType
@@ -18,7 +20,7 @@ namespace Balancy
     }
     
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
-    public class BaseAppConfig
+    internal class CppBaseAppConfig
     {
         [MarshalAs(UnmanagedType.LPStr)]
         public string ApiGameId;
@@ -35,7 +37,7 @@ namespace Balancy
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
-    public class AppConfig : BaseAppConfig
+    internal class CppAppConfig : CppBaseAppConfig
     {
         public Constants.Platform Platform;
         public byte AutoLogin = 1;
@@ -50,6 +52,28 @@ namespace Balancy
         public string AppVersion = null;
         
         [MarshalAs(UnmanagedType.LPStr)]
+        public string EngineVersion = null;
+    }
+    
+    public class AppConfig
+    {
+        public string ApiGameId;
+        public string PublicKey;
+        
+        public Constants.Environment Environment = Constants.Environment.Development;
+        public UpdateType UpdateType = UpdateType.FullUpdate;
+        public int UpdatePeriod = 600;
+
+        public StatusUpdateNotificationCallback OnStatusUpdate = null;
+
+        public LaunchType LaunchType = LaunchType.Local | LaunchType.Cloud | LaunchType.AutoRetry;
+        
+        public Constants.Platform Platform;
+        public byte AutoLogin = 1;
+        
+        public string DeviceId = null;
+        public string CustomId = null;
+        public string AppVersion = null;
         public string EngineVersion = null;
     }
     

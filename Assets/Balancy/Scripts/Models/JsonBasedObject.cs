@@ -1,7 +1,6 @@
 using System;
 using System.Runtime.InteropServices;
 using Balancy.Localization;
-using UnityEngine;
 
 namespace Balancy.Models
 {
