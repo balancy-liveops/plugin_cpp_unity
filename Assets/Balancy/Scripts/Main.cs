@@ -16,7 +16,6 @@ namespace Balancy
                 return;
             
             LibraryMethods.General.balancySetLogCallback(LogMessage);
-            LibraryMethods.General.balancySetDataUpdatedCallback(DataUpdated);
             UnityFileManager.Init();
 
             var config = CreateConfigForCPP(appConfig);
@@ -62,11 +61,10 @@ namespace Balancy
             Notifications.StatusNotificationBase notification = baseNotification;
             switch (baseNotification.Type)
             {
-                case Notifications.NotificationType.LocalReady:
-                    notification = Marshal.PtrToStructure<Notifications.InitNotificationLocalReady>(notificationPtr);
-                    break;
-                case Notifications.NotificationType.CloudSynched:
-                    notification = Marshal.PtrToStructure<Notifications.InitNotificationCloudSynched>(notificationPtr);
+                case Notifications.NotificationType.DataIsReady:
+                    var notificationDataIsReady = Marshal.PtrToStructure<Notifications.InitNotificationDataIsReady>(notificationPtr);
+                    notification = notificationDataIsReady;
+                    DataUpdated(notificationDataIsReady.IsCMSUpdated, notificationDataIsReady.IsProfileUpdated);
                     break;
                 case Notifications.NotificationType.AuthFailed:
                     notification = Marshal.PtrToStructure<Notifications.InitNotificationAuthFailed>(notificationPtr);

@@ -155,14 +155,12 @@ public class ImportScript : MonoBehaviour
     {
         switch (notification)
         {
-            case Notifications.InitNotificationLocalReady localReady:
-                double t2 = Time.realtimeSinceStartupAsDouble;
-                Debug.LogError("**==> Local loaded. Size = " + Marshal.SizeOf(typeof(Notifications.InitNotificationLocalReady)) + $" in {(t2-t1)*1000} ms");
-                break;
-            case Notifications.InitNotificationCloudSynched cloudSynched:
-                Debug.LogError($"**==> Cloud Synched. DICT = {cloudSynched.WereDictUpdated}, Profiles = {cloudSynched.WereProfilesUpdated}" + " Size = " + Marshal.SizeOf(typeof(Notifications.InitNotificationCloudSynched)));
-                // TestItem("814");
-                TestItem("872");
+            case Notifications.InitNotificationDataIsReady dataIsReady:
+                Debug.LogError($"**==> Data is Ready; Cloud =" + dataIsReady.IsCloudSynched + $" ;DICT = {dataIsReady.IsCMSUpdated}, Profiles = {dataIsReady.IsProfileUpdated}" + " Size = " + Marshal.SizeOf(typeof(Notifications.InitNotificationDataIsReady)));
+                if (dataIsReady.IsCMSUpdated)
+                    TestItem("814");
+                // if (dataIsReady.IsCMSUpdated)
+                //     TestItem("872");
                 // TestItems();
                 break;
             case Notifications.InitNotificationAuthFailed authFailed:

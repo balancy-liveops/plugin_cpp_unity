@@ -26,17 +26,6 @@ namespace Balancy
             public static extern void balancySetLogCallback(LogCallback callback);
             
             
-            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-            public delegate void DataUpdatedCallback(bool dictsChanged, bool profileChanged);
-            
-#if UNITY_IPHONE && !UNITY_EDITOR
-        [DllImport ("__Internal")]
-#else
-            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-#endif
-            public static extern void balancySetDataUpdatedCallback(DataUpdatedCallback callback);
-            
-
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             // public static extern void balancyInit([In] AppConfig config);
             public static extern void balancyInit(IntPtr config);

@@ -7,10 +7,9 @@ namespace Balancy.Core
         public enum NotificationType
         {
             Base = 0,
-            LocalReady = 1,
-            CloudSynched = 2,
-            AuthFailed = 3,
-            CloudProfileFailed = 4,
+            DataIsReady = 1,
+            AuthFailed = 2,
+            CloudProfileFailed = 3,
             Unknown
         }
 
@@ -26,15 +25,13 @@ namespace Balancy.Core
         }
 
         [StructLayout(LayoutKind.Sequential)]
-        public class InitNotificationLocalReady : StatusNotificationBase
+        public class InitNotificationDataIsReady : StatusNotificationBase
         {
-        }
+            private int flags;
 
-        [StructLayout(LayoutKind.Sequential)]
-        public class InitNotificationCloudSynched : StatusNotificationBase
-        {
-            public byte WereDictUpdated;
-            public byte WereProfilesUpdated;
+            public bool IsCloudSynched => (flags & (1 << 0)) != 0;
+            public bool IsCMSUpdated => (flags & (1 << 1)) != 0;
+            public bool IsProfileUpdated => (flags & (1 << 2)) != 0;
         }
 
         [StructLayout(LayoutKind.Sequential)]
