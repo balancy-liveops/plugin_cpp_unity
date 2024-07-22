@@ -5,6 +5,10 @@ using UnityEngine;
 
 namespace Balancy.Models
 {
+	public class MyCustomTemplate2 : MyCustomTemplate
+	{
+	}
+
 	public class MyCustomTemplate : BaseModel
 	{
 		private string unnyIdTestLink;

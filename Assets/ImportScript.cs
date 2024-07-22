@@ -29,7 +29,7 @@ public class ImportScript : MonoBehaviour
 
     private void TestItem(string unnyId)
     {
-        var myTemplate = DataManager.GetModelByUnnyId<MyCustomTemplate>(unnyId);
+        var myTemplate = CMS.GetModelByUnnyId<MyCustomTemplate>(unnyId);
         Debug.Log($"myTemplate.unnyId = {myTemplate.UnnyId}");
         Debug.Log($"myTemplate.TestInt = {myTemplate.TestInt}");
         Debug.Log($"myTemplate.TestBool = {myTemplate.TestBool}");
@@ -106,8 +106,8 @@ public class ImportScript : MonoBehaviour
 
     private void TestItems()
     {
-        var tmpYes = DataManager.GetModels<MyCustomTemplate>(true);
-        var tmpNo = DataManager.GetModels<MyCustomTemplate>(false);
+        var tmpYes = CMS.GetModels<MyCustomTemplate>(true);
+        var tmpNo = CMS.GetModels<MyCustomTemplate>(false);
 
         if (tmpYes != null)
         {

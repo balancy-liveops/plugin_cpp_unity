@@ -31,7 +31,7 @@ namespace Balancy.Models
 
         protected T GetModelByUnnyId<T>(string unnyId) where T: BaseModel
         {
-            return DataManager.GetModelByUnnyId<T>(unnyId);
+            return CMS.GetModelByUnnyId<T>(unnyId);
         }
 
         protected T[] GetModelsByUnnyIds<T>(string[] unnyIds) where T : BaseModel

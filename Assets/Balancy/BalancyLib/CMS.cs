@@ -2,14 +2,15 @@ using System;
 using System.Collections.Generic;
 using Balancy.Models;
 using Balancy.Models.SmartObjects;
-using UnityEngine;
 
 namespace Balancy
 {
-    internal class DataManager
+    public static class CMS
     {
         private static readonly Dictionary<string, BaseModel> AllModels = new Dictionary<string, BaseModel>();
         private static Dictionary<string, string> Inheritance;
+
+        public static Func<string, BaseModel> OnTypeRequested = null;
         
         public static T[] GetModels<T>(bool includeChildren) where T : BaseModel
         {
@@ -24,19 +25,10 @@ namespace Balancy
             return result;
         }
 
-        public static void RefreshAll()
-        {
-            AllModels.Clear();
-            Inheritance = GetInheritance();
-        }
-        
         public static T GetModelByUnnyId<T>(string unnyId) where T: BaseModel
         {
             if (AllModels.TryGetValue(unnyId, out var model))
-            {
-                Debug.LogWarning($"RETURN CACEHD {unnyId}");
                 return model as T;
-            }
 
             var pointer = GetModelByUnnyId(unnyId);
             if (pointer == IntPtr.Zero)
@@ -47,6 +39,12 @@ namespace Balancy
             var modelBase = CreateModel(pointer, unnyId, templateName);
             AllModels.Add(unnyId, modelBase);
             return modelBase as T;
+        }
+        
+        internal static void RefreshAll()
+        {
+            AllModels.Clear();
+            Inheritance = GetInheritance();
         }
 
         private static Dictionary<string, string> GetInheritance()
@@ -60,7 +58,7 @@ namespace Balancy
             return result;
         }
 
-        public static IntPtr GetModelByUnnyId(string unnyId)
+        private static IntPtr GetModelByUnnyId(string unnyId)
         {
             return LibraryMethods.Models.balancyGetModelByUnnyId(unnyId);
         }
@@ -78,11 +76,15 @@ namespace Balancy
             switch (templateName)
             {
                 case "SmartObjects.Item": return new Item();
-                case "MyCustomTemplate": return new MyCustomTemplate();
                 default:
                 {
+                    var model = OnTypeRequested?.Invoke(templateName);
+                    if (model != null)
+                        return model;
+                    
                     if (Inheritance.TryGetValue(templateName, out var parent))
                         return InstantiateByType(parent);
+                    
                     return new BaseModel();
                 }
             }
