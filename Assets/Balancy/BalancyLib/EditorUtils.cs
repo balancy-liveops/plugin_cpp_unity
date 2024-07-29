@@ -1,0 +1,162 @@
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+using Balancy.Models;
+using UnityEngine;
+
+namespace Balancy.Editor
+{
+    public class EditorUtils
+    {
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+        public class ConfigStatus {
+            public bool IsAuthorized;
+            [MarshalAs(UnmanagedType.LPStr)]
+            public string Email;
+        }
+
+        public class GameInfo
+        {
+            public readonly string GameName;
+            public readonly string GameId;
+            public readonly string PublicKey;
+
+            public GameInfo(string name, string id, string key)
+            {
+                GameName = name;
+                GameId = id;
+                PublicKey = key;
+            }
+        }
+        
+        private static ConfigStatus _status;
+        private static Action<ConfigStatus> _authCallback;
+        private static Action<List<GameInfo>> getGamesCallback;
+
+        public static void Launch()
+        {
+            LibraryMethods.General.balancySetLogCallback(LogMessage);
+            UnityFileManager.Init();
+            
+            LibraryMethods.Editor.balancyConfigLaunch(LibraryMethods.Editor.Language.CSharp);
+            UpdateStatus();
+        }
+
+        private static void UpdateStatus()
+        {
+            SetStatus(LibraryMethods.Editor.balancyConfigGetStatus());
+        }
+
+        private static ConfigStatus SetStatus(IntPtr pt)
+        {
+            _status = Marshal.PtrToStructure<ConfigStatus>(pt);
+            return _status;
+        }
+
+        public static ConfigStatus GetStatus()
+        {
+            return _status;
+        }
+
+        public static void Auth(string email, string password, Action<ConfigStatus> callback)
+        {
+            _authCallback = callback;
+            LibraryMethods.Editor.balancyConfigAuth(email, password, AuthDone);
+        }
+        
+        private static void AuthDone(IntPtr pointer)
+        {
+            try
+            {
+                var authStatus = SetStatus(pointer);
+                _authCallback?.Invoke(authStatus);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError(e);
+            }
+        }
+
+        #region Get Games
+
+        public static void LoadGames(Action<List<GameInfo>> callback)
+        {
+            getGamesCallback = callback;
+            LibraryMethods.Editor.balancyConfigLoadListOfGames(GamesLoaded);
+        }
+
+        private static void GamesLoaded(IntPtr ptr, int size)
+        {
+            try
+            {
+                var result = new List<GameInfo>();
+                var strs = JsonBasedObject.ReadStringArrayValues(ptr, size);
+
+                for (int i = 0; i < size; i += 3)
+                    result.Add(new GameInfo(strs[i], strs[i + 1], strs[i + 2]));
+
+                Debug.LogError("GamesCount: " + result.Count);
+                getGamesCallback?.Invoke(result);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError(":>> " + e);
+            }
+        }
+
+        public static string GetSelectedGameId()
+        {
+            var ptr = LibraryMethods.Editor.balancyConfigGetSelectedGame();
+            return Marshal.PtrToStringAnsi(ptr);
+        }
+
+        public static void SetSelectedGameId(string gameId)
+        {
+            LibraryMethods.Editor.balancyConfigSetSelectedGame(gameId);
+        }
+        
+        #endregion
+
+        public static void DownloadContent(Constants.Environment environment, DownloadCompleteCallback onReadyCallback, ProgressUpdateCallback onProgressCallback)
+        {
+            LibraryMethods.Editor.balancyConfigDownloadContentToResources(environment, onReadyCallback, onProgressCallback);
+        }
+
+        public static void SignOut()
+        {
+            LibraryMethods.Editor.balancyConfigSignOut();
+            UpdateStatus();
+        }
+
+        public static void Close()
+        {
+            LibraryMethods.Editor.balancyConfigClose();
+        }
+        
+        private enum Level {
+            Off,
+            Verbose,
+            Debug,
+            Info,
+            Warn,
+            Error
+        };
+        
+        [AOT.MonoPInvokeCallback(typeof(LibraryMethods.General.LogCallback))]
+        private static void LogMessage(int level, string message)
+        {
+            switch ((Level)level)
+            {
+                case Level.Error:
+                    Debug.LogError(message);
+                    break;
+                case Level.Warn:
+                    Debug.LogWarning(message);
+                    break;
+                default:
+                    Debug.Log(message);
+                    break;
+            }
+        }
+    }
+}

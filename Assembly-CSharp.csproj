@@ -50,12 +50,17 @@
     <Compile Include="Assets/Balancy/BalancyLib/AppConfig.cs" />
     <Compile Include="Assets/VectorType.cs" />
     <Compile Include="Assets/Balancy/BalancyLib/Models/SmartObjects/Item.cs" />
+    <Compile Include="Assets/MyTestEnum.cs" />
+    <Compile Include="Assets/MyMultiSelectEnum.cs" />
     <Compile Include="Assets/Balancy/BalancyLib/Models/BaseModel.cs" />
     <Compile Include="Assets/Balancy/BalancyLib/UnityFileManager.cs" />
     <Compile Include="Assets/MyCustomTemplate.cs" />
     <Compile Include="Assets/Balancy/BalancyLib/Models/JsonBasedObject.cs" />
     <Compile Include="Assets/Balancy/BalancyLib/Models/BalancyModels.cs" />
+    <Compile Include="Assets/MyCustomTemplate2.cs" />
+    <Compile Include="Assets/Balancy/BalancyLib/EditorUtils.cs" />
     <Compile Include="Assets/Balancy/BalancyLib/Core/Notifications.cs" />
+    <Compile Include="Assets/Balancy/BalancyLib/Constants.cs" />
     <Compile Include="Assets/Balancy/BalancyLib/Controller.cs" />
     <Compile Include="Assets/Balancy/BalancyLib/UnityUtils.cs" />
     <Compile Include="Assets/Balancy/BalancyLib/CMS.cs" />

@@ -9,6 +9,9 @@ namespace Balancy
     internal delegate void StatusUpdateCallback(IntPtr notification);
     
     public delegate void StatusUpdateNotificationCallback(Notifications.StatusNotificationBase notification);
+    public delegate void ProgressUpdateCallback(string fileName, float progress);
+    public delegate void DownloadCompleteCallback(bool success, string message);
+    
     
     [Flags]
     public enum LaunchType
@@ -32,6 +35,7 @@ namespace Balancy
         public int UpdatePeriod = 600;
 
         public StatusUpdateCallback OnStatusUpdate = null;
+        public ProgressUpdateCallback OnProgressUpdateCallback = null;
 
         public LaunchType LaunchType = LaunchType.Local | LaunchType.Cloud | LaunchType.AutoRetry;
     }
@@ -65,6 +69,7 @@ namespace Balancy
         public int UpdatePeriod = 600;
 
         public StatusUpdateNotificationCallback OnStatusUpdate = null;
+        public ProgressUpdateCallback OnProgressUpdateCallback = null;
 
         public LaunchType LaunchType = LaunchType.Local | LaunchType.Cloud | LaunchType.AutoRetry;
         
@@ -82,29 +87,5 @@ namespace Balancy
         None,
         BuiltInFeaturesOnly,
         FullUpdate
-    }
-    
-    public class Constants
-    {
-        public enum Environment
-        {
-            Development,
-            Stage,
-            Production
-        }
-
-        public enum Platform
-        {
-            Unknown = 1,
-            //            Vkontakte = 3,
-            Facebook = 4,
-            //            Odnoklassniki = 5,
-            FbInstant = 6,
-
-            AndroidGooglePlay = 7,
-            IosAppStore = 8,
-            AmazonStore = 14,
-            Yoomoney = 15
-        }
     }
 }

@@ -211,7 +211,7 @@ namespace Balancy.Models
             for (int i = 0; i < size; i++)
                 result[i] = Marshal.PtrToStringAnsi(ptrArray[i]);
 
-            LibraryMethods.Models.balancyFreeStringArray(ptr);
+            LibraryMethods.Models.balancyFreeStringArray(ptr, size);
             return result;
         }
         

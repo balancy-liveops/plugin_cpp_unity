@@ -46,6 +46,7 @@ namespace Balancy
                 Platform = _originalConfig.Platform,
                 AutoLogin = _originalConfig.AutoLogin,
                 OnStatusUpdate = OnStatusUpdate,
+                OnProgressUpdateCallback = _originalConfig.OnProgressUpdateCallback,
                 DeviceId = string.IsNullOrEmpty(_originalConfig.DeviceId) ? Balancy.UnityUtils.GetUniqId() : _originalConfig.DeviceId,
                 AppVersion = string.IsNullOrEmpty(_originalConfig.AppVersion) ? Application.version : _originalConfig.AppVersion,
                 EngineVersion = string.IsNullOrEmpty(_originalConfig.EngineVersion) ? Balancy.UnityUtils.GetEngineVersion() : _originalConfig.EngineVersion,

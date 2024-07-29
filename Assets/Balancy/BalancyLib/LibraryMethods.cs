@@ -3,12 +3,6 @@ using System.Runtime.InteropServices;
 
 namespace Balancy
 {
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    public delegate void SaveFileCallback(string path, string data);
-                        
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    public delegate string LoadFileCallback(string path);
-    
     internal static class LibraryMethods
     {
         private const string DllName = "libBalancyCore";
@@ -17,6 +11,12 @@ namespace Balancy
         {
             [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
             public delegate void LogCallback(int level, string message);
+            
+            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+            public delegate void SaveFileCallback(string path, string data);
+                        
+            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+            public delegate string LoadFileCallback(string path);
             
 #if UNITY_IPHONE && !UNITY_EDITOR
         [DllImport ("__Internal")]
@@ -84,7 +84,48 @@ namespace Balancy
             public static extern IntPtr balancyGetStringArrayParam(IntPtr instance, string paramName, out int size);
 
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-            public static extern void balancyFreeStringArray(IntPtr array);
+            public static extern void balancyFreeStringArray(IntPtr array, int size);
+        }
+
+        public static class Editor
+        {
+            public enum Language {
+                CSharp = 1,
+                Cpp = 2,
+                UnrealCpp = 3
+            }
+            
+            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+            public delegate void AuthCallback(IntPtr statusPtr);
+            
+            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+            public delegate void StringArrayCallback(IntPtr statusPtr, int size);
+            
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyConfigLaunch(Language language);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyConfigClose();
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyConfigGetStatus();
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyConfigLoadListOfGames(StringArrayCallback callback);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyConfigAuth(string email, string password, AuthCallback callback);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyConfigSignOut();
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyConfigGetSelectedGame();
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyConfigSetSelectedGame(string gameId);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyConfigDownloadContentToResources(Constants.Environment environment, DownloadCompleteCallback onReadyCallback, ProgressUpdateCallback onProgressCallback);
         }
     }
 }

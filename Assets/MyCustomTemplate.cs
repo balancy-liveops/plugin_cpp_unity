@@ -1,145 +1,98 @@
-using System;
 using Balancy.Localization;
-using Unity.VisualScripting;
-using UnityEngine;
 
 namespace Balancy.Models
 {
-	public class MyCustomTemplate2 : MyCustomTemplate
-	{
-	}
-
-	public class MyCustomTemplate : BaseModel
-	{
-		private string unnyIdTestLink;
-		private string[] unnyIdTestLinkArr;
-		
-		private int testDuration;
-		public int TestDuration => testDuration;
-		
-		private float[] testFloatArr;
-		public float[] TestFloatArr => testFloatArr;
-		private int[] testIntArr;
-		public int[] TestIntArr => testIntArr;
-		private long[] testLongArr;
-		public long[] TestLongArr => testLongArr;
-		private string[] testStringArr;
-		public string[] TestStringArr => testStringArr;
-		private bool[] testBoolArr;
-		public bool[] TestBoolArr => testBoolArr;
-		
-		private int testInt;
-		public int TestInt => testInt;
-		private float testFloat;
-		public float TestFloat => testFloat;
-		private string testString;
-		public string TestString => testString;
-		private bool testBool;
-		public bool TestBool => testBool;
-		private long testLong;
-		public long TestLong => testLong;
-		
-		private int[] testDurationArr;
-		public int[] TestDurationArr => testDurationArr;
-		
-		private UnnyDate testDate;
-		private UnnyProduct testProduct;
-		public UnnyDate TestDate => testDate;
-		public UnnyProduct TestProduct => testProduct;
-		
-		private UnnyObject sprite;
-		public UnnyObject Sprite => sprite;
-		private VectorType testInj;
-		public VectorType TestInj => testInj;
-		
-		private UnnyColor color;
-		public UnnyColor Color => color;
-		private LocalizedString loc;
-		public LocalizedString Loc => loc;
-		
-		private UnnyDate[] testDateArr;
-		public UnnyDate[] TestDateArr => testDateArr;
-		
-		private VectorType[] testInjArr;
-		public VectorType[] TestInjArr => testInjArr;
-		
-		private UnnyObject[] spriteArr;
-		public UnnyObject[] SpriteArr => spriteArr;
-		private UnnyProduct[] productArr;
-		public UnnyProduct[] ProductArr => productArr;
-		
-		private LocalizedString[] locArr;
-		public LocalizedString[] LocArr => locArr;
-		
-		private UnnyColor[] colors;
-		public UnnyColor[] Colors => colors;
-
-		private string unnyIdSelfLink;
-		public MyCustomTemplate SelfLink => GetModelByUnnyId<MyCustomTemplate>(unnyIdSelfLink);
-		
-		private string[] unnyIdSelfLinkArray;
-		public MyCustomTemplate[] SelfLinkArray => GetModelsByUnnyIds<MyCustomTemplate>(unnyIdSelfLinkArray);
-		
-		public override void InitData()
-		{
-			base.InitData();
-			// unnyIdTestLinkArr = GetStringArrayParam("unnyIdTestLinkArr");
-			//
-			testFloatArr = GetFloatArrayParam("testFloatArr");
-			testIntArr = GetIntArrayParam("testIntArr");
-			testLongArr = GetLongArrayParam("testLongArr");
-			testStringArr = GetStringArrayParam("testStringArr");
-			testBoolArr = GetBoolArrayParam("testBoolArr");
-			testDurationArr = GetIntArrayParam("testDurationArr");
-			
-			testInt = GetIntParam("testInt");
-			testFloat = GetFloatParam("testFloat");
-			testString = GetStringParam("testString");
-			testBool = GetBoolParam("testBool");
-			testLong = GetLongParam("testLong");
-			testDuration = GetIntParam("testDuration");
-
-			testDate = GetObjectParam<UnnyDate>("testDate");
-			testProduct = GetObjectParam<UnnyProduct>("testProduct");
-			sprite = GetObjectParam<UnnyObject>("sprite");
-			testInj = GetObjectParam<VectorType>("testInj");
-			color = GetColor("color");
-			loc = GetLocalizedString("loc");
-
-			testDateArr = GetObjectArrayParam<UnnyDate>("testDateArr");
-			testInjArr = GetObjectArrayParam<VectorType>("testInjArr");
-			
-			spriteArr = GetObjectArrayParam<UnnyObject>("spriteArr");
-			productArr = GetObjectArrayParam<UnnyProduct>("productArr");
-			
-			locArr = GetLocalizedStrings("locArr");
-			colors = GetColors("unnyIdTestLinkArr");
-
-			unnyIdSelfLink = GetStringParam("unnyIdSelfLink");
-			unnyIdSelfLinkArray = GetStringArrayParam("unnyIdSelfLinkArray");
-		}
-		
-		
-		//
-		// [JsonIgnore]
-		// public Models.SmartObjects.Item TestLink => DataEditor.GetModelByUnnyId<Models.SmartObjects.Item>(unnyIdTestLink);
-		//
-		// [JsonIgnore]
-		// public Models.SmartObjects.Item[] TestLinkArr
-		// {
-		// 	get
-		// 	{
-		// 		if (unnyIdTestLinkArr == null)
-		// 			return new Models.SmartObjects.Item[0];
-		// 		var testLinkArr = new Models.SmartObjects.Item[unnyIdTestLinkArr.Length];
-		// 		for (int i = 0;i < unnyIdTestLinkArr.Length;i++)
-		// 			testLinkArr[i] = DataEditor.GetModelByUnnyId<Models.SmartObjects.Item>(unnyIdTestLinkArr[i]);
-		// 		return testLinkArr;
-		// 	}
-		// }
-		//
-		
-		
-	}
-#pragma warning restore 649
+    public class MyCustomTemplate : Balancy.Models.BaseModel 
+    {
+        
+		private UnnyDate _testDate;
+		private int _testDuration;
+		private UnnyProduct _testProduct;
+		private UnnyColor _color;
+		private Localization.LocalizedString _loc;
+		private Localization.LocalizedString[] _locArr;
+		private float[] _testFloatArr;
+		private int[] _testIntArr;
+		private long[] _testLongArr;
+		private string[] _testStringArr;
+		private bool[] _testBoolArr;
+		private string _unnyIdSelfLink;
+		private UnnyDate[] _testDateArr;
+		private int[] _testDurationArr;
+		private string[] _unnyIdSelfLinkArray;
+		private Balancy.Models.VectorType[] _testInjArr;
+		private string _unnyIdTestLink;
+		private string[] _unnyIdTestLinkArr;
+		private UnnyObject _sprite;
+		private UnnyObject[] _spriteArr;
+		private UnnyProduct[] _productArr;
+		private Balancy.Models.VectorType _testInj;
+		private int _testInt;
+		private float _testFloat;
+		private string _testString;
+		private bool _testBool;
+		private long _testLong;
+        
+        
+		public UnnyDate TestDate => _testDate;
+		public int TestDuration => _testDuration;
+		public UnnyProduct TestProduct => _testProduct;
+		public UnnyColor Color => _color;
+		public Localization.LocalizedString Loc => _loc;
+		public Localization.LocalizedString[] LocArr => _locArr;
+		public float[] TestFloatArr => _testFloatArr;
+		public int[] TestIntArr => _testIntArr;
+		public long[] TestLongArr => _testLongArr;
+		public string[] TestStringArr => _testStringArr;
+		public bool[] TestBoolArr => _testBoolArr;
+		public Balancy.Models.MyCustomTemplate SelfLink => GetModelByUnnyId<Balancy.Models.MyCustomTemplate>(_unnyIdSelfLink);
+		public UnnyDate[] TestDateArr => _testDateArr;
+		public int[] TestDurationArr => _testDurationArr;
+		public Balancy.Models.MyCustomTemplate[] SelfLinkArray => GetModelsByUnnyIds<Balancy.Models.MyCustomTemplate>(_unnyIdSelfLinkArray);
+		public Balancy.Models.VectorType[] TestInjArr => _testInjArr;
+		public Balancy.Models.SmartObjects.Item TestLink => GetModelByUnnyId<Balancy.Models.SmartObjects.Item>(_unnyIdTestLink);
+		public Balancy.Models.SmartObjects.Item[] TestLinkArr => GetModelsByUnnyIds<Balancy.Models.SmartObjects.Item>(_unnyIdTestLinkArr);
+		public UnnyObject Sprite => _sprite;
+		public UnnyObject[] SpriteArr => _spriteArr;
+		public UnnyProduct[] ProductArr => _productArr;
+		public Balancy.Models.VectorType TestInj => _testInj;
+		public int TestInt => _testInt;
+		public float TestFloat => _testFloat;
+		public string TestString => _testString;
+		public bool TestBool => _testBool;
+		public long TestLong => _testLong;
+        
+        public override void InitData()
+        {
+            base.InitData();
+            
+			_testDate = GetObjectParam<UnnyDate>("testDate");
+			_testDuration = GetIntParam("testDuration");
+			_testProduct = GetObjectParam<UnnyProduct>("testProduct");
+			_color = GetColor("color");
+			_loc = GetLocalizedString("loc");
+			_locArr = GetLocalizedStrings("locArr");
+			_testFloatArr = GetFloatArrayParam("testFloatArr");
+			_testIntArr = GetIntArrayParam("testIntArr");
+			_testLongArr = GetLongArrayParam("testLongArr");
+			_testStringArr = GetStringArrayParam("testStringArr");
+			_testBoolArr = GetBoolArrayParam("testBoolArr");
+			_unnyIdSelfLink = GetStringParam("unnyIdSelfLink");
+			_testDateArr = GetObjectArrayParam<UnnyDate>("testDateArr");
+			_testDurationArr = GetIntArrayParam("testDurationArr");
+			_unnyIdSelfLinkArray = GetStringArrayParam("unnyIdSelfLinkArray");
+			_testInjArr = GetObjectArrayParam<Balancy.Models.VectorType>("testInjArr");
+			_unnyIdTestLink = GetStringParam("unnyIdTestLink");
+			_unnyIdTestLinkArr = GetStringArrayParam("unnyIdTestLinkArr");
+			_sprite = GetObjectParam<UnnyObject>("sprite");
+			_spriteArr = GetObjectArrayParam<UnnyObject>("spriteArr");
+			_productArr = GetObjectArrayParam<UnnyProduct>("productArr");
+			_testInj = GetObjectParam<Balancy.Models.VectorType>("testInj");
+			_testInt = GetIntParam("testInt");
+			_testFloat = GetFloatParam("testFloat");
+			_testString = GetStringParam("testString");
+			_testBool = GetBoolParam("testBool");
+			_testLong = GetLongParam("testLong");
+        }
+    }
 }

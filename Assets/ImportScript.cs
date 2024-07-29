@@ -27,7 +27,7 @@ public class ImportScript : MonoBehaviour
         Balancy.Main.Init(config);
     }
 
-    private void TestItem(string unnyId)
+    private MyCustomTemplate TestItem(string unnyId)
     {
         var myTemplate = CMS.GetModelByUnnyId<MyCustomTemplate>(unnyId);
         Debug.Log($"myTemplate.unnyId = {myTemplate.UnnyId}");
@@ -92,9 +92,9 @@ public class ImportScript : MonoBehaviour
         for (int i = 0;i<myTemplate.LocArr.Length;i++)
             Debug.Log($"{i}) {myTemplate.LocArr[i].Key}");
         
-        Debug.LogWarning($"Colors Size = {myTemplate.Colors.Length}");
-        for (int i = 0;i<myTemplate.Colors.Length;i++)
-            Debug.Log($"{i}) {myTemplate.Colors[i].Value}");
+        // Debug.LogWarning($"Colors Size = {myTemplate.Colors.Length}");
+        // for (int i = 0;i<myTemplate.Colors.Length;i++)
+        //     Debug.Log($"{i}) {myTemplate.Colors[i].Value}");
         
         
         Debug.LogError($"LINK = {myTemplate.SelfLink?.UnnyId} - {myTemplate.SelfLink?.TestString}" );
@@ -102,6 +102,18 @@ public class ImportScript : MonoBehaviour
         Debug.LogWarning($"SelfLinkArray Size = {links.Length}");
         for (int i = 0;i<links.Length;i++)
             Debug.Log($"{i}) {links[i].UnnyId} - {links[i].TestString}");
+
+        return myTemplate;
+    }
+
+    private void TestItemEnum(string unnyId)
+    {
+        var model = TestItem(unnyId) as MyCustomTemplate2;
+        if (model == null)
+            return;
+
+        Debug.LogWarning($"Enum1 = {model.Enum1}");
+        Debug.LogWarning($"Enum2 = {model.Enum2}");
     }
 
     private void TestItems()
@@ -133,11 +145,13 @@ public class ImportScript : MonoBehaviour
             Environment = Constants.Environment.Development,
             UpdateType = UpdateType.FullUpdate,
             UpdatePeriod = 600,
-            // OnSaveFileInCache = SaveInCache,
-            // OnSaveFileInResources = SaveInResources,
             OnStatusUpdate = OnStatusUpdate,
             AutoLogin = 1,
-            CustomId = "My_Custom_Id"
+            CustomId = "My_Custom_Id",
+            OnProgressUpdateCallback = (fileName, progress) =>
+            {
+                Debug.Log($"Progress {(int)(progress*100)}% - {fileName}");
+            }
         };
     }
 
@@ -158,7 +172,11 @@ public class ImportScript : MonoBehaviour
             case Notifications.InitNotificationDataIsReady dataIsReady:
                 Debug.LogError($"**==> Data is Ready; Cloud =" + dataIsReady.IsCloudSynched + $" ;DICT = {dataIsReady.IsCMSUpdated}, Profiles = {dataIsReady.IsProfileUpdated}" + " Size = " + Marshal.SizeOf(typeof(Notifications.InitNotificationDataIsReady)));
                 if (dataIsReady.IsCMSUpdated)
-                    TestItem("814");
+                {
+                    // TestItem("814");
+                    TestItemEnum("872");
+                }
+
                 // if (dataIsReady.IsCMSUpdated)
                 //     TestItem("872");
                 // TestItems();
