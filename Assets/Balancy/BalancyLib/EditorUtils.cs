@@ -32,6 +32,9 @@ namespace Balancy.Editor
         private static ConfigStatus _status;
         private static Action<ConfigStatus> _authCallback;
         private static Action<List<GameInfo>> getGamesCallback;
+        
+        private static DownloadCompleteCallback _downloadCompleteCallback;
+        private static ProgressUpdateCallback _progressUpdateCallback;
 
         public static void Launch()
         {
@@ -119,7 +122,33 @@ namespace Balancy.Editor
 
         public static void DownloadContent(Constants.Environment environment, DownloadCompleteCallback onReadyCallback, ProgressUpdateCallback onProgressCallback)
         {
-            LibraryMethods.Editor.balancyConfigDownloadContentToResources(environment, onReadyCallback, onProgressCallback);
+            _downloadCompleteCallback = onReadyCallback;
+            _progressUpdateCallback = onProgressCallback;
+            LibraryMethods.Editor.balancyConfigDownloadContentToResources(environment, OnDownloadCompleted, OnProgressUpdate);
+        }
+
+        private static void OnDownloadCompleted(bool success, string message)
+        {
+            try
+            {
+                _downloadCompleteCallback?.Invoke(success, message);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError(e);
+            }
+        }
+
+        private static void OnProgressUpdate(string fileName, float progress)
+        {
+            try
+            {
+                _progressUpdateCallback?.Invoke(fileName, progress);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError(e);
+            }
         }
 
         public static void SignOut()

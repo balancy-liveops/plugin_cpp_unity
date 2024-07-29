@@ -31,7 +31,7 @@ namespace Balancy.Editor
             public readonly string[] GameNames;
             public string SelectedGameId;
             
-            private int _selectedGame;
+            private int _selectedGame = -1;
 
             public GamesInfo(List<EditorUtils.GameInfo> list, string selectedGameId)
             {
@@ -57,6 +57,11 @@ namespace Balancy.Editor
                         SelectGameByIndex(_selectedGame);
             }
 
+            public bool HasSelectedGame()
+            {
+                return _selectedGame >= 0;
+            }
+
             private void SelectGameByIndex(int index)
             {
                 SelectedGameId = Games[index].GameId;
@@ -65,6 +70,7 @@ namespace Balancy.Editor
         }
 
         private GamesInfo _gamesInfo;
+        private string _errorMessage;
         private bool _downloading;
         private float _downloadingProgress;
         private string _downloadingFileName;
@@ -102,7 +108,7 @@ namespace Balancy.Editor
         private void RenderLoader()
         {
             //GUI.enabled = !_downloading && AuthHelper.HasSelectedBranch() && !EditorApplication.isCompiling;
-            GUI.enabled = !_downloading && !EditorApplication.isCompiling;
+            GUI.enabled = !_downloading && _gamesInfo != null && _gamesInfo.HasSelectedGame() && !EditorApplication.isCompiling;
             GUILayout.BeginVertical(EditorStyles.helpBox);
 
             GUILayout.Label("Content Management");
@@ -126,20 +132,6 @@ namespace Balancy.Editor
                 //     StartSynchingAddressables();
                 
                 GUILayout.EndHorizontal();
-                
-                // EditorGUILayout.Space();
-                // var directoryExists = Directory.Exists(CACHE_PATH);
-                // GUI.enabled = directoryExists;
-                // if (GUILayout.Button("Clear locally cached Content"))
-                // {
-                //     ClearCache();
-                // }
-                //
-                // GUI.enabled = true;
-                //
-                // EditorGUILayout.Space();
-                // EditorGUILayout.Space();
-                // RenderSmartObjects();
             }
 
             GUILayout.EndVertical();
@@ -151,18 +143,22 @@ namespace Balancy.Editor
             _downloading = true;
             _downloadingProgress = 0;
 
-            EditorUtils.DownloadContent(Constants.Environment.Development, (success, message) =>
-            {
-                Debug.LogError("OnCompleted " + success);
-                if (!success)
-                    EditorUtility.DisplayDialog("Error", message, "Ok");
-                _needRefresh = true;
-            },(fileName, progress) =>
-            {
-                _downloadingFileName = fileName;
-                _downloadingProgress = progress;
-                _needRefresh = true;
-            });
+            EditorUtils.DownloadContent(Constants.Environment.Development, OnDownloadCompleted, OnProgressUpdate);
+        }
+
+        private void OnDownloadCompleted(bool success, string message)
+        {
+            if (!success)
+                _errorMessage = message;
+            _downloading = false;
+            _needRefresh = true;
+        }
+
+        private void OnProgressUpdate(string fileName, float progress)
+        {
+            _downloadingFileName = fileName;
+            _downloadingProgress = progress;
+            _needRefresh = true;
         }
 
         private bool IsAuthorized => EditorUtils.GetStatus()?.IsAuthorized ?? false;
@@ -265,6 +261,12 @@ namespace Balancy.Editor
                 return;
 
             _needRefresh = false;
+            if (!string.IsNullOrEmpty(_errorMessage))
+            {
+                EditorUtility.DisplayDialog("Error", _errorMessage, "Ok");
+                _errorMessage = null;
+            }
+
             Repaint();
         }
         
