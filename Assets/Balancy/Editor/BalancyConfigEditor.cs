@@ -122,8 +122,8 @@ namespace Balancy.Editor
             else
             {
                 GUILayout.BeginHorizontal();
-                // if (GUILayout.Button("Generate Code"))
-                //     StartCodeGeneration();
+                if (GUILayout.Button("Generate Code"))
+                    StartCodeGeneration();
 
                 if (GUILayout.Button("Download Data"))
                     StartDownloading();
@@ -136,6 +136,14 @@ namespace Balancy.Editor
 
             GUILayout.EndVertical();
             GUI.enabled = true;
+        }
+        
+        private void StartCodeGeneration()
+        {
+            _downloading = true;
+            _downloadingProgress = 0.5f;
+
+            EditorUtils.GenerateCode(Constants.Environment.Development, OnDownloadCompleted);
         }
         
         private void StartDownloading()

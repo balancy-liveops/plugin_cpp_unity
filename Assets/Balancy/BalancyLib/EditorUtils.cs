@@ -126,6 +126,12 @@ namespace Balancy.Editor
             _progressUpdateCallback = onProgressCallback;
             LibraryMethods.Editor.balancyConfigDownloadContentToResources(environment, OnDownloadCompleted, OnProgressUpdate);
         }
+        
+        public static void GenerateCode(Constants.Environment environment, DownloadCompleteCallback onReadyCallback)
+        {
+            _downloadCompleteCallback = onReadyCallback;
+            LibraryMethods.Editor.balancyConfigGenerateCode(environment, OnDownloadCompleted);
+        }
 
         private static void OnDownloadCompleted(bool success, string message)
         {

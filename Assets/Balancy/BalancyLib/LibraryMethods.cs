@@ -126,6 +126,9 @@ namespace Balancy
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyConfigDownloadContentToResources(Constants.Environment environment, DownloadCompleteCallback onReadyCallback, ProgressUpdateCallback onProgressCallback);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyConfigGenerateCode(Constants.Environment environment, DownloadCompleteCallback onReadyCallback);
         }
     }
 }
