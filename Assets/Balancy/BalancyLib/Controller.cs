@@ -26,7 +26,6 @@ namespace Balancy
 
         private static void DataUpdated(bool dictsChanged, bool profileChanged)
         {
-            Debug.LogError($"DataUpdated = {dictsChanged} ; {profileChanged}");
             if (dictsChanged)
                 CMS.RefreshAll();
         }

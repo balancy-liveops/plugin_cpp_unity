@@ -174,7 +174,7 @@ public class ImportScript : MonoBehaviour
                 if (dataIsReady.IsCMSUpdated)
                 {
                     // TestItem("814");
-                    TestItemEnum("872");
+                    TestItemEnum("814");
                 }
 
                 // if (dataIsReady.IsCMSUpdated)
