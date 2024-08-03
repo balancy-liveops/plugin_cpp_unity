@@ -22,13 +22,6 @@ namespace Balancy.Models
             _unnyTemplateName = templateName;
         }
 
-        public static string GetClassName<T>()
-        {
-            var fullName = typeof(T).FullName;
-            var className = fullName?.Replace("Balancy.Models.", "");
-            return className;
-        }
-
         protected T GetModelByUnnyId<T>(string unnyId) where T: BaseModel
         {
             return CMS.GetModelByUnnyId<T>(unnyId);

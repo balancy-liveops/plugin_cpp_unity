@@ -173,8 +173,8 @@ public class ImportScript : MonoBehaviour
                 Debug.LogError($"**==> Data is Ready; Cloud =" + dataIsReady.IsCloudSynched + $" ;DICT = {dataIsReady.IsCMSUpdated}, Profiles = {dataIsReady.IsProfileUpdated}" + " Size = " + Marshal.SizeOf(typeof(Notifications.InitNotificationDataIsReady)));
                 if (dataIsReady.IsCMSUpdated)
                 {
-                    // TestItem("814");
-                    TestItemEnum("814");
+                    TestItem("814");
+                    // TestItemEnum("814");
                 }
 
                 // if (dataIsReady.IsCMSUpdated)

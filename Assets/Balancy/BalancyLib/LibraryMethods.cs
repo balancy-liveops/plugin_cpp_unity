@@ -54,9 +54,9 @@ namespace Balancy
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern IntPtr balancyGetTemplateName(IntPtr instance);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-            public static extern IntPtr balancyGetObjectParam(IntPtr instance, string paramName);
+            public static extern IntPtr balancyGetObjectParam(IntPtr instance, string paramName, string fileName);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-            public static extern IntPtr balancyGetObjectArrayParam(IntPtr instance, string paramName, out int size);
+            public static extern IntPtr balancyGetObjectArrayParam(IntPtr instance, string paramName, string fileName, out int size);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern int balancyGetIntParam(IntPtr instance, string paramName);

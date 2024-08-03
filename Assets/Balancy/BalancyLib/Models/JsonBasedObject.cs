@@ -16,6 +16,13 @@ namespace Balancy.Models
         {
             _pointer = p;
         }
+        
+        public static string GetModelClassName<T>()
+        {
+            var fullName = typeof(T).FullName;
+            var className = fullName?.Replace("Balancy.Models.", "");
+            return className;
+        }
 		
         // public static bool operator== (BaseModel obj1, BaseModel obj2)
         // {
@@ -66,7 +73,9 @@ namespace Balancy.Models
 
         protected T GetObjectParam<T>(string paramName) where T: JsonBasedObject, new()
         {
-            var ptr = GetObjectParamPrivate(paramName);
+            var className = GetModelClassName<T>();
+            
+            var ptr = GetObjectParamPrivate(paramName, className);
             if (ptr == IntPtr.Zero)
                 return null;
             
@@ -78,7 +87,9 @@ namespace Balancy.Models
         
         protected T[] GetObjectArrayParam<T>(string paramName) where T: JsonBasedObject, new()
         {
-            IntPtr ptr = GetObjectArrayParamPrivate(paramName, out int size);
+            var className = GetModelClassName<T>();
+            
+            IntPtr ptr = GetObjectArrayParamPrivate(paramName, className, out int size);
             
             if (ptr == IntPtr.Zero || size <= 0)
                 return Array.Empty<T>();
@@ -104,14 +115,14 @@ namespace Balancy.Models
             return result;
         }
         
-        private IntPtr GetObjectParamPrivate(string paramName)
+        private IntPtr GetObjectParamPrivate(string paramName, string fileName)
         {
-            return LibraryMethods.Models.balancyGetObjectParam(_pointer, paramName);
+            return LibraryMethods.Models.balancyGetObjectParam(_pointer, paramName, fileName);
         }
         
-        private IntPtr GetObjectArrayParamPrivate(string paramName, out int size)
+        private IntPtr GetObjectArrayParamPrivate(string paramName, string fileName, out int size)
         {
-            return LibraryMethods.Models.balancyGetObjectArrayParam(_pointer, paramName, out size);
+            return LibraryMethods.Models.balancyGetObjectArrayParam(_pointer, paramName, fileName, out size);
         }
         
         protected int GetIntParam(string paramName)

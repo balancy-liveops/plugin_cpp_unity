@@ -15,7 +15,7 @@ namespace Balancy
         public static T[] GetModels<T>(bool includeChildren) where T : BaseModel
         {
             //TODO add caching by type
-            var templateName = BaseModel.GetClassName<T>();
+            var templateName = JsonBasedObject.GetModelClassName<T>();
             IntPtr ptr = LibraryMethods.Models.balancyGetModelUnnyIds(templateName, includeChildren, out int size);
             var strs = JsonBasedObject.ReadStringArrayValues(ptr, size);
             
