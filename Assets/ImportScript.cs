@@ -2,6 +2,7 @@ using System;
 using System.Runtime.InteropServices;
 using Balancy;
 using Balancy.Core;
+using Balancy.Data;
 using Balancy.Models;
 using Balancy.Models.SmartObjects;
 using UnityEngine;
@@ -165,16 +166,28 @@ public class ImportScript : MonoBehaviour
         Debug.LogError($"OnSaveFileInResources at {path} : {data}");
     }
 
+    private void TestProfile()
+    {
+        Profiles.UpdateProfiles();
+    }
+
+    private void OnGUI()
+    {
+        if (GUI.Button(new Rect(100, 100, 100, 100), "Test"))
+            Profiles.Profile.GeneralInfo.TestInt = UnityEngine.Random.Range(0, 10);
+    }
+
     private void OnStatusUpdate(Notifications.NotificationBase notification)
     {
         switch (notification)
         {
             case Notifications.InitNotificationDataIsReady dataIsReady:
                 Debug.LogError($"**==> Data is Ready; Cloud =" + dataIsReady.IsCloudSynched + $" ;DICT = {dataIsReady.IsCMSUpdated}, Profiles = {dataIsReady.IsProfileUpdated}" + " Size = " + Marshal.SizeOf(typeof(Notifications.InitNotificationDataIsReady)));
-                if (dataIsReady.IsCMSUpdated)
+                // if (dataIsReady.IsCloudSynched)
                 {
-                    TestItem("814");
+                    // TestItem("814");
                     // TestItemEnum("814");
+                    TestProfile();
                 }
 
                 // if (dataIsReady.IsCMSUpdated)

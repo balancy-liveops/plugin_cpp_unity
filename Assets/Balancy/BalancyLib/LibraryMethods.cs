@@ -86,6 +86,53 @@ namespace Balancy
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyFreeStringArray(IntPtr array, int size);
         }
+        
+        public static class Data
+        {
+            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+            public delegate void ParamChangedCallback();
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyGetProfile(string profileName);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyGetBaseDataParam(IntPtr instance, string paramName, string fileName);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyGetListBaseDataParam(IntPtr instance, string paramName, string fileName);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancySubscribeBaseDataParamChange(IntPtr instance, string paramName, IntPtr callback);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyUnsubscribeBaseDataParamChange(IntPtr instance, string paramName, int callbackId);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancySetIntParam(IntPtr instance, string paramName, int value);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancySetLongParam(IntPtr instance, string paramName, long value);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancySetStringParam(IntPtr instance, string paramName, string value);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancySetFloatParam(IntPtr instance, string paramName, float value);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancySetBoolParam(IntPtr instance, string paramName, bool value);
+            
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancySmartListAddElement(IntPtr instance);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancySmartListGetSize(IntPtr instance);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancySmartListGetElementAt(IntPtr instance, int index);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancySmartListRemoveElementAt(IntPtr instance, int index);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancySmartListClear(IntPtr instance);
+        }
 
         public static class Editor
         {

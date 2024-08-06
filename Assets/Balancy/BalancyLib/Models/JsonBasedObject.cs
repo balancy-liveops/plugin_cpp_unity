@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 using Balancy.Localization;
+using UnityEngine;
 
 namespace Balancy.Models
 {
@@ -10,7 +11,7 @@ namespace Balancy.Models
         {
         }
         
-        private IntPtr _pointer;
+        protected IntPtr _pointer;
         
         public void SetData(IntPtr p)
         {
@@ -21,6 +22,15 @@ namespace Balancy.Models
         {
             var fullName = typeof(T).FullName;
             var className = fullName?.Replace("Balancy.Models.", "");
+            return className;
+        }
+        
+        public static string GetDataClassName<T>()
+        {
+            var fullName = typeof(T).FullName;
+            var className = fullName?.Replace("Balancy.Data.", "");
+            
+            UnityEngine.Debug.LogError("get? " + fullName + " cut = " + className);
             return className;
         }
 		
@@ -74,8 +84,12 @@ namespace Balancy.Models
         protected T GetObjectParam<T>(string paramName) where T: JsonBasedObject, new()
         {
             var className = GetModelClassName<T>();
-            
             var ptr = GetObjectParamPrivate(paramName, className);
+            return CreateObject<T>(ptr);
+        }
+        
+        protected static T CreateObject<T>(IntPtr ptr) where T: JsonBasedObject, new()
+        {
             if (ptr == IntPtr.Zero)
                 return null;
             
