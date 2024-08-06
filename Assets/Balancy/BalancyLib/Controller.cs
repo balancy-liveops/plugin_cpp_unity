@@ -28,6 +28,8 @@ namespace Balancy
         {
             if (dictsChanged)
                 CMS.RefreshAll();
+            if (profileChanged)
+                Profiles.RefreshAll();
         }
 
         private static CppAppConfig CreateConfigForCPP(AppConfig originalConfig)

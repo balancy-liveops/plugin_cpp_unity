@@ -1,71 +1,60 @@
+
 namespace Balancy.Data
 {
-	public class GeneralInfo : BaseData
-	{
+    public class GeneralInfo : Balancy.Data.BaseData 
+    {
+        
 		private int _testInt;
 		private long _testLong;
 		private float _testFloat;
 		private bool _testBool;
 		private string _testString;
-
-		private SmartList<Data.AnotherInfo> _testList;
-
+		private SmartList<Balancy.Data.AnotherInfo> _testList;
+        
+        
 		public int TestInt
 		{
 			get => _testInt;
 			set => SetIntValue("testInt", value);
 		}
-
-		// [JsonIgnore]
-		// public long TestLong
-		// {
-		// 	get => testLong;
-		// 	set {
-		// 		if (UpdateValue(ref testLong, value))
-		// 			_cache?.UpdateStorageValue(_path + "TestLong", testLong);
-		// 	}
-		// }
-		//
-		// [JsonIgnore]
-		// public float TestFloat
-		// {
-		// 	get => testFloat;
-		// 	set {
-		// 		if (UpdateValue(ref testFloat, value))
-		// 			_cache?.UpdateStorageValue(_path + "TestFloat", testFloat);
-		// 	}
-		// }
-		//
-		// [JsonIgnore]
-		// public bool TestBool
-		// {
-		// 	get => testBool;
-		// 	set {
-		// 		if (UpdateValue(ref testBool, value))
-		// 			_cache?.UpdateStorageValue(_path + "TestBool", testBool);
-		// 	}
-		// }
-		//
-		// [JsonIgnore]
-		// public string TestString
-		// {
-		// 	get => testString;
-		// 	set {
-		// 		if (UpdateValue(ref testString, value))
-		// 			_cache?.UpdateStorageValue(_path + "TestString", testString);
-		// 	}
-		// }
-
-		// [JsonIgnore]
-		public SmartList<Data.AnotherInfo> TestList => _testList;
-
-		public override void InitData()
+		public long TestLong
 		{
-			base.InitData();
-			InitAndSubscribeForParamChange("testInt", UpdateTestInt);
-			_testList = GetListBaseDataParam<Data.AnotherInfo>("testList");
+			get => _testLong;
+			set => SetLongValue("testLong", value);
 		}
-
-		private void UpdateTestInt() { _testInt = GetIntParam("testInt"); }
-	}
+		public float TestFloat
+		{
+			get => _testFloat;
+			set => SetFloatValue("testFloat", value);
+		}
+		public bool TestBool
+		{
+			get => _testBool;
+			set => SetBoolValue("testBool", value);
+		}
+		public string TestString
+		{
+			get => _testString;
+			set => SetStringValue("testString", value);
+		}
+		public SmartList<Balancy.Data.AnotherInfo> TestList => _testList;
+        
+        public override void InitData()
+        {
+            base.InitData();
+            
+			InitAndSubscribeForParamChange("testInt", Update_testInt);
+			InitAndSubscribeForParamChange("testLong", Update_testLong);
+			InitAndSubscribeForParamChange("testFloat", Update_testFloat);
+			InitAndSubscribeForParamChange("testBool", Update_testBool);
+			InitAndSubscribeForParamChange("testString", Update_testString);
+			_testList = GetListBaseDataParam<Balancy.Data.AnotherInfo>("testList");
+        }
+        
+		private void Update_testInt() { _testInt = GetIntParam("testInt"); }
+		private void Update_testLong() { _testLong = GetLongParam("testLong"); }
+		private void Update_testFloat() { _testFloat = GetFloatParam("testFloat"); }
+		private void Update_testBool() { _testBool = GetBoolParam("testBool"); }
+		private void Update_testString() { _testString = GetStringParam("testString"); }
+    }
 }

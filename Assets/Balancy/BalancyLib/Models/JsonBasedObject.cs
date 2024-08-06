@@ -1,7 +1,6 @@
 using System;
 using System.Runtime.InteropServices;
 using Balancy.Localization;
-using UnityEngine;
 
 namespace Balancy.Models
 {
@@ -29,8 +28,6 @@ namespace Balancy.Models
         {
             var fullName = typeof(T).FullName;
             var className = fullName?.Replace("Balancy.Data.", "");
-            
-            UnityEngine.Debug.LogError("get? " + fullName + " cut = " + className);
             return className;
         }
 		
@@ -88,7 +85,7 @@ namespace Balancy.Models
             return CreateObject<T>(ptr);
         }
         
-        protected static T CreateObject<T>(IntPtr ptr) where T: JsonBasedObject, new()
+        internal static T CreateObject<T>(IntPtr ptr) where T: JsonBasedObject, new()
         {
             if (ptr == IntPtr.Zero)
                 return null;

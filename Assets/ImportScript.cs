@@ -168,13 +168,28 @@ public class ImportScript : MonoBehaviour
 
     private void TestProfile()
     {
-        Profiles.UpdateProfiles();
+        var _profile = Profiles.Get<Profile>();
+        
+        Debug.LogWarning("Profile Int = " + _profile.GeneralInfo.TestInt);
+
+        _profile.GeneralInfo.TestInt = 63;
+            
+        Debug.LogWarning("Profile Int NOW = " + _profile.GeneralInfo.TestInt);
+
+        var list = _profile.GeneralInfo.TestList;
+        Debug.LogError($"1> List size = {list.Count} vs {_profile.GeneralInfo.TestList.Count}");
+        var newElement = _profile.GeneralInfo.TestList.Add();
+        Debug.LogError($"2> List size = {list.Count} vs {_profile.GeneralInfo.TestList.Count}");
+        newElement.Name = "My Name is";
+        Debug.LogError($"3> List size = {list.Count} vs {_profile.GeneralInfo.TestList.Count}");
+            
+        Debug.LogError($"newElement = {newElement.Name} list = {list[0].Name} vs {_profile.GeneralInfo.TestList[0].Name}");
     }
 
     private void OnGUI()
     {
         if (GUI.Button(new Rect(100, 100, 100, 100), "Test"))
-            Profiles.Profile.GeneralInfo.TestInt = UnityEngine.Random.Range(0, 10);
+            Profiles.Get<Profile>().GeneralInfo.TestInt = UnityEngine.Random.Range(0, 10);
     }
 
     private void OnStatusUpdate(Notifications.NotificationBase notification)
@@ -187,7 +202,7 @@ public class ImportScript : MonoBehaviour
                 {
                     // TestItem("814");
                     // TestItemEnum("814");
-                    TestProfile();
+                    // TestProfile();
                 }
 
                 // if (dataIsReady.IsCMSUpdated)

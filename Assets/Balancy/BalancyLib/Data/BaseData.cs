@@ -61,8 +61,6 @@ namespace Balancy.Data
         protected T GetBaseDataParam<T>(string paramName) where T: BaseData, new()
         {
             var className = GetDataClassName<T>();
-            UnityEngine.Debug.LogError("GetBaseDataParam " + className);
-
             var ptr = GetBaseDataParamPrivate(paramName, className);
             return CreateObject<T>(ptr);
         }
@@ -70,8 +68,6 @@ namespace Balancy.Data
         protected SmartList<T> GetListBaseDataParam<T>(string paramName) where T: BaseData, new()
         {
             var className = GetDataClassName<T>();
-            UnityEngine.Debug.LogError("GetListBaseDataParam " + className);
-
             var ptr = GetListBaseDataParamPrivate(paramName, className);
             return CreateObject<SmartList<T>>(ptr);
         }
