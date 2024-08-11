@@ -17,11 +17,17 @@ namespace Balancy
             
             LibraryMethods.General.balancySetLogCallback(LogMessage);
             UnityFileManager.Init();
+            LibraryMethods.Models.balancySetModelOnRefresh(ModelRefreshed);
 
             var config = CreateConfigForCPP(appConfig);
             IntPtr configPtr = Marshal.AllocHGlobal(Marshal.SizeOf(config));
             Marshal.StructureToPtr(config, configPtr, false);
             LibraryMethods.General.balancyInit(configPtr);
+        }
+
+        private static void ModelRefreshed(string unnyId)
+        {
+            CMS.ModelRefreshed(unnyId);
         }
 
         private static void DataUpdated(bool dictsChanged, bool profileChanged)

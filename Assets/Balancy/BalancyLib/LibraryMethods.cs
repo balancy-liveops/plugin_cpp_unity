@@ -40,6 +40,9 @@ namespace Balancy
 
         public static class Models
         {
+            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+            public delegate void ModelRefreshedCallback(string unnyId);
+            
             //Getters
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern IntPtr balancyGetModelByUnnyId(string unnyId);
@@ -85,6 +88,9 @@ namespace Balancy
 
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyFreeStringArray(IntPtr array, int size);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancySetModelOnRefresh(ModelRefreshedCallback callback);
         }
         
         public static class Data

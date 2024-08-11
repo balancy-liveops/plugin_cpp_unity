@@ -40,7 +40,12 @@ namespace Balancy
             AllModels.Add(unnyId, modelBase);
             return modelBase as T;
         }
-        
+
+        internal static void ModelRefreshed(string unnyId)
+        {
+            AllModels.Remove(unnyId);
+        }
+
         internal static void RefreshAll()
         {
             AllModels.Clear();
