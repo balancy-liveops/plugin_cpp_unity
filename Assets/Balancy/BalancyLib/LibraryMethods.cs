@@ -41,7 +41,7 @@ namespace Balancy
         public static class Models
         {
             [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-            public delegate void ModelRefreshedCallback(string unnyId);
+            public delegate void ModelRefreshedCallback(string unnyId, IntPtr newPointer);
             
             //Getters
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]

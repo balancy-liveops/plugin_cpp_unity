@@ -15,11 +15,17 @@ namespace Balancy.Models
             return _unnyId.GetHashCode();
         }
 
-        public void SetData(IntPtr p, string unnyId, string templateName)
+        internal void SetData(IntPtr p, string unnyId, string templateName)
         {
             base.SetData(p);
             _unnyId = unnyId;
             _unnyTemplateName = templateName;
+        }
+
+        internal void RefreshData(IntPtr p)
+        {
+            base.SetData(p);
+            InitData();
         }
 
         protected T GetModelByUnnyId<T>(string unnyId) where T: BaseModel

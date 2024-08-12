@@ -25,9 +25,9 @@ namespace Balancy
             LibraryMethods.General.balancyInit(configPtr);
         }
 
-        private static void ModelRefreshed(string unnyId)
+        private static void ModelRefreshed(string unnyId, IntPtr newPointer)
         {
-            CMS.ModelRefreshed(unnyId);
+            CMS.ModelRefreshed(unnyId, newPointer);
         }
 
         private static void DataUpdated(bool dictsChanged, bool profileChanged)

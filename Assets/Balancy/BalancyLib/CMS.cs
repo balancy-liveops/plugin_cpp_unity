@@ -41,9 +41,10 @@ namespace Balancy
             return modelBase as T;
         }
 
-        internal static void ModelRefreshed(string unnyId)
+        internal static void ModelRefreshed(string unnyId, IntPtr newPointer)
         {
-            AllModels.Remove(unnyId);
+            if (AllModels.TryGetValue(unnyId, out var model))
+                model.RefreshData(newPointer);
         }
 
         internal static void RefreshAll()
