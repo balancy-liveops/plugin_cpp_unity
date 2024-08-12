@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.InteropServices;
+using Balancy.LiveOps;
 
 namespace Balancy
 {
@@ -138,6 +139,12 @@ namespace Balancy
             public static extern void balancySmartListRemoveElementAt(IntPtr instance, int index);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancySmartListClear(IntPtr instance);
+        }
+
+        public static class Profile
+        {
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancySystemProfileTrackRevenue(Ads.AdType adType, double revenue, string placement);
         }
 
         public static class Editor
