@@ -87,5 +87,6 @@ namespace Balancy.Models
 			_testBool = GetBoolParam("testBool");
 			_testLong = GetLongParam("testLong");
         }
+        
     }
 }

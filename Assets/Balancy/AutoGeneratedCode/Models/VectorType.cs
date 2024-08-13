@@ -21,5 +21,6 @@ namespace Balancy.Models
 			_y = GetFloatParam("y");
 			_z = GetFloatParam("z");
         }
+        
     }
 }

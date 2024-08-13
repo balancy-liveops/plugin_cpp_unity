@@ -13,7 +13,6 @@ namespace Balancy
             switch (templateName)
             {
                 
-				case "MyItem": return new Balancy.Models.MyItem();
 				case "VectorType": return new Balancy.Models.VectorType();
 				case "MyCustomTemplate2": return new Balancy.Models.MyCustomTemplate2();
 				case "MyCustomTemplate3": return new Balancy.Models.MyCustomTemplate3();

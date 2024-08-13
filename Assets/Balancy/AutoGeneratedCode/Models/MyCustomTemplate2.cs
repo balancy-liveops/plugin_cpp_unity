@@ -18,5 +18,6 @@ namespace Balancy.Models
 			_enum1 = (Balancy.Models.MyGame.MyTestEnum)GetIntParam("enum1");
 			_enum2 = (Balancy.Models.MyMultiSelectEnum)GetIntParam("enum2");
         }
+        
     }
 }

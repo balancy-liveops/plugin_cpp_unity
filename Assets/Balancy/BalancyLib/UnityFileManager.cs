@@ -7,7 +7,7 @@ namespace Balancy
         public static void Init()
         {
             // Debug.Log("Application.persistentDataPath: " + Application.persistentDataPath);
-            Balancy.LibraryMethods.General.balancyInitUnityFileHelper(Application.persistentDataPath, LoadFromResources);
+            Balancy.LibraryMethods.General.balancyInitUnityFileHelper(Application.persistentDataPath, Application.dataPath, LoadFromResources);
         }
 
         private static string LoadFromResources(string path)

@@ -12,5 +12,6 @@ namespace Balancy.Models
             base.InitData();
             
         }
+        
     }
 }

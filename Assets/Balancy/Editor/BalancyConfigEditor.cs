@@ -269,6 +269,7 @@ namespace Balancy.Editor
                 return;
 
             _needRefresh = false;
+            AssetDatabase.Refresh();
             if (!string.IsNullOrEmpty(_errorMessage))
             {
                 EditorUtility.DisplayDialog("Error", _errorMessage, "Ok");
