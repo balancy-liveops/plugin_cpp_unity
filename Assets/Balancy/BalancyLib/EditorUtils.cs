@@ -29,15 +29,21 @@ namespace Balancy.Editor
             }
         }
         
+        private static string _statusString;
         private static ConfigStatus _status;
         private static Action<ConfigStatus> _authCallback;
         private static Action<List<GameInfo>> getGamesCallback;
+        private static bool _isInitialized = false;
         
         private static DownloadCompleteCallback _downloadCompleteCallback;
         private static ProgressUpdateCallback _progressUpdateCallback;
 
         public static void Launch()
         {
+            if (_isInitialized)
+                return;
+
+            _isInitialized = true;
             LibraryMethods.General.balancySetLogCallback(LogMessage);
             UnityFileManager.Init();
             
@@ -53,16 +59,21 @@ namespace Balancy.Editor
         private static ConfigStatus SetStatus(IntPtr pt)
         {
             _status = Marshal.PtrToStructure<ConfigStatus>(pt);
+            if (_status != null)
+                _statusString = _status.Email;
+            
             return _status;
         }
 
         public static ConfigStatus GetStatus()
         {
+            Launch();
             return _status;
         }
 
         public static void Auth(string email, string password, Action<ConfigStatus> callback)
         {
+            Launch();
             _authCallback = callback;
             LibraryMethods.Editor.balancyConfigAuth(email, password, AuthDone);
         }
@@ -71,8 +82,10 @@ namespace Balancy.Editor
         {
             try
             {
-                var authStatus = SetStatus(pointer);
-                _authCallback?.Invoke(authStatus);
+                Debug.LogError("AuthDone!!");
+                
+                // var authStatus = SetStatus(pointer);
+                // _authCallback?.Invoke(authStatus);
             }
             catch (Exception e)
             {
@@ -98,7 +111,6 @@ namespace Balancy.Editor
                 for (int i = 0; i < size; i += 3)
                     result.Add(new GameInfo(strs[i], strs[i + 1], strs[i + 2]));
 
-                Debug.LogError("GamesCount: " + result.Count);
                 getGamesCallback?.Invoke(result);
             }
             catch (Exception e)
@@ -122,6 +134,7 @@ namespace Balancy.Editor
 
         public static void DownloadContent(Constants.Environment environment, DownloadCompleteCallback onReadyCallback, ProgressUpdateCallback onProgressCallback)
         {
+            Launch();
             _downloadCompleteCallback = onReadyCallback;
             _progressUpdateCallback = onProgressCallback;
             LibraryMethods.Editor.balancyConfigDownloadContentToResources(environment, OnDownloadCompleted, OnProgressUpdate);
@@ -129,6 +142,7 @@ namespace Balancy.Editor
         
         public static void GenerateCode(Constants.Environment environment, DownloadCompleteCallback onReadyCallback)
         {
+            Launch();
             _downloadCompleteCallback = onReadyCallback;
             LibraryMethods.Editor.balancyConfigGenerateCode(environment, OnDownloadCompleted);
         }
@@ -159,6 +173,7 @@ namespace Balancy.Editor
 
         public static void SignOut()
         {
+            Launch();
             LibraryMethods.Editor.balancyConfigSignOut();
             UpdateStatus();
         }
