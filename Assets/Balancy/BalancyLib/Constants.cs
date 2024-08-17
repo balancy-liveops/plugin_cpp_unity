@@ -9,6 +9,7 @@ public class Constants
 
     public enum Platform
     {
+        Undefined = 0,
         Unknown = 1,
         //            Vkontakte = 3,
         Facebook = 4,

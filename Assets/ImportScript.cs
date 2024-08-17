@@ -3,8 +3,10 @@ using System.Runtime.InteropServices;
 using Balancy;
 using Balancy.Core;
 using Balancy.Data;
+using Balancy.LiveOps;
 using Balancy.Models;
 using Balancy.Models.SmartObjects;
+using Unity.VisualScripting;
 using UnityEngine;
 
 public class ImportScript : MonoBehaviour
@@ -147,7 +149,7 @@ public class ImportScript : MonoBehaviour
             UpdateType = UpdateType.FullUpdate,
             UpdatePeriod = 600,
             OnStatusUpdate = OnStatusUpdate,
-            AutoLogin = 1,
+            AutoLogin = 0,
             CustomId = "My_Custom_Id",
             OnProgressUpdateCallback = (fileName, progress) =>
             {
@@ -172,7 +174,8 @@ public class ImportScript : MonoBehaviour
         
         Debug.LogWarning("Profile Int = " + _profile.GeneralInfo.TestInt);
 
-        _profile.GeneralInfo.TestInt = 63;
+        _profile.GeneralInfo.TestInt = 33;
+        _profile.AnotherInfo.Name = "OPA";
             
         Debug.LogWarning("Profile Int NOW = " + _profile.GeneralInfo.TestInt);
 
@@ -188,8 +191,13 @@ public class ImportScript : MonoBehaviour
 
     private void OnGUI()
     {
-        if (GUI.Button(new Rect(100, 100, 100, 100), "Test"))
-            Profiles.Get<Profile>().GeneralInfo.TestInt = UnityEngine.Random.Range(0, 10);
+        // Rect rect = new Rect(100, 100, 300, 50);
+        // if (GUI.Button(rect, "Test"))
+        //     Profiles.Get<Profile>().GeneralInfo.TestInt = UnityEngine.Random.Range(0, 10);
+        //
+        // rect.y += rect.height;
+        // if (GUI.Button(rect, "Ad Watched"))
+        //     Balancy.LiveOps.Ads.TrackRevenue(Ads.AdType.Rewarded, 0.31, "test");
     }
 
     private void OnStatusUpdate(Notifications.NotificationBase notification)
@@ -198,9 +206,9 @@ public class ImportScript : MonoBehaviour
         {
             case Notifications.InitNotificationDataIsReady dataIsReady:
                 Debug.LogError($"**==> Data is Ready; Cloud =" + dataIsReady.IsCloudSynched + $" ;DICT = {dataIsReady.IsCMSUpdated}, Profiles = {dataIsReady.IsProfileUpdated}" + " Size = " + Marshal.SizeOf(typeof(Notifications.InitNotificationDataIsReady)));
-                // if (dataIsReady.IsCloudSynched)
+                if (dataIsReady.IsCloudSynched)
                 {
-                    // TestItem("814");
+                    TestItem("814");
                     // TestItemEnum("814");
                     // TestProfile();
                 }
@@ -220,16 +228,9 @@ public class ImportScript : MonoBehaviour
                 break;
         }
     }
-    
-    public static void PrintSizeAndOffsets<T>()
-    {
-        Debug.LogWarning($"Size of {typeof(T).Name}: {Marshal.SizeOf<T>()}");
 
-        var fields = typeof(T).GetFields();
-        foreach (var field in fields)
-        {
-            var offset = Marshal.OffsetOf<T>(field.Name);
-            Debug.Log($"Field: {field.Name}, Offset: {offset}, Type: {field.FieldType}");
-        }
+    private void OnApplicationQuit()
+    {
+        Main.Stop();
     }
 }

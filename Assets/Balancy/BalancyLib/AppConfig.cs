@@ -22,7 +22,7 @@ namespace Balancy
         AutoRetry = 1 << 2,
     }
     
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+    [StructLayout(LayoutKind.Sequential, Pack = 1, CharSet = CharSet.Ansi)]
     internal class CppBaseAppConfig
     {
         [MarshalAs(UnmanagedType.LPStr)]
@@ -40,10 +40,10 @@ namespace Balancy
         public LaunchType LaunchType = LaunchType.Local | LaunchType.Cloud | LaunchType.AutoRetry;
     }
 
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+    [StructLayout(LayoutKind.Sequential, Pack = 1, CharSet = CharSet.Ansi)]
     internal class CppAppConfig : CppBaseAppConfig
     {
-        public Constants.Platform Platform;
+        public int Platform;
         public byte AutoLogin = 1;
         
         [MarshalAs(UnmanagedType.LPStr)]
@@ -57,6 +57,23 @@ namespace Balancy
         
         [MarshalAs(UnmanagedType.LPStr)]
         public string EngineVersion = null;
+        
+        [MarshalAs(UnmanagedType.LPStr)]
+        public string DeviceModel = null;
+        
+        [MarshalAs(UnmanagedType.LPStr)]
+        public string DeviceName = null;
+
+        public int DeviceType;
+        
+        [MarshalAs(UnmanagedType.LPStr)]
+        public string OperatingSystem = null;
+        
+        public int OperatingSystemFamily;
+        public int SystemMemorySize;
+        
+        [MarshalAs(UnmanagedType.LPStr)]
+        public string SystemLanguage = null;
     }
     
     public class AppConfig
@@ -71,7 +88,7 @@ namespace Balancy
         public StatusUpdateNotificationCallback OnStatusUpdate = null;
         public ProgressUpdateCallback OnProgressUpdateCallback = null;
 
-        public LaunchType LaunchType = LaunchType.Local | LaunchType.Cloud | LaunchType.AutoRetry;
+        public LaunchType LaunchType = LaunchType.Local | LaunchType.Cloud;// | LaunchType.AutoRetry;
         
         public Constants.Platform Platform;
         public byte AutoLogin = 1;

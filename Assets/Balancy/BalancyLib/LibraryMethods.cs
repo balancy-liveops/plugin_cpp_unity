@@ -28,8 +28,10 @@ namespace Balancy
             
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-            // public static extern void balancyInit([In] AppConfig config);
             public static extern void balancyInit(IntPtr config);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyStop();
             
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
