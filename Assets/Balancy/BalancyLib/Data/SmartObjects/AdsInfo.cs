@@ -1,4 +1,7 @@
 
+using System;
+using Balancy.LiveOps;
+
 namespace Balancy.Data.SmartObjects
 {
     public class AdsInfo : Balancy.Data.BaseData 
@@ -46,5 +49,17 @@ namespace Balancy.Data.SmartObjects
 		private void Update_revenueTotal() { _revenueTotal = GetFloatParam("revenueTotal"); }
 		private void Update_interstitialAdsPeriod() { _interstitialAdsPeriod = GetFloatParam("interstitialAdsPeriod"); }
 		private void Update_revenueToday() { _revenueToday = GetFloatParam("revenueToday"); }
+
+		public Balancy.Data.SmartObjects.AdInfo GetAdInfo(Ads.AdType type)
+		{
+			switch (type)
+			{
+				case Ads.AdType.Rewarded: return AdRewarded;
+				case Ads.AdType.Interstitial: return AdInterstitial;
+				case Ads.AdType.Custom: return AdCustom;
+			}
+
+			return null;
+		}
     }
 }

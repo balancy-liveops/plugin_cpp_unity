@@ -21,7 +21,7 @@ namespace Balancy.Data.SmartObjects
 		public Balancy.Data.SmartObjects.SegmentsInfo SegmentsInfo => _segmentsInfo;
 		public Balancy.Data.SmartObjects.GeneralInfo GeneralInfo => _generalInfo;
 		public Balancy.Data.SmartObjects.TestsInfo TestsInfo => _testsInfo;
-		// public Balancy.Data.SmartObjects.AdsInfo AdsInfo => _adsInfo;
+		public Balancy.Data.SmartObjects.AdsInfo AdsInfo => _adsInfo;
 		// public Balancy.Data.SmartObjects.LiveOpsInfo LiveOpsInfo => _liveOpsInfo;
 		// public Balancy.Data.SmartObjects.InventoryInfo Inventories => _inventories;
         
