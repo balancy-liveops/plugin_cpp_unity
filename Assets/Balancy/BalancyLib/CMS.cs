@@ -28,6 +28,12 @@ namespace Balancy
 
         public static T GetModelByUnnyId<T>(string unnyId) where T: BaseModel
         {
+            if (unnyId == null)
+            {
+                UnityEngine.Debug.LogError("Trying to request for NULL unnyId");
+                return null;
+            }
+            
             if (AllModels.TryGetValue(unnyId, out var model))
                 return model as T;
 
@@ -84,6 +90,7 @@ namespace Balancy
             {
                 case "SmartObjects.Analytics.ABTest": return new ABTest();
                 case "SmartObjects.Analytics.ABTestVariant": return new ABTestVariant();
+                case "SmartObjects.SegmentOption": return new SegmentOption();
                 case "SmartObjects.Item": return new Item();
                 default:
                 {

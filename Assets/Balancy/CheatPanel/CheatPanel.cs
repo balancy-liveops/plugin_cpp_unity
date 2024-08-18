@@ -13,6 +13,7 @@ namespace Balancy.Cheats
         [SerializeField] private Button closeButton;
         [SerializeField] private TMP_Text generalInfo;
         [SerializeField] private TMP_Text abTestsInfo;
+        [SerializeField] private TMP_Text segmentsInfo;
 
         private float refreshTimeLeft = 0;
 
@@ -38,6 +39,7 @@ namespace Balancy.Cheats
         {
             generalInfo.SetText(PrepareGeneralInfoText());
             abTestsInfo.SetText(PrepareABTestsInfoText());
+            segmentsInfo.SetText(PrepareSegmentsInfoText());
         }
 
         private void HideWindow()
@@ -89,8 +91,6 @@ namespace Balancy.Cheats
             for(int i = 0;i < info.Tests.Count;i++)
             {
                 var test = info.Tests[i];
-                Debug.Log("test = " + test);
-                Debug.Log("test.Test = " + test.Test);
                 result +=
                     $"{test.Test.UnnyId} - {test.Test.Name}, group = {test.Variant.Name} -- Finished = {test.Finished}\n";
             }
@@ -107,6 +107,24 @@ namespace Balancy.Cheats
                     else
                         result += $"{test}\n";
                 }
+            }
+
+            return result;
+        }
+        
+        private string PrepareSegmentsInfoText()
+        {
+            UnnyProfile profile = Profiles.System;
+            var info = profile.SegmentsInfo;
+            string result = string.Empty;
+            for(int i = 0;i < info.Segments.Count;i++)
+            {
+                var segment = info.Segments[i];
+                if (!segment.IsIn)
+                    continue;
+                
+                result +=
+                    $"{segment.Segment.UnnyId} - {segment.Segment.Name}, joined at {segment.LastIn}\n";
             }
 
             return result;
