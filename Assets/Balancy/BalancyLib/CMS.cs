@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Balancy.Models;
 using Balancy.Models.SmartObjects;
+using Balancy.Models.SmartObjects.Analytics;
 
 namespace Balancy
 {
@@ -81,6 +82,8 @@ namespace Balancy
         {
             switch (templateName)
             {
+                case "SmartObjects.Analytics.ABTest": return new ABTest();
+                case "SmartObjects.Analytics.ABTestVariant": return new ABTestVariant();
                 case "SmartObjects.Item": return new Item();
                 default:
                 {

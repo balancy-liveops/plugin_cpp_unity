@@ -1,9 +1,10 @@
 using Balancy.Data.SmartObjects;
+using Balancy.Models.SmartObjects.Analytics;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
-namespace Balancy
+namespace Balancy.Cheats
 {
     public class CheatPanel : MonoBehaviour
     {
@@ -11,6 +12,7 @@ namespace Balancy
         
         [SerializeField] private Button closeButton;
         [SerializeField] private TMP_Text generalInfo;
+        [SerializeField] private TMP_Text abTestsInfo;
 
         private float refreshTimeLeft = 0;
 
@@ -35,6 +37,7 @@ namespace Balancy
         private void UpdateData()
         {
             generalInfo.SetText(PrepareGeneralInfoText());
+            abTestsInfo.SetText(PrepareABTestsInfoText());
         }
 
         private void HideWindow()
@@ -76,7 +79,37 @@ namespace Balancy
                    $"OperatingSystem:   {info.OperatingSystem}\n" +
                    $"OperatingSystemFamily:   {info.OperatingSystemFamily}\n" +
                    $"SystemMemorySize:  {info.SystemMemorySize}\n";
+        }
 
+        private string PrepareABTestsInfoText()
+        {
+            UnnyProfile profile = Profiles.System;
+            var info = profile.TestsInfo;
+            string result = string.Empty;
+            for(int i = 0;i < info.Tests.Count;i++)
+            {
+                var test = info.Tests[i];
+                Debug.Log("test = " + test);
+                Debug.Log("test.Test = " + test.Test);
+                result +=
+                    $"{test.Test.UnnyId} - {test.Test.Name}, group = {test.Variant.Name} -- Finished = {test.Finished}\n";
+            }
+
+            if (info.AvoidedTests.Length > 0)
+            {
+                result += "\nAvoided Tests (I'll never join them):\n";
+                for (int i = 0; i < info.AvoidedTests.Length; i++)
+                {
+                    var test = info.AvoidedTests[i];
+                    var aTest = CMS.GetModelByUnnyId<ABTest>(test);
+                    if (aTest != null)
+                        result += $"{aTest.UnnyId} - {aTest.Name}\n";
+                    else
+                        result += $"{test}\n";
+                }
+            }
+
+            return result;
         }
     }
 }
