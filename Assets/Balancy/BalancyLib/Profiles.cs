@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Balancy.Data;
 using Balancy.Data.SmartObjects;
@@ -22,6 +23,17 @@ namespace Balancy
             profile = JsonBasedObject.CreateObject<T>(ptr);
             _cachedProfiles.Add(className, profile);
             return (T)profile;
+        }
+        
+        internal static void ProfileReset(string profileName, IntPtr newPointer)
+        {
+            if (_cachedProfiles.TryGetValue(profileName, out var profile))
+                profile.RefreshData(newPointer);
+        }
+
+        public static void Reset()
+        {
+            LibraryMethods.Data.balancyResetAllProfiles();
         }
 
         internal static void RefreshAll()

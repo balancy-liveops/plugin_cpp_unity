@@ -21,11 +21,5 @@ namespace Balancy.Models
             _unnyId = unnyId;
             _unnyTemplateName = templateName;
         }
-
-        internal void RefreshData(IntPtr p)
-        {
-            base.SetData(p);
-            InitData();
-        }
     }
 }

@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using UnityEngine;
 
 namespace Balancy.Data
 {
@@ -18,6 +17,8 @@ namespace Balancy.Data
         
         public void RemoveAt(int index)
         {
+            var element = _list[index];
+            element.CleanUp();
             _list.RemoveAt(index);
             LibraryMethods.Data.balancySmartListRemoveElementAt(_pointer, index);
         }
@@ -45,7 +46,7 @@ namespace Balancy.Data
 
         public void Clear()
         {
-            _list.Clear();
+            CleanUp();
             LibraryMethods.Data.balancySmartListClear(_pointer);
         }
 
@@ -54,7 +55,6 @@ namespace Balancy.Data
             base.InitData();
 
             var size = LibraryMethods.Data.balancySmartListGetSize(_pointer);
-            Debug.LogWarning("INIT SIZE = " + size);
             for (int i = 0; i < size; i++)
             {
                 var ptr = LibraryMethods.Data.balancySmartListGetElementAt(_pointer, i);
@@ -65,17 +65,25 @@ namespace Balancy.Data
         
         public T this[int index] => _list[index];
 
-        public List<T> ToList()
-        {
-            return new List<T>(_list);
-        }
+        // public List<T> ToList()
+        // {
+        //     return new List<T>(_list);
+        // }
 
-        public T[] ToArray()
+        // public T[] ToArray()
+        // {
+        //     var arr = new T[_list.Count];
+        //     for (int i = 0; i < _list.Count; i++)
+        //         arr[i] = _list[i];
+        //     return arr;
+        // }
+
+        internal override void CleanUp()
         {
-            var arr = new T[_list.Count];
-            for (int i = 0; i < _list.Count; i++)
-                arr[i] = _list[i];
-            return arr;
+            base.CleanUp();
+            foreach (var child in _list)
+                child.CleanUp();
+            _list.Clear();
         }
     }
 }

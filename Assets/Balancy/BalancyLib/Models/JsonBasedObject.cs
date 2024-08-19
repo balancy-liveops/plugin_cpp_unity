@@ -17,6 +17,18 @@ namespace Balancy.Models
             _pointer = p;
         }
         
+        internal void RefreshData(IntPtr p)
+        {
+            CleanUp();
+            SetData(p);
+            InitData();
+        }
+
+        internal virtual void CleanUp()
+        {
+            
+        }
+        
         public static string GetModelClassName<T>()
         {
             var fullName = typeof(T).FullName;

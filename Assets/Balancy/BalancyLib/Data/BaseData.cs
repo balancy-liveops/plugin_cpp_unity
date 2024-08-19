@@ -56,20 +56,41 @@ namespace Balancy.Data
                     callback.Handle.Free();
                 LibraryMethods.Data.balancyUnsubscribeBaseDataParamChange(_pointer, callback.ParamName, callback.Id);
             }
+            _callbacks.Clear();
+            _children.Clear();
+        }
+
+        internal override void CleanUp()
+        {
+            base.CleanUp();
+            foreach (var callback in _callbacks)
+            {
+                if (callback.Handle.IsAllocated)
+                    callback.Handle.Free();
+            }
+            _callbacks.Clear();
+
+            foreach (var child in _children)
+                child.CleanUp();
+            _children.Clear();
         }
         
         protected T GetBaseDataParam<T>(string paramName) where T: BaseData, new()
         {
             var className = GetDataClassName<T>();
             var ptr = GetBaseDataParamPrivate(paramName, className);
-            return CreateObject<T>(ptr);
+            var data = CreateObject<T>(ptr);
+            _children.Add(data);
+            return data;
         }
         
         protected SmartList<T> GetListBaseDataParam<T>(string paramName) where T: BaseData, new()
         {
             var className = GetDataClassName<T>();
             var ptr = GetListBaseDataParamPrivate(paramName, className);
-            return CreateObject<SmartList<T>>(ptr);
+            var data = CreateObject<SmartList<T>>(ptr);
+            _children.Add(data);
+            return data;
         }
         
         private IntPtr GetBaseDataParamPrivate(string paramName, string fileName)
@@ -90,5 +111,6 @@ namespace Balancy.Data
         }
 
         private readonly List<CallbacksHolder> _callbacks = new List<CallbacksHolder>();
+        private readonly List<BaseData> _children = new List<BaseData>();
     }
 }

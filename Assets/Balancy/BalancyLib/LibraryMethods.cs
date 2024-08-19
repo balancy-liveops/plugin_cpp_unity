@@ -7,6 +7,9 @@ namespace Balancy
     internal static class LibraryMethods
     {
         private const string DllName = "libBalancyCore";
+        
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate void ModelRefreshedCallback(string unnyId, IntPtr newPointer);
 
         public static class General
         {
@@ -43,9 +46,6 @@ namespace Balancy
 
         public static class Models
         {
-            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-            public delegate void ModelRefreshedCallback(string unnyId, IntPtr newPointer);
-            
             //Getters
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern IntPtr balancyGetModelByUnnyId(string unnyId);
@@ -105,6 +105,9 @@ namespace Balancy
             public static extern IntPtr balancyGetProfile(string profileName);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyResetAllProfiles();
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern IntPtr balancyGetBaseDataParam(IntPtr instance, string paramName, string fileName);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern IntPtr balancyGetListBaseDataParam(IntPtr instance, string paramName, string fileName);
@@ -141,6 +144,9 @@ namespace Balancy
             public static extern void balancySmartListRemoveElementAt(IntPtr instance, int index);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancySmartListClear(IntPtr instance);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancySetProfileOnReset(ModelRefreshedCallback callback);
         }
 
         public static class Profile

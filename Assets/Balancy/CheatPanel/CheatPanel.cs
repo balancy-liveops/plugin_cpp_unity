@@ -1,3 +1,4 @@
+using Balancy.Data;
 using Balancy.Data.SmartObjects;
 using Balancy.Models.SmartObjects.Analytics;
 using TMPro;
@@ -14,12 +15,20 @@ namespace Balancy.Cheats
         [SerializeField] private TMP_Text generalInfo;
         [SerializeField] private TMP_Text abTestsInfo;
         [SerializeField] private TMP_Text segmentsInfo;
+        [SerializeField] private Button resetButton;
 
         private float refreshTimeLeft = 0;
 
         private void Awake()
         {
             closeButton.onClick.AddListener(HideWindow);
+            resetButton.onClick.AddListener(ResetProfiles);
+        }
+
+        private void ResetProfiles()
+        {
+            Balancy.Profiles.Reset();
+            UpdateData();
         }
 
         private void Update()
@@ -51,9 +60,9 @@ namespace Balancy.Cheats
         {
             UnnyProfile profile = Profiles.System;
             var info = profile.GeneralInfo;
-            return $"UserId:            {info.ProfileId}\n" +
-                   $"DeviceId:          {info.DeviceId}\n" +
-                   $"CustomId:          {info.CustomId}\n" +
+            return $"UserId:   {info.ProfileId}\n" +
+                   $"DeviceId: {info.DeviceId}\n" +
+                   $"CustomId: {info.CustomId}\n" +
                    $"AppVersion:        {info.AppVersion}\n" +
                    $"EngineVersion:     {info.EngineVersion}\n" +
                    $"Platform:          {info.PlatformId}\n" +
