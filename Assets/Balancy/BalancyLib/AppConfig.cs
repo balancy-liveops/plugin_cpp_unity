@@ -88,7 +88,7 @@ namespace Balancy
         public StatusUpdateNotificationCallback OnStatusUpdate = null;
         public ProgressUpdateCallback OnProgressUpdateCallback = null;
 
-        public LaunchType LaunchType = LaunchType.Local | LaunchType.Cloud;// | LaunchType.AutoRetry;
+        public LaunchType LaunchType = LaunchType.Local | LaunchType.Cloud | LaunchType.AutoRetry;
         
         public Constants.Platform Platform;
         public byte AutoLogin = 1;

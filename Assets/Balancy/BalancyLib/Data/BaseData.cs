@@ -67,6 +67,7 @@ namespace Balancy.Data
             {
                 if (callback.Handle.IsAllocated)
                     callback.Handle.Free();
+                //TODO I didn't invoke balancyUnsubscribeBaseDataParamChange here because in this case the Profile is destroyed in C++
             }
             _callbacks.Clear();
 
