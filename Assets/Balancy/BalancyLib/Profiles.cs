@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Balancy.Data;
 using Balancy.Data.SmartObjects;
 using Balancy.Models;
+using UnityEngine;
 
 namespace Balancy
 {
@@ -20,7 +21,7 @@ namespace Balancy
                 return profile as T;
             
             var ptr = LibraryMethods.Data.balancyGetProfile(className);
-            profile = JsonBasedObject.CreateObject<T>(ptr);
+            profile = JsonBasedObject.CreateObject<T>(ptr, false);
             _cachedProfiles.Add(className, profile);
             return (T)profile;
         }
@@ -36,9 +37,13 @@ namespace Balancy
             LibraryMethods.Data.balancyResetAllProfiles();
         }
 
-        internal static void RefreshAll()
+        internal static void CleanUp()
         {
+            Debug.LogError("CLEAN UP");
+            foreach (var profile in _cachedProfiles)
+                profile.Value.CleanUp(false);
             _cachedProfiles.Clear();
+            Debug.LogError("CLEAN UP...");
         }
     }
 }

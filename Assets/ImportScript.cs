@@ -8,6 +8,7 @@ using Balancy.Models;
 using Balancy.Models.SmartObjects;
 using Unity.VisualScripting;
 using UnityEngine;
+using Random = UnityEngine.Random;
 
 public class ImportScript : MonoBehaviour
 {
@@ -191,6 +192,33 @@ public class ImportScript : MonoBehaviour
 
     private void OnGUI()
     {
+        return;
+        var profile = Profiles.Get<Profile>();
+        if (profile == null)
+            return;
+
+        var list = profile.GeneralInfo.TestList;
+        Rect rect = new Rect(100, 10, 300, 50);
+        for (int i = 0; i < list.Count; i++)
+        {
+            var iRect = rect;
+            if (GUI.Button(rect, list[i].Name))
+                list[i].Name = Random.Range(0, 10000).ToString();
+
+            iRect.x += iRect.width;
+            if (GUI.Button(iRect, "Delete"))
+                list.RemoveAt(i);
+            
+            rect.y += rect.height;
+        }
+
+        if (GUI.Button(rect, "Add Element"))
+            list.Add().Name = "New element";
+        
+        rect.y += rect.height;
+        if (GUI.Button(rect, "Clear"))
+            list.Clear();
+       
         // Rect rect = new Rect(100, 100, 300, 50);
         // if (GUI.Button(rect, "Test"))
         //     Profiles.Get<Profile>().GeneralInfo.TestInt = UnityEngine.Random.Range(0, 10);
@@ -200,6 +228,15 @@ public class ImportScript : MonoBehaviour
         //     Balancy.LiveOps.Ads.TrackRevenue(Ads.AdType.Rewarded, 0.31, "test");
     }
 
+    // void Update()
+    // {
+    //     var profile = Profiles.System?.SmartInfo?.GameEvents;
+    //     if (profile != null)
+    //         Debug.Log($"EVENTs count = {profile.Count}");
+    //     else
+    //         Debug.Log($"EVENTs NO PROFILE");
+    // }
+
     private void OnStatusUpdate(Notifications.NotificationBase notification)
     {
         switch (notification)
@@ -208,7 +245,7 @@ public class ImportScript : MonoBehaviour
                 Debug.LogError($"**==> Data is Ready; Cloud =" + dataIsReady.IsCloudSynched + $" ;DICT = {dataIsReady.IsCMSUpdated}, Profiles = {dataIsReady.IsProfileUpdated}" + " Size = " + Marshal.SizeOf(typeof(Notifications.InitNotificationDataIsReady)));
                 if (dataIsReady.IsCloudSynched)
                 {
-                    TestItem("814");
+                    // TestItem("814");
                     // TestItemEnum("814");
                     // TestProfile();
                 }

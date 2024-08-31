@@ -11,6 +11,12 @@ namespace Balancy.Models
         }
         
         protected IntPtr _pointer;
+        protected bool TempCopy = false;//We don't subscribe for updates for such objects
+
+        public bool Equals(IntPtr ptr)
+        {
+            return _pointer == ptr;
+        }
         
         public void SetData(IntPtr p)
         {
@@ -19,12 +25,12 @@ namespace Balancy.Models
         
         internal void RefreshData(IntPtr p)
         {
-            CleanUp();
+            CleanUp(true);
             SetData(p);
             InitData();
         }
 
-        internal virtual void CleanUp()
+        internal virtual void CleanUp(bool parentWasDestroyed)
         {
             
         }
@@ -94,16 +100,23 @@ namespace Balancy.Models
         {
             var className = GetModelClassName<T>();
             var ptr = GetObjectParamPrivate(paramName, className);
-            return CreateObject<T>(ptr);
+            return CreateObject<T>(ptr, TempCopy);
+        }
+
+        private void MarkAsTempObject()
+        {
+            TempCopy = true;
         }
         
-        internal static T CreateObject<T>(IntPtr ptr) where T: JsonBasedObject, new()
+        internal static T CreateObject<T>(IntPtr ptr, bool tempCopy = true) where T: JsonBasedObject, new()
         {
             if (ptr == IntPtr.Zero)
                 return null;
             
             var obj = new T();
             obj.SetData(ptr);
+            if (tempCopy)
+                obj.MarkAsTempObject();
             obj.InitData();
             return obj;
         }

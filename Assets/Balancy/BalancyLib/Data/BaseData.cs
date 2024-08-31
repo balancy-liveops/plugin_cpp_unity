@@ -35,6 +35,14 @@ namespace Balancy.Data
         protected void InitAndSubscribeForParamChange(string paramName, Action callback)
         {
             callback();
+            SubscribeForParamChange(paramName, callback);
+        }
+        
+        internal void SubscribeForParamChange(string paramName, Action callback)
+        {
+            if (TempCopy)
+                return;
+            
             var callbackDelegate = new LibraryMethods.Data.ParamChangedCallback(callback);
             var callbackHandle = GCHandle.Alloc(callbackDelegate);
 
@@ -50,29 +58,25 @@ namespace Balancy.Data
         
         ~BaseData()
         {
-            foreach (var callback in _callbacks)
-            {
-                if (callback.Handle.IsAllocated)
-                    callback.Handle.Free();
-                LibraryMethods.Data.balancyUnsubscribeBaseDataParamChange(_pointer, callback.ParamName, callback.Id);
-            }
-            _callbacks.Clear();
-            _children.Clear();
+            //I commented it because it was crashing after multiple play/stop. usually BaseData is connected to the C++ class, they should be destroyed together anyway.
+            //But RESET doesn't work without it
+            CleanUp(false);
         }
 
-        internal override void CleanUp()
+        internal override void CleanUp(bool parentWasDestroyed)
         {
-            base.CleanUp();
+            base.CleanUp(parentWasDestroyed);
             foreach (var callback in _callbacks)
             {
                 if (callback.Handle.IsAllocated)
                     callback.Handle.Free();
-                //TODO I didn't invoke balancyUnsubscribeBaseDataParamChange here because in this case the Profile is destroyed in C++
+                if (!parentWasDestroyed)
+                    LibraryMethods.Data.balancyUnsubscribeBaseDataParamChange(_pointer, callback.ParamName, callback.Id);
             }
             _callbacks.Clear();
 
             foreach (var child in _children)
-                child.CleanUp();
+                child.CleanUp(parentWasDestroyed);
             _children.Clear();
         }
         
@@ -80,7 +84,7 @@ namespace Balancy.Data
         {
             var className = GetDataClassName<T>();
             var ptr = GetBaseDataParamPrivate(paramName, className);
-            var data = CreateObject<T>(ptr);
+            var data = CreateObject<T>(ptr, TempCopy);
             _children.Add(data);
             return data;
         }
@@ -89,7 +93,8 @@ namespace Balancy.Data
         {
             var className = GetDataClassName<T>();
             var ptr = GetListBaseDataParamPrivate(paramName, className);
-            var data = CreateObject<SmartList<T>>(ptr);
+            var data = CreateObject<SmartList<T>>(ptr, TempCopy);
+            data.SubscribeForUpdates(paramName, this);
             _children.Add(data);
             return data;
         }
@@ -113,5 +118,17 @@ namespace Balancy.Data
 
         private readonly List<CallbacksHolder> _callbacks = new List<CallbacksHolder>();
         private readonly List<BaseData> _children = new List<BaseData>();
+        
+        protected static T FindElementInList<T>(SmartList<T> list, IntPtr ptr) where T: BaseData, new()
+        {
+            foreach (var eEvent in list)
+            {
+                if (eEvent.Equals(ptr))
+                    return eEvent;
+            }
+
+            return null;
+        }
+
     }
 }

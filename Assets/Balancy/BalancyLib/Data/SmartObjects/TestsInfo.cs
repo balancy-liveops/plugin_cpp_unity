@@ -1,4 +1,6 @@
 
+using System;
+
 namespace Balancy.Data.SmartObjects
 {
     public class TestsInfo : Balancy.Data.BaseData 
@@ -19,5 +21,6 @@ namespace Balancy.Data.SmartObjects
 			_avoidedTests = GetStringArrayParam("avoidedTests");
         }
         
+        public Balancy.Data.SmartObjects.AbTestInfo FindAbTestInfo(IntPtr ptr) => FindElementInList(_tests, ptr);
     }
 }

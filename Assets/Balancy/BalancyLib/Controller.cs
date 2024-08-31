@@ -1,6 +1,8 @@
 using System;
 using System.Runtime.InteropServices;
 using Balancy.Core;
+using Balancy.Data.SmartObjects;
+using Balancy.Models;
 using UnityEngine;
 
 namespace Balancy
@@ -32,6 +34,7 @@ namespace Balancy
 
         public static void Stop()
         {
+            Profiles.CleanUp();
             LibraryMethods.General.balancyStop();
         }
 
@@ -49,8 +52,6 @@ namespace Balancy
         {
             if (dictsChanged)
                 CMS.RefreshAll();
-            if (profileChanged)
-                Profiles.RefreshAll();
         }
 
         private static CppAppConfig CreateConfigForCPP(AppConfig originalConfig)
@@ -110,30 +111,135 @@ namespace Balancy
 
         private static void OnStatusUpdate(IntPtr notificationPtr)
         {
-            var baseNotification = Marshal.PtrToStructure<Notifications.StatusNotificationBase>(notificationPtr);
-            Notifications.StatusNotificationBase notification = baseNotification;
-            switch (baseNotification.Type)
-            {
-                case Notifications.NotificationType.DataIsReady:
-                    var notificationDataIsReady = Marshal.PtrToStructure<Notifications.InitNotificationDataIsReady>(notificationPtr);
-                    notification = notificationDataIsReady;
-                    DataUpdated(notificationDataIsReady.IsCMSUpdated, notificationDataIsReady.IsProfileUpdated);
-                    _isReadyToUse = true;
-                    break;
-                case Notifications.NotificationType.AuthFailed:
-                    notification = Marshal.PtrToStructure<Notifications.InitNotificationAuthFailed>(notificationPtr);
-                    break;
-                case Notifications.NotificationType.CloudProfileFailed:
-                    notification =
-                        Marshal.PtrToStructure<Notifications.InitNotificationCloudProfileFailed>(notificationPtr);
-                    break;
-                default:
-                    Debug.LogError("**==> Unknown notification type. " + baseNotification.Type);
-                    break;
-            }
-           
             try
             {
+                var baseNotification = Marshal.PtrToStructure<Notifications.NotificationBase>(notificationPtr);
+                Notifications.NotificationBase notification = baseNotification;
+                switch (baseNotification.Type)
+                {
+                    case Notifications.NotificationType.DataIsReady:
+                        var notificationDataIsReady =
+                            Marshal.PtrToStructure<Notifications.InitNotificationDataIsReady>(notificationPtr);
+                        notification = notificationDataIsReady;
+                        DataUpdated(notificationDataIsReady.IsCMSUpdated, notificationDataIsReady.IsProfileUpdated);
+                        _isReadyToUse = true;
+                        break;
+                    case Notifications.NotificationType.AuthFailed:
+                        notification =
+                            Marshal.PtrToStructure<Notifications.InitNotificationAuthFailed>(notificationPtr);
+                        break;
+                    case Notifications.NotificationType.CloudProfileFailed:
+                        notification =
+                            Marshal.PtrToStructure<Notifications.InitNotificationCloudProfileFailed>(notificationPtr);
+                        break;
+                    case Notifications.NotificationType.OnNewEventActivated:
+                    {
+                        var liveOpsNewEvent =
+                            Marshal.PtrToStructure<Notifications.LiveOpsNotification_OnNewEventActivated>(
+                                notificationPtr);
+                        notification = liveOpsNewEvent;
+                        var eventInfo = Profiles.System.SmartInfo.FindEventInfo(liveOpsNewEvent.EventInfo);
+                        break;
+                    }
+                    case Notifications.NotificationType.OnEventDeactivated:
+                    {
+                        var liveOpsEvent =
+                            Marshal.PtrToStructure<Notifications.LiveOpsNotification_OnEventDeactivated>(
+                                notificationPtr);
+                        notification = liveOpsEvent;
+
+                        // var eventInfo = JsonBasedObject.CreateObject<EventInfo>(liveOpsEvent.EventInfo);
+                        // Debug.LogError("**==> EVENT off " + notification.Type + " : " +
+                        //                eventInfo?.GameEvent?.Name?.Key);
+                        break;
+                    }
+                    case Notifications.NotificationType.OnNewOfferActivated:
+                    {
+                        var notificationTyped =
+                            Marshal.PtrToStructure<Notifications.LiveOpsNotification_OnNewOfferActivated>(
+                                notificationPtr);
+                        notification = notificationTyped;
+                        var offerInfo = Profiles.System.SmartInfo.FindOfferInfo(notificationTyped.OfferInfo);
+                        Debug.LogError("**==> OFFER ON " + notification.Type + " : " + offerInfo?.GameOffer?.Name?.Key);
+                        break;
+                    }
+                    case Notifications.NotificationType.OnOfferDeactivated:
+                    {
+                        var notificationTyped =
+                            Marshal.PtrToStructure<Notifications.LiveOpsNotification_OnOfferDeactivated>(
+                                notificationPtr);
+                        notification = notificationTyped;
+
+                        // var offerInfo = JsonBasedObject.CreateObject<OfferInfo>(notificationTyped.OfferInfo);
+                        // Debug.LogError("**==> OFFER off " + notification.Type + " : " +
+                        //                offerInfo?.GameOffer?.Name?.Key);
+                        break;
+                    }
+
+                    case Notifications.NotificationType.OnNewOfferGroupActivated:
+                    {
+                        var notificationTyped =
+                            Marshal.PtrToStructure<Notifications.LiveOpsNotification_OnNewOfferGroupActivated>(
+                                notificationPtr);
+                        notification = notificationTyped;
+                        var offerInfo = Profiles.System.SmartInfo.FindOfferGroupInfo(notificationTyped.OfferInfo);
+                        Debug.LogError("**==> OFFER Group ON " + notification.Type + " : " +
+                                       offerInfo?.GameOfferGroup?.Name?.Key);
+                        break;
+                    }
+                    case Notifications.NotificationType.OnOfferGroupDeactivated:
+                    {
+                        var notificationTyped =
+                            Marshal.PtrToStructure<Notifications.LiveOpsNotification_OnOfferGroupDeactivated>(
+                                notificationPtr);
+                        notification = notificationTyped;
+
+                        var offerInfo = JsonBasedObject.CreateObject<OfferGroupInfo>(notificationTyped.OfferInfo);
+                        Debug.LogError("**==> OFFER Group off " + notification.Type + " : " +
+                                       offerInfo?.GameOfferGroup?.Name?.Key);
+                        break;
+                    }
+                    
+                    case Notifications.NotificationType.OnABTestStarted:
+                    {
+                        var notificationTyped =
+                            Marshal.PtrToStructure<Notifications.LiveOpsNotification_ABTestStarted>(
+                                notificationPtr);
+                        notification = notificationTyped;
+                        var offerInfo = Profiles.System.TestsInfo.FindAbTestInfo(notificationTyped.ABTestInfo);
+                        Debug.LogError("**==> ABTEST Group ON : " +
+                                       offerInfo?.Test?.Name + " Variant = " + offerInfo?.Variant?.Name + " FINISHED = " + offerInfo?.Finished);
+                        break;
+                    }
+                    
+                    case Notifications.NotificationType.OnABTestEnded:
+                    {
+                        var notificationTyped =
+                            Marshal.PtrToStructure<Notifications.LiveOpsNotification_ABTestEnded>(
+                                notificationPtr);
+                        notification = notificationTyped;
+                        var offerInfo = Profiles.System.TestsInfo.FindAbTestInfo(notificationTyped.ABTestInfo);
+                        Debug.LogError("**==> ABTEST Group OFF : " +
+                                       offerInfo?.Test?.Name + " Variant = " + offerInfo?.Variant?.Name + " FINISHED = " + offerInfo?.Finished);
+                        break;
+                    }
+                    
+                    case Notifications.NotificationType.OnSegmentUpdated:
+                    {
+                        var notificationTyped =
+                            Marshal.PtrToStructure<Notifications.LiveOpsNotification_SegmentUpdated>(
+                                notificationPtr);
+                        notification = notificationTyped;
+                        var offerInfo = Profiles.System.SegmentsInfo.FindSegmentIndo(notificationTyped.SegmentInfo);
+                        Debug.LogError("**==> SEGMENT : " +
+                                       offerInfo?.Segment?.Name + " Is in = " + offerInfo?.IsIn);
+                        break;
+                    }
+                    default:
+                        Debug.LogError("**==> Unknown notification type. " + baseNotification.Type);
+                        break;
+                }
+
                 _originalConfig.OnStatusUpdate?.Invoke(notification);
             }
             catch (Exception e)

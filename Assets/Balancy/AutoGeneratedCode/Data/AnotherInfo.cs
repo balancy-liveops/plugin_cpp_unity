@@ -19,7 +19,10 @@ namespace Balancy.Data
             
 			InitAndSubscribeForParamChange("name", Update_name);
         }
-        
-		private void Update_name() { _name = GetStringParam("name"); }
+
+        private void Update_name()
+        {
+	        _name = GetStringParam("name");
+        }
     }
 }

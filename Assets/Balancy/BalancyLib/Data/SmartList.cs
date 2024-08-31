@@ -10,16 +10,14 @@ namespace Balancy.Data
         public T Add()
         {
             var ptr = LibraryMethods.Data.balancySmartListAddElement(_pointer);
-            var element = CreateObject<T>(ptr);
-            _list.Add(element);
-            return element;
+            return FindElement(ptr);
         }
         
         public void RemoveAt(int index)
         {
             var element = _list[index];
-            element.CleanUp();
-            _list.RemoveAt(index);
+            element.CleanUp(false);
+            // _list.RemoveAt(index);
             LibraryMethods.Data.balancySmartListRemoveElementAt(_pointer, index);
         }
         
@@ -46,7 +44,7 @@ namespace Balancy.Data
 
         public void Clear()
         {
-            CleanUp();
+            CleanUp(false);
             LibraryMethods.Data.balancySmartListClear(_pointer);
         }
 
@@ -58,7 +56,7 @@ namespace Balancy.Data
             for (int i = 0; i < size; i++)
             {
                 var ptr = LibraryMethods.Data.balancySmartListGetElementAt(_pointer, i);
-                var element = CreateObject<T>(ptr);
+                var element = CreateObject<T>(ptr, TempCopy);
                 _list.Add(element);
             }
         }
@@ -78,11 +76,30 @@ namespace Balancy.Data
         //     return arr;
         // }
 
-        internal override void CleanUp()
+        internal void SubscribeForUpdates(string paramName, BaseData parent)
         {
-            base.CleanUp();
+            parent.SubscribeForParamChange(paramName, RefreshList);
+        }
+
+        private T FindElement(IntPtr ptr)
+        {
             foreach (var child in _list)
-                child.CleanUp();
+                if (child.Equals(ptr))
+                    return child;
+            return null;
+        }
+
+        private void RefreshList()
+        {
+            CleanUp(false);
+            InitData();
+        }
+
+        internal override void CleanUp(bool parentWasDestroyed)
+        {
+            base.CleanUp(parentWasDestroyed);
+            foreach (var child in _list)
+                child.CleanUp(parentWasDestroyed);
             _list.Clear();
         }
     }

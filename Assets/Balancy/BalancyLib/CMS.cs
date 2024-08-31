@@ -92,7 +92,20 @@ namespace Balancy
                 case "SmartObjects.Analytics.ABTestVariant": return new ABTestVariant();
                 case "SmartObjects.SegmentOption": return new SegmentOption();
                 case "SmartObjects.Item": return new Item();
-                default:
+                case "SmartObjects.Price": return new Balancy.Models.SmartObjects.Price();
+				// case "SmartObjects.TimeConfig": return new Balancy.Models.SmartObjects.TimeConfig();
+				case "SmartObjects.Reward": return new Balancy.Models.SmartObjects.Reward();
+				case "SmartObjects.GameEvent": return new Balancy.Models.SmartObjects.GameEvent();
+				// case "Notifications.RemoteNotification": return new Balancy.Models.Notifications.RemoteNotification();
+				// case "Notifications.LocalNotification": return new Balancy.Models.Notifications.LocalNotification();
+				// case "SmartObjects.SmartConfig": return new Balancy.Models.SmartObjects.SmartConfig();
+				case "SmartObjects.ItemWithAmount": return new Balancy.Models.SmartObjects.ItemWithAmount();
+				// case "SmartObjects.ComfortPayCheck": return new Balancy.Models.SmartObjects.ComfortPayCheck();
+				// case "SmartObjects.GameConfig": return new Balancy.Models.SmartObjects.GameConfig();
+				case "SmartObjects.GameOfferGroup": return new Balancy.Models.SmartObjects.GameOfferGroup();
+				case "SmartObjects.GameOffer": return new Balancy.Models.SmartObjects.GameOffer();
+				case "SmartObjects.StoreItem": return new Balancy.Models.SmartObjects.StoreItem();
+				default:
                 {
                     var model = OnTypeRequested?.Invoke(templateName);
                     if (model != null)
