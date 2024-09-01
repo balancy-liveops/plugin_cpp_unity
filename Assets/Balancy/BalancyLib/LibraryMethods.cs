@@ -99,7 +99,9 @@ namespace Balancy
         public static class Data
         {
             [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-            public delegate void ParamChangedCallback();
+            public delegate void ParamChangedCallback(IntPtr baseData, string paramName);
+            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+            public delegate void DataDestroyedCallback(IntPtr baseData);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern IntPtr balancyGetProfile(string profileName);
@@ -112,11 +114,11 @@ namespace Balancy
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern IntPtr balancyGetListBaseDataParam(IntPtr instance, string paramName, string fileName);
             
-            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-            public static extern int balancySubscribeBaseDataParamChange(IntPtr instance, string paramName, IntPtr callback);
-            
-            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-            public static extern IntPtr balancyUnsubscribeBaseDataParamChange(IntPtr instance, string paramName, int callbackId);
+            // [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            // public static extern int balancySubscribeBaseDataParamChange(IntPtr instance, string paramName, IntPtr callback);
+            //
+            // [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            // public static extern IntPtr balancyUnsubscribeBaseDataParamChange(IntPtr instance, string paramName, int callbackId);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancySetIntParam(IntPtr instance, string paramName, int value);
@@ -147,6 +149,11 @@ namespace Balancy
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern IntPtr balancySetProfileOnReset(ModelRefreshedCallback callback);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancySetBaseDataParamChanged(ParamChangedCallback callback);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancySetBaseDataDestroyed(DataDestroyedCallback callback);
         }
 
         public static class Profile

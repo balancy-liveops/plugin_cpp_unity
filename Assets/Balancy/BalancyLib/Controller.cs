@@ -23,7 +23,7 @@ namespace Balancy
             LibraryMethods.General.balancySetLogCallback(LogMessage);
             UnityFileManager.Init();
             LibraryMethods.Models.balancySetModelOnRefresh(ModelRefreshed);
-            LibraryMethods.Data.balancySetProfileOnReset(ProfileReset);
+            Profiles.Init();
 
             CppAppConfig config = CreateConfigForCPP(appConfig);
             IntPtr configPtr = Marshal.AllocHGlobal(Marshal.SizeOf(config));
@@ -34,18 +34,14 @@ namespace Balancy
 
         public static void Stop()
         {
-            Profiles.CleanUp();
+            LibraryMethods.Models.balancySetModelOnRefresh(null);
             LibraryMethods.General.balancyStop();
+            Profiles.CleanUp();
         }
 
         private static void ModelRefreshed(string unnyId, IntPtr newPointer)
         {
             CMS.ModelRefreshed(unnyId, newPointer);
-        }
-        
-        private static void ProfileReset(string profileName, IntPtr newPointer)
-        {
-            Profiles.ProfileReset(profileName, newPointer);
         }
 
         private static void DataUpdated(bool dictsChanged, bool profileChanged)

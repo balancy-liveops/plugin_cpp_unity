@@ -43,17 +43,20 @@ namespace Balancy.Data
             if (TempCopy)
                 return;
             
-            var callbackDelegate = new LibraryMethods.Data.ParamChangedCallback(callback);
-            var callbackHandle = GCHandle.Alloc(callbackDelegate);
-
-            IntPtr callbackPtr = Marshal.GetFunctionPointerForDelegate(callbackDelegate);
-            var callbackId = LibraryMethods.Data.balancySubscribeBaseDataParamChange(_pointer, paramName, callbackPtr);
+            // var callbackDelegate = new LibraryMethods.Data.ParamChangedCallback(callback);
+            // var callbackHandle = GCHandle.Alloc(callbackDelegate);
+            //
+            // IntPtr callbackPtr = Marshal.GetFunctionPointerForDelegate(callbackDelegate);
+            // var callbackId = LibraryMethods.Data.balancySubscribeBaseDataParamChange(_pointer, paramName, callbackPtr);
             _callbacks.Add(new CallbacksHolder
             {
                 ParamName = paramName,
-                Handle = callbackHandle,
-                Id = callbackId
+                Callback = callback,
+                // Handle = callbackHandle,
+                // Id = callbackId
             });
+            
+            Profiles.AddDataSubscription(_pointer, paramName, callback);
         }
         
         ~BaseData()
@@ -68,10 +71,11 @@ namespace Balancy.Data
             base.CleanUp(parentWasDestroyed);
             foreach (var callback in _callbacks)
             {
-                if (callback.Handle.IsAllocated)
-                    callback.Handle.Free();
-                if (!parentWasDestroyed)
-                    LibraryMethods.Data.balancyUnsubscribeBaseDataParamChange(_pointer, callback.ParamName, callback.Id);
+                // if (callback.Handle.IsAllocated)
+                //     callback.Handle.Free();
+                // if (!parentWasDestroyed)
+                //     LibraryMethods.Data.balancyUnsubscribeBaseDataParamChange(_pointer, callback.ParamName, callback.Id);
+                Profiles.RemoveDataSubscription(_pointer, callback.ParamName, callback.Callback);
             }
             _callbacks.Clear();
 
@@ -112,8 +116,9 @@ namespace Balancy.Data
         private struct CallbacksHolder
         {
             public string ParamName;
-            public GCHandle Handle;
-            public int Id;
+            public Action Callback;
+            // public GCHandle Handle;
+            // public int Id;
         }
 
         private readonly List<CallbacksHolder> _callbacks = new List<CallbacksHolder>();
