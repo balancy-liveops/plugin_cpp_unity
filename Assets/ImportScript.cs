@@ -3,15 +3,19 @@ using System.Runtime.InteropServices;
 using Balancy;
 using Balancy.Core;
 using Balancy.Data;
+using Balancy.Dictionaries;
 using Balancy.LiveOps;
 using Balancy.Models;
 using Balancy.Models.SmartObjects;
 using Unity.VisualScripting;
 using UnityEngine;
+using UnityEngine.UI;
 using Random = UnityEngine.Random;
 
 public class ImportScript : MonoBehaviour
 {
+    [SerializeField] private Image TestImage;
+    
     void Start()
     {
         Debug.LogError($"PATH = {Application.persistentDataPath}");
@@ -190,34 +194,52 @@ public class ImportScript : MonoBehaviour
         Debug.LogError($"newElement = {newElement.Name} list = {list[0].Name} vs {_profile.GeneralInfo.TestList[0].Name}");
     }
 
+    void RenderButton(Rect rect, string id, Image image)
+    {
+        if (GUI.Button(rect, "Test: " + id))
+        {
+            var handler = DataObjectsManager.GetObject(id, sprite =>
+            {
+                Debug.LogWarning("SET SPRITE = " + sprite);
+                image.sprite = sprite;
+            });
+        }
+    }
+
     private void OnGUI()
     {
-        return;
-        var profile = Profiles.Get<Profile>();
-        if (profile == null)
-            return;
-
-        var list = profile.GeneralInfo.TestList;
-        Rect rect = new Rect(100, 10, 300, 50);
-        for (int i = 0; i < list.Count; i++)
-        {
-            var iRect = rect;
-            if (GUI.Button(rect, list[i].Name))
-                list[i].Name = Random.Range(0, 10000).ToString();
-
-            iRect.x += iRect.width;
-            if (GUI.Button(iRect, "Delete"))
-                list.RemoveAt(i);
-            
-            rect.y += rect.height;
-        }
-
-        if (GUI.Button(rect, "Add Element"))
-            list.Add().Name = "New element";
-        
+        Rect rect = new Rect(100, 10, 300, 30);
+        RenderButton(rect, "855", TestImage);
         rect.y += rect.height;
-        if (GUI.Button(rect, "Clear"))
-            list.Clear();
+        RenderButton(rect, "856", TestImage);
+        rect.y += rect.height;
+        RenderButton(rect, "1132", TestImage);
+        
+        // var profile = Profiles.Get<Profile>();
+        // if (profile == null)
+        //     return;
+        //
+        // var list = profile.GeneralInfo.TestList;
+        // Rect rect = new Rect(100, 10, 300, 50);
+        // for (int i = 0; i < list.Count; i++)
+        // {
+        //     var iRect = rect;
+        //     if (GUI.Button(rect, list[i].Name))
+        //         list[i].Name = Random.Range(0, 10000).ToString();
+        //
+        //     iRect.x += iRect.width;
+        //     if (GUI.Button(iRect, "Delete"))
+        //         list.RemoveAt(i);
+        //     
+        //     rect.y += rect.height;
+        // }
+        //
+        // if (GUI.Button(rect, "Add Element"))
+        //     list.Add().Name = "New element";
+        //
+        // rect.y += rect.height;
+        // if (GUI.Button(rect, "Clear"))
+        //     list.Clear();
        
         // Rect rect = new Rect(100, 100, 300, 50);
         // if (GUI.Button(rect, "Test"))
@@ -260,9 +282,9 @@ public class ImportScript : MonoBehaviour
             case Notifications.InitNotificationCloudProfileFailed profileFailed:
                 Debug.LogError($"**==> Profile load failed. {profileFailed.Message}" + " Size = " + Marshal.SizeOf(typeof(Notifications.InitNotificationCloudProfileFailed)));
                 break;
-            default:
-                Debug.LogError("**==> Unknown notification type. " + notification.Type);
-                break;
+            // default:
+            //     Debug.LogError("**==> Unknown notification type. " + notification.Type);
+            //     break;
         }
     }
 

@@ -1,4 +1,5 @@
 using System;
+using Balancy.Dictionaries;
 
 namespace Balancy.Localization
 {
@@ -79,6 +80,27 @@ namespace Balancy.Models
             base.InitData();
             id = GetStringParam("id");
         }
+        
+        public AsyncLoadHandler LoadSprite(Action<UnityEngine.Sprite> callback)
+        {
+            return DataObjectsManager.GetObject(Id, callback);
+        }
+        
+        // /// <summary>
+        // /// Clears sprite from memory cache and destroys it
+        // /// </summary>
+        // public void ClearFromMemory()
+        // {
+        //     DataObjectsManager.ClearFromMemory(Id);
+        // }
+        //
+        // /// <summary>
+        // /// Removes sprite from disk cache
+        // /// </summary>
+        // public void ClearFromDisk()
+        // {
+        //     DataObjectsManager.ClearFromDisk(Id);
+        // }
     }
     
     public class UnnyAsset : JsonBasedObject

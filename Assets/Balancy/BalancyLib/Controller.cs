@@ -260,7 +260,7 @@ namespace Balancy
             return true;
         }
         
-        private enum Level {
+        internal enum Level {
             Off,
             Verbose,
             Debug,
@@ -268,6 +268,11 @@ namespace Balancy
             Warn,
             Error
         };
+
+        internal static void LogMessage(Level level, string message)
+        {
+            LogMessage((int)level, message);
+        }
         
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.General.LogCallback))]
         private static void LogMessage(int level, string message)

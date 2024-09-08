@@ -1,0 +1,149 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Runtime.InteropServices;
+using UnityEngine;
+
+namespace Balancy.Dictionaries
+{
+    public class DataObjectsManager
+    {
+        private static string CACHE_PATH;
+        
+        [StructLayout(LayoutKind.Sequential, Pack = 1, CharSet = CharSet.Ansi)]
+        internal class SharedObjectInfo
+        {
+            public int PixelsPerUnit;
+            public int OffsetTop;
+            public int OffsetBottom;
+            public int OffsetRight;
+            public int OffsetLeft;
+            
+            [MarshalAs(UnmanagedType.LPStr)] public string UnnyId;
+            [MarshalAs(UnmanagedType.LPStr)] public string LocationPath;
+        }
+
+        static DataObjectsManager()
+        {
+            CACHE_PATH = Application.persistentDataPath + "/Balancy/Models/";
+            _mainThreadInstance = UnityMainThreadDispatcher.Instance();
+        }
+
+        private static UnityMainThreadDispatcher _mainThreadInstance; 
+
+        private class OneObjectSprite
+        {
+            private class CallbackInfo
+            {
+                public Action<UnityEngine.Sprite> Callback;
+                public AsyncLoadHandler LoadHandler;
+            }
+            
+            public bool Loaded = false;
+            private readonly List<CallbackInfo> _callbacks = new List<CallbackInfo>();
+            public Sprite Sprite;
+
+            public void PrepareSprite(SharedObjectInfo spriteInfo)
+            {
+                if (spriteInfo != null)
+                {
+                    var path = CACHE_PATH + spriteInfo.LocationPath;
+                    if (File.Exists(path))
+                    {
+                        byte[] bytes = File.ReadAllBytes(path);
+                        Texture2D texture = new Texture2D(1, 1, TextureFormat.RGBA32, false);
+                        texture.LoadImage(bytes);
+                        
+                        Sprite sprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), 
+                            new Vector2(0.5f, 0.5f), spriteInfo.PixelsPerUnit, 0, 
+                            SpriteMeshType.FullRect, 
+                            new Vector4(spriteInfo.OffsetLeft, spriteInfo.OffsetBottom, spriteInfo.OffsetRight, spriteInfo.OffsetTop));
+                        SetSprite(sprite);
+                        return;
+                    } else
+                        Debug.LogError("NO FILE PATH " + path);
+                }
+                 
+                SetSprite(null);
+            }
+            
+            private void SetSprite(Sprite sprite)
+            {
+                Sprite = sprite;
+                Loaded = Sprite != null;
+
+                foreach (var info in _callbacks)
+                {
+                    if (info.LoadHandler.GetStatus() == AsyncLoadHandler.Status.Loading)
+                    {
+                        info.LoadHandler.Finish();
+                        info.Callback?.Invoke(Sprite);
+                    }
+                }
+                
+                _callbacks.Clear();
+            }
+
+            public void AddCallback(AsyncLoadHandler handler, Action<UnityEngine.Sprite> callback)
+            {
+                var info = new CallbackInfo
+                {
+                    LoadHandler = handler,
+                    Callback = callback
+                };
+                _callbacks.Add(info);
+            }
+        }
+
+        private static readonly Dictionary<string, OneObjectSprite> AllSprites = new Dictionary<string, OneObjectSprite>();
+
+        private static void DataObjectLoaded(string id, IntPtr ptr)
+        {
+            try
+            {
+                if (AllSprites.TryGetValue(id, out var oneObjectSprite))
+                {
+                    var sharedObject = Marshal.PtrToStructure<SharedObjectInfo>(ptr);
+
+                    _mainThreadInstance.Enqueue(() =>
+                    {
+                        oneObjectSprite.PrepareSprite(sharedObject);
+                    });
+                }
+                else
+                    Debug.Log("No request object found " + id);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError(e);
+            }
+        }
+        
+        public static AsyncLoadHandler GetObject(string id, Action<UnityEngine.Sprite> callback)
+        {
+            var handler = AsyncLoadHandler.CreateHandler();
+            if (!AllSprites.TryGetValue(id, out var oneObjectSprite))
+            {
+                oneObjectSprite = new OneObjectSprite();
+                oneObjectSprite.AddCallback(handler, callback);
+                AllSprites.Add(id, oneObjectSprite);
+                
+                LibraryMethods.Models.balancyDataObjectLoad(id, DataObjectLoaded);
+            }
+            else
+            {
+                if (oneObjectSprite.Loaded)
+                {
+                    handler.Finish();
+                    callback?.Invoke(oneObjectSprite.Sprite);
+                }
+                else
+                {
+                    oneObjectSprite.AddCallback(handler, callback);
+                }
+            }
+
+            return handler;
+        }
+    }
+}
