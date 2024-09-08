@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
 using UnityEngine;
+using Object = UnityEngine.Object;
 
 namespace Balancy.Dictionaries
 {
@@ -38,16 +39,21 @@ namespace Balancy.Dictionaries
                 public Action<UnityEngine.Sprite> Callback;
                 public AsyncLoadHandler LoadHandler;
             }
+
+            private SharedObjectInfo _spriteInfo = null;
             
             public bool Loaded = false;
             private readonly List<CallbackInfo> _callbacks = new List<CallbackInfo>();
             public Sprite Sprite;
+            
+            private string PathInStorage => CACHE_PATH + _spriteInfo?.LocationPath;
 
             public void PrepareSprite(SharedObjectInfo spriteInfo)
             {
+                _spriteInfo = spriteInfo;
                 if (spriteInfo != null)
                 {
-                    var path = CACHE_PATH + spriteInfo.LocationPath;
+                    var path = PathInStorage;
                     if (File.Exists(path))
                     {
                         byte[] bytes = File.ReadAllBytes(path);
@@ -144,6 +150,25 @@ namespace Balancy.Dictionaries
             }
 
             return handler;
+        }
+        
+        internal static void ClearFromMemory(string id)
+        {
+            if (AllSprites.TryGetValue(id, out var oneObjectSprite))
+            {
+                if (oneObjectSprite.Sprite != null)
+                {
+                    Object.Destroy(oneObjectSprite.Sprite.texture);
+                    Object.Destroy(oneObjectSprite.Sprite);
+                }
+                AllSprites.Remove(id);
+            }
+        }
+        
+        internal static void ClearFromDisk(string id)
+        {
+            LibraryMethods.Models.balancyDataObjectDeleteFromDisk(id);
+            ClearFromMemory(id);
         }
     }
 }

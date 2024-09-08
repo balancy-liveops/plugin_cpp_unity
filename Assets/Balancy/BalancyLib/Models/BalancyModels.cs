@@ -86,21 +86,21 @@ namespace Balancy.Models
             return DataObjectsManager.GetObject(Id, callback);
         }
         
-        // /// <summary>
-        // /// Clears sprite from memory cache and destroys it
-        // /// </summary>
-        // public void ClearFromMemory()
-        // {
-        //     DataObjectsManager.ClearFromMemory(Id);
-        // }
-        //
-        // /// <summary>
-        // /// Removes sprite from disk cache
-        // /// </summary>
-        // public void ClearFromDisk()
-        // {
-        //     DataObjectsManager.ClearFromDisk(Id);
-        // }
+        /// <summary>
+        /// Clears sprite from memory cache and destroys it
+        /// </summary>
+        public void ClearFromMemory()
+        {
+            DataObjectsManager.ClearFromMemory(Id);
+        }
+        
+        /// <summary>
+        /// Removes sprite from disk cache
+        /// </summary>
+        public void ClearFromDisk()
+        {
+            DataObjectsManager.ClearFromDisk(Id);
+        }
     }
     
     public class UnnyAsset : JsonBasedObject

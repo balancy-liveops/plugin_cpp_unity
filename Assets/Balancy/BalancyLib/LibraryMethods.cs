@@ -101,6 +101,8 @@ namespace Balancy
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyDataObjectLoad(string unnyId, DataObjectWasCachedCallback callback);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyDataObjectDeleteFromDisk(string unnyId);
         }
         
         public static class Data

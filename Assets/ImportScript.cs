@@ -214,6 +214,13 @@ public class ImportScript : MonoBehaviour
         rect.y += rect.height;
         RenderButton(rect, "1132", TestImage);
         
+        rect.y += rect.height;
+        if (GUI.Button(rect, "Clean: "))
+            DataObjectsManager.ClearFromMemory("1132");
+        rect.y += rect.height;
+        if (GUI.Button(rect, "Delete: "))
+            DataObjectsManager.ClearFromDisk("1132");
+        
         // var profile = Profiles.Get<Profile>();
         // if (profile == null)
         //     return;
