@@ -198,9 +198,8 @@ public class ImportScript : MonoBehaviour
     {
         if (GUI.Button(rect, "Test: " + id))
         {
-            var handler = DataObjectsManager.GetObject(id, sprite =>
+            DataObjectsManager.GetObject(id, sprite =>
             {
-                Debug.LogWarning("SET SPRITE = " + sprite);
                 image.sprite = sprite;
             });
         }
