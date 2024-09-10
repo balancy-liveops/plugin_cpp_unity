@@ -83,9 +83,8 @@ namespace Balancy.Editor
             try
             {
                 Debug.LogError("AuthDone!!");
-                
-                // var authStatus = SetStatus(pointer);
-                // _authCallback?.Invoke(authStatus);
+                var authStatus = SetStatus(pointer);
+                _authCallback?.Invoke(authStatus);
             }
             catch (Exception e)
             {
@@ -180,6 +179,7 @@ namespace Balancy.Editor
 
         public static void Close()
         {
+            _isInitialized = false;
             LibraryMethods.Editor.balancyConfigClose();
         }
         

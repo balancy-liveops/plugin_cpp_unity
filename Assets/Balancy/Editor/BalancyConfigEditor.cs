@@ -25,6 +25,8 @@ namespace Balancy.Editor
 
         private static readonly GUILayoutOption LAYOUT_BUTTON_LOGOUT = GUILayout.Width(30);
 
+        private EditorDispatcher m_EditorDispatcher;
+
         private class GamesInfo
         {
             public readonly List<EditorUtils.GameInfo> Games;
@@ -81,12 +83,16 @@ namespace Balancy.Editor
             minSize = new Vector2(500, 500);
             EditorUtils.Launch();
             _userEmail = UserEmail;
+            
+            m_EditorDispatcher = new EditorDispatcher();
+            m_EditorDispatcher.StartEditorDispatcher();
         }
 
         private void OnDestroy()
         {
             Debug.LogError("**==>> OnDestroy");
             EditorUtils.Close();
+            m_EditorDispatcher.StopEditorDispatcher();
         }
 
         private void OnGUI()
@@ -209,7 +215,7 @@ namespace Balancy.Editor
                 {
                     EditorUtils.Auth(_userEmail, _userPassword, status =>
                     {
-                        Debug.LogError("Repaint");
+                        m_EditorDispatcher.Enqueue(Repaint);
                     });
                 }
 
