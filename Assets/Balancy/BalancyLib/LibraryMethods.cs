@@ -17,10 +17,16 @@ namespace Balancy
             public delegate void LogCallback(int level, string message);
             
             [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+            public delegate void InvokeInMainThreadCallback(int id);
+            
+            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
             public delegate void SaveFileCallback(string path, string data);
                         
             [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
             public delegate string LoadFileCallback(string path);
+            
+            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+            public delegate bool IsFileExistsCallback(string path);
             
 #if UNITY_IPHONE && !UNITY_EDITOR
         [DllImport ("__Internal")]
@@ -29,6 +35,10 @@ namespace Balancy
 #endif
             public static extern void balancySetLogCallback(LogCallback callback);
             
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancySetInvokeInMainThreadCallback(InvokeInMainThreadCallback callback);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyInvokeMethodInMainThread(int id);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyInit(IntPtr config);
@@ -38,7 +48,7 @@ namespace Balancy
             
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-            public static extern void balancyInitUnityFileHelper(string persistentDataPath, string assetDataPath, LoadFileCallback loadFromResources);
+            public static extern void balancyInitUnityFileHelper(string persistentDataPath, string assetDataPath, LoadFileCallback loadFromResources, IsFileExistsCallback isFileExistsCallback);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern IntPtr balancyGetInheritance(out int size);

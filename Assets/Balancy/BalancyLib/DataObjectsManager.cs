@@ -53,24 +53,39 @@ namespace Balancy.Dictionaries
                 _spriteInfo = spriteInfo;
                 if (spriteInfo != null)
                 {
-                    var path = PathInStorage;
-                    if (File.Exists(path))
+                    Texture2D texture = TryToLoadTextureFromResources();
+
+                    if (texture == null)
                     {
-                        byte[] bytes = File.ReadAllBytes(path);
-                        Texture2D texture = new Texture2D(1, 1, TextureFormat.RGBA32, false);
-                        texture.LoadImage(bytes);
-                        
-                        Sprite sprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), 
-                            new Vector2(0.5f, 0.5f), spriteInfo.PixelsPerUnit, 0, 
-                            SpriteMeshType.FullRect, 
-                            new Vector4(spriteInfo.OffsetLeft, spriteInfo.OffsetBottom, spriteInfo.OffsetRight, spriteInfo.OffsetTop));
-                        SetSprite(sprite);
-                        return;
-                    } else
-                        Debug.LogError("NO FILE PATH " + path);
-                }
-                 
-                SetSprite(null);
+                        var path = PathInStorage;
+                        if (File.Exists(path))
+                        {
+                            byte[] bytes = File.ReadAllBytes(path);
+                            texture = new Texture2D(1, 1, TextureFormat.RGBA32, false);
+                            texture.LoadImage(bytes);
+                        }
+                        else
+                        {
+                            Debug.LogError("NO FILE PATH " + path);
+                            SetSprite(null);
+                            return;
+                        }
+                    }
+
+                    Sprite sprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), 
+                        new Vector2(0.5f, 0.5f), spriteInfo.PixelsPerUnit, 0, 
+                        SpriteMeshType.FullRect, 
+                        new Vector4(spriteInfo.OffsetLeft, spriteInfo.OffsetBottom, spriteInfo.OffsetRight, spriteInfo.OffsetTop));
+                    SetSprite(sprite);
+                } else 
+                    SetSprite(null);
+            }
+
+            private Texture2D TryToLoadTextureFromResources()
+            {
+                var resourcesPath = _spriteInfo.LocationPath.Replace('/', '-');
+                string fileNameWithoutExtension = Path.GetFileNameWithoutExtension(resourcesPath);
+                return Resources.Load<Texture2D>(fileNameWithoutExtension);
             }
             
             private void SetSprite(Sprite sprite)

@@ -133,7 +133,7 @@ namespace Balancy.Cheats
                     continue;
                 
                 result +=
-                    $"{segment.Segment.UnnyId} - {segment.Segment.Name}, joined at {segment.LastIn}\n";
+                    $"{segment.Segment?.UnnyId} - {segment.Segment?.Name}, joined at {segment.LastIn}\n";
             }
 
             return result;

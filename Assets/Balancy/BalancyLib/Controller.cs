@@ -15,12 +15,16 @@ namespace Balancy
 
         public static bool IsReadyToUse => _isReadyToUse;
         
+        private static UnityMainThreadDispatcher _mainThreadInstance; 
+        
         public static void Init(AppConfig appConfig)
         {
             if (!CheckConfig(appConfig))
                 return;
             
             LibraryMethods.General.balancySetLogCallback(LogMessage);
+            _mainThreadInstance = UnityMainThreadDispatcher.Instance();
+            LibraryMethods.General.balancySetInvokeInMainThreadCallback(InvokeInMainThread);
             UnityFileManager.Init();
             LibraryMethods.Models.balancySetModelOnRefresh(ModelRefreshed);
             Profiles.Init();
@@ -135,6 +139,9 @@ namespace Balancy
                                 notificationPtr);
                         notification = liveOpsNewEvent;
                         var eventInfo = Profiles.System.SmartInfo.FindEventInfo(liveOpsNewEvent.EventInfo);
+                        
+                        Debug.LogError("**==> EVENT ON " + notification.Type + " : " +
+                                       eventInfo?.GameEvent?.Name?.Key);
                         break;
                     }
                     case Notifications.NotificationType.OnEventDeactivated:
@@ -144,9 +151,9 @@ namespace Balancy
                                 notificationPtr);
                         notification = liveOpsEvent;
 
-                        // var eventInfo = JsonBasedObject.CreateObject<EventInfo>(liveOpsEvent.EventInfo);
-                        // Debug.LogError("**==> EVENT off " + notification.Type + " : " +
-                        //                eventInfo?.GameEvent?.Name?.Key);
+                        var eventInfo = JsonBasedObject.CreateObject<EventInfo>(liveOpsEvent.EventInfo);
+                        Debug.LogError("**==> EVENT off " + notification.Type + " : " +
+                                       eventInfo?.GameEvent?.Name?.Key);
                         break;
                     }
                     case Notifications.NotificationType.OnNewOfferActivated:
@@ -289,6 +296,15 @@ namespace Balancy
                     Debug.Log(message);
                     break;
             }
+        }
+        
+        [AOT.MonoPInvokeCallback(typeof(LibraryMethods.General.InvokeInMainThreadCallback))]
+        private static void InvokeInMainThread(int id)
+        {
+            _mainThreadInstance.Enqueue(() =>
+            {
+                LibraryMethods.General.balancyInvokeMethodInMainThread(id);
+            });
         }
         
         public static void PrintSizeAndOffsets<T>()
