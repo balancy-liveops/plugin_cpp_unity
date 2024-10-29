@@ -66,6 +66,7 @@ namespace Balancy
                 UpdateType = _originalConfig.UpdateType,
                 UpdatePeriod = _originalConfig.UpdatePeriod,
                 LaunchType = _originalConfig.LaunchType,
+                BranchName = _originalConfig.BranchName,
                 Platform = (int)FindPlatform(_originalConfig.Platform),
                 AutoLogin = _originalConfig.AutoLogin,
                 OnStatusUpdate = OnStatusUpdate,

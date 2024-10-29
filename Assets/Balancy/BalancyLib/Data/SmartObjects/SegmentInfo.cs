@@ -15,22 +15,22 @@ namespace Balancy.Data.SmartObjects
 		public int LastIn
 		{
 			get => _lastIn;
-			set => SetIntValue("lastIn", value);
+			// set => SetIntValue("lastIn", value);
 		}
 		public int LastInSession
 		{
 			get => _lastInSession;
-			set => SetIntValue("lastInSession", value);
+			// set => SetIntValue("lastInSession", value);
 		}
 		public int LastOut
 		{
 			get => _lastOut;
-			set => SetIntValue("lastOut", value);
+			// set => SetIntValue("lastOut", value);
 		}
 		public bool IsIn
 		{
 			get => _isIn;
-			set => SetBoolValue("isIn", value);
+			// set => SetBoolValue("isIn", value);
 		}
         
         public override void InitData()

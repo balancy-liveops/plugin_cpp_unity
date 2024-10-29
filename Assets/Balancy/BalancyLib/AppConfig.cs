@@ -38,6 +38,8 @@ namespace Balancy
         public ProgressUpdateCallback OnProgressUpdateCallback = null;
 
         public LaunchType LaunchType = LaunchType.Local | LaunchType.Cloud | LaunchType.AutoRetry;
+        [MarshalAs(UnmanagedType.LPStr)]
+        public string BranchName;//If left blank, we'll use the branchConditions to find the best branch.
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1, CharSet = CharSet.Ansi)]
@@ -89,6 +91,7 @@ namespace Balancy
         public ProgressUpdateCallback OnProgressUpdateCallback = null;
 
         public LaunchType LaunchType = LaunchType.Local | LaunchType.Cloud | LaunchType.AutoRetry;
+        public string BranchName;//If left blank, we'll use the branchConditions to find the best branch.
         
         public Constants.Platform Platform;
         public byte AutoLogin = 1;
