@@ -207,6 +207,9 @@ namespace Balancy
             public static extern void balancyConfigLoadListOfGames(StringArrayCallback callback);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyConfigLoadBranches(StringArrayCallback callback);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyConfigAuth(string email, string password, AuthCallback callback);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
@@ -219,10 +222,16 @@ namespace Balancy
             public static extern void balancyConfigSetSelectedGame(string gameId);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-            public static extern void balancyConfigDownloadContentToResources(Constants.Environment environment, DownloadCompleteCallback onReadyCallback, ProgressUpdateCallback onProgressCallback);
+            public static extern int balancyConfigGetSelectedBranchId();
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-            public static extern void balancyConfigGenerateCode(Constants.Environment environment, DownloadCompleteCallback onReadyCallback);
+            public static extern void balancyConfigSetSelectedBranch(int branchId);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyConfigDownloadContentToResources(DownloadCompleteCallback onReadyCallback, ProgressUpdateCallback onProgressCallback);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyConfigGenerateCode(DownloadCompleteCallback onReadyCallback);
         }
     }
 }

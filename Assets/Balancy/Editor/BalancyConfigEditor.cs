@@ -34,6 +34,28 @@ namespace Balancy.Editor
             public string SelectedGameId;
             
             private int _selectedGame = -1;
+            private int _selectedBranchOrder = -1;
+            
+            private List<EditorUtils.BranchInfo> SelectedGameBranches;
+            public string[] BranchNames;
+            public int SelectedBranchId;
+
+            public void SetBranches(List<EditorUtils.BranchInfo> branches, int selectedBranch)
+            {
+                SelectedGameBranches = branches;
+                
+                BranchNames = new string[SelectedGameBranches.Count];
+                for (int i = 0; i < SelectedGameBranches.Count; i++)
+                {
+                    BranchNames[i] = SelectedGameBranches[i].BranchName;
+                    if (SelectedGameBranches[i].BranchId == selectedBranch)
+                        _selectedBranchOrder = i;
+                }
+            }
+
+            public bool HasBranches => GetBranches?.Count > 0;
+            
+            public List<EditorUtils.BranchInfo> GetBranches => SelectedGameBranches;
 
             public GamesInfo(List<EditorUtils.GameInfo> list, string selectedGameId)
             {
@@ -58,6 +80,16 @@ namespace Balancy.Editor
                     if (_selectedGame != -1)
                         SelectGameByIndex(_selectedGame);
             }
+            
+            public void RenderBranches()
+            {
+                EditorGUI.BeginChangeCheck();
+                _selectedBranchOrder = EditorGUILayout.Popup("Selected Branch: ", _selectedBranchOrder, BranchNames);
+
+                if (EditorGUI.EndChangeCheck())
+                    if (_selectedBranchOrder != -1)
+                        SelectBranchByIndex(_selectedBranchOrder);
+            }
 
             public bool HasSelectedGame()
             {
@@ -68,6 +100,13 @@ namespace Balancy.Editor
             {
                 SelectedGameId = Games[index].GameId;
                 EditorUtils.SetSelectedGameId(SelectedGameId);
+                SelectedGameBranches = null;
+            }
+            
+            private void SelectBranchByIndex(int index)
+            {
+                SelectedBranchId = SelectedGameBranches[index].BranchId;
+                EditorUtils.SetSelectedBranchId(SelectedBranchId);
             }
         }
 
@@ -79,7 +118,6 @@ namespace Balancy.Editor
 
         private void Awake()
         {
-            Debug.LogError("**==>> Awake");
             minSize = new Vector2(500, 500);
             EditorUtils.Launch();
             _userEmail = UserEmail;
@@ -90,9 +128,8 @@ namespace Balancy.Editor
 
         private void OnDestroy()
         {
-            Debug.LogError("**==>> OnDestroy");
             EditorUtils.Close();
-            m_EditorDispatcher.StopEditorDispatcher();
+            m_EditorDispatcher?.StopEditorDispatcher();
         }
 
         private void OnGUI()
@@ -107,7 +144,7 @@ namespace Balancy.Editor
             GUILayout.BeginVertical(EditorStyles.helpBox);
             RenderAuth();
             RenderGames();
-            // RenderBranches();
+            RenderBranches();
             GUILayout.EndVertical();
         }
         
@@ -149,7 +186,7 @@ namespace Balancy.Editor
             _downloading = true;
             _downloadingProgress = 0.5f;
 
-            EditorUtils.GenerateCode(Constants.Environment.Development, OnDownloadCompleted);
+            EditorUtils.GenerateCode(OnDownloadCompleted);
         }
         
         private void StartDownloading()
@@ -157,7 +194,7 @@ namespace Balancy.Editor
             _downloading = true;
             _downloadingProgress = 0;
 
-            EditorUtils.DownloadContent(Constants.Environment.Development, OnDownloadCompleted, OnProgressUpdate);
+            EditorUtils.DownloadContent(OnDownloadCompleted, OnProgressUpdate);
         }
 
         private void OnDownloadCompleted(bool success, string message)
@@ -247,6 +284,39 @@ namespace Balancy.Editor
                             var selectedGame = EditorUtils.GetSelectedGameId();
                             _gamesInfo = new GamesInfo(games, selectedGame);
                             _loadingGames = false;
+                            _needRefresh = true;
+                        }
+                        catch (Exception e)
+                        {
+                            Debug.LogError(e);
+                        }
+                    });
+                }
+            }
+        }
+        
+        private bool _loadingBranches;
+        private void RenderBranches()
+        {
+            if (!IsAuthorized)
+                return;
+
+            if (!_loadingGames && !_loadingBranches && _gamesInfo != null)
+            {
+                if (_gamesInfo.HasBranches)
+                {
+                    _gamesInfo.RenderBranches();
+                }
+                else
+                {
+                    _loadingBranches = true;
+                    EditorUtils.LoadBranches((branches) =>
+                    {
+                        try
+                        {
+                            var selectedBranch = EditorUtils.GetSelectedBranchId();
+                            _gamesInfo.SetBranches(branches, selectedBranch);
+                            _loadingBranches = false;
                             _needRefresh = true;
                         }
                         catch (Exception e)

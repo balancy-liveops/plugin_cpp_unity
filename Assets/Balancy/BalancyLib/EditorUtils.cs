@@ -29,10 +29,23 @@ namespace Balancy.Editor
             }
         }
         
+        public class BranchInfo
+        {
+            public readonly string BranchName;
+            public readonly int BranchId;
+
+            public BranchInfo(string name, int id)
+            {
+                BranchName = name;
+                BranchId = id;
+            }
+        }
+        
         private static string _statusString;
         private static ConfigStatus _status;
         private static Action<ConfigStatus> _authCallback;
         private static Action<List<GameInfo>> getGamesCallback;
+        private static Action<List<BranchInfo>> getBranchesCallback;
         private static bool _isInitialized = false;
         
         private static DownloadCompleteCallback _downloadCompleteCallback;
@@ -99,7 +112,7 @@ namespace Balancy.Editor
             getGamesCallback = callback;
             LibraryMethods.Editor.balancyConfigLoadListOfGames(GamesLoaded);
         }
-
+        
         private static void GamesLoaded(IntPtr ptr, int size)
         {
             try
@@ -114,14 +127,43 @@ namespace Balancy.Editor
             }
             catch (Exception e)
             {
-                Debug.LogError(":>> " + e);
+                Debug.LogError("GamesLoaded:>> " + e);
             }
         }
 
+        public static void LoadBranches(Action<List<BranchInfo>> callback)
+        {
+            getBranchesCallback = callback;
+            LibraryMethods.Editor.balancyConfigLoadBranches(BranchesLoaded);
+        }
+        
+        private static void BranchesLoaded(IntPtr ptr, int size)
+        {
+            try
+            {
+                var result = new List<BranchInfo>();
+                var strs = JsonBasedObject.ReadStringArrayValues(ptr, size);
+
+                for (int i = 0; i < size; i += 2)
+                    result.Add(new BranchInfo(strs[i], int.Parse(strs[i + 1])));
+
+                getBranchesCallback?.Invoke(result);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError("BranchesLoaded:>> " + e);
+            }
+        }
+        
         public static string GetSelectedGameId()
         {
             var ptr = LibraryMethods.Editor.balancyConfigGetSelectedGame();
             return Marshal.PtrToStringAnsi(ptr);
+        }
+        
+        public static int GetSelectedBranchId()
+        {
+            return LibraryMethods.Editor.balancyConfigGetSelectedBranchId();
         }
 
         public static void SetSelectedGameId(string gameId)
@@ -129,21 +171,26 @@ namespace Balancy.Editor
             LibraryMethods.Editor.balancyConfigSetSelectedGame(gameId);
         }
         
+        public static void SetSelectedBranchId(int branchId)
+        {
+            LibraryMethods.Editor.balancyConfigSetSelectedBranch(branchId);
+        }
+        
         #endregion
 
-        public static void DownloadContent(Constants.Environment environment, DownloadCompleteCallback onReadyCallback, ProgressUpdateCallback onProgressCallback)
+        public static void DownloadContent(DownloadCompleteCallback onReadyCallback, ProgressUpdateCallback onProgressCallback)
         {
             Launch();
             _downloadCompleteCallback = onReadyCallback;
             _progressUpdateCallback = onProgressCallback;
-            LibraryMethods.Editor.balancyConfigDownloadContentToResources(environment, OnDownloadCompleted, OnProgressUpdate);
+            LibraryMethods.Editor.balancyConfigDownloadContentToResources(OnDownloadCompleted, OnProgressUpdate);
         }
         
-        public static void GenerateCode(Constants.Environment environment, DownloadCompleteCallback onReadyCallback)
+        public static void GenerateCode(DownloadCompleteCallback onReadyCallback)
         {
             Launch();
             _downloadCompleteCallback = onReadyCallback;
-            LibraryMethods.Editor.balancyConfigGenerateCode(environment, OnDownloadCompleted);
+            LibraryMethods.Editor.balancyConfigGenerateCode(OnDownloadCompleted);
         }
 
         private static void OnDownloadCompleted(bool success, string message)
