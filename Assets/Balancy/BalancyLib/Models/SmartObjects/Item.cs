@@ -1,12 +1,12 @@
-using System;
-
 namespace Balancy.Models.SmartObjects
 {
     public class Item : BaseModel
     {
-        // public readonly LocalizedString Name;
+        private Localization.LocalizedString _name;
 
         private int _maxStack;
+        
+        public Localization.LocalizedString Name => _name;
         public int MaxStack => _maxStack;
 
         // public readonly ItemType Type;
@@ -14,6 +14,7 @@ namespace Balancy.Models.SmartObjects
         public override void InitData()
         {
             base.InitData();
+            _name = GetLocalizedString("name");
             _maxStack = GetIntParam("maxStack");
         }
     }

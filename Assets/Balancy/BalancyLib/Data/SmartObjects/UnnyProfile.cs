@@ -15,15 +15,15 @@ namespace Balancy.Data.SmartObjects
 		private Balancy.Data.SmartObjects.InventoryInfo _inventories;
         
         
-		// public Balancy.Data.SmartObjects.Payments Payments => _payments;
+		public Balancy.Data.SmartObjects.Payments Payments => _payments;
 		// public Balancy.Data.SmartObjects.ScriptsState ScriptsState => _scriptsState;
 		public Balancy.Data.SmartObjects.SmartInfo SmartInfo => _smartInfo;
 		public Balancy.Data.SmartObjects.SegmentsInfo SegmentsInfo => _segmentsInfo;
 		public Balancy.Data.SmartObjects.GeneralInfo GeneralInfo => _generalInfo;
 		public Balancy.Data.SmartObjects.TestsInfo TestsInfo => _testsInfo;
 		public Balancy.Data.SmartObjects.AdsInfo AdsInfo => _adsInfo;
-		// public Balancy.Data.SmartObjects.LiveOpsInfo LiveOpsInfo => _liveOpsInfo;
-		// public Balancy.Data.SmartObjects.InventoryInfo Inventories => _inventories;
+		public Balancy.Data.SmartObjects.LiveOpsInfo LiveOpsInfo => _liveOpsInfo;
+		public Balancy.Data.SmartObjects.InventoryInfo Inventories => _inventories;
         
         public override void InitData()
         {
