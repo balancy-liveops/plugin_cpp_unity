@@ -22,6 +22,9 @@ namespace Balancy
             if (!CheckConfig(appConfig))
                 return;
             
+            if (!CheckCallbacks())
+                return;
+            
             LibraryMethods.General.balancySetLogCallback(LogMessage);
             _mainThreadInstance = UnityMainThreadDispatcher.Instance();
             LibraryMethods.General.balancySetInvokeInMainThreadCallback(InvokeInMainThread);
@@ -68,7 +71,7 @@ namespace Balancy
                 LaunchType = _originalConfig.LaunchType,
                 BranchName = _originalConfig.BranchName,
                 Platform = (int)FindPlatform(_originalConfig.Platform),
-                AutoLogin = _originalConfig.AutoLogin,
+                AutoLogin = (byte)(_originalConfig.AutoLogin ? 1 : 0),
                 OnStatusUpdate = OnStatusUpdate,
                 OnProgressUpdateCallback = _originalConfig.OnProgressUpdateCallback,
                 DeviceId = string.IsNullOrEmpty(_originalConfig.DeviceId) ? Balancy.UnityUtils.GetUniqId() : _originalConfig.DeviceId,
@@ -119,132 +122,80 @@ namespace Balancy
                 switch (baseNotification.Type)
                 {
                     case Notifications.NotificationType.DataIsReady:
-                        var notificationDataIsReady =
-                            Marshal.PtrToStructure<Notifications.InitNotificationDataIsReady>(notificationPtr);
-                        notification = notificationDataIsReady;
+                        var notificationDataIsReady = Marshal.PtrToStructure<Notifications.InitNotificationDataIsReady>(notificationPtr);
                         DataUpdated(notificationDataIsReady.IsCMSUpdated, notificationDataIsReady.IsProfileUpdated);
                         _isReadyToUse = true;
+                        Balancy.Callbacks.OnDataUpdated?.Invoke(new Balancy.Callbacks.DataUpdatedStatus(
+                            notificationDataIsReady.IsCloudSynched, 
+                            notificationDataIsReady.IsCMSUpdated,
+                            notificationDataIsReady.IsProfileUpdated));
                         break;
                     case Notifications.NotificationType.AuthFailed:
-                        notification =
-                            Marshal.PtrToStructure<Notifications.InitNotificationAuthFailed>(notificationPtr);
+                        var authNotification = Marshal.PtrToStructure<Notifications.InitNotificationAuthFailed>(notificationPtr);
+                        Balancy.Callbacks.OnAuthFailed?.Invoke(new Balancy.Callbacks.ErrorStatus(authNotification.Message));
                         break;
                     case Notifications.NotificationType.CloudProfileFailed:
-                        notification =
-                            Marshal.PtrToStructure<Notifications.InitNotificationCloudProfileFailed>(notificationPtr);
+                        var profileNotification = Marshal.PtrToStructure<Notifications.InitNotificationCloudProfileFailed>(notificationPtr);
+                        Balancy.Callbacks.OnCloudProfileFailedToLoad?.Invoke(new Balancy.Callbacks.ErrorStatus(profileNotification.Message));
                         break;
-                    case Notifications.NotificationType.OnNewEventActivated:
-                    {
-                        var liveOpsNewEvent =
-                            Marshal.PtrToStructure<Notifications.LiveOpsNotification_OnNewEventActivated>(
-                                notificationPtr);
-                        notification = liveOpsNewEvent;
+                    case Notifications.NotificationType.OnNewEventActivated: {
+                        var liveOpsNewEvent = Marshal.PtrToStructure<Notifications.LiveOpsNotification_OnNewEventActivated>(notificationPtr);
                         var eventInfo = Profiles.System.SmartInfo.FindEventInfo(liveOpsNewEvent.EventInfo);
-                        
-                        Debug.LogError("**==> EVENT ON " + notification.Type + " : " +
-                                       eventInfo?.GameEvent?.Name?.Key);
+                        Balancy.Callbacks.OnNewEventActivated?.Invoke(eventInfo);
                         break;
                     }
-                    case Notifications.NotificationType.OnEventDeactivated:
-                    {
-                        var liveOpsEvent =
-                            Marshal.PtrToStructure<Notifications.LiveOpsNotification_OnEventDeactivated>(
-                                notificationPtr);
-                        notification = liveOpsEvent;
-
+                    case Notifications.NotificationType.OnEventDeactivated: {
+                        var liveOpsEvent = Marshal.PtrToStructure<Notifications.LiveOpsNotification_OnEventDeactivated>(notificationPtr);
                         var eventInfo = JsonBasedObject.CreateObject<EventInfo>(liveOpsEvent.EventInfo);
-                        Debug.LogError("**==> EVENT off " + notification.Type + " : " +
-                                       eventInfo?.GameEvent?.Name?.Key);
+                        Balancy.Callbacks.OnEventDeactivated?.Invoke(eventInfo);
                         break;
                     }
-                    case Notifications.NotificationType.OnNewOfferActivated:
-                    {
-                        var notificationTyped =
-                            Marshal.PtrToStructure<Notifications.LiveOpsNotification_OnNewOfferActivated>(
-                                notificationPtr);
-                        notification = notificationTyped;
+                    case Notifications.NotificationType.OnNewOfferActivated: {
+                        var notificationTyped = Marshal.PtrToStructure<Notifications.LiveOpsNotification_OnNewOfferActivated>(notificationPtr);
                         var offerInfo = Profiles.System.SmartInfo.FindOfferInfo(notificationTyped.OfferInfo);
-                        Debug.LogError("**==> OFFER ON " + notification.Type + " : " + offerInfo?.GameOffer?.Name?.Key);
+                        Balancy.Callbacks.OnNewOfferActivated?.Invoke(offerInfo);
                         break;
                     }
-                    case Notifications.NotificationType.OnOfferDeactivated:
-                    {
-                        var notificationTyped =
-                            Marshal.PtrToStructure<Notifications.LiveOpsNotification_OnOfferDeactivated>(
-                                notificationPtr);
-                        notification = notificationTyped;
-
-                        // var offerInfo = JsonBasedObject.CreateObject<OfferInfo>(notificationTyped.OfferInfo);
-                        // Debug.LogError("**==> OFFER off " + notification.Type + " : " +
-                        //                offerInfo?.GameOffer?.Name?.Key);
+                    case Notifications.NotificationType.OnOfferDeactivated: {
+                        var notificationTyped = Marshal.PtrToStructure<Notifications.LiveOpsNotification_OnOfferDeactivated>(notificationPtr);
+                        var offerInfo = JsonBasedObject.CreateObject<OfferInfo>(notificationTyped.OfferInfo);
+                        Balancy.Callbacks.OnOfferDeactivated?.Invoke(offerInfo);
                         break;
                     }
-
-                    case Notifications.NotificationType.OnNewOfferGroupActivated:
-                    {
-                        var notificationTyped =
-                            Marshal.PtrToStructure<Notifications.LiveOpsNotification_OnNewOfferGroupActivated>(
-                                notificationPtr);
-                        notification = notificationTyped;
+                    case Notifications.NotificationType.OnNewOfferGroupActivated: {
+                        var notificationTyped = Marshal.PtrToStructure<Notifications.LiveOpsNotification_OnNewOfferGroupActivated>(notificationPtr);
                         var offerInfo = Profiles.System.SmartInfo.FindOfferGroupInfo(notificationTyped.OfferInfo);
-                        Debug.LogError("**==> OFFER Group ON " + notification.Type + " : " +
-                                       offerInfo?.GameOfferGroup?.Name?.Key);
+                        Balancy.Callbacks.OnNewOfferGroupActivated?.Invoke(offerInfo);
                         break;
                     }
-                    case Notifications.NotificationType.OnOfferGroupDeactivated:
-                    {
-                        var notificationTyped =
-                            Marshal.PtrToStructure<Notifications.LiveOpsNotification_OnOfferGroupDeactivated>(
-                                notificationPtr);
-                        notification = notificationTyped;
-
+                    case Notifications.NotificationType.OnOfferGroupDeactivated: {
+                        var notificationTyped = Marshal.PtrToStructure<Notifications.LiveOpsNotification_OnOfferGroupDeactivated>(notificationPtr);
                         var offerInfo = JsonBasedObject.CreateObject<OfferGroupInfo>(notificationTyped.OfferInfo);
-                        Debug.LogError("**==> OFFER Group off " + notification.Type + " : " +
-                                       offerInfo?.GameOfferGroup?.Name?.Key);
+                        Balancy.Callbacks.OnOfferGroupDeactivated?.Invoke(offerInfo);
                         break;
                     }
-                    
-                    case Notifications.NotificationType.OnABTestStarted:
-                    {
-                        var notificationTyped =
-                            Marshal.PtrToStructure<Notifications.LiveOpsNotification_ABTestStarted>(
-                                notificationPtr);
-                        notification = notificationTyped;
-                        var offerInfo = Profiles.System.TestsInfo.FindAbTestInfo(notificationTyped.ABTestInfo);
-                        Debug.LogError("**==> ABTEST Group ON : " +
-                                       offerInfo?.Test?.Name + " Variant = " + offerInfo?.Variant?.Name + " FINISHED = " + offerInfo?.Finished);
+                    case Notifications.NotificationType.OnABTestStarted: {
+                        var notificationTyped = Marshal.PtrToStructure<Notifications.LiveOpsNotification_ABTestStarted>(notificationPtr);
+                        var abTestInfo = Profiles.System.TestsInfo.FindAbTestInfo(notificationTyped.ABTestInfo);
+                        Balancy.Callbacks.OnNewAbTestStarted?.Invoke(abTestInfo);
                         break;
                     }
-                    
-                    case Notifications.NotificationType.OnABTestEnded:
-                    {
-                        var notificationTyped =
-                            Marshal.PtrToStructure<Notifications.LiveOpsNotification_ABTestEnded>(
-                                notificationPtr);
-                        notification = notificationTyped;
-                        var offerInfo = Profiles.System.TestsInfo.FindAbTestInfo(notificationTyped.ABTestInfo);
-                        Debug.LogError("**==> ABTEST Group OFF : " +
-                                       offerInfo?.Test?.Name + " Variant = " + offerInfo?.Variant?.Name + " FINISHED = " + offerInfo?.Finished);
+                    case Notifications.NotificationType.OnABTestEnded: {
+                        var notificationTyped = Marshal.PtrToStructure<Notifications.LiveOpsNotification_ABTestEnded>(notificationPtr);
+                        var abTestInfo = Profiles.System.TestsInfo.FindAbTestInfo(notificationTyped.ABTestInfo);
+                        Balancy.Callbacks.OnAbTestEnded?.Invoke(abTestInfo);
                         break;
                     }
-                    
-                    case Notifications.NotificationType.OnSegmentUpdated:
-                    {
-                        var notificationTyped =
-                            Marshal.PtrToStructure<Notifications.LiveOpsNotification_SegmentUpdated>(
-                                notificationPtr);
-                        notification = notificationTyped;
-                        var offerInfo = Profiles.System.SegmentsInfo.FindSegmentIndo(notificationTyped.SegmentInfo);
-                        Debug.LogError("**==> SEGMENT : " +
-                                       offerInfo?.Segment?.Name + " Is in = " + offerInfo?.IsIn);
+                    case Notifications.NotificationType.OnSegmentUpdated: {
+                        var notificationTyped = Marshal.PtrToStructure<Notifications.LiveOpsNotification_SegmentUpdated>(notificationPtr);
+                        var segmentIndo = Profiles.System.SegmentsInfo.FindSegmentIndo(notificationTyped.SegmentInfo);
+                        Balancy.Callbacks.OnSegmentInfoUpdated?.Invoke(segmentIndo);
                         break;
                     }
                     default:
                         Debug.LogError("**==> Unknown notification type. " + baseNotification.Type);
                         break;
                 }
-
-                _originalConfig.OnStatusUpdate?.Invoke(notification);
             }
             catch (Exception e)
             {
@@ -256,15 +207,26 @@ namespace Balancy
         {
             if (string.IsNullOrEmpty(appConfig.ApiGameId))
             {
-                Debug.LogError("Please provide Api Game Id in Config;");
+                Debug.LogError("Balancy Init Failed. Please provide Api Game Id in Config;");
                 return false;
             }
             
             if (string.IsNullOrEmpty(appConfig.PublicKey))
             {
-                Debug.LogError("Please provide Public Key in Config;");
+                Debug.LogError("Balancy Init Failed. Please provide Public Key in Config;");
                 return false;
             }
+            return true;
+        }
+
+        private static bool CheckCallbacks()
+        {
+            if (Balancy.Callbacks.OnDataUpdated == null)
+            {
+                Debug.LogError("Balancy Init Failed. Balancy.Callbacks.OnDataUpdated is mandatory, please provide it; You can't access any data before the callback is invoked;");
+                return false;
+            }
+
             return true;
         }
         

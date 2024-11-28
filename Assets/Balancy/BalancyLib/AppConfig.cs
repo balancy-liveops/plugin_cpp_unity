@@ -87,14 +87,14 @@ namespace Balancy
         public UpdateType UpdateType = UpdateType.FullUpdate;
         public int UpdatePeriod = 600;
 
-        public StatusUpdateNotificationCallback OnStatusUpdate = null;
+        // public StatusUpdateNotificationCallback OnStatusUpdate = null;
         public ProgressUpdateCallback OnProgressUpdateCallback = null;
 
         public LaunchType LaunchType = LaunchType.Local | LaunchType.Cloud | LaunchType.AutoRetry;
         public string BranchName;//If left blank, we'll use the branchConditions to find the best branch.
         
         public Constants.Platform Platform;
-        public byte AutoLogin = 1;
+        public bool AutoLogin = true;
         
         public string DeviceId = null;
         public string CustomId = null;

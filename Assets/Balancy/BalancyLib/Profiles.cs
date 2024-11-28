@@ -14,8 +14,11 @@ namespace Balancy
         
         public static T Get<T>() where T : Data.ParentBaseData, new()
         {
-            var className = JsonBasedObject.GetDataClassName<T>();
-
+            var classNameFull = JsonBasedObject.GetDataClassName<T>();
+            
+            var elements = classNameFull.Split(".");
+            var className = elements[^1];
+            
             if (_cachedProfiles.TryGetValue(className, out var profile))
                 return profile as T;
             

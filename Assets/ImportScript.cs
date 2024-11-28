@@ -30,6 +30,9 @@ public class ImportScript : MonoBehaviour
 
     private void InitFinal()
     {
+        Balancy.Callbacks.ClearAll();
+        Balancy.Callbacks.InitExamplesWithLogs();
+        
         t1 = Time.realtimeSinceStartupAsDouble;
         var config = CreateAppConfig();
         Balancy.Main.Init(config);
@@ -151,14 +154,10 @@ public class ImportScript : MonoBehaviour
             ApiGameId = "6f5d4614-36c0-11ef-9145-066676c39f77",
             PublicKey = "MzA5MGY0NWUwNGE5MTk5ZDU4MDAzNT",
             Environment = Constants.Environment.Development,
-            UpdateType = UpdateType.FullUpdate,
-            UpdatePeriod = 600,
-            OnStatusUpdate = OnStatusUpdate,
-            AutoLogin = 0,
             CustomId = "My_Custom_Id",
             OnProgressUpdateCallback = (fileName, progress) =>
             {
-                Debug.Log($"Progress {(int)(progress*100)}% - {fileName}");
+                Debug.Log($"Launch progress {(int)(progress*100)}% - {fileName}");
             }
         };
     }
@@ -207,19 +206,19 @@ public class ImportScript : MonoBehaviour
 
     private void OnGUI()
     {
-        Rect rect = new Rect(100, 10, 300, 30);
-        RenderButton(rect, "855", TestImage);
-        rect.y += rect.height;
-        RenderButton(rect, "856", TestImage);
-        rect.y += rect.height;
-        RenderButton(rect, "1132", TestImage);
-        
-        rect.y += rect.height;
-        if (GUI.Button(rect, "Clean: "))
-            DataObjectsManager.ClearFromMemory("1132");
-        rect.y += rect.height;
-        if (GUI.Button(rect, "Delete: "))
-            DataObjectsManager.ClearFromDisk("1132");
+        // Rect rect = new Rect(100, 10, 300, 30);
+        // RenderButton(rect, "855", TestImage);
+        // rect.y += rect.height;
+        // RenderButton(rect, "856", TestImage);
+        // rect.y += rect.height;
+        // RenderButton(rect, "1132", TestImage);
+        //
+        // rect.y += rect.height;
+        // if (GUI.Button(rect, "Clean: "))
+        //     DataObjectsManager.ClearFromMemory("1132");
+        // rect.y += rect.height;
+        // if (GUI.Button(rect, "Delete: "))
+        //     DataObjectsManager.ClearFromDisk("1132");
         
         // var profile = Profiles.Get<Profile>();
         // if (profile == null)
@@ -255,45 +254,7 @@ public class ImportScript : MonoBehaviour
         // if (GUI.Button(rect, "Ad Watched"))
         //     Balancy.LiveOps.Ads.TrackRevenue(Ads.AdType.Rewarded, 0.31, "test");
     }
-
-    // void Update()
-    // {
-    //     var profile = Profiles.System?.SmartInfo?.GameEvents;
-    //     if (profile != null)
-    //         Debug.Log($"EVENTs count = {profile.Count}");
-    //     else
-    //         Debug.Log($"EVENTs NO PROFILE");
-    // }
-
-    private void OnStatusUpdate(Notifications.NotificationBase notification)
-    {
-        switch (notification)
-        {
-            case Notifications.InitNotificationDataIsReady dataIsReady:
-                Debug.LogError($"**==> Data is Ready; Cloud =" + dataIsReady.IsCloudSynched + $" ;DICT = {dataIsReady.IsCMSUpdated}, Profiles = {dataIsReady.IsProfileUpdated}" + " Size = " + Marshal.SizeOf(typeof(Notifications.InitNotificationDataIsReady)));
-                if (dataIsReady.IsCloudSynched)
-                {
-                    // TestItem("814");
-                    // TestItemEnum("814");
-                    // TestProfile();
-                }
-
-                // if (dataIsReady.IsCMSUpdated)
-                //     TestItem("872");
-                // TestItems();
-                break;
-            case Notifications.InitNotificationAuthFailed authFailed:
-                Debug.LogError($"**==> Auth failed. {authFailed.Message} " + " Size = " + Marshal.SizeOf(typeof(Notifications.InitNotificationAuthFailed)));
-                break;
-            case Notifications.InitNotificationCloudProfileFailed profileFailed:
-                Debug.LogError($"**==> Profile load failed. {profileFailed.Message}" + " Size = " + Marshal.SizeOf(typeof(Notifications.InitNotificationCloudProfileFailed)));
-                break;
-            // default:
-            //     Debug.LogError("**==> Unknown notification type. " + notification.Type);
-            //     break;
-        }
-    }
-
+    
     private void OnApplicationQuit()
     {
         Main.Stop();
