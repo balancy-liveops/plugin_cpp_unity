@@ -240,7 +240,23 @@ namespace Balancy
             internal delegate void ResponseCallback(IntPtr responseData);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern bool balancySoftPurchaseStoreItem(IntPtr storeItemPointer);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern bool balancySoftPurchaseGameOffer(IntPtr gameOfferPointer);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern bool balancySoftPurchaseGameOfferGroup(IntPtr gameOfferPointer, IntPtr storeItemPointer);
+            
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyHardPurchaseStoreItem(IntPtr storeItemPointer, Balancy.Core.PaymentInfo paymentInfo, ResponseCallback callback, bool requireValidation);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyHardPurchaseGameOffer(IntPtr gameOfferPointer, Balancy.Core.PaymentInfo paymentInfo, ResponseCallback callback, bool requireValidation);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyHardPurchaseGameOfferGroup(IntPtr gameOfferPointer, IntPtr storeItemPointer, Balancy.Core.PaymentInfo paymentInfo, ResponseCallback callback, bool requireValidation);
         }
     }
 }

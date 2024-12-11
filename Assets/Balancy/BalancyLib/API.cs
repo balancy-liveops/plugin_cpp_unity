@@ -1,14 +1,45 @@
+using System;
 using System.Runtime.InteropServices;
+using Balancy.Data.SmartObjects;
 using Balancy.Models.SmartObjects;
 
 namespace Balancy
 {
     public static class API
     {
+        public static bool SoftPurchaseStoreItem(StoreItem storeItem)
+        {
+            return Balancy.LibraryMethods.API.balancySoftPurchaseStoreItem(storeItem?.GetRawPointer() ?? IntPtr.Zero);
+        }
+
+        public static bool SoftPurchaseGameOffer(OfferInfo offerInfo)
+        {
+            return Balancy.LibraryMethods.API.balancySoftPurchaseGameOffer(offerInfo?.GetRawPointer() ?? IntPtr.Zero);
+        }
+
+        public static bool SoftPurchaseGameOfferGroup(OfferGroupInfo offerInfo, StoreItem storeItem)
+        {
+            return Balancy.LibraryMethods.API.balancySoftPurchaseGameOfferGroup(offerInfo?.GetRawPointer() ?? IntPtr.Zero, storeItem?.GetRawPointer() ?? IntPtr.Zero);
+        }
+        
         public static void HardPurchaseStoreItem(StoreItem storeItem, Balancy.Core.PaymentInfo paymentInfo,
             Balancy.Core.ResponseCallback<Balancy.Core.Responses.PurchaseProductResponseData> callback, bool requireValidation)
         {
-            Balancy.LibraryMethods.API.balancyHardPurchaseStoreItem(storeItem.GetRawPointer(), paymentInfo,
+            Balancy.LibraryMethods.API.balancyHardPurchaseStoreItem(storeItem?.GetRawPointer() ?? IntPtr.Zero, paymentInfo,
+                ProtectedFromGCCallback(callback), requireValidation);
+        }
+
+        public static void HardPurchaseGameOffer(OfferInfo offerInfo, Balancy.Core.PaymentInfo paymentInfo,
+            Balancy.Core.ResponseCallback<Balancy.Core.Responses.PurchaseProductResponseData> callback, bool requireValidation)
+        {
+            Balancy.LibraryMethods.API.balancyHardPurchaseGameOffer(offerInfo?.GetRawPointer() ?? IntPtr.Zero, paymentInfo,
+                ProtectedFromGCCallback(callback), requireValidation);
+        }
+
+        public static void HardPurchaseGameOfferGroup(OfferGroupInfo offerInfo, StoreItem storeItem, Balancy.Core.PaymentInfo paymentInfo,
+            Balancy.Core.ResponseCallback<Balancy.Core.Responses.PurchaseProductResponseData> callback, bool requireValidation)
+        {
+            Balancy.LibraryMethods.API.balancyHardPurchaseGameOfferGroup(offerInfo?.GetRawPointer() ?? IntPtr.Zero, storeItem?.GetRawPointer() ?? IntPtr.Zero, paymentInfo,
                 ProtectedFromGCCallback(callback), requireValidation);
         }
 
@@ -24,7 +55,6 @@ namespace Balancy
             
             gch = GCHandle.Alloc(innerCallback);
             return innerCallback;
-        }   
-
+        }
     }
 }
