@@ -17,9 +17,9 @@ namespace Balancy
             return Balancy.LibraryMethods.API.balancySoftPurchaseGameOffer(offerInfo?.GetRawPointer() ?? IntPtr.Zero);
         }
 
-        public static bool SoftPurchaseGameOfferGroup(OfferGroupInfo offerInfo, StoreItem storeItem)
+        public static bool SoftPurchaseGameOfferGroup(OfferGroupInfo offerGroupInfo, StoreItem storeItem)
         {
-            return Balancy.LibraryMethods.API.balancySoftPurchaseGameOfferGroup(offerInfo?.GetRawPointer() ?? IntPtr.Zero, storeItem?.GetRawPointer() ?? IntPtr.Zero);
+            return Balancy.LibraryMethods.API.balancySoftPurchaseGameOfferGroup(offerGroupInfo?.GetRawPointer() ?? IntPtr.Zero, storeItem?.GetRawPointer() ?? IntPtr.Zero);
         }
         
         public static void HardPurchaseStoreItem(StoreItem storeItem, Balancy.Core.PaymentInfo paymentInfo,
@@ -36,10 +36,10 @@ namespace Balancy
                 ProtectedFromGCCallback(callback), requireValidation);
         }
 
-        public static void HardPurchaseGameOfferGroup(OfferGroupInfo offerInfo, StoreItem storeItem, Balancy.Core.PaymentInfo paymentInfo,
+        public static void HardPurchaseGameOfferGroup(OfferGroupInfo offerGroupInfo, StoreItem storeItem, Balancy.Core.PaymentInfo paymentInfo,
             Balancy.Core.ResponseCallback<Balancy.Core.Responses.PurchaseProductResponseData> callback, bool requireValidation)
         {
-            Balancy.LibraryMethods.API.balancyHardPurchaseGameOfferGroup(offerInfo?.GetRawPointer() ?? IntPtr.Zero, storeItem?.GetRawPointer() ?? IntPtr.Zero, paymentInfo,
+            Balancy.LibraryMethods.API.balancyHardPurchaseGameOfferGroup(offerGroupInfo?.GetRawPointer() ?? IntPtr.Zero, storeItem?.GetRawPointer() ?? IntPtr.Zero, paymentInfo,
                 ProtectedFromGCCallback(callback), requireValidation);
         }
 
