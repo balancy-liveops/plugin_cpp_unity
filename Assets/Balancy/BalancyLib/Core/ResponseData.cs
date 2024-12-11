@@ -20,7 +20,7 @@ namespace Balancy.Core
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
         public class PurchaseProductResponseData : ResponseData
         {
-            [MarshalAs(UnmanagedType.LPStr)] public string productId;
+            [MarshalAs(UnmanagedType.LPStr)] public string ProductId;
         }
     }
 }

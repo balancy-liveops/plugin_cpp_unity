@@ -9,7 +9,7 @@ namespace Balancy
             Balancy.Core.ResponseCallback<Balancy.Core.Responses.PurchaseProductResponseData> callback, bool requireValidation)
         {
             Balancy.LibraryMethods.API.balancyHardPurchaseStoreItem(storeItem.GetRawPointer(), paymentInfo,
-                ProtectedFromGCCallback(callback), false);
+                ProtectedFromGCCallback(callback), requireValidation);
         }
 
         private static Balancy.LibraryMethods.API.ResponseCallback ProtectedFromGCCallback<T>(Balancy.Core.ResponseCallback<T> callback) where T : Balancy.Core.Responses.ResponseData
@@ -22,7 +22,7 @@ namespace Balancy
                 callback(responseData);
             };
             
-            gch = GCHandle.Alloc(callback);
+            gch = GCHandle.Alloc(innerCallback);
             return innerCallback;
         }   
 
