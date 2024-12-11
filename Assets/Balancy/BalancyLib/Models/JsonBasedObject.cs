@@ -22,6 +22,11 @@ namespace Balancy.Models
         {
             _pointer = p;
         }
+
+        internal IntPtr GetRawPointer()
+        {
+            return _pointer;
+        }
         
         internal void RefreshData(IntPtr p)
         {

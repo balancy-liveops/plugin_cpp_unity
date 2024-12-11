@@ -233,5 +233,14 @@ namespace Balancy
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyConfigGenerateCode(DownloadCompleteCallback onReadyCallback);
         }
+        
+        public static class API
+        {
+            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+            internal delegate void ResponseCallback(IntPtr responseData);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyHardPurchaseStoreItem(IntPtr storeItemPointer, Balancy.Core.PaymentInfo paymentInfo, ResponseCallback callback, bool requireValidation);
+        }
     }
 }

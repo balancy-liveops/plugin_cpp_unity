@@ -76,6 +76,7 @@ namespace Balancy
                 OnProgressUpdateCallback = _originalConfig.OnProgressUpdateCallback,
                 DeviceId = string.IsNullOrEmpty(_originalConfig.DeviceId) ? Balancy.UnityUtils.GetUniqId() : _originalConfig.DeviceId,
                 AppVersion = string.IsNullOrEmpty(_originalConfig.AppVersion) ? Application.version : _originalConfig.AppVersion,
+                BundleId = string.IsNullOrEmpty(_originalConfig.BundleId) ? Application.identifier : _originalConfig.BundleId,
                 EngineVersion = string.IsNullOrEmpty(_originalConfig.EngineVersion) ? Balancy.UnityUtils.GetEngineVersion() : _originalConfig.EngineVersion,
                 CustomId = string.IsNullOrEmpty(_originalConfig.CustomId) ? string.Empty : _originalConfig.CustomId,
                 DeviceModel = SystemInfo.deviceModel,
@@ -159,7 +160,7 @@ namespace Balancy
                     case Notifications.NotificationType.OnOfferDeactivated: {
                         var notificationTyped = Marshal.PtrToStructure<Notifications.LiveOpsNotification_OnOfferDeactivated>(notificationPtr);
                         var offerInfo = JsonBasedObject.CreateObject<OfferInfo>(notificationTyped.OfferInfo);
-                        Balancy.Callbacks.OnOfferDeactivated?.Invoke(offerInfo);
+                        Balancy.Callbacks.OnOfferDeactivated?.Invoke(offerInfo, notificationTyped.WasPurchased);
                         break;
                     }
                     case Notifications.NotificationType.OnNewOfferGroupActivated: {

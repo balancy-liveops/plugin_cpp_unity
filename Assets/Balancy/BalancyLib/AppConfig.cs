@@ -58,6 +58,9 @@ namespace Balancy
         public string AppVersion = null;
         
         [MarshalAs(UnmanagedType.LPStr)]
+        public string BundleId = null;
+        
+        [MarshalAs(UnmanagedType.LPStr)]
         public string EngineVersion = null;
         
         [MarshalAs(UnmanagedType.LPStr)]
@@ -99,6 +102,7 @@ namespace Balancy
         public string DeviceId = null;
         public string CustomId = null;
         public string AppVersion = null;
+        public string BundleId = null;
         public string EngineVersion = null;
     }
     

@@ -33,6 +33,7 @@ namespace Balancy
         public delegate void OnErrorDelegate(ErrorStatus status);
         public delegate void OnEventInfoDelegate(EventInfo eventInfo);
         public delegate void OnOfferInfoDelegate(OfferInfo offerInfo);
+        public delegate void OnOfferInfoDelegatePurchased(OfferInfo offerInfo, bool wasPurchased);
         public delegate void OnOfferGroupInfoDelegate(OfferGroupInfo offerGroupInfo);
         public delegate void OnAbTestInfoDelegate(AbTestInfo abTestInfo);
         public delegate void OnSegmentInfoDelegate(SegmentInfo segmentInfo);
@@ -43,7 +44,7 @@ namespace Balancy
         public static OnEventInfoDelegate OnNewEventActivated = null;
         public static OnEventInfoDelegate OnEventDeactivated = null;
         public static OnOfferInfoDelegate OnNewOfferActivated = null;
-        public static OnOfferInfoDelegate OnOfferDeactivated = null;
+        public static OnOfferInfoDelegatePurchased OnOfferDeactivated = null;
         public static OnOfferGroupInfoDelegate OnNewOfferGroupActivated = null;
         public static OnOfferGroupInfoDelegate OnOfferGroupDeactivated = null;
         public static OnAbTestInfoDelegate OnNewAbTestStarted = null;
@@ -59,7 +60,7 @@ namespace Balancy
             OnNewEventActivated += eventInfo => Debug.Log(" => Balancy.OnNewEventActivated: " + eventInfo?.GameEvent?.Name);
             OnEventDeactivated += eventInfo => Debug.Log(" => Balancy.OnEventDeactivated: " + eventInfo?.GameEvent?.Name);
             OnNewOfferActivated += offerInfo => Debug.Log(" => Balancy.OnNewOfferActivated: " + offerInfo?.GameOffer?.Name);
-            OnOfferDeactivated += offerInfo => Debug.Log(" => Balancy.OnOfferDeactivated: " + offerInfo?.GameOffer?.Name);
+            OnOfferDeactivated += (offerInfo, wasPurchased) => Debug.Log(" => Balancy.OnOfferDeactivated: " + offerInfo?.GameOffer?.Name + " ; wasPurchased = " + wasPurchased);
             OnNewOfferGroupActivated += offerGroupInfo => Debug.Log(" => Balancy.OnNewOfferGroupActivated: " + offerGroupInfo?.GameOfferGroup?.Name);
             OnOfferGroupDeactivated += offerGroupInfo => Debug.Log(" => Balancy.OnOfferGroupDeactivated: " + offerGroupInfo?.GameOfferGroup?.Name);
             OnNewAbTestStarted += abTestInfo => Debug.Log(" => Balancy.OnNewAbTestStarted: " + abTestInfo?.Test?.Name);
