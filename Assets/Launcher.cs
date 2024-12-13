@@ -7,7 +7,7 @@ public class Launcher : MonoBehaviour
 {
     private double t1;
     
-    private void Start()
+    private void Awake()
     {
         Balancy.Callbacks.ClearAll();
         Balancy.Callbacks.InitExamplesWithLogs();
