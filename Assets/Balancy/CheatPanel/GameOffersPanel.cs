@@ -1,4 +1,3 @@
-using System;
 using Balancy.Cheats;
 using Balancy.Data.SmartObjects;
 using Balancy.Example;

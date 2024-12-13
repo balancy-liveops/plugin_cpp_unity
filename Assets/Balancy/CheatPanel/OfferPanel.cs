@@ -50,20 +50,23 @@ namespace Balancy.Cheats
                 Price = price.Product.Price,
                 Currency = "USD",
                 OrderId = Guid.NewGuid().ToString(),
-                ProductId = price.Product.ProductId
+                ProductId = price.Product.ProductId,
+                Receipt = "<receipt>"
             };
             
             //Below is the testing receipt, it's not designer for the production
-            paymentInfo.Receipt = "{\"Payload\":\"{\\\"json\\\":\\\"{\\\\\\\"orderId\\\\\\\":\\\\\\\"" + paymentInfo.OrderId + "\\\\\\\",\\\\\\\"productId\\\\\\\":\\\\\\\"" + paymentInfo.ProductId + "\\\\\\\"}\\\",\\\"signature\\\":\\\"bypass\\\"}\"}";
+            // paymentInfo.Receipt = "{\"Payload\":\"{\\\"json\\\":\\\"{\\\\\\\"orderId\\\\\\\":\\\\\\\"" + paymentInfo.OrderId + "\\\\\\\",\\\\\\\"productId\\\\\\\":\\\\\\\"" + paymentInfo.ProductId + "\\\\\\\"}\\\",\\\"signature\\\":\\\"bypass\\\"}\"}";
             
             void PurchaseCompleted(Balancy.Core.Responses.PurchaseProductResponseData responseData) {
-                Debug.LogError("TSuccess = " + responseData.Success);
-                Debug.LogError("ErrorCode = " + responseData.ErrorCode);
-                Debug.LogError("ErrorMessage = " + responseData.ErrorMessage);
-                Debug.LogError("productId = " + responseData.ProductId);
+                Debug.Log("Purchase of " + responseData.ProductId + " success = " + responseData.Success);
+                if (!responseData.Success)
+                {
+                    Debug.Log("ErrorCode = " + responseData.ErrorCode);
+                    Debug.Log("ErrorMessage = " + responseData.ErrorMessage);
+                }
             }
             
-            Balancy.API.HardPurchaseGameOffer(_offerInfo, paymentInfo, PurchaseCompleted, true);
+            Balancy.API.HardPurchaseGameOffer(_offerInfo, paymentInfo, PurchaseCompleted, false);
         }
 
         public void Init(OfferInfo offerInfo)
