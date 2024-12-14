@@ -17,6 +17,11 @@ public class Launcher : MonoBehaviour
         Balancy.Main.Init(config);
     }
     
+    private void OnApplicationQuit()
+    {
+        Main.Stop();
+    }
+    
     private AppConfig CreateAppConfig()
     {
         return new AppConfig

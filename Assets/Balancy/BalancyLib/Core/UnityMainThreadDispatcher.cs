@@ -60,6 +60,11 @@ namespace Balancy
         {
             _isDestroyed = true; // Mark as destroyed to avoid reusing the old instance
         }
+        
+        private void OnApplicationQuit()
+        {
+            Main.Stop();
+        }
 
         // Explicitly stop the dispatcher, removing it when no longer needed
         public static void StopDispatcher()
