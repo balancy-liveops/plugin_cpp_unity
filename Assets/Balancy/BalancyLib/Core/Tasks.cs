@@ -104,6 +104,11 @@ namespace Balancy
             return Periodic(duration, ONE_FRAME, callback, doneCallback);
         }
         
+        public static CancellationTokenSource Periodic(float period, Action<float> callback)
+        {
+            return Periodic(-1, period, callback, null);
+        }
+        
         public static CancellationTokenSource Periodic(float duration, float period, Action<float> callback, Action doneCallback)
         {
             var token = new CancellationTokenSource();

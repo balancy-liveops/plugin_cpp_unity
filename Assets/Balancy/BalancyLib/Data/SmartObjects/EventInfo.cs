@@ -10,6 +10,7 @@ namespace Balancy.Data.SmartObjects
 		private int _session;
         
 		public Balancy.Models.SmartObjects.GameEvent GameEvent => GetModelByUnnyId<Balancy.Models.SmartObjects.GameEvent>(_unnyIdGameEvent);
+		public string GameEventUnnyId => _unnyIdGameEvent;
 		
 		public string OfferInstanceId
 		{
@@ -48,5 +49,7 @@ namespace Balancy.Data.SmartObjects
 		private void Update_scriptInstance() { _scriptInstance = GetStringParam("scriptInstance"); }
 		private void Update_startTime() { _startTime = GetIntParam("startTime"); }
 		private void Update_session() { _session = GetIntParam("session"); }
+		
+		public int GetSecondsLeftBeforeDeactivation() => LibraryMethods.Extra.balancyEventInfo_GetSecondsLeftBeforeDeactivation(GetRawPointer());
     }
 }

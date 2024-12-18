@@ -40,5 +40,7 @@ namespace Balancy.Data.SmartObjects
 		private void Update_instanceId() { _instanceId = GetStringParam("instanceId"); }
 		private void Update_startTime() { _startTime = GetIntParam("startTime"); }
 		private void Update_session() { _session = GetIntParam("session"); }
+		
+		public int GetSecondsLeftBeforeDeactivation() => LibraryMethods.Extra.balancyOfferInfo_GetSecondsLeftBeforeDeactivation(GetRawPointer());
     }
 }

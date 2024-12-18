@@ -31,5 +31,7 @@ namespace Balancy.Models.SmartObjects
 			_unnyIdScript = GetStringParam("unnyIdScript");
         }
         
+        public int GetSecondsLeftBeforeDeactivation() => LibraryMethods.Extra.balancyGameEvent_GetSecondsLeftBeforeDeactivation(GetRawPointer());
+        public int GetSecondsBeforeActivation(bool ignoreTriggers = true) => LibraryMethods.Extra.balancyGameEvent_GetSecondsBeforeActivation(GetRawPointer(), ignoreTriggers);
     }
 }

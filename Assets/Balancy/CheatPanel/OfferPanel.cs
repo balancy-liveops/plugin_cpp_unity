@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using Balancy.Data.SmartObjects;
 using Balancy.Models.SmartObjects;
 using TMPro;
@@ -18,10 +19,30 @@ namespace Balancy.Cheats
         [SerializeField] private TMP_Text timer;
 
         private OfferInfo _offerInfo;
+        private CancellationTokenSource _timerToken;
 
         private void Awake()
         {
             buyButton.onClick.AddListener(TryToBuy);
+        }
+
+        private void OnEnable()
+        {
+            _timerToken = Tasks.Periodic(1, UpdateTimer);
+            UpdateTimer(0);
+        }
+        
+        private void OnDisable()
+        {
+            Tasks.StopTaskRemotely(_timerToken);
+        }
+
+        private void UpdateTimer(float time)
+        {
+            if (timer == null)
+                return;
+
+            timer.text = TimeFormatter.FormatUnixTime(_offerInfo?.GetSecondsLeftBeforeDeactivation() ?? 0);
         }
 
         private void TryToBuy()
@@ -101,14 +122,6 @@ namespace Balancy.Cheats
                     buyButtonText.text = "Not implemented Price Type";
                     break;
             }
-        }
-        
-        private void Update()
-        {
-            if (timer == null)
-                return;
-            
-            //TODO timer update
         }
     }
 }

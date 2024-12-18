@@ -181,6 +181,21 @@ namespace Balancy
             public static extern void balancySystemProfileTrackRevenue(Ads.AdType adType, double revenue, string placement);
         }
 
+        public static class Extra
+        {
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancyOfferInfo_GetSecondsLeftBeforeDeactivation(IntPtr offerInfoPointer);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancyEventInfo_GetSecondsLeftBeforeDeactivation(IntPtr eventInfoPointer);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancyGameEvent_GetSecondsLeftBeforeDeactivation(IntPtr gameEventPointer);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancyGameEvent_GetSecondsBeforeActivation(IntPtr gameEventPointer, bool ignoreTriggers);
+        }
+
         public static class Editor
         {
             public enum Language {
