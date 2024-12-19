@@ -7,6 +7,17 @@ namespace Balancy
 {
     public static class API
     {
+        private static BalancyStatus _status;
+
+        public static BalancyStatus GetStatus()
+        {
+            var ptr = Balancy.LibraryMethods.General.balancyGetStatus();
+            if (_status == null)
+                _status = new BalancyStatus();
+            _status.SetData(ptr);
+            return _status;
+        }
+        
         public static bool SoftPurchaseStoreItem(StoreItem storeItem)
         {
             return Balancy.LibraryMethods.API.balancySoftPurchaseStoreItem(storeItem?.GetRawPointer() ?? IntPtr.Zero);

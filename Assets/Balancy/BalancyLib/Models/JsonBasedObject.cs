@@ -171,7 +171,7 @@ namespace Balancy.Models
             return LibraryMethods.Models.balancyGetIntParam(_pointer, paramName);
         }
         
-        protected int GetLongParam(string paramName)
+        protected long GetLongParam(string paramName)
         {
             return LibraryMethods.Models.balancyGetLongParam(_pointer, paramName);
         }

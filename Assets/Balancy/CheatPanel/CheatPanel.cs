@@ -1,3 +1,4 @@
+using System;
 using Balancy.Data;
 using Balancy.Data.SmartObjects;
 using Balancy.Models.SmartObjects.Analytics;
@@ -16,6 +17,12 @@ namespace Balancy.Cheats
         [SerializeField] private TMP_Text abTestsInfo;
         [SerializeField] private TMP_Text segmentsInfo;
         [SerializeField] private Button resetButton;
+        
+        
+        [SerializeField] private TMP_Text statusBranch;
+        [SerializeField] private TMP_Text statusDeploy;
+        [SerializeField] private TMP_Text statusServerTime;
+        [SerializeField] private TMP_Text statusGameTime;
 
         private float refreshTimeLeft = 0;
 
@@ -49,6 +56,25 @@ namespace Balancy.Cheats
             generalInfo.SetText(PrepareGeneralInfoText());
             abTestsInfo.SetText(PrepareABTestsInfoText());
             segmentsInfo.SetText(PrepareSegmentsInfoText());
+            RefreshStatus();
+        }
+
+        private void RefreshStatus()
+        {
+            //Never cache this value, to keep it actual
+            var status = Balancy.API.GetStatus();
+            
+            statusBranch.SetText(status.BranchName);
+            statusDeploy.SetText(status.Deploy.ToString());
+            statusServerTime.SetText(GetHumanReadableTime(status.ServerTime));
+            statusGameTime.SetText(GetHumanReadableTime(status.GameTime));
+        }
+
+        private string GetHumanReadableTime(long unixTime)
+        {
+            DateTime dateTime = new DateTime(1970, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc);
+            dateTime = dateTime.AddSeconds(unixTime);
+            return dateTime.ToShortDateString() + "\n" + dateTime.ToLongTimeString();
         }
 
         private void HideWindow()

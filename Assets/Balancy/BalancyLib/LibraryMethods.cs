@@ -52,6 +52,9 @@ namespace Balancy
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern IntPtr balancyGetInheritance(out int size);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyGetStatus();
         }
 
         public static class Models
@@ -173,6 +176,9 @@ namespace Balancy
             public static extern void balancySetBaseDataParamChanged(ParamChangedCallback callback);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancySetBaseDataDestroyed(DataDestroyedCallback callback);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancyProfile_GetLastCloudSyncTime(IntPtr profile);
         }
 
         public static class Profile
