@@ -56,7 +56,22 @@ namespace Balancy
 
         internal static void RefreshAll()
         {
-            AllModels.Clear();
+            List<string> keysToRemove = new List<string>();
+            foreach (var kvp in AllModels)
+            {
+                var pointer = GetModelByUnnyId(kvp.Key);
+                if (pointer == IntPtr.Zero)
+                {
+                    kvp.Value.SetData(IntPtr.Zero);
+                    keysToRemove.Add(kvp.Key);
+                    continue;
+                }
+                
+                kvp.Value.RefreshData(pointer);
+            }
+
+            foreach (var key in keysToRemove)
+                AllModels.Remove(key);
             Inheritance = GetInheritance();
         }
 
