@@ -49,6 +49,8 @@ namespace Balancy.Models
     
     public class UnnyDate : JsonBasedObject
     {
+        internal static DateTime EPOCH_START = new DateTime(1970, 1, 1, 0, 0, 0, System.DateTimeKind.Utc);
+        
         private int time;
         public int Time => time;
 
@@ -58,16 +60,34 @@ namespace Balancy.Models
             time = GetIntParam("value");
         }
 
-        // private DateTime? dateTime;
-        // public DateTime DateTime
-        // {
-        //     get
-        //     {
-        //         if (!dateTime.HasValue)
-        //             dateTime = UnnyTime.ConvertFromSecondsToDateTime(Time);
-        //         return dateTime.Value;
-        //     }
-        // }
+        private DateTime? dateTimeUtc;
+        public DateTime DateTimeUtc
+        {
+            get
+            {
+                if (!dateTimeUtc.HasValue)
+                    dateTimeUtc = EPOCH_START.AddSeconds(Time);
+
+                return dateTimeUtc.Value;
+            }
+        }
+        
+        private DateTime? dateTimeGame;
+        public DateTime DateTimeGame
+        {
+            get
+            {
+                if (!dateTimeGame.HasValue)
+                {
+                    var status = API.GetStatus();
+                    if (status == null)
+                        return EPOCH_START;
+                    dateTimeGame = EPOCH_START.AddSeconds(status.GameTime - status.ServerTime + Time);
+                }
+
+                return dateTimeGame.Value;
+            }
+        }
     }
     
     public class UnnyObject : JsonBasedObject
