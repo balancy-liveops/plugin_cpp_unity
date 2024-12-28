@@ -10,6 +10,9 @@ namespace Balancy
         
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         public delegate void ModelRefreshedCallback(string unnyId, IntPtr newPointer);
+        
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate void UserDataInitializedCallback();
 
         public static class General
         {
@@ -110,7 +113,10 @@ namespace Balancy
             public static extern void balancyFreeStringArray(IntPtr array, int size);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-            public static extern IntPtr balancySetModelOnRefresh(ModelRefreshedCallback callback);
+            public static extern void balancySetModelOnRefresh(ModelRefreshedCallback callback);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancySetUserDataInitializedCallback(UserDataInitializedCallback callback);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyDataObjectLoad(string unnyId, DataObjectWasCachedCallback callback);

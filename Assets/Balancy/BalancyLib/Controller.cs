@@ -30,6 +30,7 @@ namespace Balancy
             LibraryMethods.General.balancySetInvokeInMainThreadCallback(InvokeInMainThread);
             UnityFileManager.Init();
             LibraryMethods.Models.balancySetModelOnRefresh(ModelRefreshed);
+            LibraryMethods.Models.balancySetUserDataInitializedCallback(UserDataInitialized);
             Profiles.Init();
 
             CppAppConfig config = CreateConfigForCPP(appConfig);
@@ -39,9 +40,15 @@ namespace Balancy
             LibraryMethods.General.balancyInit(configPtr);
         }
 
+        private static void UserDataInitialized()
+        {
+            CMS.RefreshAll();
+        }
+
         public static void Stop()
         {
             LibraryMethods.Models.balancySetModelOnRefresh(null);
+            LibraryMethods.Models.balancySetUserDataInitializedCallback(null);
             LibraryMethods.General.balancyStop();
             Profiles.CleanUp();
         }
