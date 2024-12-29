@@ -37,7 +37,7 @@ namespace Balancy.Models
 
         internal virtual void CleanUp(bool parentWasDestroyed)
         {
-            
+            SetData(IntPtr.Zero);
         }
         
         public static string GetModelClassName<T>()

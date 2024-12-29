@@ -61,7 +61,13 @@ namespace Balancy
                 var responseData = Marshal.PtrToStructure<T>(responseDataPtr);
                 if (gch.HasValue)
                     gch.Value.Free();
-                callback(responseData);
+                try
+                {
+                    callback(responseData);
+                } catch (Exception e)
+                {
+                    UnityEngine.Debug.LogError("Exception in callback: " + e);
+                }
             };
             
             gch = GCHandle.Alloc(innerCallback);

@@ -1,3 +1,4 @@
+using Balancy.Models.SmartObjects;
 
 namespace Balancy.Data.SmartObjects
 {
@@ -23,6 +24,11 @@ namespace Balancy.Data.SmartObjects
 		
 		public Balancy.Models.SmartObjects.GameOfferGroup GameOfferGroup => GetModelByUnnyId<Balancy.Models.SmartObjects.GameOfferGroup>(_unnyIdGameOfferGroup);
 		public SmartList<Balancy.Data.SmartObjects.OfferGroupStoreItemPurchase> PurchasedItems => _purchasedItems;
+
+		public bool CanPurchase(StoreItem storeItem)
+		{
+			return LibraryMethods.Extra.balancyOfferGroupInfo_CanPurchase(GetRawPointer(), storeItem.GetRawPointer());
+		}
         
         public override void InitData()
         {

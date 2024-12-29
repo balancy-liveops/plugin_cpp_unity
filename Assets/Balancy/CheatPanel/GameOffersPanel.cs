@@ -8,7 +8,11 @@ namespace Balancy.CheatPanel
     public class GameOffersPanel : MonoBehaviour
     {
         [SerializeField] private GameObject offerPrefab;
+        [SerializeField] private GameObject offerGroupPrefab;
         [SerializeField] private RectTransform content;
+        
+        [SerializeField] private GameObject offersHeaderPrefab;
+        [SerializeField] private GameObject offerGroupsHeaderPrefab;
         
         private void OnOfferGroupDeactivated(OfferGroupInfo offerGroupInfo)
         {
@@ -56,12 +60,34 @@ namespace Balancy.CheatPanel
                 return;
             
             var activeOffers = Profiles.System.SmartInfo.GameOffers;
-            foreach (var offerInfo in activeOffers)
+            
+            if (activeOffers.Count > 0)
             {
-                var newItem = Instantiate(offerPrefab, content);
-                newItem.SetActive(true);
-                var offerView = newItem.GetComponent<OfferPanel>();
-                offerView.Init(offerInfo);
+                var headerItem = Instantiate(offersHeaderPrefab, content);
+                headerItem.SetActive(true);
+                
+                foreach (var offerInfo in activeOffers)
+                {
+                    var newItem = Instantiate(offerPrefab, content);
+                    newItem.SetActive(true);
+                    var offerView = newItem.GetComponent<OfferView>();
+                    offerView.Init(offerInfo);
+                }
+            }
+            
+            var activeOfferGroups = Profiles.System.SmartInfo.GameOfferGroups;
+            if (activeOfferGroups.Count > 0)
+            {
+                var headerItem = Instantiate(offerGroupsHeaderPrefab, content);
+                headerItem.SetActive(true);
+                
+                foreach (var offerInfo in activeOfferGroups)
+                {
+                    var newItem = Instantiate(offerGroupPrefab, content);
+                    newItem.SetActive(true);
+                    var offerView = newItem.GetComponent<OfferGroupView>();
+                    offerView.Init(offerInfo);
+                }
             }
         }
     }

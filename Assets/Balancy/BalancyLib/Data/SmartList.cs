@@ -91,7 +91,9 @@ namespace Balancy.Data
 
         private void RefreshList()
         {
+            var p = GetRawPointer();
             CleanUp(false);
+            SetData(p);
             InitData();
         }
 

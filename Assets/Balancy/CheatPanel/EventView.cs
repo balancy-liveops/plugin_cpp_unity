@@ -5,7 +5,7 @@ using UnityEngine;
 
 namespace Balancy.Cheats
 {
-    public class EventPanel : MonoBehaviour
+    public class EventView : MonoBehaviour
     {
         [SerializeField] private TMP_Text title;
         [SerializeField] private TMP_Text timer;

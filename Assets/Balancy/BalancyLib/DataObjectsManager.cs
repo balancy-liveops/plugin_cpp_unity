@@ -122,17 +122,21 @@ namespace Balancy.Dictionaries
         {
             try
             {
-                if (AllSprites.TryGetValue(id, out var oneObjectSprite))
+                if (ptr == IntPtr.Zero)
                 {
-                    var sharedObject = Marshal.PtrToStructure<SharedObjectInfo>(ptr);
-
-                    _mainThreadInstance.Enqueue(() =>
-                    {
-                        oneObjectSprite.PrepareSprite(sharedObject);
-                    });
+                    Debug.LogError("Failed to load DataObject " + id);
                 }
                 else
-                    Debug.Log("No request object found " + id);
+                {
+                    if (AllSprites.TryGetValue(id, out var oneObjectSprite))
+                    {
+                        var sharedObject = Marshal.PtrToStructure<SharedObjectInfo>(ptr);
+
+                        _mainThreadInstance.Enqueue(() => { oneObjectSprite.PrepareSprite(sharedObject); });
+                    }
+                    else
+                        Debug.Log("No request object found " + id);
+                }
             }
             catch (Exception e)
             {

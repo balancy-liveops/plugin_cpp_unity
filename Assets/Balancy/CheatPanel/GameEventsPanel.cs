@@ -58,7 +58,7 @@ namespace Balancy.CheatPanel
             {
                 var newItem = Instantiate(eventPrefab, content);
                 newItem.SetActive(true);
-                var offerView = newItem.GetComponent<EventPanel>();
+                var offerView = newItem.GetComponent<EventView>();
                 offerView.Init(eventInfo.GameEvent, true);
             }
 
@@ -75,7 +75,7 @@ namespace Balancy.CheatPanel
                     
                     var newItem = Instantiate(eventPrefab, content);
                     newItem.SetActive(true);
-                    var offerView = newItem.GetComponent<EventPanel>();
+                    var offerView = newItem.GetComponent<EventView>();
                     offerView.Init(gameEvent, false);
                 }
             }
