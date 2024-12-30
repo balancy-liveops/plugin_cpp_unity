@@ -113,13 +113,16 @@ namespace Balancy
 				case "SmartObjects.GameEvent": return new Balancy.Models.SmartObjects.GameEvent();
 				// case "Notifications.RemoteNotification": return new Balancy.Models.Notifications.RemoteNotification();
 				// case "Notifications.LocalNotification": return new Balancy.Models.Notifications.LocalNotification();
-				// case "SmartObjects.SmartConfig": return new Balancy.Models.SmartObjects.SmartConfig();
+                case "SmartObjects.GameStoreBase": return new Balancy.Models.SmartObjects.GameStoreBase();
+				case "SmartObjects.SmartConfig": return new Balancy.Models.SmartObjects.SmartConfig();
 				case "SmartObjects.ItemWithAmount": return new Balancy.Models.SmartObjects.ItemWithAmount();
 				// case "SmartObjects.ComfortPayCheck": return new Balancy.Models.SmartObjects.ComfortPayCheck();
 				// case "SmartObjects.GameConfig": return new Balancy.Models.SmartObjects.GameConfig();
 				case "SmartObjects.GameOfferGroup": return new Balancy.Models.SmartObjects.GameOfferGroup();
 				case "SmartObjects.GameOffer": return new Balancy.Models.SmartObjects.GameOffer();
 				case "SmartObjects.StoreItem": return new Balancy.Models.SmartObjects.StoreItem();
+                case "LiveOps.Store.Page": return new Balancy.Models.LiveOps.Store.Page();
+                case "LiveOps.Store.Slot": return new Balancy.Models.LiveOps.Store.Slot();
 				default:
                 {
                     var model = OnTypeRequested?.Invoke(templateName);

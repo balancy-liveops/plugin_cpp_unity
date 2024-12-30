@@ -96,7 +96,7 @@ namespace Balancy.Cheats
                     buyButtonText.text = "USD " + _offerInfo.GameOffer.StoreItem.Price.Product.Price;
                     break;
                 default:
-                    buyButtonText.text = "Not implemented Price Type";
+                    buyButtonText.text = "N/A";
                     break;
             }
         }
