@@ -8,6 +8,14 @@ namespace Balancy
     public static class API
     {
         private static BalancyStatus _status;
+        
+        public enum AdType
+        {
+            None = 0,
+            Rewarded,
+            Interstitial,
+            Custom
+        }
 
         public static BalancyStatus GetStatus()
         {
@@ -73,5 +81,8 @@ namespace Balancy
             gch = GCHandle.Alloc(innerCallback);
             return innerCallback;
         }
+        
+        public static void TrackAdRevenue(AdType type, double revenue, string placement) => 
+            LibraryMethods.Profile.balancySystemProfileTrackRevenue(type, revenue, placement);
     }
 }

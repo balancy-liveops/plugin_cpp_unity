@@ -1,6 +1,5 @@
 using System;
 using System.Runtime.InteropServices;
-using Balancy.LiveOps;
 
 namespace Balancy
 {
@@ -190,7 +189,7 @@ namespace Balancy
         public static class Profile
         {
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-            public static extern void balancySystemProfileTrackRevenue(Ads.AdType adType, double revenue, string placement);
+            public static extern void balancySystemProfileTrackRevenue(Balancy.API.AdType adType, double revenue, string placement);
         }
 
         public static class Extra

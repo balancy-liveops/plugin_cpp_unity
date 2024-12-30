@@ -1,6 +1,5 @@
 using System;
 using Balancy.Data.SmartObjects;
-using Balancy.LiveOps;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -13,7 +12,7 @@ namespace Balancy.Cheats
         [SerializeField] private TMP_Text header;
         [SerializeField] private TMP_Text description;
         [SerializeField] private Button addButton;
-        [SerializeField] private Ads.AdType adType;
+        [SerializeField] private API.AdType adType;
         public event Action ParentRefresh;
 
         private void Awake()
@@ -39,7 +38,7 @@ namespace Balancy.Cheats
         private void AddAdRevenue()
         {
             double revenue = Random.Range(0.001f, 0.01f);
-            Balancy.LiveOps.Ads.TrackRevenue(adType, revenue, "cheat_panel");
+            Balancy.API.TrackAdRevenue(adType, revenue, "cheat_panel");
             ParentRefresh?.Invoke();
         }
     }
