@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 
 namespace Balancy.Core
 {
-    public class Notifications
+    internal class Notifications
     {
         public enum NotificationType
         {
@@ -23,7 +23,7 @@ namespace Balancy.Core
             OnABTestEnded = 107,
 
             OnSegmentUpdated = 108,
-            
+            OnShopUpdated = 109,
             Unknown
         }
 
@@ -128,6 +128,11 @@ namespace Balancy.Core
         public class LiveOpsNotification_SegmentUpdated : LiveOpsNotificationBase
         {
             public IntPtr SegmentInfo;
+        }
+        
+        [StructLayout(LayoutKind.Sequential)]
+        public class LiveOpsNotification_ShopUpdated : LiveOpsNotificationBase
+        {
         }
     }
 }

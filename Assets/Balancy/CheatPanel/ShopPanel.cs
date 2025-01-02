@@ -1,3 +1,4 @@
+using System;
 using Balancy.Cheats;
 using Balancy.Data.SmartObjects;
 using Balancy.Example;
@@ -16,9 +17,15 @@ namespace Balancy.CheatPanel
         
         private void OnEnable()
         {
+            Balancy.Callbacks.OnShopUpdated += Refresh;
             Refresh();
         }
-        
+
+        private void OnDisable()
+        {
+            Balancy.Callbacks.OnShopUpdated -= Refresh;
+        }
+
         private void Refresh()
         {
             pagesContent.RemoveChildren();
@@ -62,7 +69,35 @@ namespace Balancy.CheatPanel
 
         private void TryToBuySlot(StoreItem storeItem)
         {
-            Debug.LogError("Trying to Buy StoreSlot " + storeItem?.Name?.Value);
+            switch (storeItem?.Price.Type)
+            {
+                case PriceType.Hard:
+                    TryToBuyHard(storeItem);
+                    break;
+                default:
+                    Debug.LogError("This purchase type is not implemented");
+                    break;
+            }
+        }
+        
+        private void TryToBuyHard(StoreItem storeItem)
+        {
+            var price = storeItem?.Price;
+            if (price?.Product == null)
+                return;
+            
+            var paymentInfo = Utils.CreateTestPaymentInfo(price);
+            
+            void PurchaseCompleted(Balancy.Core.Responses.PurchaseProductResponseData responseData) {
+                Debug.Log("Purchase of " + responseData.ProductId + " success = " + responseData.Success);
+                if (!responseData.Success)
+                {
+                    Debug.Log("ErrorCode = " + responseData.ErrorCode);
+                    Debug.Log("ErrorMessage = " + responseData.ErrorMessage);
+                }
+            }
+            
+            Balancy.API.HardPurchaseStoreItem(storeItem, paymentInfo, PurchaseCompleted, false);
         }
     }
 }

@@ -200,6 +200,11 @@ namespace Balancy
                         Balancy.Callbacks.OnSegmentInfoUpdated?.Invoke(segmentIndo);
                         break;
                     }
+                    case Notifications.NotificationType.OnShopUpdated: {
+                        var notificationTyped = Marshal.PtrToStructure<Notifications.LiveOpsNotification_ShopUpdated>(notificationPtr);
+                        Balancy.Callbacks.OnShopUpdated?.Invoke();
+                        break;
+                    }
                     default:
                         Debug.LogError("**==> Unknown notification type. " + baseNotification.Type);
                         break;

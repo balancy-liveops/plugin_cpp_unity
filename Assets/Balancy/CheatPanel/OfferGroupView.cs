@@ -64,17 +64,7 @@ namespace Balancy.Cheats
             if (price?.Product == null)
                 return;
             
-            var paymentInfo = new Balancy.Core.PaymentInfo
-            {
-                Price = price.Product.Price,
-                Currency = "USD",
-                OrderId = Guid.NewGuid().ToString(),
-                ProductId = price.Product.ProductId,
-                Receipt = "<receipt>"
-            };
-            
-            //Below is the testing receipt, it's not designed for the production
-            paymentInfo.Receipt = "{\"Payload\":\"{\\\"json\\\":\\\"{\\\\\\\"orderId\\\\\\\":\\\\\\\"" + paymentInfo.OrderId + "\\\\\\\",\\\\\\\"productId\\\\\\\":\\\\\\\"" + paymentInfo.ProductId + "\\\\\\\"}\\\",\\\"signature\\\":\\\"bypass\\\"}\"}";
+            var paymentInfo = Utils.CreateTestPaymentInfo(price);
             
             void PurchaseCompleted(Balancy.Core.Responses.PurchaseProductResponseData responseData) {
                 Debug.Log("Purchase of " + responseData.ProductId + " success = " + responseData.Success);
