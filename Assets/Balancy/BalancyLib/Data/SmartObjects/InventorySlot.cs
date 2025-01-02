@@ -13,7 +13,7 @@ namespace Balancy.Data.SmartObjects
         {
             base.InitData();
             
-			_item = GetBaseDataParam<Balancy.Data.SmartObjects.ItemInstance>("item");
+			_item = GetBaseDataParam<Balancy.Data.SmartObjects.ItemInstance>("i");
         }
         
     }
