@@ -1,5 +1,4 @@
 using System;
-using UnityEngine;
 
 namespace Balancy
 {
@@ -7,11 +6,11 @@ namespace Balancy
     {
         public static string FormatUnixTime(int seconds)
         {
-            if (seconds <= 0)
-                return "0s";
-
-            if (seconds >= int.MaxValue)
+            if (seconds < 0 || seconds >= int.MaxValue)
                 return "N/A";
+            
+            if (seconds == 0)
+                return "0s";
 
             TimeSpan timeSpan = TimeSpan.FromSeconds(seconds);
 

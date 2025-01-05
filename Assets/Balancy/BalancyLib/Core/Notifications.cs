@@ -43,7 +43,7 @@ namespace Balancy.Core
         {
             private int flags;
 
-            public bool IsCloudSynched => (flags & (1 << 0)) != 0;
+            public bool IsCloudSynced => (flags & (1 << 0)) != 0;
             public bool IsCMSUpdated => (flags & (1 << 1)) != 0;
             public bool IsProfileUpdated => (flags & (1 << 2)) != 0;
         }

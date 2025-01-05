@@ -7,13 +7,13 @@ namespace Balancy
     {
         public struct DataUpdatedStatus
         {
-            public readonly bool IsCloudSynched;
+            public readonly bool IsCloudSynced;
             public readonly bool IsCMSUpdated;
             public readonly bool IsProfileUpdated;
             
-            public DataUpdatedStatus(bool isCloudSynched, bool isCmsUpdated, bool isProfileUpdated)
+            public DataUpdatedStatus(bool isCloudSynced, bool isCmsUpdated, bool isProfileUpdated)
             {
-                IsCloudSynched = isCloudSynched;
+                IsCloudSynced = isCloudSynced;
                 IsCMSUpdated = isCmsUpdated;
                 IsProfileUpdated = isProfileUpdated;
             }
@@ -55,7 +55,7 @@ namespace Balancy
 
         public static void InitExamplesWithLogs()
         {
-            OnDataUpdated += status => Debug.Log(" => Balancy.OnDataUpdated Cloud = " + status.IsCloudSynched + " ;CMS = " + status.IsCMSUpdated + " ;Profiles = " + status.IsProfileUpdated);
+            OnDataUpdated += status => Debug.Log(" => Balancy.OnDataUpdated Cloud = " + status.IsCloudSynced + " ;CMS = " + status.IsCMSUpdated + " ;Profiles = " + status.IsProfileUpdated);
             OnAuthFailed += status => Debug.Log(" => Balancy.OnAuthFailed: " + status.Message);
             OnCloudProfileFailedToLoad += status => Debug.Log(" => Balancy.OnCloudProfileFailedToLoad: " + status.Message);
             

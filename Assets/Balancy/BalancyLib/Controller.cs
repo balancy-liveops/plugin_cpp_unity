@@ -134,7 +134,7 @@ namespace Balancy
                         DataUpdated(notificationDataIsReady.IsCMSUpdated, notificationDataIsReady.IsProfileUpdated);
                         _isReadyToUse = true;
                         Balancy.Callbacks.OnDataUpdated?.Invoke(new Balancy.Callbacks.DataUpdatedStatus(
-                            notificationDataIsReady.IsCloudSynched, 
+                            notificationDataIsReady.IsCloudSynced, 
                             notificationDataIsReady.IsCMSUpdated,
                             notificationDataIsReady.IsProfileUpdated));
                         break;
@@ -201,7 +201,7 @@ namespace Balancy
                         break;
                     }
                     case Notifications.NotificationType.OnShopUpdated: {
-                        var notificationTyped = Marshal.PtrToStructure<Notifications.LiveOpsNotification_ShopUpdated>(notificationPtr);
+                        // var notificationTyped = Marshal.PtrToStructure<Notifications.LiveOpsNotification_ShopUpdated>(notificationPtr);
                         Balancy.Callbacks.OnShopUpdated?.Invoke();
                         break;
                     }

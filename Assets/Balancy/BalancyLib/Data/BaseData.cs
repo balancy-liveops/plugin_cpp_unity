@@ -68,7 +68,6 @@ namespace Balancy.Data
 
         internal override void CleanUp(bool parentWasDestroyed)
         {
-            base.CleanUp(parentWasDestroyed);
             foreach (var callback in _callbacks)
             {
                 // if (callback.Handle.IsAllocated)
@@ -82,6 +81,7 @@ namespace Balancy.Data
             foreach (var child in _children)
                 child.CleanUp(parentWasDestroyed);
             _children.Clear();
+            base.CleanUp(parentWasDestroyed);
         }
         
         protected T GetBaseDataParam<T>(string paramName) where T: BaseData, new()
