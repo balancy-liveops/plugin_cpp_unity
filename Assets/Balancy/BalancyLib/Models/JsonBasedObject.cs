@@ -267,7 +267,7 @@ namespace Balancy.Models
             return result;
         }
         
-        private static string GetStringFromIntPtr(IntPtr ptr)
+        internal static string GetStringFromIntPtr(IntPtr ptr)
         {
             return Marshal.PtrToStringAnsi(ptr);
         }

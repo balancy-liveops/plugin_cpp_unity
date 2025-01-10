@@ -27,5 +27,10 @@ namespace Balancy.CheatPanel
         {
             OnClick?.Invoke();
         }
+
+        public void SetTextColor(Color color)
+        {
+            title.color = color;
+        }
     }
 }

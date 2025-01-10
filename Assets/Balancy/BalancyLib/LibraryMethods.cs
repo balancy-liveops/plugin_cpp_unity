@@ -210,6 +210,21 @@ namespace Balancy
             public static extern int balancyGameEvent_GetSecondsBeforeActivation(IntPtr gameEventPointer, bool ignoreTriggers);
         }
 
+        public static class Localization
+        {
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyLocalization_GetLocalizedValue(string key);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyLocalization_GetCurrentLocalizationCode();
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyLocalization_ChangeLocalization(string key);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyLocalization_GetAllLocalizationCodes(out int size);
+        }
+
         public static class Editor
         {
             public enum Language {

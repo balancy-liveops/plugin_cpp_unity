@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 using Balancy.Data.SmartObjects;
+using Balancy.Models;
 using Balancy.Models.SmartObjects;
 
 namespace Balancy
@@ -84,5 +85,25 @@ namespace Balancy
         
         public static void TrackAdRevenue(AdType type, double revenue, string placement) => 
             LibraryMethods.Profile.balancySystemProfileTrackRevenue(type, revenue, placement);
+
+        public static class Localization
+        {
+            public static string GetLocalizedValue(string key) {
+                return JsonBasedObject.GetStringFromIntPtr(Balancy.LibraryMethods.Localization.balancyLocalization_GetLocalizedValue(key));
+            }
+            
+            public static void ChangeLocalization(string code) {
+                Balancy.LibraryMethods.Localization.balancyLocalization_ChangeLocalization(code);
+            }
+            
+            public static string GetCurrentLocalizationCode() {
+                return JsonBasedObject.GetStringFromIntPtr(Balancy.LibraryMethods.Localization.balancyLocalization_GetCurrentLocalizationCode());
+            }
+            
+            public static string[] GetAllLocalizationCodes() {
+                IntPtr ptr = Balancy.LibraryMethods.Localization.balancyLocalization_GetAllLocalizationCodes(out int size);
+                return JsonBasedObject.ReadStringArrayValues(ptr, size);
+            }
+        }
     }
 }

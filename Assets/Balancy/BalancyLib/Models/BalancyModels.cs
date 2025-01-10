@@ -1,5 +1,6 @@
 using System;
 using Balancy.Dictionaries;
+using UnityEngine;
 
 namespace Balancy.Localization
 {
@@ -11,13 +12,14 @@ namespace Balancy.Localization
         {
             get
             {
-// #if BALANCY_SERVER
+#if BALANCY_SERVER
                 return Key;
-// #else
-//                 if (string.IsNullOrEmpty(Key))
-//                     return Key;
-//                 return Balancy.Localization.Manager.Get(Key);
-// #endif
+#else
+                if (string.IsNullOrEmpty(Key))
+                    return Key;
+                
+                return Balancy.API.Localization.GetLocalizedValue(Key);
+#endif
             }
         }
 
