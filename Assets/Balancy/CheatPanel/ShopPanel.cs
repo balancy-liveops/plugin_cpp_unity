@@ -34,6 +34,9 @@ namespace Balancy.CheatPanel
                 return;
 
             var shops = Profiles.System.ShopsInfo;
+            if (shops.GameShops.Count == 0)
+                return;
+            
             var activeShop = shops.GameShops[0];
             foreach (var activePage in activeShop.ActivePages)
             {

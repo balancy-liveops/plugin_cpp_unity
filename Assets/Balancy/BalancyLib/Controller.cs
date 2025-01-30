@@ -196,8 +196,16 @@ namespace Balancy
                     }
                     case Notifications.NotificationType.OnSegmentUpdated: {
                         var notificationTyped = Marshal.PtrToStructure<Notifications.LiveOpsNotification_SegmentUpdated>(notificationPtr);
-                        var segmentIndo = Profiles.System.SegmentsInfo.FindSegmentIndo(notificationTyped.SegmentInfo);
-                        Balancy.Callbacks.OnSegmentInfoUpdated?.Invoke(segmentIndo);
+                        var segmentInfo = Profiles.System.SegmentsInfo.FindSegmentInfo(notificationTyped.SegmentInfo);
+                        Balancy.Callbacks.OnSegmentInfoUpdated?.Invoke(segmentInfo);
+                        break;
+                    }
+                    case Notifications.NotificationType.OnDailyBonusUpdated: {
+                        var notificationTyped = Marshal.PtrToStructure<Notifications.LiveOpsNotification_DailyBonusUpdated>(notificationPtr);
+                        var dailyInfo = Profiles.System.LiveOpsInfo.FindDailyBonusInfo(notificationTyped.DailyBonusInfo);
+                        if (dailyInfo == null && notificationTyped.DailyBonusInfo != IntPtr.Zero)
+                            dailyInfo = JsonBasedObject.CreateObject<DailyBonusInfo>(notificationTyped.DailyBonusInfo);
+                        Balancy.Callbacks.OnDailyBonusUpdated?.Invoke(dailyInfo);
                         break;
                     }
                     case Notifications.NotificationType.OnShopUpdated: {

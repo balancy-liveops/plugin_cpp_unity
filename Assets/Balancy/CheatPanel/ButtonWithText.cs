@@ -18,6 +18,11 @@ namespace Balancy.CheatPanel
             OnClick = callback;
         }
         
+        public void SetInteractable(bool interactable)
+        {
+            button.interactable = interactable;
+        }
+        
         private void Awake()
         {
             button.onClick.AddListener(OnButtonClick);

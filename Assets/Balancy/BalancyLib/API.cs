@@ -105,5 +105,8 @@ namespace Balancy
                 return JsonBasedObject.ReadStringArrayValues(ptr, size);
             }
         }
+        
+        //This method doesn't work in production
+        public static void SetTimeCheatingOffset(int seconds) => LibraryMethods.Extra.balancySetTimeOffset(seconds);
     }
 }

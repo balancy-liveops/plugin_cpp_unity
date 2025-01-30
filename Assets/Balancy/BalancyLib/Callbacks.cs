@@ -37,6 +37,7 @@ namespace Balancy
         public delegate void OnOfferGroupInfoDelegate(OfferGroupInfo offerGroupInfo);
         public delegate void OnAbTestInfoDelegate(AbTestInfo abTestInfo);
         public delegate void OnSegmentInfoDelegate(SegmentInfo segmentInfo);
+        public delegate void OnDailyBonusInfoDelegate(DailyBonusInfo dailyBonusInfo);
         public delegate void OnShopUpdatedDelegate();
         
         public static OnDataUpdatedDelegate OnDataUpdated = null;
@@ -51,6 +52,7 @@ namespace Balancy
         public static OnAbTestInfoDelegate OnNewAbTestStarted = null;
         public static OnAbTestInfoDelegate OnAbTestEnded = null;
         public static OnSegmentInfoDelegate OnSegmentInfoUpdated = null;
+        public static OnDailyBonusInfoDelegate OnDailyBonusUpdated = null;
         public static OnShopUpdatedDelegate OnShopUpdated = null;
 
         public static void InitExamplesWithLogs()
@@ -68,6 +70,7 @@ namespace Balancy
             OnNewAbTestStarted += abTestInfo => Debug.Log(" => Balancy.OnNewAbTestStarted: " + abTestInfo?.Test?.Name);
             OnAbTestEnded += abTestInfo => Debug.Log(" => Balancy.OnAbTestEnded: " + abTestInfo?.Test?.Name);
             OnSegmentInfoUpdated += segmentInfo => Debug.Log(" => Balancy.OnSegmentInfoUpdated: " + segmentInfo?.Segment?.Name + " isIn = " + segmentInfo?.IsIn);
+            OnDailyBonusUpdated += dailyBonusInfo => Debug.Log(" => Balancy.OnDailyBonusUpdated: " + dailyBonusInfo?.DailyBonus?.Name);
             OnShopUpdated += () => Debug.Log(" => Balancy.OnShopUpdated");
         }
         
@@ -85,6 +88,7 @@ namespace Balancy
             OnNewAbTestStarted = null;
             OnAbTestEnded = null;
             OnSegmentInfoUpdated = null;
+            OnDailyBonusUpdated = null;
             OnShopUpdated = null;
         }
     }

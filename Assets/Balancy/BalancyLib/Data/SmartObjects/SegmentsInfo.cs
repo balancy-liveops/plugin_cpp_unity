@@ -17,6 +17,6 @@ namespace Balancy.Data.SmartObjects
             _segments = GetListBaseDataParam<Balancy.Data.SmartObjects.SegmentInfo>("segments");
         }
         
-        public Balancy.Data.SmartObjects.SegmentInfo FindSegmentIndo(IntPtr ptr) => FindElementInList(_segments, ptr);
+        public Balancy.Data.SmartObjects.SegmentInfo FindSegmentInfo(IntPtr ptr) => FindElementInList(_segments, ptr);
     }
 }

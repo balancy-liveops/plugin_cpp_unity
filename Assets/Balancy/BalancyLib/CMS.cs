@@ -111,6 +111,7 @@ namespace Balancy
 				// case "SmartObjects.TimeConfig": return new Balancy.Models.SmartObjects.TimeConfig();
 				case "SmartObjects.Reward": return new Balancy.Models.SmartObjects.Reward();
 				case "SmartObjects.GameEvent": return new Balancy.Models.SmartObjects.GameEvent();
+                case "LiveOps.DailyBonus": return new Balancy.Models.LiveOps.DailyBonus();
 				// case "Notifications.RemoteNotification": return new Balancy.Models.Notifications.RemoteNotification();
 				// case "Notifications.LocalNotification": return new Balancy.Models.Notifications.LocalNotification();
                 case "SmartObjects.GameStoreBase": return new Balancy.Models.SmartObjects.GameStoreBase();

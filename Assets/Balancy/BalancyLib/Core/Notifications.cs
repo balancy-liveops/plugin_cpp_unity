@@ -24,6 +24,7 @@ namespace Balancy.Core
 
             OnSegmentUpdated = 108,
             OnShopUpdated = 109,
+            OnDailyBonusUpdated = 110,
             Unknown
         }
 
@@ -133,6 +134,12 @@ namespace Balancy.Core
         [StructLayout(LayoutKind.Sequential)]
         public class LiveOpsNotification_ShopUpdated : LiveOpsNotificationBase
         {
+        }
+        
+        [StructLayout(LayoutKind.Sequential)]
+        public class LiveOpsNotification_DailyBonusUpdated : LiveOpsNotificationBase
+        {
+            public IntPtr DailyBonusInfo;
         }
     }
 }
