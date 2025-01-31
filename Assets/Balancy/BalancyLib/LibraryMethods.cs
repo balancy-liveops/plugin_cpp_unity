@@ -210,6 +210,9 @@ namespace Balancy
             public static extern int balancyGameEvent_GetSecondsBeforeActivation(IntPtr gameEventPointer, bool ignoreTriggers);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancyGetTimeOffset();
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancySetTimeOffset(int seconds);
         }
 

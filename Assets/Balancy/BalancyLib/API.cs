@@ -108,5 +108,6 @@ namespace Balancy
         
         //This method doesn't work in production
         public static void SetTimeCheatingOffset(int seconds) => LibraryMethods.Extra.balancySetTimeOffset(seconds);
+        public static int GetTimeCheatingOffset() => LibraryMethods.Extra.balancyGetTimeOffset();
     }
 }
