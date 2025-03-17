@@ -97,11 +97,12 @@ namespace Balancy
                 SystemLanguage = UnityEngine.Application.systemLanguage.ToString(),
             };
 
-            if (config && config.UseCustomCDN)
+            if (config != null)
             {
-                _cppConfig.CdnCustomUrl = config.Url;
                 _cppConfig.CdnTimeout = config.Timeout;
                 _cppConfig.CdnRetries = config.Retries;
+                if (config.UseCustomCDN)
+                    _cppConfig.CdnCustomUrl = config.Url;
             }
 
             return _cppConfig;
