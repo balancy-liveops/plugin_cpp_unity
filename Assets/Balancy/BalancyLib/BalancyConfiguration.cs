@@ -7,14 +7,15 @@ namespace Balancy
     {
         public static BalancyConfiguration Instance => Resources.Load<BalancyConfiguration>("BalancyConfiguration");
 
+        [SerializeField] private int timeout = 10;
+        [SerializeField] private int retries = 3;
         [SerializeField] private bool useCustomCDN = false;
         [SerializeField] private string url = "https://example.com";
-        [SerializeField] private int timeout = 15;
-        [SerializeField] private int retries = 3;
+        
 
-        public bool UseCustomCDN => useCustomCDN;
-        public string Url => url;
         public int Timeout => timeout;
         public int Retries => retries;
+        public bool UseCustomCDN => useCustomCDN;
+        public string Url => url;
     }
 }

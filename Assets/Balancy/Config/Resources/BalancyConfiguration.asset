@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 5a2a93adef9604711a16844df91e49d7, type: 3}
   m_Name: BalancyConfiguration
   m_EditorClassIdentifier: 
-  useCustomCDN: 1
-  url: https://example.com
-  timeout: 15
+  timeout: 10
   retries: 3
+  useCustomCDN: 0
+  url: https://example.com
