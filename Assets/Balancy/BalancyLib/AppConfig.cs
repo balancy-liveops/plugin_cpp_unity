@@ -40,6 +40,11 @@ namespace Balancy
         public LaunchType LaunchType = LaunchType.Local | LaunchType.Cloud | LaunchType.AutoRetry;
         [MarshalAs(UnmanagedType.LPStr)]
         public string BranchName;//If left blank, we'll use the branchConditions to find the best branch.
+        
+        [MarshalAs(UnmanagedType.LPStr)]
+        public string CdnCustomUrl;
+        public int CdnTimeout = 10;
+        public int CdnRetries = 3;
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1, CharSet = CharSet.Ansi)]

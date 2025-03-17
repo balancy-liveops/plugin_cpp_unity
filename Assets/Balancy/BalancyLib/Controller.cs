@@ -68,6 +68,8 @@ namespace Balancy
         {
             _originalConfig = originalConfig;
 
+            var config = BalancyConfiguration.Instance;
+
             _cppConfig = new CppAppConfig
             {
                 ApiGameId = _originalConfig.ApiGameId,
@@ -94,6 +96,13 @@ namespace Balancy
                 SystemMemorySize = SystemInfo.systemMemorySize,
                 SystemLanguage = UnityEngine.Application.systemLanguage.ToString(),
             };
+
+            if (config && config.UseCustomCDN)
+            {
+                _cppConfig.CdnCustomUrl = config.Url;
+                _cppConfig.CdnTimeout = config.Timeout;
+                _cppConfig.CdnRetries = config.Retries;
+            }
 
             return _cppConfig;
         }

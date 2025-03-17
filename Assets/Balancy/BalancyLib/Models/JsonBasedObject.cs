@@ -191,6 +191,18 @@ namespace Balancy.Models
             return GetStringFromIntPtr(LibraryMethods.Models.balancyGetStringParam(_pointer, paramName));
         }
         
+        protected T[] GetEnumArrayParam<T>(string name)
+        {
+            var intArray = GetIntArrayParam(name);
+            if (intArray.Length == 0)
+                return Array.Empty<T>();
+
+            T[] enumArray = new T[intArray.Length];
+            for (int i = 0; i < intArray.Length; i++)
+                enumArray[i] = (T)Enum.ToObject(typeof(T), intArray[i]);
+            return enumArray;
+        }
+        
         protected int[] GetIntArrayParam(string name)
         {
             int size;
