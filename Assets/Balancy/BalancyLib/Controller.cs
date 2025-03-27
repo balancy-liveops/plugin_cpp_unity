@@ -51,6 +51,7 @@ namespace Balancy
             LibraryMethods.Models.balancySetUserDataInitializedCallback(null);
             LibraryMethods.General.balancyStop();
             Profiles.CleanUp();
+            CMS.CleanUp();
         }
 
         private static void ModelRefreshed(string unnyId, IntPtr newPointer)

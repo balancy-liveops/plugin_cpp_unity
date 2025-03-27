@@ -54,6 +54,12 @@ namespace Balancy
                 model.RefreshData(newPointer);
         }
 
+        internal static void CleanUp()
+        {
+            AllModels.Clear();
+            Inheritance.Clear();
+        }
+
         internal static void RefreshAll()
         {
             List<string> keysToRemove = new List<string>();
