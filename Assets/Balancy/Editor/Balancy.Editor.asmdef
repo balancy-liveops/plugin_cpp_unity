@@ -1,0 +1,18 @@
+{
+    "name": "Balancy.Editor",
+    "rootNamespace": "",
+    "references": [
+        "GUID:422887e59947e44d786699df37519236"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

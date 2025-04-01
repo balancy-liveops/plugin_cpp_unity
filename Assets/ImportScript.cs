@@ -4,7 +4,6 @@ using Balancy;
 using Balancy.Core;
 using Balancy.Data;
 using Balancy.Dictionaries;
-using Balancy.LiveOps;
 using Balancy.Models;
 using Balancy.Models.SmartObjects;
 using Unity.VisualScripting;
@@ -20,7 +19,7 @@ public class ImportScript : MonoBehaviour
     {
         Debug.LogError($"PATH = {Application.persistentDataPath}");
         // PrintSizeAndOffsets<Notifications.InitNotificationLocalReady>();
-        // PrintSizeAndOffsets<Notifications.InitNotificationCloudSynched>();
+        // PrintSizeAndOffsets<Notifications.InitNotificationCloudSynced>();
         // PrintSizeAndOffsets<Notifications.InitNotificationAuthFailed>();
         // PrintSizeAndOffsets<Notifications.InitNotificationCloudProfileFailed>();
         InitFinal();
@@ -36,116 +35,132 @@ public class ImportScript : MonoBehaviour
         t1 = Time.realtimeSinceStartupAsDouble;
         var config = CreateAppConfig();
         Balancy.Main.Init(config);
+        
+        Balancy.Callbacks.OnDataUpdated += status => 
+            Debug.Log("OnDataUpdated Cloud = " + status.IsCloudSynced + 
+                      " ;CMS = " + status.IsCMSUpdated + 
+                      " ;Profiles = " + status.IsProfileUpdated);
     }
 
-    private MyCustomTemplate TestItem(string unnyId)
-    {
-        var myTemplate = CMS.GetModelByUnnyId<MyCustomTemplate>(unnyId);
-        Debug.Log($"myTemplate.unnyId = {myTemplate.UnnyId}");
-        Debug.Log($"myTemplate.TestInt = {myTemplate.TestInt}");
-        Debug.Log($"myTemplate.TestBool = {myTemplate.TestBool}");
-        Debug.Log($"myTemplate.TestDuration = {myTemplate.TestDuration}");
-        Debug.Log($"myTemplate.TestFloat = {myTemplate.TestFloat}");
-        Debug.Log($"myTemplate.TestLong = {myTemplate.TestLong}");
-        Debug.Log($"myTemplate.TestString = {myTemplate.TestString}");
-        
-        Debug.LogWarning($"TestIntArr Size = {myTemplate.TestIntArr.Length}");
-        for (int i = 0;i<myTemplate.TestIntArr.Length;i++)
-            Debug.Log($"{i}) {myTemplate.TestIntArr[i]}");
-        
-        Debug.LogWarning($"TestFloatArr Size = {myTemplate.TestFloatArr.Length}");
-        for (int i = 0;i<myTemplate.TestFloatArr.Length;i++)
-            Debug.Log($"{i}) {myTemplate.TestFloatArr[i]}");
-        
-        Debug.LogWarning($"TestBoolArr Size = {myTemplate.TestBoolArr.Length}");
-        for (int i = 0;i<myTemplate.TestBoolArr.Length;i++)
-            Debug.Log($"{i}) {myTemplate.TestBoolArr[i]}");
-        
-        Debug.LogWarning($"TestLongArr Size = {myTemplate.TestLongArr.Length}");
-        for (int i = 0;i<myTemplate.TestLongArr.Length;i++)
-            Debug.Log($"{i}) {myTemplate.TestLongArr[i]}");
-        
-        Debug.LogWarning($"TestDurationArr Size = {myTemplate.TestDurationArr.Length}");
-        for (int i = 0;i<myTemplate.TestDurationArr.Length;i++)
-            Debug.Log($"{i}) {myTemplate.TestDurationArr[i]}");
-        
-        Debug.LogWarning($"TestStringArr Size = {myTemplate.TestStringArr.Length}");
-        for (int i = 0;i<myTemplate.TestStringArr.Length;i++)
-            Debug.Log($"{i}) {myTemplate.TestStringArr[i]}");
-        
-        // return;
-        Debug.Log($"myTemplate.TestDate = {myTemplate.TestDate?.Time}");
-        Debug.Log($"myTemplate.testProduct = {myTemplate.TestProduct?.ProductId} : {myTemplate.TestProduct?.Price}");
-        
-        Debug.Log($"myTemplate.Sprite = {myTemplate.Sprite?.Id}");
-        Debug.Log($"myTemplate.TestInj = {myTemplate.TestInj?.X} ; {myTemplate.TestInj?.Y} ; {myTemplate.TestInj?.Z}");
-        
-        Debug.Log($"myTemplate.Color = {myTemplate.Color?.Value}");
-        Debug.Log($"myTemplate.Loc = {myTemplate.Loc?.Key}");
-        
-        Debug.LogWarning($"TestDateArr Size = {myTemplate.TestDateArr.Length}");
-        for (int i = 0;i<myTemplate.TestDateArr.Length;i++)
-            Debug.Log($"{i}) {myTemplate.TestDateArr[i].Time}");
-        
-        Debug.LogWarning($"TestInjArr Size = {myTemplate.TestInjArr.Length}");
-        for (int i = 0;i<myTemplate.TestInjArr.Length;i++)
-            Debug.Log($"{i}) {myTemplate.TestInjArr[i].X} : {myTemplate.TestInjArr[i].Y} : {myTemplate.TestInjArr[i].Z}");
-        
-        Debug.LogWarning($"SpriteArr Size = {myTemplate.SpriteArr.Length}");
-        for (int i = 0;i<myTemplate.SpriteArr.Length;i++)
-            Debug.Log($"{i}) {myTemplate.SpriteArr[i].Id}");
-        
-        Debug.LogWarning($"ProductArr Size = {myTemplate.ProductArr.Length}");
-        for (int i = 0;i<myTemplate.ProductArr.Length;i++)
-            Debug.Log($"{i}) {myTemplate.ProductArr[i].ProductId} ;price = {myTemplate.ProductArr[i].Price}");
-        
-        Debug.LogWarning($"LocArr Size = {myTemplate.LocArr.Length}");
-        for (int i = 0;i<myTemplate.LocArr.Length;i++)
-            Debug.Log($"{i}) {myTemplate.LocArr[i].Key}");
-        
-        // Debug.LogWarning($"Colors Size = {myTemplate.Colors.Length}");
-        // for (int i = 0;i<myTemplate.Colors.Length;i++)
-        //     Debug.Log($"{i}) {myTemplate.Colors[i].Value}");
-        
-        
-        Debug.LogError($"LINK = {myTemplate.SelfLink?.UnnyId} - {myTemplate.SelfLink?.TestString}" );
-        var links = myTemplate.SelfLinkArray;
-        Debug.LogWarning($"SelfLinkArray Size = {links.Length}");
-        for (int i = 0;i<links.Length;i++)
-            Debug.Log($"{i}) {links[i].UnnyId} - {links[i].TestString}");
-
-        return myTemplate;
-    }
-
-    private void TestItemEnum(string unnyId)
-    {
-        var model = TestItem(unnyId) as MyCustomTemplate2;
-        if (model == null)
-            return;
-
-        Debug.LogWarning($"Enum1 = {model.Enum1}");
-        Debug.LogWarning($"Enum2 = {model.Enum2}");
-    }
-
-    private void TestItems()
-    {
-        var tmpYes = CMS.GetModels<MyCustomTemplate>(true);
-        var tmpNo = CMS.GetModels<MyCustomTemplate>(false);
-
-        if (tmpYes != null)
-        {
-            Debug.LogError($"tmpYes: {tmpYes.Length}");
-            foreach (var m in tmpYes)
-                Debug.LogWarning($">>> {m.UnnyId}");
-        }
-
-        if (tmpNo != null)
-        {
-            Debug.LogError($"tmpNo: {tmpNo.Length}");
-            foreach (var m in tmpNo)
-                Debug.LogWarning($">>> {m.UnnyId}");
-        }
-    }
+    // private MyCustomTemplate TestItem(string unnyId)
+    // {
+    //     var allItems = Balancy.CMS.GetModels<Balancy.Models.SmartObjects.Item>(true);
+    //     Debug.Log("AllItems count = " + allItems.Length);
+    //     foreach (var item in allItems)
+    //     {
+    //         Debug.Log("=== New Item ===");
+    //         Debug.Log($"unnyId = {item.UnnyId}");
+    //         Debug.Log($"Name = {item.Name}");
+    //         Debug.Log($"MaxStack = {item.MaxStack}");
+    //     }
+    //     
+    //     
+    //     var myTemplate = CMS.GetModelByUnnyId<MyCustomTemplate>(unnyId);
+    //     Debug.Log($"myTemplate.unnyId = {myTemplate.UnnyId}");
+    //     Debug.Log($"myTemplate.TestInt = {myTemplate.TestInt}");
+    //     Debug.Log($"myTemplate.TestBool = {myTemplate.TestBool}");
+    //     Debug.Log($"myTemplate.TestDuration = {myTemplate.TestDuration}");
+    //     Debug.Log($"myTemplate.TestFloat = {myTemplate.TestFloat}");
+    //     Debug.Log($"myTemplate.TestLong = {myTemplate.TestLong}");
+    //     Debug.Log($"myTemplate.TestString = {myTemplate.TestString}");
+    //     
+    //     Debug.LogWarning($"TestIntArr Size = {myTemplate.TestIntArr.Length}");
+    //     for (int i = 0;i<myTemplate.TestIntArr.Length;i++)
+    //         Debug.Log($"{i}) {myTemplate.TestIntArr[i]}");
+    //     
+    //     Debug.LogWarning($"TestFloatArr Size = {myTemplate.TestFloatArr.Length}");
+    //     for (int i = 0;i<myTemplate.TestFloatArr.Length;i++)
+    //         Debug.Log($"{i}) {myTemplate.TestFloatArr[i]}");
+    //     
+    //     Debug.LogWarning($"TestBoolArr Size = {myTemplate.TestBoolArr.Length}");
+    //     for (int i = 0;i<myTemplate.TestBoolArr.Length;i++)
+    //         Debug.Log($"{i}) {myTemplate.TestBoolArr[i]}");
+    //     
+    //     Debug.LogWarning($"TestLongArr Size = {myTemplate.TestLongArr.Length}");
+    //     for (int i = 0;i<myTemplate.TestLongArr.Length;i++)
+    //         Debug.Log($"{i}) {myTemplate.TestLongArr[i]}");
+    //     
+    //     Debug.LogWarning($"TestDurationArr Size = {myTemplate.TestDurationArr.Length}");
+    //     for (int i = 0;i<myTemplate.TestDurationArr.Length;i++)
+    //         Debug.Log($"{i}) {myTemplate.TestDurationArr[i]}");
+    //     
+    //     Debug.LogWarning($"TestStringArr Size = {myTemplate.TestStringArr.Length}");
+    //     for (int i = 0;i<myTemplate.TestStringArr.Length;i++)
+    //         Debug.Log($"{i}) {myTemplate.TestStringArr[i]}");
+    //     
+    //     // return;
+    //     Debug.Log($"myTemplate.TestDate = {myTemplate.TestDate?.Time}");
+    //     Debug.Log($"myTemplate.testProduct = {myTemplate.TestProduct?.ProductId} : {myTemplate.TestProduct?.Price}");
+    //     
+    //     Debug.Log($"myTemplate.Sprite = {myTemplate.Sprite?.Id}");
+    //     Debug.Log($"myTemplate.TestInj = {myTemplate.TestInj?.X} ; {myTemplate.TestInj?.Y} ; {myTemplate.TestInj?.Z}");
+    //     
+    //     Debug.Log($"myTemplate.Color = {myTemplate.Color?.Value}");
+    //     Debug.Log($"myTemplate.Loc = {myTemplate.Loc?.Key}");
+    //     
+    //     Debug.LogWarning($"TestDateArr Size = {myTemplate.TestDateArr.Length}");
+    //     for (int i = 0;i<myTemplate.TestDateArr.Length;i++)
+    //         Debug.Log($"{i}) {myTemplate.TestDateArr[i].Time}");
+    //     
+    //     Debug.LogWarning($"TestInjArr Size = {myTemplate.TestInjArr.Length}");
+    //     for (int i = 0;i<myTemplate.TestInjArr.Length;i++)
+    //         Debug.Log($"{i}) {myTemplate.TestInjArr[i].X} : {myTemplate.TestInjArr[i].Y} : {myTemplate.TestInjArr[i].Z}");
+    //     
+    //     Debug.LogWarning($"SpriteArr Size = {myTemplate.SpriteArr.Length}");
+    //     for (int i = 0;i<myTemplate.SpriteArr.Length;i++)
+    //         Debug.Log($"{i}) {myTemplate.SpriteArr[i].Id}");
+    //     
+    //     Debug.LogWarning($"ProductArr Size = {myTemplate.ProductArr.Length}");
+    //     for (int i = 0;i<myTemplate.ProductArr.Length;i++)
+    //         Debug.Log($"{i}) {myTemplate.ProductArr[i].ProductId} ;price = {myTemplate.ProductArr[i].Price}");
+    //     
+    //     Debug.LogWarning($"LocArr Size = {myTemplate.LocArr.Length}");
+    //     for (int i = 0;i<myTemplate.LocArr.Length;i++)
+    //         Debug.Log($"{i}) {myTemplate.LocArr[i].Key}");
+    //     
+    //     // Debug.LogWarning($"Colors Size = {myTemplate.Colors.Length}");
+    //     // for (int i = 0;i<myTemplate.Colors.Length;i++)
+    //     //     Debug.Log($"{i}) {myTemplate.Colors[i].Value}");
+    //     
+    //     
+    //     Debug.LogError($"LINK = {myTemplate.SelfLink?.UnnyId} - {myTemplate.SelfLink?.TestString}" );
+    //     var links = myTemplate.SelfLinkArray;
+    //     Debug.LogWarning($"SelfLinkArray Size = {links.Length}");
+    //     for (int i = 0;i<links.Length;i++)
+    //         Debug.Log($"{i}) {links[i].UnnyId} - {links[i].TestString}");
+    //
+    //     return myTemplate;
+    // }
+    //
+    // private void TestItemEnum(string unnyId)
+    // {
+    //     var model = TestItem(unnyId) as MyCustomTemplate2;
+    //     if (model == null)
+    //         return;
+    //
+    //     Debug.LogWarning($"Enum1 = {model.Enum1}");
+    //     Debug.LogWarning($"Enum2 = {model.Enum2}");
+    // }
+    //
+    // private void TestItems()
+    // {
+    //     var tmpYes = CMS.GetModels<MyCustomTemplate>(true);
+    //     var tmpNo = CMS.GetModels<MyCustomTemplate>(false);
+    //
+    //     if (tmpYes != null)
+    //     {
+    //         Debug.LogError($"tmpYes: {tmpYes.Length}");
+    //         foreach (var m in tmpYes)
+    //             Debug.LogWarning($">>> {m.UnnyId}");
+    //     }
+    //
+    //     if (tmpNo != null)
+    //     {
+    //         Debug.LogError($"tmpNo: {tmpNo.Length}");
+    //         foreach (var m in tmpNo)
+    //             Debug.LogWarning($">>> {m.UnnyId}");
+    //     }
+    // }
 
     private AppConfig CreateAppConfig()
     {
@@ -172,26 +187,27 @@ public class ImportScript : MonoBehaviour
         Debug.LogError($"OnSaveFileInResources at {path} : {data}");
     }
 
-    private void TestProfile()
-    {
-        var _profile = Profiles.Get<Profile>();
-        
-        Debug.LogWarning("Profile Int = " + _profile.GeneralInfo.TestInt);
-
-        _profile.GeneralInfo.TestInt = 33;
-        _profile.AnotherInfo.Name = "OPA";
-            
-        Debug.LogWarning("Profile Int NOW = " + _profile.GeneralInfo.TestInt);
-
-        var list = _profile.GeneralInfo.TestList;
-        Debug.LogError($"1> List size = {list.Count} vs {_profile.GeneralInfo.TestList.Count}");
-        var newElement = _profile.GeneralInfo.TestList.Add();
-        Debug.LogError($"2> List size = {list.Count} vs {_profile.GeneralInfo.TestList.Count}");
-        newElement.Name = "My Name is";
-        Debug.LogError($"3> List size = {list.Count} vs {_profile.GeneralInfo.TestList.Count}");
-            
-        Debug.LogError($"newElement = {newElement.Name} list = {list[0].Name} vs {_profile.GeneralInfo.TestList[0].Name}");
-    }
+    // private void TestProfile()
+    // {
+    //     var _profile = Profiles.Get<Profile>();
+    //     var systemProfile = Balancy.Profiles.System;
+    //     
+    //     Debug.LogWarning("Profile Int = " + _profile.GeneralInfo.TestInt);
+    //
+    //     _profile.GeneralInfo.TestInt = 33;
+    //     _profile.AnotherInfo.Name = "OPA";
+    //         
+    //     Debug.LogWarning("Profile Int NOW = " + _profile.GeneralInfo.TestInt);
+    //
+    //     var list = _profile.GeneralInfo.TestList;
+    //     Debug.LogError($"1> List size = {list.Count} vs {_profile.GeneralInfo.TestList.Count}");
+    //     var newElement = _profile.GeneralInfo.TestList.Add();
+    //     Debug.LogError($"2> List size = {list.Count} vs {_profile.GeneralInfo.TestList.Count}");
+    //     newElement.Name = "My Name is";
+    //     Debug.LogError($"3> List size = {list.Count} vs {_profile.GeneralInfo.TestList.Count}");
+    //         
+    //     Debug.LogError($"newElement = {newElement.Name} list = {list[0].Name} vs {_profile.GeneralInfo.TestList[0].Name}");
+    // }
 
     void RenderButton(Rect rect, string id, Image image)
     {

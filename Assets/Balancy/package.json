@@ -1,0 +1,43 @@
+{
+	"name": "co.balancy.unity",
+	"displayName": "Balancy",
+	"version": "1.0.0",
+	"unity": "2022.3",
+	"description": "LiveOps & monetization workspace for games.",
+	"keywords": [
+		"liveops",
+		"monetization",
+		"economy",
+		"game",
+		"development",
+		"revenue",
+		"ltv",
+		"game design",
+		"unity",
+		"balance",
+		"data",
+		"config",
+		"purchases",
+		"in-apps"
+	],
+	"homepage": "https://balancy.co/",
+	"bugs": {
+		"url": "https://github.com/balancy-liveops/plugin_cpp_unity/issues",
+		"email" : "contact@balancy.co"
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/balancy-liveops/plugin_cpp_unity.git"
+	},
+	"license": "MIT",
+	"author": {
+		"name": "Balancy",
+		"email": "contact@balancy.co",
+		"url": "https://balancy.co/"
+	},
+	"dependencies": {
+		"com.unity.textmeshpro": "3.0.6"
+	},
+	"documentationUrl": "https://en.docs.balancy.dev",
+	"changelogUrl": "https://en.docs.balancy.dev/release_notes.html"
+}

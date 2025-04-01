@@ -1,0 +1,17 @@
+{
+    "name": "Balancy.CheatPanel",
+    "rootNamespace": "",
+    "references": [
+        "GUID:422887e59947e44d786699df37519236",
+        "GUID:6055be8ebefd69e48b49212b09b47b2f"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

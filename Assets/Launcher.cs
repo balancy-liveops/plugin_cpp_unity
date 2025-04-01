@@ -1,6 +1,4 @@
 using Balancy;
-using Balancy.Core;
-using Balancy.Models;
 using UnityEngine;
 
 public class Launcher : MonoBehaviour
@@ -35,19 +33,5 @@ public class Launcher : MonoBehaviour
                 Debug.Log($"Progress {(int)(progress*100)}% - {fileName}");
             }
         };
-    }
-
-    private void TestData()
-    {
-        var oneDocument = CMS.GetModelByUnnyId<MyCustomTemplate>("872");
-        
-        var myCustomTemplatesOnly = CMS.GetModels<MyCustomTemplate>(false);
-        Debug.LogWarning($"myCustomTemplatesOnly = {myCustomTemplatesOnly.Length}");
-        
-        var myCustomTemplatesWithChildren = CMS.GetModels<MyCustomTemplate>(true);
-        Debug.LogWarning($"myCustomTemplatesWithChildren = {myCustomTemplatesWithChildren.Length}");
-
-        foreach (var template in myCustomTemplatesWithChildren)
-            Debug.Log($"Template = {template.TestString} of {template.UnnyId}");
     }
 }
