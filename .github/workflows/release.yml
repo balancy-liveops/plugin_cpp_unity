@@ -1,0 +1,44 @@
+name: Create Unity Package Release
+
+on:
+  push:
+    tags:
+      - 'v*'  # Запускать при пуше тегов, начинающихся с v
+
+jobs:
+  build:
+    name: Create Unity Package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Get version from tag
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+
+      - name: Verify package.json version
+        run: |
+          PACKAGE_VERSION=$(cat package.json | jq -r '.version')
+          if [ "$PACKAGE_VERSION" != "$VERSION" ]; then
+            echo "Updating package.json version from $PACKAGE_VERSION to $VERSION"
+            # Обновляем версию в package.json, если она не соответствует
+            sed -i "s/\"version\": \"$PACKAGE_VERSION\"/\"version\": \"$VERSION\"/" package.json
+          fi
+
+      - name: Create Unity package
+        run: |
+          mkdir -p dist
+          # Сборка пакета - простой zip с правильной структурой
+          zip -r "dist/com.yourcompany.yourpackage-$VERSION.zip" . -x ".git*" ".github*" "dist*"
+
+      - name: Create GitHub Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: dist/com.yourcompany.yourpackage-$VERSION.zip
+          name: Release ${{ env.VERSION }}
+          draft: false
+          prerelease: false
