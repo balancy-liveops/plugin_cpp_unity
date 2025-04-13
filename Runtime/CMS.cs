@@ -9,7 +9,7 @@ namespace Balancy
     public static class CMS
     {
         private static readonly Dictionary<string, BaseModel> AllModels = new Dictionary<string, BaseModel>();
-        private static Dictionary<string, string> Inheritance;
+        private static Dictionary<string, string> Inheritance = null;
 
         public static Func<string, BaseModel> OnTypeRequested = null;
         
@@ -57,7 +57,7 @@ namespace Balancy
         internal static void CleanUp()
         {
             AllModels.Clear();
-            Inheritance.Clear();
+            Inheritance?.Clear();
         }
 
         internal static void RefreshAll()

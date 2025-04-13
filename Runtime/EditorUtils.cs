@@ -91,6 +91,7 @@ namespace Balancy.Editor
             LibraryMethods.Editor.balancyConfigAuth(email, password, AuthDone);
         }
         
+        [AOT.MonoPInvokeCallback(typeof(LibraryMethods.Editor.AuthCallback))]
         private static void AuthDone(IntPtr pointer)
         {
             try
@@ -113,6 +114,7 @@ namespace Balancy.Editor
             LibraryMethods.Editor.balancyConfigLoadListOfGames(GamesLoaded);
         }
         
+        [AOT.MonoPInvokeCallback(typeof(LibraryMethods.Editor.StringArrayCallback))]
         private static void GamesLoaded(IntPtr ptr, int size)
         {
             try
@@ -137,6 +139,7 @@ namespace Balancy.Editor
             LibraryMethods.Editor.balancyConfigLoadBranches(BranchesLoaded);
         }
         
+        [AOT.MonoPInvokeCallback(typeof(LibraryMethods.Editor.StringArrayCallback))]
         private static void BranchesLoaded(IntPtr ptr, int size)
         {
             try
@@ -193,6 +196,7 @@ namespace Balancy.Editor
             LibraryMethods.Editor.balancyConfigGenerateCode(OnDownloadCompleted);
         }
 
+        [AOT.MonoPInvokeCallback(typeof(Balancy.DownloadCompleteCallback))]
         private static void OnDownloadCompleted(bool success, string message)
         {
             try
@@ -205,6 +209,7 @@ namespace Balancy.Editor
             }
         }
 
+        [AOT.MonoPInvokeCallback(typeof(Balancy.ProgressUpdateCallback))]
         private static void OnProgressUpdate(string fileName, float progress)
         {
             try

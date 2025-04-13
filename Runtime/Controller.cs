@@ -24,9 +24,10 @@ namespace Balancy
             
             if (!CheckCallbacks())
                 return;
-            
+
             LibraryMethods.General.balancySetLogCallback(LogMessage);
             _mainThreadInstance = UnityMainThreadDispatcher.Instance();
+            Balancy.Network.UnityWebRequestBridge.Initialize();
             LibraryMethods.General.balancySetInvokeInMainThreadCallback(InvokeInMainThread);
             UnityFileManager.Init();
             LibraryMethods.Models.balancySetModelOnRefresh(ModelRefreshed);
@@ -40,6 +41,7 @@ namespace Balancy
             LibraryMethods.General.balancyInit(configPtr);
         }
 
+        [AOT.MonoPInvokeCallback(typeof(LibraryMethods.UserDataInitializedCallback))]
         private static void UserDataInitialized()
         {
             CMS.RefreshAll();
@@ -54,6 +56,7 @@ namespace Balancy
             CMS.CleanUp();
         }
 
+        [AOT.MonoPInvokeCallback(typeof(LibraryMethods.ModelRefreshedCallback))]
         private static void ModelRefreshed(string unnyId, IntPtr newPointer)
         {
             CMS.ModelRefreshed(unnyId, newPointer);
@@ -83,7 +86,7 @@ namespace Balancy
                 Platform = (int)FindPlatform(_originalConfig.Platform),
                 AutoLogin = (byte)(_originalConfig.AutoLogin ? 1 : 0),
                 OnStatusUpdate = OnStatusUpdate,
-                OnProgressUpdateCallback = _originalConfig.OnProgressUpdateCallback,
+                OnProgressUpdateCallback = OnProgressUpdate,
                 DeviceId = string.IsNullOrEmpty(_originalConfig.DeviceId) ? Balancy.UnityUtils.GetUniqId() : _originalConfig.DeviceId,
                 AppVersion = string.IsNullOrEmpty(_originalConfig.AppVersion) ? Application.version : _originalConfig.AppVersion,
                 BundleId = string.IsNullOrEmpty(_originalConfig.BundleId) ? Application.identifier : _originalConfig.BundleId,
@@ -131,7 +134,14 @@ namespace Balancy
 
             return originalPlatform;
         }
+        
+        [AOT.MonoPInvokeCallback(typeof(Balancy.ProgressUpdateCallback))]
+        private static void OnProgressUpdate(string fileName, float progress)
+        {
+            _originalConfig?.OnProgressUpdateCallback(fileName, progress);
+        }
 
+        [AOT.MonoPInvokeCallback(typeof(Balancy.StatusUpdateCallback))]
         private static void OnStatusUpdate(IntPtr notificationPtr)
         {
             try

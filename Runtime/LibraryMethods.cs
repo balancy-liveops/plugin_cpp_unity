@@ -5,7 +5,11 @@ namespace Balancy
 {
     internal static class LibraryMethods
     {
-        private const string DllName = "libBalancyCore";
+#if UNITY_IPHONE && !UNITY_EDITOR
+        internal const string DllName = "__Internal";
+#else
+        internal const string DllName = "libBalancyCore";
+#endif
         
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         public delegate void ModelRefreshedCallback(string unnyId, IntPtr newPointer);
@@ -21,8 +25,8 @@ namespace Balancy
             [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
             public delegate void InvokeInMainThreadCallback(int id);
             
-            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-            public delegate void SaveFileCallback(string path, string data);
+            // [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+            // public delegate void SaveFileCallback(string path, string data);
                         
             [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
             public delegate string LoadFileCallback(string path);
@@ -30,11 +34,7 @@ namespace Balancy
             [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
             public delegate bool IsFileExistsCallback(string path);
             
-#if UNITY_IPHONE && !UNITY_EDITOR
-        [DllImport ("__Internal")]
-#else
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-#endif
             public static extern void balancySetLogCallback(LogCallback callback);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]

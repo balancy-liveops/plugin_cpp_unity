@@ -118,6 +118,7 @@ namespace Balancy.Dictionaries
 
         private static readonly Dictionary<string, OneObjectSprite> AllSprites = new Dictionary<string, OneObjectSprite>();
 
+        [AOT.MonoPInvokeCallback(typeof(LibraryMethods.Models.DataObjectWasCachedCallback))]
         private static void DataObjectLoaded(string id, IntPtr ptr)
         {
             try

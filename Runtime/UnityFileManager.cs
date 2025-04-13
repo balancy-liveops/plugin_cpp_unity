@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using UnityEngine;
+using AOT;
 using Object = UnityEngine.Object;
 
 namespace Balancy
@@ -13,6 +14,7 @@ namespace Balancy
             Balancy.LibraryMethods.General.balancyInitUnityFileHelper(Application.persistentDataPath, Application.dataPath, LoadFromResources, IsFileExistsInResources);
         }
 
+        [MonoPInvokeCallback(typeof(LibraryMethods.General.IsFileExistsCallback))]
         private static bool IsFileExistsInResources(string path)
         {
             string fileNameWithoutExtension = Path.GetFileNameWithoutExtension(path);
@@ -21,6 +23,7 @@ namespace Balancy
             return asset != null;
         }
 
+        [MonoPInvokeCallback(typeof(LibraryMethods.General.LoadFileCallback))]
         private static string LoadFromResources(string path)
         {
             try

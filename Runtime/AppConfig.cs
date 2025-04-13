@@ -9,7 +9,9 @@ namespace Balancy
     internal delegate void StatusUpdateCallback(IntPtr notification);
     
     // public delegate void StatusUpdateNotificationCallback(Notifications.NotificationBase notification);
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     public delegate void ProgressUpdateCallback(string fileName, float progress);
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     public delegate void DownloadCompleteCallback(bool success, string message);
     
     

@@ -28,6 +28,7 @@ namespace Balancy
             return (T)profile;
         }
         
+        [AOT.MonoPInvokeCallback(typeof(LibraryMethods.ModelRefreshedCallback))]
         internal static void ProfileReset(string profileName, IntPtr newPointer)
         {
             if (_cachedProfiles.TryGetValue(profileName, out var profile))
@@ -115,12 +116,14 @@ namespace Balancy
                 subs.RemoveDataSubscription(paramName, callback);
         }
 
+        [AOT.MonoPInvokeCallback(typeof(LibraryMethods.Data.ParamChangedCallback))]
         private static void OnBaseDataParamChanged(IntPtr baseData, string paramName)
         {
             if (AllBaseDataSubscriptions.TryGetValue(baseData, out var subs))
                 subs.OnBaseDataParamChanged(paramName);
         }
         
+        [AOT.MonoPInvokeCallback(typeof(LibraryMethods.Data.DataDestroyedCallback))]
         private static void OnBaseDataDestroyed(IntPtr baseData)
         {
             AllBaseDataSubscriptions.Remove(baseData);
