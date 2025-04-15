@@ -5,7 +5,7 @@ namespace Balancy
 {
     internal static class LibraryMethods
     {
-#if UNITY_IPHONE && !UNITY_EDITOR
+#if (UNITY_IPHONE || UNITY_WEBGL) && !UNITY_EDITOR
         internal const string DllName = "__Internal";
 #else
         internal const string DllName = "libBalancyCore";
@@ -42,6 +42,7 @@ namespace Balancy
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyInvokeMethodInMainThread(int id);
             
+            //[DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyInit(IntPtr config);
             
@@ -231,6 +232,7 @@ namespace Balancy
             public static extern IntPtr balancyLocalization_GetAllLocalizationCodes(out int size);
         }
 
+        #if UNITY_EDITOR
         public static class Editor
         {
             public enum Language {
@@ -283,6 +285,7 @@ namespace Balancy
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyConfigGenerateCode(DownloadCompleteCallback onReadyCallback);
         }
+        #endif
         
         public static class API
         {
