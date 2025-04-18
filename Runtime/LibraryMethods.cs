@@ -7,6 +7,9 @@ namespace Balancy
     {
 #if (UNITY_IPHONE || UNITY_WEBGL) && !UNITY_EDITOR
         internal const string DllName = "__Internal";
+#elif UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
+        internal const string DllName = "libBalancyCore";
+        //internal const string DllName = "Assets/Balancy/Plugins/Windows/x86_64/libBalancyCore";
 #else
         internal const string DllName = "libBalancyCore";
 #endif
