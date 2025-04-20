@@ -5,7 +5,9 @@ namespace Balancy
 {
     public static class BalancyLoader
     {
+#if UNITY_WEBGL && !UNITY_EDITOR
         private static Action _readyCallback;
+
         [AOT.MonoPInvokeCallback(typeof(Action))]
         public static void OnBalancyReady()
         {
@@ -19,12 +21,14 @@ namespace Balancy
         public static void Init(Action readyCallback)
         {
             _readyCallback = readyCallback;
-#if UNITY_WEBGL && !UNITY_EDITOR
             balancyLoadAndInit(OnBalancyReady);
-#else
-            UnityEngine.Debug.Log("Balancy init skipped in editor");
-            _readyCallback?.Invoke();
-#endif
         }
+#else
+        public static void Init(Action readyCallback)
+        {
+            UnityEngine.Debug.Log("Balancy init skipped in editor");
+            readyCallback?.Invoke();
+        }
+#endif
     }
 }
