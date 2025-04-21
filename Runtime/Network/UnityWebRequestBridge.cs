@@ -148,7 +148,7 @@ namespace Balancy.Network
             yield return webRequest.SendWebRequest();
 
             // Process the response
-            bool success = !webRequest.isNetworkError && !webRequest.isHttpError;
+            bool success = webRequest.result == UnityWebRequest.Result.Success;
             int errorCode = (int)webRequest.responseCode;
             byte[] data = webRequest.downloadHandler.data;
 
@@ -220,7 +220,7 @@ namespace Balancy.Network
             yield return webRequest.SendWebRequest();
 
             // Process the response
-            bool success = !webRequest.isNetworkError && !webRequest.isHttpError;
+            bool success = webRequest.result == UnityWebRequest.Result.Success;
             int errorCode = (int)webRequest.responseCode;
             byte[] data = webRequest.downloadHandler.data;
 
