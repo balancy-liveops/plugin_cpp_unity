@@ -15,10 +15,10 @@ namespace Balancy.Network
 
         // Delegate types that match the C++ callback signatures
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-        private delegate void WebRequestCallbackDelegate(int requestId, string url, string method, string body, string headersJson);
+        private delegate void WebRequestCallbackDelegate(int requestId, string url, string method, string body, string headersJson, int timeoutSeconds);
 
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-        private delegate void FileLoadCallbackDelegate(int requestId, string url);
+        private delegate void FileLoadCallbackDelegate(int requestId, string url, int timeoutSeconds);
 
         // Native plugin function imports
         [DllImport(Balancy.LibraryMethods.DllName, CallingConvention = CallingConvention.Cdecl)]
@@ -65,52 +65,55 @@ namespace Balancy.Network
 
         // Called by the native plugin when a web request needs to be sent
         [AOT.MonoPInvokeCallback(typeof(WebRequestCallbackDelegate))]
-        private static void StaticOnWebRequestReceived(int requestId, string url, string method, string body, string headersJson)
+        private static void StaticOnWebRequestReceived(int requestId, string url, string method, string body, string headersJson, int timeoutSeconds)
         {
             UnityMainThreadDispatcher.Instance().Enqueue(() =>
             {
                 if (_instance != null)
-                    _instance.OnWebRequestReceived(requestId, url, method, body, headersJson);
+                    _instance.OnWebRequestReceived(requestId, url, method, body, headersJson, timeoutSeconds);
                 else
                     Debug.LogError("UnityWebRequestBridge instance not initialized.");
             });
         }
         
-        private void OnWebRequestReceived(int requestId, string url, string method, string body, string headersJson)
+        private void OnWebRequestReceived(int requestId, string url, string method, string body, string headersJson, int timeoutSeconds)
         {
             // Convert parameters to C# values
             Debug.Log($"Received web request: ID={requestId}, URL={url}, Method={method}");
 
             // Start the coroutine to process the request
-            StartCoroutine(ProcessWebRequest(requestId, url, method, body, headersJson));
+            StartCoroutine(ProcessWebRequest(requestId, url, method, body, headersJson, timeoutSeconds));
         }
 
         // Called by the native plugin when a file needs to be loaded
         [AOT.MonoPInvokeCallback(typeof(FileLoadCallbackDelegate))]
-        private static void StaticOnFileLoadReceived(int requestId, string url)
+        private static void StaticOnFileLoadReceived(int requestId, string url, int timeoutSeconds)
         {
             UnityMainThreadDispatcher.Instance().Enqueue(() =>
             {
                 if (_instance != null)
-                    _instance.OnFileLoadReceived(requestId, url);
+                    _instance.OnFileLoadReceived(requestId, url, timeoutSeconds);
                 else
                     Debug.LogError("UnityWebRequestBridge instance not initialized.");
             });
         }
         
-        private void OnFileLoadReceived(int requestId, string url)
+        private void OnFileLoadReceived(int requestId, string url, int timeoutSeconds)
         {
             Debug.Log($"Received file load request: ID={requestId}, URL={url}");
 
             // Start the coroutine to process the file load
-            StartCoroutine(ProcessFileLoad(requestId, url));
+            StartCoroutine(ProcessFileLoad(requestId, url, timeoutSeconds));
         }
 
         // Coroutine to handle a web request
-        private IEnumerator ProcessWebRequest(int requestId, string url, string method, string body, string headersJson)
+        private IEnumerator ProcessWebRequest(int requestId, string url, string method, string body, string headersJson, int timeoutSeconds)
         {
             // Create the request
             UnityWebRequest webRequest = new UnityWebRequest(url, method);
+
+            // Set timeout
+            webRequest.timeout = timeoutSeconds;
 
             // Add request body if present
             if (!string.IsNullOrEmpty(body))
@@ -202,10 +205,13 @@ namespace Balancy.Network
 
 
         // Coroutine to handle a file load
-        private IEnumerator ProcessFileLoad(int requestId, string url)
+        private IEnumerator ProcessFileLoad(int requestId, string url, int timeoutSeconds)
         {
             // Create the request
             UnityWebRequest webRequest = UnityWebRequest.Get(url);
+            
+            // Set timeout
+            webRequest.timeout = timeoutSeconds;
 
             // Track the request
             _activeRequests[requestId] = webRequest;
