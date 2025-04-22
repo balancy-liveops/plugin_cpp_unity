@@ -7,26 +7,30 @@ namespace Balancy.Core
     {
         public enum NotificationType
         {
-            Base = 0,
-            DataIsReady = 1,
-            AuthFailed = 2,
-            CloudProfileFailed = 3,
-            
-            OnNewEventActivated = 100,
-            OnEventDeactivated = 101,
-            OnNewOfferActivated = 102,
-            OnOfferDeactivated = 103,
-            OnNewOfferGroupActivated = 104,
-            OnOfferGroupDeactivated = 105,
-            
-            OnABTestStarted = 106,
-            OnABTestEnded = 107,
+        Base = 0,
+        DataIsReady = 1,
+        AuthFailed = 2,
+        CloudProfileFailed = 3,
+        
+        OnNewEventActivated = 100,
+        OnEventDeactivated = 101,
+        OnNewOfferActivated = 102,
+        OnOfferDeactivated = 103,
+        OnNewOfferGroupActivated = 104,
+        OnOfferGroupDeactivated = 105,
+        
+        OnABTestStarted = 106,
+        OnABTestEnded = 107,
 
-            OnSegmentUpdated = 108,
-            OnShopUpdated = 109,
-            OnDailyBonusUpdated = 110,
-            Unknown
-        }
+        OnSegmentUpdated = 108,
+        OnShopUpdated = 109,
+        OnDailyBonusUpdated = 110,
+        
+            // Network events
+        OnNetworkDownloadStarted = 111,
+        OnNetworkDownloadFinished = 112,
+        Unknown
+    }
 
         [StructLayout(LayoutKind.Sequential)]
         public class NotificationBase
@@ -140,6 +144,41 @@ namespace Balancy.Core
         public class LiveOpsNotification_DailyBonusUpdated : LiveOpsNotificationBase
         {
             public IntPtr DailyBonusInfo;
+        }
+        
+        [StructLayout(LayoutKind.Sequential)]
+        public class NetworkNotificationBase : NotificationBase
+        {
+        }
+        
+        [StructLayout(LayoutKind.Sequential)]
+        public class NetworkNotification_DownloadStarted : NetworkNotificationBase
+        {
+            [MarshalAs(UnmanagedType.LPStr)] public string Url;
+            [MarshalAs(UnmanagedType.LPStr)] public string RelativePath;
+            [MarshalAs(UnmanagedType.LPStr)] public string Domain;
+            private int isCDNRequest;
+            
+            public bool IsCDNRequest => isCDNRequest == 1;
+        }
+        
+        [StructLayout(LayoutKind.Sequential)]
+        public class NetworkNotification_DownloadFinished : NetworkNotificationBase
+        {
+            [MarshalAs(UnmanagedType.LPStr)] public string Url;
+            [MarshalAs(UnmanagedType.LPStr)] public string RelativePath;
+            [MarshalAs(UnmanagedType.LPStr)] public string Domain;
+            [MarshalAs(UnmanagedType.LPStr)] public string ErrorMessage;
+            private int isCDNRequest;
+            public float TimeMs;
+            public float SpeedKBps;
+            public long DownloadedBytes;
+            private int success;
+            public int ErrorCode;
+            public int Attempts;
+            
+            public bool IsCDNRequest => isCDNRequest == 1;
+            public bool Success => success == 1;
         }
     }
 }

@@ -234,6 +234,31 @@ namespace Balancy
                         Balancy.Callbacks.OnShopUpdated?.Invoke();
                         break;
                     }
+                    case Notifications.NotificationType.OnNetworkDownloadStarted: {
+                        var notificationTyped = Marshal.PtrToStructure<Notifications.NetworkNotification_DownloadStarted>(notificationPtr);
+                        Balancy.Callbacks.OnNetworkDownloadStarted?.Invoke(new Callbacks.NetworkDownloadInfo(
+                            notificationTyped.Url,
+                            notificationTyped.RelativePath,
+                            notificationTyped.Domain,
+                            notificationTyped.IsCDNRequest));
+                        break;
+                    }
+                    case Notifications.NotificationType.OnNetworkDownloadFinished: {
+                        var notificationTyped = Marshal.PtrToStructure<Notifications.NetworkNotification_DownloadFinished>(notificationPtr);
+                        Balancy.Callbacks.OnNetworkDownloadFinished?.Invoke(new Callbacks.NetworkDownloadCompletedInfo(
+                            notificationTyped.Url,
+                            notificationTyped.RelativePath,
+                            notificationTyped.Domain,
+                            notificationTyped.IsCDNRequest,
+                            notificationTyped.TimeMs,
+                            notificationTyped.SpeedKBps,
+                            notificationTyped.DownloadedBytes,
+                            notificationTyped.Success,
+                            notificationTyped.ErrorCode,
+                            notificationTyped.ErrorMessage,
+                            notificationTyped.Attempts));
+                        break;
+                    }
                     default:
                         Debug.LogError("**==> Unknown notification type. " + baseNotification.Type);
                         break;
