@@ -23,6 +23,12 @@ namespace Balancy.Examples
         [SerializeField] 
         private TMP_Text logText;
         
+        [SerializeField]
+        private RawImage webViewDisplay;
+
+        [SerializeField]
+        private AspectRatioFitter aspectRatioFitter;
+        
         private void Start()
         {
             // Set default URL
@@ -36,49 +42,56 @@ namespace Balancy.Examples
             closeWebViewButton.onClick.AddListener(CloseWebView);
             sendMessageButton.onClick.AddListener(SendMessage);
             
+            // Set the display target
+            if (webViewDisplay != null)
+            {
+                BalancyWebView2.Instance.SetDisplayTarget(webViewDisplay);
+            }
+
+            // Configure aspect ratio if needed
+            if (aspectRatioFitter != null)
+            {
+                aspectRatioFitter.aspectRatio = 16f / 9f; // Default to 16:9
+                aspectRatioFitter.aspectMode = AspectRatioFitter.AspectMode.FitInParent;
+            }
+            
             // Set up WebView events
-            BalancyWebView.Instance.OnMessage += OnWebViewMessage;
-            BalancyWebView.Instance.OnLoadCompleted += OnWebViewLoadCompleted;
-            BalancyWebView.Instance.OnCacheCompleted += OnWebViewCacheCompleted;
+            BalancyWebView2.Instance.OnMessage += OnWebViewMessage;
+            BalancyWebView2.Instance.OnLoadCompleted += OnWebViewLoadCompleted;
+            BalancyWebView2.Instance.OnCacheCompleted += OnWebViewCacheCompleted;
             
             // Enable caching
-            BalancyWebView.Instance.SetOfflineCacheEnabled(true);
-            
-            Log("BalancyWebView initialized");
+            BalancyWebView2.Instance.SetOfflineCacheEnabled(true);
         }
         
         private void OnDestroy()
         {
             // Clean up event subscriptions
-            if (BalancyWebView.Instance != null)
+            if (BalancyWebView2.Instance != null)
             {
-                BalancyWebView.Instance.OnMessage -= OnWebViewMessage;
-                BalancyWebView.Instance.OnLoadCompleted -= OnWebViewLoadCompleted;
-                BalancyWebView.Instance.OnCacheCompleted -= OnWebViewCacheCompleted;
+                BalancyWebView2.Instance.OnMessage -= OnWebViewMessage;
+                BalancyWebView2.Instance.OnLoadCompleted -= OnWebViewLoadCompleted;
+                BalancyWebView2.Instance.OnCacheCompleted -= OnWebViewCacheCompleted;
             }
         }
         
         private void OpenWebView()
         {
             string url = urlInputField.text;
-            Log($"Opening WebView with URL: {url}");
-            
-            bool success = BalancyWebView.Instance.OpenWebView(url);
+            bool success = BalancyWebView2.Instance.OpenWebView(url);
             Log($"WebView opened: {success}");
         }
         
         private void CloseWebView()
         {
-            Log("Closing WebView");
-            BalancyWebView.Instance.CloseWebView();
+            BalancyWebView2.Instance.CloseWebView();
+            Log("WebView closed");
         }
         
         private void SendMessage()
         {
             string message = $"{{\"action\":\"ping\",\"timestamp\":{DateTimeOffset.Now.ToUnixTimeSeconds()}}}";
-            Log($"Sending message: {message}");
-            
-            bool success = BalancyWebView.Instance.SendMessage(message);
+            bool success = BalancyWebView2.Instance.SendMessage(message);
             Log($"Message sent: {success}");
         }
         
