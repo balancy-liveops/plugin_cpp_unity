@@ -14,7 +14,7 @@ namespace Balancy.WebView
         // C function imports
         #if UNITY_EDITOR_OSX || UNITY_STANDALONE_OSX
         [DllImport("balancy_webview")]
-        private static extern bool OpenWebView(string url, int width, int height);
+        private static extern bool OpenWebView(string url, int width, int height, bool transparent);
         
         [DllImport("balancy_webview")]
         private static extern void CloseWebView();
@@ -48,7 +48,7 @@ namespace Balancy.WebView
         private static extern bool UpdateWebViewTexture();
         #elif UNITY_IOS
         [DllImport("__Internal")]
-        private static extern bool OpenWebView(string url, int width, int height);
+        private static extern bool OpenWebView(string url, int width, int height, bool transparent);
         
         [DllImport("__Internal")]
         private static extern void CloseWebView();
@@ -75,7 +75,7 @@ namespace Balancy.WebView
         private static bool UpdateWebViewTexture() => false;
         #else
         // Implement stubs for other platforms
-        private static bool OpenWebView(string url, int width, int height) => false;
+        private static bool OpenWebView(string url, int width, int height, bool transparent) => false;
         private static void CloseWebView() {}
         private static bool SendWebViewMessage(string message) => false;
         private static void SetWebViewOfflineCacheEnabled(bool enable) {}
@@ -116,9 +116,9 @@ namespace Balancy.WebView
         }
         
         // Public methods
-        public static bool Open(string url, int width = 0, int height = 0)
+        public static bool Open(string url, int width = 0, int height = 0, bool transparent = false)
         {
-            return OpenWebView(url, width, height);
+            return OpenWebView(url, width, height, transparent);
         }
         
         public static void Close()

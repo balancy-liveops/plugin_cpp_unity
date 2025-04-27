@@ -1011,7 +1011,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6fedf04fe62694254a3ea20313975bc3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  url: https://balancy.co
+  url: http://localhost:8000/test.html
   openButton: {fileID: 1570164305}
   closeButton: {fileID: 444779408}
   sendMessageButton: {fileID: 1429326623}

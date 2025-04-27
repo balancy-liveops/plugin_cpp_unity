@@ -96,7 +96,11 @@ public class BalancyWebViewExample : MonoBehaviour
             Debug.Log("Attempting to open WebView...");
             UpdateStatus("Opening WebView...");
             
-            bool success = BalancyWebView.Instance.OpenWebView(url);
+            string htmlPath = System.IO.Path.Combine(Application.streamingAssetsPath, "test.html");
+            string fileUrl = "file://" + htmlPath;
+            bool success = BalancyWebView.Instance.OpenWebView(fileUrl, 1600, 1200, true);
+            
+            //bool success = BalancyWebView.Instance.OpenWebView(url, 1600, 1200, true);
             if (success)
             {
                 webViewOpen = true;

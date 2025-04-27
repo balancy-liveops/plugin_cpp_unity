@@ -27,7 +27,7 @@ namespace Balancy.WebView
         #if UNITY_EDITOR_OSX
         // Import functions from the native plugin
         [DllImport("WebViewPlugin")]
-        private static extern IntPtr _CreateOffscreenWebView(string url, int width, int height);
+        private static extern IntPtr _CreateOffscreenWebView(string url, int width, int height, bool transparent);
         
         [DllImport("WebViewPlugin")]
         private static extern void _CloseWebView(IntPtr webViewPtr);
@@ -58,10 +58,10 @@ namespace Balancy.WebView
         
         private JSMessageCallback jsMessageCallback;
         #endif
-        
-        public static EmbeddedEditorWebView Instance 
+
+        public static EmbeddedEditorWebView Instance
         {
-            get 
+            get
             {
                 if (s_instance == null)
                 {
@@ -78,13 +78,14 @@ namespace Balancy.WebView
         private void Awake()
         {
             s_instance = this;
+
             #if UNITY_EDITOR_OSX
             // Create JS message callback
             jsMessageCallback = OnJSMessage;
             #endif
         }
         
-        public bool Initialize(RawImage targetDisplay = null, int width = 1024, int height = 768)
+        public bool Initialize(RawImage targetDisplay = null, int width = 1024, int height = 768, bool transparent = false)
         {
             if (isInitialized)
                 return true;
@@ -130,7 +131,7 @@ namespace Balancy.WebView
             try
             {
                 // Create offscreen webview
-                webViewPtr = _CreateOffscreenWebView("about:blank", width, height);
+                webViewPtr = _CreateOffscreenWebView("about:blank", width, height, transparent);
                 
                 if (webViewPtr != IntPtr.Zero)
                 {
@@ -153,10 +154,10 @@ namespace Balancy.WebView
             #endif
         }
         
-        public bool OpenWebView(string url, int width = 0, int height = 0)
+        public bool OpenWebView(string url, int width = 0, int height = 0, bool transparent = false)
         {
             if (!isInitialized)
-                Initialize(null, width > 0 ? width : textureWidth, height > 0 ? height : textureHeight);
+                Initialize(null, width > 0 ? width : textureWidth, height > 0 ? height : textureHeight, transparent);
                 
             // Configure RawImage and RectTransform
             if (webViewDisplay != null)

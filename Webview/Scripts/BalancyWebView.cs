@@ -48,10 +48,11 @@ namespace Balancy.WebView
             
             #if UNITY_EDITOR_OSX
             // Set up embedded WebView for editor
-            // GameObject embeddedGo = new GameObject("EmbeddedWebView");
-            // embeddedGo.transform.SetParent(transform);
-            // embeddedWebView = embeddedGo.AddComponent<EmbeddedEditorWebView>();
+//             GameObject embeddedGo = new GameObject("EmbeddedWebView");
+//             embeddedGo.transform.SetParent(transform);
+//             embeddedWebView = embeddedGo.AddComponent<EmbeddedEditorWebView>();
             embeddedWebView = EmbeddedEditorWebView.Instance;
+
             
             embeddedWebView.OnMessage += (message) => { OnMessage?.Invoke(message); };
             embeddedWebView.OnLoadCompleted += (success) => { OnLoadCompleted?.Invoke(success); };
@@ -83,7 +84,7 @@ namespace Balancy.WebView
         }
         
         // Public methods
-        public bool OpenWebView(string url, int width = 0, int height = 0)
+        public bool OpenWebView(string url, int width = 0, int height = 0, bool transparent = false)
         {
             try
             {
@@ -91,11 +92,11 @@ namespace Balancy.WebView
                 if (embeddedWebView != null)
                 {
                     Debug.Log($"Opening embedded WebView with URL: {url}");
-                    return embeddedWebView.OpenWebView(url, width, height);
+                    return embeddedWebView.OpenWebView(url, width, height, transparent);
                 }
                 return false;
                 #else
-                return BalancyWebViewNative.Open(url, width, height);
+                return BalancyWebViewNative.Open(url, width, height, transparent);
                 #endif
             }
             catch (Exception ex)

@@ -21,6 +21,7 @@ typedef void (*BalancyWebViewCacheCompletedCallback)(void* context, bool success
 
 // WebView operations
 - (bool)loadURL:(NSString*)url;
+- (void)setTransparent:(bool)transparent;
 - (bool)sendMessage:(NSString*)message;
 - (void)setOfflineCacheEnabled:(bool)enabled;
 - (bool)offlineCacheEnabled;

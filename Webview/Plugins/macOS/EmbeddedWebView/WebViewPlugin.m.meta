@@ -20,27 +20,36 @@ PluginImporter:
         Exclude WebGL: 1
         Exclude Win: 0
         Exclude Win64: 0
+        Exclude iOS: 1
     Editor:
       enabled: 1
       settings:
+        CPU: AnyCPU
         DefaultValueInitialized: true
+        OS: AnyOS
     Linux64:
       enabled: 1
       settings:
         CPU: None
     OSXUniversal:
       enabled: 1
-      settings: {}
+      settings:
+        CPU: None
     Win:
       enabled: 1
       settings:
         CPU: None
     Win64:
       enabled: 1
-      settings: {}
+      settings:
+        CPU: None
     iOS:
-      enabled: 1
-      settings: {}
+      enabled: 0
+      settings:
+        AddToEmbeddedBinaries: false
+        CPU: AnyCPU
+        CompileFlags: 
+        FrameworkDependencies: 
     tvOS:
       enabled: 1
       settings: {}
