@@ -76,6 +76,10 @@ namespace Balancy.WebView
         private float _viewportWidth = 1f;
         private float _viewportHeight = 1f;
         private bool _debugLogging = false;
+        
+        #if UNITY_EDITOR_OSX
+        private BalancyWebViewEditorRuntime _editorRuntime;
+        #endif
 
         #endregion
 
@@ -107,28 +111,28 @@ namespace Balancy.WebView
         [DllImport("__Internal")]
         private static extern void _balancySetDebugLogging(bool enabled);
         #elif UNITY_STANDALONE_OSX && !UNITY_EDITOR
-        [DllImport("BalancyWebViewMac")]
+        [DllImport("libBalancyWebViewMac")]
         private static extern bool _balancyOpenWebView(string url);
 
-        [DllImport("BalancyWebViewMac")]
+        [DllImport("libBalancyWebViewMac")]
         private static extern void _balancyCloseWebView();
 
-        [DllImport("BalancyWebViewMac")]
+        [DllImport("libBalancyWebViewMac")]
         private static extern bool _balancySendMessage(string message);
 
-        [DllImport("BalancyWebViewMac")]
+        [DllImport("libBalancyWebViewMac")]
         private static extern string _balancyCallJavaScript(string function, string[] args, int argsCount);
 
-        [DllImport("BalancyWebViewMac")]
+        [DllImport("libBalancyWebViewMac")]
         private static extern void _balancySetViewportRect(float x, float y, float width, float height);
 
-        [DllImport("BalancyWebViewMac")]
+        [DllImport("libBalancyWebViewMac")]
         private static extern void _balancySetTransparentBackground(bool transparent);
 
-        [DllImport("BalancyWebViewMac")]
+        [DllImport("libBalancyWebViewMac")]
         private static extern void _balancySetOfflineCacheEnabled(bool enabled);
 
-        [DllImport("BalancyWebViewMac")]
+        [DllImport("libBalancyWebViewMac")]
         private static extern void _balancySetDebugLogging(bool enabled);
         #endif
 
@@ -146,6 +150,11 @@ namespace Balancy.WebView
 
             _instance = this;
             DontDestroyOnLoad(gameObject);
+            
+            #if UNITY_EDITOR_OSX
+            // Initialize the editor runtime for macOS
+            _editorRuntime = BalancyWebViewEditorRuntime.Initialize(OnMessageReceived, OnLoadCompletedReceived);
+            #endif
         }
 
         private void OnDestroy()
@@ -182,6 +191,9 @@ namespace Balancy.WebView
             success = _balancyOpenWebView(url);
             #elif UNITY_STANDALONE_OSX && !UNITY_EDITOR
             success = _balancyOpenWebView(url);
+            #elif UNITY_EDITOR_OSX
+            // Use our native macOS WebKit implementation in the Editor
+            success = _editorRuntime.OpenWebView(url);
             #elif UNITY_EDITOR
             Debug.Log($"[BalancyWebView] Would open URL in WebView: {url}");
             success = true;
@@ -208,6 +220,11 @@ namespace Balancy.WebView
             _balancyCloseWebView();
             #elif UNITY_STANDALONE_OSX && !UNITY_EDITOR
             _balancyCloseWebView();
+            #elif UNITY_EDITOR_OSX
+            if (_editorRuntime != null)
+            {
+                _editorRuntime.CloseWebView();
+            }
             #elif UNITY_EDITOR
             Debug.Log("[BalancyWebView] Would close WebView");
             #endif
@@ -235,6 +252,16 @@ namespace Balancy.WebView
             success = _balancySendMessage(message);
             #elif UNITY_STANDALONE_OSX && !UNITY_EDITOR
             success = _balancySendMessage(message);
+            #elif UNITY_EDITOR_OSX
+            if (_editorRuntime != null)
+            {
+                success = _editorRuntime.SendMessage(message);
+            }
+            else
+            {
+                Debug.Log($"[BalancyWebView] Would send message to WebView: {message}");
+                success = true;
+            }
             #elif UNITY_EDITOR
             Debug.Log($"[BalancyWebView] Would send message to WebView: {message}");
             success = true;
@@ -263,6 +290,16 @@ namespace Balancy.WebView
             result = _balancyCallJavaScript(functionName, args, args.Length);
             #elif UNITY_STANDALONE_OSX && !UNITY_EDITOR
             result = _balancyCallJavaScript(functionName, args, args.Length);
+            #elif UNITY_EDITOR_OSX
+            if (_editorRuntime != null)
+            {
+                result = _editorRuntime.CallJavaScript(functionName, args);
+            }
+            else
+            {
+                Debug.Log($"[BalancyWebView] Would call JavaScript function: {functionName}");
+                result = "{}"; // Mock result in editor
+            }
             #elif UNITY_EDITOR
             Debug.Log($"[BalancyWebView] Would call JavaScript function: {functionName}");
             result = "{}"; // Mock result in editor
@@ -395,6 +432,11 @@ namespace Balancy.WebView
             
             #if UNITY_IOS && !UNITY_EDITOR || UNITY_STANDALONE_OSX && !UNITY_EDITOR
             _balancySetDebugLogging(_debugLogging);
+            #elif UNITY_EDITOR_OSX
+            if (_editorRuntime != null)
+            {
+                _editorRuntime.SetDebugLogging(_debugLogging);
+            }
             #endif
         }
 
@@ -405,6 +447,11 @@ namespace Balancy.WebView
             _balancySetViewportRect(_viewportX, _viewportY, _viewportWidth, _viewportHeight);
             #elif UNITY_STANDALONE_OSX && !UNITY_EDITOR
             _balancySetViewportRect(_viewportX, _viewportY, _viewportWidth, _viewportHeight);
+            #elif UNITY_EDITOR_OSX
+            if (_editorRuntime != null)
+            {
+                _editorRuntime.SetViewportRect(_viewportX, _viewportY, _viewportWidth, _viewportHeight);
+            }
             #endif
         }
 
@@ -415,6 +462,11 @@ namespace Balancy.WebView
             _balancySetTransparentBackground(_transparentBackground);
             #elif UNITY_STANDALONE_OSX && !UNITY_EDITOR
             _balancySetTransparentBackground(_transparentBackground);
+            #elif UNITY_EDITOR_OSX
+            if (_editorRuntime != null)
+            {
+                _editorRuntime.SetTransparentBackground(_transparentBackground);
+            }
             #endif
         }
 
@@ -425,6 +477,11 @@ namespace Balancy.WebView
             _balancySetOfflineCacheEnabled(_offlineCacheEnabled);
             #elif UNITY_STANDALONE_OSX && !UNITY_EDITOR
             _balancySetOfflineCacheEnabled(_offlineCacheEnabled);
+            #elif UNITY_EDITOR_OSX
+            if (_editorRuntime != null)
+            {
+                _editorRuntime.SetOfflineCacheEnabled(_offlineCacheEnabled);
+            }
             #endif
         }
 
@@ -438,7 +495,7 @@ namespace Balancy.WebView
         /// Called from native code when a message is received from the WebView
         /// </summary>
         /// <param name="message">The message received from the WebView</param>
-        private void OnMessageReceived(string message)
+        public void OnMessageReceived(string message)
         {
             if (_debugLogging)
             {
@@ -457,6 +514,21 @@ namespace Balancy.WebView
         {
             bool success = successStr.ToLower() == "true";
 
+            if (_debugLogging)
+            {
+                Debug.Log($"[BalancyWebView] Load completed: {success}");
+            }
+
+            // Invoke the OnLoadCompleted event on the main thread
+            MainThreadDispatcher.Instance.Enqueue(() => OnLoadCompleted?.Invoke(success));
+        }
+
+        /// <summary>
+        /// Called when the WebView finishes loading a page (editor version)
+        /// </summary>
+        /// <param name="success">True if loading was successful, false otherwise</param>
+        private void OnLoadCompletedReceived(bool success)
+        {
             if (_debugLogging)
             {
                 Debug.Log($"[BalancyWebView] Load completed: {success}");

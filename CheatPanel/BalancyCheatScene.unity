@@ -721,6 +721,50 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 567740071}
   m_CullTransparentMesh: 1
+--- !u!1 &583227901
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 583227903}
+  - component: {fileID: 583227902}
+  m_Layer: 0
+  m_Name: BalancyWebView
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &583227902
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 583227901}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d70c71efe1bd94e3f8f7fa4fd0bf6337, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+--- !u!4 &583227903
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 583227901}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &679179767
 GameObject:
   m_ObjectHideFlags: 0
@@ -1074,8 +1118,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1548fbee577b14b5f81dc82f7f064d67, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  webViewUrl: https://example.com/webview-test.html
-  useLocalHtml: 1
+  webViewUrl: http://localhost:8000/balancy-webview-test-page.html
+  useLocalHtml: 0
   localHtmlAsset: {fileID: 4900000, guid: 4436b3a01410442fc9fa4c47dd10db75, type: 3}
   transparentBackground: 0
   fullScreen: 1
@@ -2171,3 +2215,4 @@ SceneRoots:
   - {fileID: 705507995}
   - {fileID: 1908914748}
   - {fileID: 1597566027}
+  - {fileID: 583227903}

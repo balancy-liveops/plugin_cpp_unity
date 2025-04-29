@@ -1,36 +1,37 @@
 //
-//  BalancyWebViewMac.h
-//  BalancyWebView macOS Implementation
+//  BalancyWebviewMac.h
+//  Native macOS WebView implementation for Unity
 //
 
 #import <Foundation/Foundation.h>
 #import <WebKit/WebKit.h>
 #import <Cocoa/Cocoa.h>
 
-NS_ASSUME_NONNULL_BEGIN
-
-@interface BalancyWebViewController : NSViewController <WKNavigationDelegate, WKScriptMessageHandler>
-
-// Properties
-@property (nonatomic, assign) BOOL offlineCacheEnabled;
-
-// Initialize with context and callbacks
-- (instancetype)initWithMessageCallback:(void (*)(const char*))messageCallback
-                  loadCompletedCallback:(void (*)(bool))loadCompletedCallback
-                  cacheCompletedCallback:(void (*)(bool))cacheCompletedCallback;
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 // Core functionality
-- (BOOL)loadURL:(NSString *)urlString;
-- (void)close;
-- (BOOL)sendMessage:(NSString *)message;
-- (NSString *)callJavaScript:(NSString *)function arguments:(NSArray<NSString *> *)arguments;
+bool _balancyOpenWebView(const char* url);
+void _balancyCloseWebView();
+bool _balancySendMessage(const char* message);
+const char* _balancyCallJavaScript(const char* function, const char** args, int argsCount);
 
 // Configuration
-- (void)setViewportRect:(CGFloat)x y:(CGFloat)y width:(CGFloat)width height:(CGFloat)height;
-- (void)setTransparentBackground:(BOOL)transparent;
-- (void)setOfflineCacheEnabled:(BOOL)enabled;
-- (void)setDebugLogging:(BOOL)enabled;
+void _balancySetViewportRect(float x, float y, float width, float height);
+void _balancySetTransparentBackground(bool transparent);
+void _balancySetOfflineCacheEnabled(bool enabled);
+void _balancySetDebugLogging(bool enabled);
 
-@end
+// Callback registration
+typedef void (*MessageCallback)(const char* message);
+typedef void (*LoadCompletedCallback)(bool success);
+typedef void (*CacheCompletedCallback)(bool success);
 
-NS_ASSUME_NONNULL_END
+void _balancyRegisterMessageCallback(MessageCallback callback);
+void _balancyRegisterLoadCompletedCallback(LoadCompletedCallback callback);
+void _balancyRegisterCacheCompletedCallback(CacheCompletedCallback callback);
+
+#ifdef __cplusplus
+}
+#endif
