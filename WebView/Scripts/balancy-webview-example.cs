@@ -214,7 +214,7 @@ namespace Balancy.WebView.Examples
                 message = "Hello from Unity!";
             }
             
-            bool success = _webView.SendMessage(message);
+            bool success = _webView.SendMessageToWebView(message);
             
             if (success)
             {
@@ -252,7 +252,7 @@ namespace Balancy.WebView.Examples
                 items = new string[] { "sword", "shield", "potion" }
             });
             
-            bool success = _webView.SendMessage(jsonData);
+            bool success = _webView.SendMessageToWebView(jsonData);
             
             if (success)
             {
@@ -373,7 +373,7 @@ namespace Balancy.WebView.Examples
                 items = new string[] { "sword", "shield", "potion" }
             });
             
-            _webView.SendMessage("{\"action\":\"playerInfo\",\"data\":" + playerInfo + "}");
+            _webView.SendMessageToWebView("{\"action\":\"playerInfo\",\"data\":" + playerInfo + "}");
         }
         
         /// <summary>
@@ -388,7 +388,7 @@ namespace Balancy.WebView.Examples
                 lives = 3
             });
             
-            _webView.SendMessage("{\"action\":\"gameState\",\"data\":" + gameState + "}");
+            _webView.SendMessageToWebView("{\"action\":\"gameState\",\"data\":" + gameState + "}");
         }
         
         /// <summary>

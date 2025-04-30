@@ -1,7 +1,5 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
-using System.Runtime.InteropServices;
 using UnityEngine;
 
 namespace Balancy.WebView
@@ -238,7 +236,7 @@ namespace Balancy.WebView
         /// </summary>
         /// <param name="message">The message to send (can be a string or JSON)</param>
         /// <returns>True if the message was sent successfully, false otherwise</returns>
-        public bool SendMessage(string message)
+        public bool SendMessageToWebView(string message)
         {
             if (!_isWebViewOpen)
             {
