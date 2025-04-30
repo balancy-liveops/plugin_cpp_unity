@@ -31,6 +31,7 @@ typedef void (*CacheCompletedCallback)(bool success);
 void _balancyRegisterMessageCallback(MessageCallback callback);
 void _balancyRegisterLoadCompletedCallback(LoadCompletedCallback callback);
 void _balancyRegisterCacheCompletedCallback(CacheCompletedCallback callback);
+void _balancySendResponse(const char* requestId, const char* resultJson, const char* errorMessage);
 
 #ifdef __cplusplus
 }

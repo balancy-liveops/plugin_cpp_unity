@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using UnityEngine;
+using Unity.Plastic.Newtonsoft.Json;
+using Unity.Plastic.Newtonsoft.Json.Linq;
 
 namespace Balancy.WebView
 {
@@ -75,13 +78,18 @@ namespace Balancy.WebView
         private float _viewportHeight = 1f;
         private bool _debugLogging = false;
         
-        #if UNITY_EDITOR_OSX
-        private BalancyWebViewEditorRuntime _editorRuntime;
-        #endif
-
+        // Dictionary to hold request handlers
+        private readonly Dictionary<string, Func<JObject, object>> _requestHandlers = new Dictionary<string, Func<JObject, object>>();
+        
         #endregion
 
         #region Native Plugin Interface
+        
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        private delegate void MessageDelegate(string message);
+        
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        private delegate void LoadCompletedDelegate(bool success);
 
         // Native plugin methods - these will be implemented differently for each platform
         #if UNITY_IOS && !UNITY_EDITOR
@@ -108,7 +116,11 @@ namespace Balancy.WebView
 
         [DllImport("__Internal")]
         private static extern void _balancySetDebugLogging(bool enabled);
-        #elif UNITY_STANDALONE_OSX && !UNITY_EDITOR
+        
+        [DllImport("__Internal")]
+        private static extern void _balancySendResponse(string requestId, string resultJson, string errorMessage);
+        //#elif UNITY_STANDALONE_OSX && !UNITY_EDITOR
+        #else
         [DllImport("libBalancyWebViewMac")]
         private static extern bool _balancyOpenWebView(string url);
 
@@ -132,6 +144,15 @@ namespace Balancy.WebView
 
         [DllImport("libBalancyWebViewMac")]
         private static extern void _balancySetDebugLogging(bool enabled);
+        
+        [DllImport("libBalancyWebViewMac")]
+        private static extern void _balancySendResponse(string requestId, string resultJson, string errorMessage);
+        
+        [DllImport("libBalancyWebViewMac")]
+        private static extern void _balancyRegisterMessageCallback(MessageDelegate callback);
+        
+        [DllImport("libBalancyWebViewMac")]
+        private static extern void _balancyRegisterLoadCompletedCallback(LoadCompletedDelegate callback);
         #endif
 
         #endregion
@@ -149,10 +170,11 @@ namespace Balancy.WebView
             _instance = this;
             DontDestroyOnLoad(gameObject);
             
-            #if UNITY_EDITOR_OSX
-            // Initialize the editor runtime for macOS
-            _editorRuntime = BalancyWebViewEditorRuntime.Initialize(OnMessageReceived, OnLoadCompletedReceived);
-            #endif
+            // Set up default request handlers
+            SetupDefaultRequestHandlers();
+            
+            _balancyRegisterMessageCallback(OnMessageReceived);
+            _balancyRegisterLoadCompletedCallback(OnLoadCompletedReceived);
         }
 
         private void OnDestroy()
@@ -185,16 +207,8 @@ namespace Balancy.WebView
 
             bool success = false;
 
-            #if UNITY_IOS && !UNITY_EDITOR
+            #if UNITY_IOS || UNITY_STANDALONE_OSX || UNITY_EDITOR_OSX
             success = _balancyOpenWebView(url);
-            #elif UNITY_STANDALONE_OSX && !UNITY_EDITOR
-            success = _balancyOpenWebView(url);
-            #elif UNITY_EDITOR_OSX
-            // Use our native macOS WebKit implementation in the Editor
-            success = _editorRuntime.OpenWebView(url);
-            #elif UNITY_EDITOR
-            Debug.Log($"[BalancyWebView] Would open URL in WebView: {url}");
-            success = true;
             #else
             Debug.LogWarning("BalancyWebView is not supported on this platform.");
             success = false;
@@ -214,17 +228,10 @@ namespace Balancy.WebView
                 return;
             }
 
-            #if UNITY_IOS && !UNITY_EDITOR
+            #if UNITY_IOS || UNITY_STANDALONE_OSX || UNITY_EDITOR_OSX
             _balancyCloseWebView();
-            #elif UNITY_STANDALONE_OSX && !UNITY_EDITOR
-            _balancyCloseWebView();
-            #elif UNITY_EDITOR_OSX
-            if (_editorRuntime != null)
-            {
-                _editorRuntime.CloseWebView();
-            }
             #elif UNITY_EDITOR
-            Debug.Log("[BalancyWebView] Would close WebView");
+            LogDebug("[BalancyWebView] Would close WebView");
             #endif
 
             _isWebViewOpen = false;
@@ -251,17 +258,18 @@ namespace Balancy.WebView
             #elif UNITY_STANDALONE_OSX && !UNITY_EDITOR
             success = _balancySendMessage(message);
             #elif UNITY_EDITOR_OSX
-            if (_editorRuntime != null)
-            {
-                success = _editorRuntime.SendMessage(message);
-            }
-            else
-            {
-                Debug.Log($"[BalancyWebView] Would send message to WebView: {message}");
-                success = true;
-            }
+            success = _balancySendMessage(message);
+            // if (_editorRuntime != null)
+            // {
+            //     success = _editorRuntime.SendMessage(message);
+            // }
+            // else
+            // {
+            //     LogDebug($"[BalancyWebView] Would send message to WebView: {message}");
+            //     success = true;
+            // }
             #elif UNITY_EDITOR
-            Debug.Log($"[BalancyWebView] Would send message to WebView: {message}");
+            LogDebug($"[BalancyWebView] Would send message to WebView: {message}");
             success = true;
             #endif
 
@@ -284,22 +292,10 @@ namespace Balancy.WebView
 
             string result = null;
 
-            #if UNITY_IOS && !UNITY_EDITOR
+            #if UNITY_IOS || UNITY_STANDALONE_OSX || UNITY_EDITOR_OSX
             result = _balancyCallJavaScript(functionName, args, args.Length);
-            #elif UNITY_STANDALONE_OSX && !UNITY_EDITOR
-            result = _balancyCallJavaScript(functionName, args, args.Length);
-            #elif UNITY_EDITOR_OSX
-            if (_editorRuntime != null)
-            {
-                result = _editorRuntime.CallJavaScript(functionName, args);
-            }
-            else
-            {
-                Debug.Log($"[BalancyWebView] Would call JavaScript function: {functionName}");
-                result = "{}"; // Mock result in editor
-            }
-            #elif UNITY_EDITOR
-            Debug.Log($"[BalancyWebView] Would call JavaScript function: {functionName}");
+            #else
+            LogDebug($"[BalancyWebView] Would call JavaScript function: {functionName}");
             result = "{}"; // Mock result in editor
             #endif
 
@@ -374,12 +370,7 @@ namespace Balancy.WebView
         public void SetDebugLogging(bool enabled)
         {
             _debugLogging = enabled;
-
-            #if UNITY_IOS && !UNITY_EDITOR
             _balancySetDebugLogging(enabled);
-            #elif UNITY_STANDALONE_OSX && !UNITY_EDITOR
-            _balancySetDebugLogging(enabled);
-            #endif
         }
 
         /// <summary>
@@ -416,6 +407,23 @@ namespace Balancy.WebView
         {
             return _isWebViewOpen;
         }
+        
+        /// <summary>
+        /// Registers a handler for a specific request action from the WebView
+        /// </summary>
+        /// <param name="action">The action name to handle</param>
+        /// <param name="handler">Function that will process the request and return a response</param>
+        public void RegisterRequestHandler(string action, Func<JObject, object> handler)
+        {
+            if (string.IsNullOrEmpty(action))
+            {
+                Debug.LogError("[BalancyWebView] Cannot register handler with null or empty action");
+                return;
+            }
+            
+            _requestHandlers[action] = handler;
+            LogDebug($"[BalancyWebView] Registered handler for action: {action}");
+        }
 
         #endregion
 
@@ -428,59 +436,135 @@ namespace Balancy.WebView
             ApplyTransparencySettings();
             ApplyCacheSettings();
             
-            #if UNITY_IOS && !UNITY_EDITOR || UNITY_STANDALONE_OSX && !UNITY_EDITOR
             _balancySetDebugLogging(_debugLogging);
-            #elif UNITY_EDITOR_OSX
-            if (_editorRuntime != null)
-            {
-                _editorRuntime.SetDebugLogging(_debugLogging);
-            }
-            #endif
         }
 
         // Apply current viewport settings to the WebView
         private void ApplyViewportSettings()
         {
-            #if UNITY_IOS && !UNITY_EDITOR
             _balancySetViewportRect(_viewportX, _viewportY, _viewportWidth, _viewportHeight);
-            #elif UNITY_STANDALONE_OSX && !UNITY_EDITOR
-            _balancySetViewportRect(_viewportX, _viewportY, _viewportWidth, _viewportHeight);
-            #elif UNITY_EDITOR_OSX
-            if (_editorRuntime != null)
-            {
-                _editorRuntime.SetViewportRect(_viewportX, _viewportY, _viewportWidth, _viewportHeight);
-            }
-            #endif
         }
 
         // Apply current transparency settings to the WebView
         private void ApplyTransparencySettings()
         {
-            #if UNITY_IOS && !UNITY_EDITOR
             _balancySetTransparentBackground(_transparentBackground);
-            #elif UNITY_STANDALONE_OSX && !UNITY_EDITOR
-            _balancySetTransparentBackground(_transparentBackground);
-            #elif UNITY_EDITOR_OSX
-            if (_editorRuntime != null)
-            {
-                _editorRuntime.SetTransparentBackground(_transparentBackground);
-            }
-            #endif
         }
 
         // Apply current cache settings to the WebView
         private void ApplyCacheSettings()
         {
-            #if UNITY_IOS && !UNITY_EDITOR
             _balancySetOfflineCacheEnabled(_offlineCacheEnabled);
-            #elif UNITY_STANDALONE_OSX && !UNITY_EDITOR
-            _balancySetOfflineCacheEnabled(_offlineCacheEnabled);
-            #elif UNITY_EDITOR_OSX
-            if (_editorRuntime != null)
+        }
+        
+        // Set up default request handlers
+        private void SetupDefaultRequestHandlers()
+        {
+            // Echo handler - returns whatever is sent
+            RegisterRequestHandler("echo", parameters => {
+                return parameters;
+            });
+            
+            // Time handler - returns current time
+            RegisterRequestHandler("getTime", _ => {
+                return new { 
+                    time = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
+                    timestamp = DateTimeOffset.Now.ToUnixTimeMilliseconds()
+                };
+            });
+            
+            // Unity info handler
+            RegisterRequestHandler("getUnityInfo", _ => {
+                return new {
+                    version = Application.unityVersion,
+                    platform = Application.platform.ToString(),
+                    productName = Application.productName,
+                    companyName = Application.companyName,
+                    systemLanguage = Application.systemLanguage.ToString()
+                };
+            });
+        }
+        
+        // Process a request from the WebView
+        private void ProcessRequest(string requestId, string action, JObject parameters)
+        {
+            LogDebug($"[BalancyWebView] Processing request: {action} (ID: {requestId})");
+            
+            try
             {
-                _editorRuntime.SetOfflineCacheEnabled(_offlineCacheEnabled);
+                object result = null;
+                string error = null;
+                
+                // Look for a handler for this action
+                if (_requestHandlers.TryGetValue(action, out var handler))
+                {
+                    try
+                    {
+                        // Execute the handler
+                        result = handler(parameters);
+                    }
+                    catch (Exception ex)
+                    {
+                        error = $"Handler exception: {ex.Message}";
+                        Debug.LogException(ex);
+                    }
+                }
+                else
+                {
+                    error = $"No handler registered for action: {action}";
+                    Debug.LogWarning($"[BalancyWebView] {error}");
+                }
+                
+                // Send the response
+                SendResponse(requestId, result, error);
             }
-            #endif
+            catch (Exception ex)
+            {
+                Debug.LogError($"[BalancyWebView] Error processing request: {ex.Message}");
+                
+                // Try to send error response
+                SendResponse(requestId, null, $"Internal error: {ex.Message}");
+            }
+        }
+        
+        // Send a response to the WebView
+        private void SendResponse(string requestId, object result, string error)
+        {
+            try
+            {
+                string resultJson = null;
+                
+                if (result != null)
+                {
+                    // Serialize the result to JSON
+                    // resultJson = JsonConvert.SerializeObject(result);
+                    //Create one object using requestId, result and error and then serialize it as string:
+                    resultJson = JsonConvert.SerializeObject(new
+                    {
+                        type = "response",
+                        id = requestId, 
+                        result, 
+                        error
+                    });
+                    
+                }
+                SendMessageToWebView(resultJson);
+                
+                LogDebug($"[BalancyWebView] Response sent for request {requestId}");
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[BalancyWebView] Error sending response: {ex.Message}");
+            }
+        }
+       
+        // Log a debug message if debug logging is enabled
+        private void LogDebug(string message)
+        {
+            if (_debugLogging)
+            {
+                Debug.Log(message);
+            }
         }
 
         #endregion
@@ -493,47 +577,56 @@ namespace Balancy.WebView
         /// Called from native code when a message is received from the WebView
         /// </summary>
         /// <param name="message">The message received from the WebView</param>
-        public void OnMessageReceived(string message)
+        [AOT.MonoPInvokeCallback(typeof(MessageDelegate))]
+        public static void OnMessageReceived(string message)
         {
-            if (_debugLogging)
-            {
-                Debug.Log($"[BalancyWebView] Message received: {message}");
-            }
-
-            // Invoke the OnMessage event on the main thread
-            MainThreadDispatcher.Instance.Enqueue(() => OnMessage?.Invoke(message));
+            _instance.OnMessageReceivedPrivate(message);
         }
-
-        /// <summary>
-        /// Called from native code when the WebView finishes loading a page
-        /// </summary>
-        /// <param name="successStr">String "true" if loading was successful, "false" otherwise</param>
-        private void OnLoadCompletedReceived(string successStr)
+        
+        private void OnMessageReceivedPrivate(string message)
         {
-            bool success = successStr.ToLower() == "true";
-
-            if (_debugLogging)
+            LogDebug($"[BalancyWebView] Message received: {message}");
+            
+            try
             {
-                Debug.Log($"[BalancyWebView] Load completed: {success}");
+                // Try to parse as JSON to see if it's a request
+                JObject msgObj = JObject.Parse(message);
+                
+                // Check if this is a request message (has type, id, and action)
+                string messageType = msgObj["type"]?.ToString();
+                string id = msgObj["id"]?.ToString();
+                string action = msgObj["action"]?.ToString();
+                
+                if (messageType == "request" && !string.IsNullOrEmpty(id) && !string.IsNullOrEmpty(action))
+                {
+                    // This is a request message, process it
+                    JObject parameters = msgObj["params"] as JObject ?? new JObject();
+                    ProcessRequest(id, action, parameters);
+                    return;
+                }
+            }
+            catch (JsonException)
+            {
+                // Not a JSON message or invalid format, treat as regular message
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[BalancyWebView] Error processing message: {ex.Message}");
             }
 
-            // Invoke the OnLoadCompleted event on the main thread
-            MainThreadDispatcher.Instance.Enqueue(() => OnLoadCompleted?.Invoke(success));
+            OnMessage?.Invoke(message);
         }
 
         /// <summary>
         /// Called when the WebView finishes loading a page (editor version)
         /// </summary>
         /// <param name="success">True if loading was successful, false otherwise</param>
-        private void OnLoadCompletedReceived(bool success)
+        [AOT.MonoPInvokeCallback(typeof(LoadCompletedDelegate))]
+        private static void OnLoadCompletedReceived(bool success)
         {
-            if (_debugLogging)
-            {
-                Debug.Log($"[BalancyWebView] Load completed: {success}");
-            }
+            Debug.Log($"[BalancyWebView] Load completed: {success}");
 
-            // Invoke the OnLoadCompleted event on the main thread
-            MainThreadDispatcher.Instance.Enqueue(() => OnLoadCompleted?.Invoke(success));
+            _instance.OnLoadCompleted?.Invoke(success);
         }
 
         /// <summary>
@@ -544,66 +637,11 @@ namespace Balancy.WebView
         {
             bool success = successStr.ToLower() == "true";
 
-            if (_debugLogging)
-            {
-                Debug.Log($"[BalancyWebView] Cache completed: {success}");
-            }
+            LogDebug($"[BalancyWebView] Cache completed: {success}");
 
-            // Invoke the OnCacheCompleted event on the main thread
-            MainThreadDispatcher.Instance.Enqueue(() => OnCacheCompleted?.Invoke(success));
+            OnCacheCompleted?.Invoke(success);
         }
 
         #endregion
-    }
-
-    /// <summary>
-    /// Helper class for dispatching callbacks on the main thread
-    /// </summary>
-    public class MainThreadDispatcher : MonoBehaviour
-    {
-        private static MainThreadDispatcher _instance;
-
-        /// <summary>
-        /// Singleton instance of the MainThreadDispatcher
-        /// </summary>
-        public static MainThreadDispatcher Instance
-        {
-            get
-            {
-                if (_instance == null)
-                {
-                    GameObject go = new GameObject("MainThreadDispatcher");
-                    _instance = go.AddComponent<MainThreadDispatcher>();
-                    DontDestroyOnLoad(go);
-                }
-                return _instance;
-            }
-        }
-
-        private readonly Queue<Action> _executionQueue = new Queue<Action>();
-
-        /// <summary>
-        /// Enqueues an action to be executed on the main thread
-        /// </summary>
-        /// <param name="action">The action to execute</param>
-        public void Enqueue(Action action)
-        {
-            lock (_executionQueue)
-            {
-                _executionQueue.Enqueue(action);
-            }
-        }
-
-        private void Update()
-        {
-            // Execute all queued actions
-            lock (_executionQueue)
-            {
-                while (_executionQueue.Count > 0)
-                {
-                    _executionQueue.Dequeue().Invoke();
-                }
-            }
-        }
     }
 }

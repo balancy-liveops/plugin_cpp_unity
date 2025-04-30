@@ -31,6 +31,7 @@ static CacheCompletedCallback _cacheCompletedCallback = NULL;
 - (void)setViewportRect:(CGFloat)x y:(CGFloat)y width:(CGFloat)width height:(CGFloat)height;
 - (void)setTransparentBackground:(BOOL)transparent;
 - (void)setDebugLogging:(BOOL)enabled;
+- (void)sendResponseForRequest:(NSString *)requestId result:(NSString *)resultJson error:(NSString *)errorMessage;
 @end
 
 // Global WebView controller instance
@@ -80,18 +81,67 @@ static BalancyWebViewController* _sharedController = nil;
                     return false;\
                 },\
                 _receiveMessageFromUnity: function(message) {\
-                    var event = new CustomEvent('BalancyWebViewMessage', {detail: message});\
+                    var event = new CustomEvent('balancyMessage', {detail: message});\
                     document.dispatchEvent(event);\
+                },\
+                // Setup for request-response functionality\
+                _pendingRequests: {},\
+                _requestCounter: 0,\
+                sendRequest: function(action, params) {\
+                    return new Promise((resolve, reject) => {\
+                        const requestId = (this._requestCounter++).toString();\
+                        this._pendingRequests[requestId] = {\
+                            resolve: resolve,\
+                            reject: reject,\
+                            timestamp: Date.now()\
+                        };\
+                        const message = {\
+                            type: 'request',\
+                            id: requestId,\
+                            action: action,\
+                            params: params || {}\
+                        };\
+                        this.postMessage(JSON.stringify(message));\
+                        setTimeout(() => {\
+                            const request = this._pendingRequests[requestId];\
+                            if (request) {\
+                                delete this._pendingRequests[requestId];\
+                                reject(new Error(`Request timeout: ${action}`));\
+                            }\
+                        }, 10000);\
+                    });\
+                },\
+                handleResponse: function(responseJson) {\
+                    try {\
+                        const response = JSON.parse(responseJson);\
+                        const request = this._pendingRequests[response.id];\
+                        if (request) {\
+                            delete this._pendingRequests[response.id];\
+                            if (response.error) {\
+                                request.reject(new Error(response.error));\
+                            } else {\
+                                request.resolve(response.result);\
+                            }\
+                        }\
+                    } catch (error) {\
+                        console.error('Error handling response:', error);\
+                    }\
+                },\
+                initResponseHandler: function() {\
+                    // This is just a marker function to show that the response handler is initialized\
+                    console.log('BalancyWebView response handler initialized');\
+                    return true;\
                 }\
             };\
             window.BalancyWebView = BalancyWebView;\
+            window.BalancyWebView.initResponseHandler();\
         })();";
         
         // Add bridge script
-        WKUserScript *script = [[WKUserScript alloc] initWithSource:bridgeScript
-                                                     injectionTime:WKUserScriptInjectionTimeAtDocumentStart 
-                                                  forMainFrameOnly:YES];
-        [_userContentController addUserScript:script];
+//         WKUserScript *script = [[WKUserScript alloc] initWithSource:bridgeScript
+//                                                      injectionTime:WKUserScriptInjectionTimeAtDocumentStart 
+//                                                   forMainFrameOnly:YES];
+//         [_userContentController addUserScript:script];
         
         // Create WebView
         _webView = [[WKWebView alloc] initWithFrame:[[window contentView] bounds] configuration:configuration];
@@ -131,6 +181,53 @@ static BalancyWebViewController* _sharedController = nil;
     
     [_webView evaluateJavaScript:script completionHandler:nil];
     return YES;
+}
+
+- (void)sendResponseForRequest:(NSString *)requestId result:(NSString *)resultJson error:(NSString *)errorMessage {
+    if (!_webView) {
+        NSLog(@"Cannot send response: WebView not initialized");
+        return;
+    }
+    
+    // Create the response object
+    NSMutableDictionary *response = [NSMutableDictionary dictionary];
+    response[@"id"] = requestId;
+    
+    if (errorMessage) {
+        response[@"error"] = errorMessage;
+    } else {
+        // If resultJson is a string, it's already JSON serialized
+        if (resultJson) {
+            // We need to keep the response JSON as a string to avoid double parsing
+            response[@"result"] = resultJson;
+        } else {
+            response[@"result"] = [NSNull null];
+        }
+    }
+    
+    // Convert to JSON string
+    NSError *error = nil;
+    NSData *jsonData = [NSJSONSerialization dataWithJSONObject:response options:0 error:&error];
+    
+    if (error) {
+        NSLog(@"Error creating response JSON: %@", error);
+        return;
+    }
+    
+    NSString *jsonString = [[NSString alloc] initWithData:jsonData encoding:NSUTF8StringEncoding];
+    
+    // Escape single quotes for JavaScript
+    NSString *escapedJson = [jsonString stringByReplacingOccurrencesOfString:@"'" withString:@"\\'"];
+    
+    // Create JavaScript to call the response handler
+    NSString *js = [NSString stringWithFormat:@"if (window.BalancyWebView && window.BalancyWebView.handleResponse) { window.BalancyWebView.handleResponse('%@'); }", escapedJson];
+    
+    // Execute the JavaScript
+    [_webView evaluateJavaScript:js completionHandler:^(id result, NSError *error) {
+        if (error && _debugLogging) {
+            NSLog(@"Error sending response to WebView: %@", error);
+        }
+    }];
 }
 
 - (NSString *)callJavaScript:(NSString *)function args:(NSArray<NSString *> *)args {
@@ -232,6 +329,10 @@ static BalancyWebViewController* _sharedController = nil;
     if (_transparentBackground) {
         [self setTransparentBackground:YES];
     }
+    
+    // Ensure the response handler is initialized
+    NSString *initScript = @"if (window.BalancyWebView && typeof window.BalancyWebView.initResponseHandler === 'function') { window.BalancyWebView.initResponseHandler(); }";
+    [_webView evaluateJavaScript:initScript completionHandler:nil];
     
     if (_loadCompletedCallback) {
         _loadCompletedCallback(true);
@@ -338,6 +439,21 @@ void _balancyRegisterLoadCompletedCallback(LoadCompletedCallback callback) {
 
 void _balancyRegisterCacheCompletedCallback(CacheCompletedCallback callback) {
     _cacheCompletedCallback = callback;
+}
+
+void _balancySendResponse(const char* requestId, const char* resultJson, const char* errorMessage) {
+    @autoreleasepool {
+        if (_sharedController == nil) {
+            NSLog(@"Cannot send response: WebView controller not available");
+            return;
+        }
+        
+        NSString* nsRequestId = requestId ? [NSString stringWithUTF8String:requestId] : nil;
+        NSString* nsResultJson = resultJson ? [NSString stringWithUTF8String:resultJson] : nil;
+        NSString* nsErrorMessage = errorMessage ? [NSString stringWithUTF8String:errorMessage] : nil;
+        
+        [_sharedController sendResponseForRequest:nsRequestId result:nsResultJson error:nsErrorMessage];
+    }
 }
 
 }

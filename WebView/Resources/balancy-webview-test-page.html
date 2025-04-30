@@ -78,15 +78,20 @@
             margin-bottom: 20px;
         }
         
-        input, button, select {
+        input, button, select, textarea {
             padding: 10px;
             border-radius: 4px;
             border: 1px solid #ddd;
         }
         
-        input {
+        input, textarea {
             flex-grow: 1;
             margin-right: 10px;
+        }
+        
+        textarea {
+            min-height: 80px;
+            font-family: monospace;
         }
         
         select {
@@ -128,6 +133,59 @@
             margin-top: 40px;
             color: #666;
         }
+
+        .tabs {
+            display: flex;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            border-radius: 4px 4px 0 0;
+        }
+        
+        .tab.active {
+            background-color: #4CAF50;
+            color: white;
+            border: 1px solid #4CAF50;
+            border-bottom: none;
+        }
+        
+        .tab:not(.active) {
+            background-color: #f1f1f1;
+            border: 1px solid #ddd;
+            border-bottom: none;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .json-key {
+            color: #881391;
+        }
+        
+        .json-string {
+            color: #1C7C4C;
+        }
+        
+        .json-number {
+            color: #1A5C9A;
+        }
+        
+        .json-boolean {
+            color: #0000FF;
+        }
+        
+        .json-null {
+            color: #808080;
+        }
     </style>
 </head>
 <body>
@@ -143,17 +201,48 @@
         </div>
         
         <div class="card section">
-            <h2>Send Message to Unity</h2>
-            <div class="message-form">
-                <select id="message-type">
-                    <option value="text">Text</option>
-                    <option value="json">JSON</option>
-                </select>
-                <input type="text" id="message-input" placeholder="Enter message or JSON...">
-                <button id="send-button">Send</button>
+            <div class="tabs">
+                <div class="tab active" data-tab="basic-messaging">Basic Messaging</div>
+                <div class="tab" data-tab="request-response">Request-Response</div>
             </div>
-            <div class="message-form">
-                <button id="send-and-get-response-button" class="btn-secondary">Send and Get Response</button>
+            
+            <div class="tab-content active" id="basic-messaging">
+                <h2>Send Message to Unity</h2>
+                <div class="message-form">
+                    <select id="message-type">
+                        <option value="text">Text</option>
+                        <option value="json">JSON</option>
+                    </select>
+                    <input type="text" id="message-input" placeholder="Enter message or JSON...">
+                    <button id="send-button">Send</button>
+                </div>
+            </div>
+            
+            <div class="tab-content" id="request-response">
+                <h2>Request-Response API</h2>
+                <div class="message-form">
+                    <select id="request-type">
+                        <option value="echo">Echo</option>
+                        <option value="getTime">Get Time</option>
+                        <option value="getUnityInfo">Get Unity Info</option>
+                        <option value="custom">Custom Request</option>
+                    </select>
+                    <button id="send-request-button">Send Request</button>
+                </div>
+                
+                <div id="custom-request-container" style="display: none;">
+                    <div class="message-form">
+                        <input type="text" id="custom-action" placeholder="Action name">
+                    </div>
+                    <div class="message-form">
+                        <textarea id="custom-params" placeholder="Parameters (JSON)">{ "value": "test" }</textarea>
+                    </div>
+                </div>
+                
+                <div class="message-form" style="display: block;">
+                    <h3>Response:</h3>
+                    <pre id="request-result">No response yet...</pre>
+                </div>
             </div>
         </div>
         
@@ -173,16 +262,150 @@
     </div>
     
     <script>
+        // Initialize the BalancyWebView namespace if needed
+        window.BalancyWebView = window.BalancyWebView || {};
+        
+        // Set up request-response functionality
+        (function() {
+            // Store for pending requests
+            const pendingRequests = {};
+            
+            // Counter for generating sequential IDs
+            let requestCounter = 0;
+
+            window.BalancyWebView.postMessage = function(message) {
+                if (typeof message !== 'string') message = JSON.stringify(message);
+                if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.BalancyWebView) {
+                    window.webkit.messageHandlers.BalancyWebView.postMessage(message);
+                    return true;
+                }
+                return false;
+            };
+
+            window.BalancyWebView._receiveMessageFromUnity = function(message) {
+                logMessage(`Received: ${message}`, 'from-unity');
+                
+                try {
+                    const response = JSON.parse(message);
+                    if (response.type === 'response') {
+                        logMessage('Received response: ' + response, 'from-unity', " error = ", response.error);
+
+                        const request = pendingRequests[response.id];
+                        if (request) {
+                            delete pendingRequests[response.id];
+                            if (response.error) {
+                                request.reject(new Error(response.error));
+                            } else {
+                                request.resolve(response.result);
+                            }
+                        } else
+                            logMessage('NOT FOUND BY ID' + response.id);
+                    } else if (response.type === 'message') {
+                        logMessage('Message from Unity: ' + response.message, 'from-unity');
+                    } else {
+                        console.error('Unknown message type:', response);
+                    }
+                }  catch (error) {
+                    console.error('Error handling response:', error);
+                    logMessage('Error handling message from Unity: ' + error.message, 'error');
+                }
+            };
+            
+            // Create the request method with Promise API
+            window.BalancyWebView.sendRequest = function(action, params = {}) {
+                return new Promise((resolve, reject) => {
+                    // Generate a unique request ID
+                    const requestId = (requestCounter++).toString();
+                    
+                    // Store the callbacks
+                    pendingRequests[requestId] = {
+                        resolve: resolve,
+                        reject: reject,
+                        timestamp: Date.now()
+                    };
+                    
+                    // Create the message object
+                    const message = {
+                        type: 'request',
+                        id: requestId,
+                        action: action,
+                        params: params
+                    };
+                    
+                    // Send the message to Unity
+                    logMessage('POST 1');
+                    window.BalancyWebView.postMessage(JSON.stringify(message));
+                    logMessage('POST 2');
+                    // Set up timeout to clean up abandoned requests
+                    setTimeout(() => {
+                        const request = pendingRequests[requestId];
+                        if (request) {
+                            delete pendingRequests[requestId];
+                            reject(new Error(`Request timeout: ${action}`));
+                        }
+                    }, 10000); // 10 second timeout
+                });
+            };
+            
+            // Set up the message listener (runs only once during initialization)
+            window.BalancyWebView.initResponseHandler = function() {
+                if (window.BalancyWebView._responseHandlerInitialized) return;
+                
+                // Mark as initialized
+                window.BalancyWebView._responseHandlerInitialized = true;
+                
+                // Create a handler for incoming messages from Unity
+                window.BalancyWebView.handleResponse = function(responseJson) {
+                    try {
+                        logMessage('Received response:', responseJson);
+                        
+                        // Parse the response
+                        const response = JSON.parse(responseJson);
+                        
+                        // Log the response
+                        logMessage('Received response: ' + responseJson, 'from-unity');
+                        
+                        // Look for a matching request
+                        const request = pendingRequests[response.id];
+                        if (request) {
+                            // Remove from pending
+                            delete pendingRequests[response.id];
+                            
+                            // Call the appropriate callback
+                            if (response.error) {
+                                request.reject(new Error(response.error));
+                            } else {
+                                request.resolve(response.result);
+                            }
+                        }
+                    } catch (error) {
+                        console.error('Error handling response:', error);
+                        logMessage('Error handling response: ' + error.message, 'error');
+                    }
+                };
+            };
+            
+            // Initialize the response handler
+            window.BalancyWebView.initResponseHandler();
+        })();
+        
         // DOM elements
         const messageLog = document.getElementById('message-log');
         const messageInput = document.getElementById('message-input');
         const messageType = document.getElementById('message-type');
         const sendButton = document.getElementById('send-button');
-        const sendAndGetResponseButton = document.getElementById('send-and-get-response-button');
+        const requestType = document.getElementById('request-type');
+        const sendRequestButton = document.getElementById('send-request-button');
+        const customAction = document.getElementById('custom-action');
+        const customParams = document.getElementById('custom-params');
+        const customRequestContainer = document.getElementById('custom-request-container');
+        const requestResult = document.getElementById('request-result');
         const getPlayerInfoButton = document.getElementById('get-player-info-button');
         const getGameStateButton = document.getElementById('get-game-state-button');
         const notifyReadyButton = document.getElementById('notify-ready-button');
         const testErrorButton = document.getElementById('test-error-button');
+        const tabs = document.querySelectorAll('.tab');
+        const tabContents = document.querySelectorAll('.tab-content');
         
         // Log a message to the UI
         function logMessage(message, type) {
@@ -198,16 +421,62 @@
             logMessage(`Status: ${status}`, 'status');
         }
         
+        // Format JSON for display
+        function formatJson(json) {
+            if (typeof json !== 'string') {
+                json = JSON.stringify(json, null, 2);
+            }
+            return json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, function (match) {
+                    let cls = 'json-number';
+                    if (/^"/.test(match)) {
+                        if (/:$/.test(match)) {
+                            cls = 'json-key';
+                        } else {
+                            cls = 'json-string';
+                        }
+                    } else if (/true|false/.test(match)) {
+                        cls = 'json-boolean';
+                    } else if (/null/.test(match)) {
+                        cls = 'json-null';
+                    }
+                    return '<span class="' + cls + '">' + match + '</span>';
+                });
+        }
+        
         // Initialize
         function initialize() {
             logStatus('WebView Test Page initialized');
             
             // Check if running in Balancy WebView
-            if (window.BalancyWebView) {
+            if (window.BalancyWebView && window.BalancyWebView.postMessage) {
                 logStatus('BalancyWebView bridge detected');
             } else {
                 logStatus('BalancyWebView bridge not found - running in regular browser');
             }
+            
+            // Handle tabs
+            tabs.forEach(tab => {
+                tab.addEventListener('click', function() {
+                    // Remove active class from all tabs
+                    tabs.forEach(t => t.classList.remove('active'));
+                    
+                    // Add active class to clicked tab
+                    this.classList.add('active');
+                    
+                    // Hide all tab contents
+                    tabContents.forEach(content => content.classList.remove('active'));
+                    
+                    // Show the corresponding tab content
+                    const tabId = this.getAttribute('data-tab');
+                    document.getElementById(tabId).classList.add('active');
+                });
+            });
+            
+            // Show/hide custom request fields based on request type
+            requestType.addEventListener('change', function() {
+                customRequestContainer.style.display = this.value === 'custom' ? 'block' : 'none';
+            });
         }
         
         // Add event listeners
@@ -231,38 +500,71 @@
             }
         });
         
-        // Send and get response button
-        sendAndGetResponseButton.addEventListener('click', function() {
-            const message = messageInput.value.trim();
-            if (!message) return;
+        // Send request button
+        sendRequestButton.addEventListener('click', function() {
+            const type = requestType.value;
             
             try {
-                if (messageType.value === 'json') {
-                    // Try to parse as JSON to validate
-                    const jsonObj = JSON.parse(message);
-                    callUnity(jsonObj);
+                let action;
+                let params = {};
+                
+                if (type === 'custom') {
+                    action = customAction.value.trim();
+                    if (!action) {
+                        throw new Error('Action name is required');
+                    }
+                    
+                    try {
+                        params = JSON.parse(customParams.value);
+                    } catch (e) {
+                        throw new Error('Invalid JSON parameters: ' + e.message);
+                    }
                 } else {
-                    callUnity(message);
+                    action = type;
                 }
-                messageInput.value = '';
+                
+                // Send the request
+                requestResult.innerHTML = 'Sending request...';
+                
+                window.BalancyWebView.sendRequest(action, params)
+                    .then(result => {
+                        // Format and display the result
+                        let resultStr;
+                        if (typeof result === 'object') {
+                            resultStr = formatJson(JSON.stringify(result, null, 2));
+                        } else {
+                            resultStr = String(result);
+                        }
+                        requestResult.innerHTML = resultStr;
+                    })
+                    .catch(error => {
+                        requestResult.innerHTML = `<span class="error">Error: ${error.message}</span>`;
+                    });
+                
             } catch (e) {
-                logMessage(`Error: ${e.message}`, 'error');
+                requestResult.innerHTML = `<span class="error">Error: ${e.message}</span>`;
             }
         });
         
         // Predefined action buttons
         getPlayerInfoButton.addEventListener('click', function() {
-            sendMessageToUnity({
-                action: 'getPlayerInfo',
-                timestamp: Date.now()
-            });
+            window.BalancyWebView.sendRequest('getPlayerInfo')
+                .then(result => {
+                    logMessage('Received player info: ' + JSON.stringify(result), 'from-unity');
+                })
+                .catch(error => {
+                    logMessage('Error getting player info: ' + error.message, 'error');
+                });
         });
         
         getGameStateButton.addEventListener('click', function() {
-            sendMessageToUnity({
-                action: 'getGameState',
-                timestamp: Date.now()
-            });
+            window.BalancyWebView.sendRequest('getGameState')
+                .then(result => {
+                    logMessage('Received game state: ' + JSON.stringify(result), 'from-unity');
+                })
+                .catch(error => {
+                    logMessage('Error getting game state: ' + error.message, 'error');
+                });
         });
         
         notifyReadyButton.addEventListener('click', function() {
@@ -273,11 +575,13 @@
         });
         
         testErrorButton.addEventListener('click', function() {
-            sendMessageToUnity({
-                action: 'testError',
-                shouldFail: true,
-                timestamp: Date.now()
-            });
+            window.BalancyWebView.sendRequest('testError', { shouldFail: true })
+                .then(result => {
+                    logMessage('Received unexpected success: ' + JSON.stringify(result), 'from-unity');
+                })
+                .catch(error => {
+                    logMessage('Received expected error: ' + error.message, 'error');
+                });
         });
         
         // Enter key in input field
@@ -296,102 +600,12 @@
             
             logMessage(`Sending: ${messageStr}`, 'to-unity');
             
-            if (window.BalancyWebView) {
+            if (window.BalancyWebView && window.BalancyWebView.postMessage) {
                 window.BalancyWebView.postMessage(messageStr);
             } else {
                 logMessage('Cannot send - BalancyWebView not available', 'error');
-                
-                // Simulate a response for testing in browser
-                setTimeout(() => {
-                    simulateUnityResponse(message);
-                }, 500);
             }
         }
-        
-        // Call Unity and get response (synchronous)
-        function callUnity(message) {
-            // Convert to string if it's not already
-            const messageStr = typeof message === 'string' ? message : JSON.stringify(message);
-            
-            logMessage(`Calling with sync: ${messageStr}`, 'to-unity');
-            
-            let response;
-            if (window.BalancyWebView) {
-                response = window.BalancyWebView.callUnity(messageStr);
-                logMessage(`Response: ${response}`, 'from-unity');
-            } else {
-                logMessage('Cannot call - BalancyWebView not available', 'error');
-                
-                // Simulate a response for testing in browser
-                response = simulateUnityResponse(message, true);
-                logMessage(`Simulated response: ${response}`, 'from-unity');
-            }
-            
-            return response;
-        }
-        
-        // Simulate a response from Unity when testing in a regular browser
-        function simulateUnityResponse(message, returnResponse = false) {
-            let response;
-            
-            // Handle different message types
-            if (typeof message === 'string') {
-                response = `Echo: ${message}`;
-            } else {
-                switch (message.action) {
-                    case 'getPlayerInfo':
-                        response = JSON.stringify({
-                            id: 'player123',
-                            name: 'Test Player',
-                            level: 42,
-                            coins: 1000
-                        });
-                        break;
-                    case 'getGameState':
-                        response = JSON.stringify({
-                            currentLevel: 5,
-                            score: 12500,
-                            timeRemaining: 120,
-                            lives: 3
-                        });
-                        break;
-                    case 'ready':
-                        response = JSON.stringify({
-                            status: 'acknowledged',
-                            message: 'Ready signal received'
-                        });
-                        break;
-                    case 'testError':
-                        response = JSON.stringify({
-                            error: 'This is a test error',
-                            code: 500
-                        });
-                        break;
-                    default:
-                        response = JSON.stringify({
-                            echo: message,
-                            timestamp: Date.now()
-                        });
-                }
-            }
-            
-            if (returnResponse) {
-                return response;
-            } else {
-                // Simulate receiving a message from Unity
-                setTimeout(() => {
-                    document.dispatchEvent(new CustomEvent('BalancyWebViewMessage', {
-                        detail: response
-                    }));
-                }, 300);
-            }
-        }
-        
-        // Listen for messages from Unity
-        document.addEventListener('BalancyWebViewMessage', function(event) {
-            const message = event.detail;
-            logMessage(`Received: ${message}`, 'from-unity');
-        });
         
         // Initialize when page loads
         window.addEventListener('load', initialize);
