@@ -1,3 +1,16 @@
 {
-	"name": "Balancy"
+    "name": "Balancy",
+    "rootNamespace": "",
+    "references": [
+        "GUID:7653e9ebcf9ce402f9ee54a2e8ea9cf1"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
 }
