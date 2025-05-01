@@ -1,300 +1,115 @@
-/**
- * Balancy WebView JavaScript Bridge
- * 
- * This script is automatically injected into WebView content by the Balancy WebView plugin.
- * It provides two-way communication between the web page and the Unity application.
- */
-
+window.BalancyWebView = window.BalancyWebView || {};
+const balancy = {};
+        
+// Set up request-response functionality
 (function() {
-    /**
-     * The main BalancyWebView object that will be exposed to the global window scope
-     */
-    const BalancyWebView = {
-        /**
-         * Send a message to Unity (asynchronous)
-         * @param {string} message - Message to send to Unity (can be a string or stringified JSON)
-         */
-        postMessage: function(message) {
-            if (typeof message !== 'string') {
-                message = JSON.stringify(message);
-            }
-            
-            // Platform-specific implementation will be injected here
-            // For iOS/macOS, this calls window.webkit.messageHandlers.BalancyWebView.postMessage(message)
-            // For Android, this calls window.androidBridge.postMessage(message)
-            // For other platforms, appropriate implementations will be added
-            try {
-                if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.BalancyWebView) {
-                    window.webkit.messageHandlers.BalancyWebView.postMessage(message);
-                    return true;
-                } else if (window.androidBridge) {
-                    window.androidBridge.postMessage(message);
-                    return true;
-                } else {
-                    console.warn('BalancyWebView native bridge not found');
-                    return false;
-                }
-            } catch (e) {
-                console.error('Error sending message to Unity:', e);
-                return false;
-            }
-        },
-        
-        /**
-         * Call Unity and get an immediate response (synchronous)
-         * @param {string} message - Message to send to Unity (can be a string or stringified JSON)
-         * @returns {string} Response from Unity
-         */
-        callUnity: function(message) {
-            if (typeof message !== 'string') {
-                message = JSON.stringify(message);
-            }
-            
-            // Platform-specific synchronous implementation will be injected here
-            // This is platform-dependent and may have different implementations
-            try {
-                if (window._BalancyWebViewSynchronousInterface) {
-                    return window._BalancyWebViewSynchronousInterface.callUnity(message);
-                } else if (window.androidBridge && window.androidBridge.callUnitySync) {
-                    return window.androidBridge.callUnitySync(message);
-                } else {
-                    console.warn('BalancyWebView synchronous interface not found');
-                    return JSON.stringify({error: 'Bridge not available'});
-                }
-            } catch (e) {
-                console.error('Error calling Unity synchronously:', e);
-                return JSON.stringify({error: e.message});
-            }
-        },
-        
-        /**
-         * Internal method called by native code to receive messages from Unity
-         * @param {string} message - Message received from Unity
-         * @private
-         */
-        _receiveMessageFromUnity: function(message) {
-            // Create and dispatch custom event
-            const event = new CustomEvent('BalancyWebViewMessage', {
-                detail: message,
-                bubbles: true,
-                cancelable: true
-            });
-            document.dispatchEvent(event);
-            
-            // Also expose the message through a callback for legacy support
-            if (typeof window.onBalancyWebViewMessage === 'function') {
-                window.onBalancyWebViewMessage(message);
-            }
-        }
+    // Store for pending requests
+    const pendingRequests = {};
+    
+    // Counter for generating sequential IDs
+    let requestCounter = 0;
+
+    const RequestAction = {
+        None: 0,
+        GetProfile: 1,
     };
-    
-    // Expose the BalancyWebView object to the global window scope
-    window.BalancyWebView = BalancyWebView;
-    
-    // Initialize when the document is ready
-    document.addEventListener('DOMContentLoaded', function() {
-        // Send ready event
-        setTimeout(function() {
-            BalancyWebView.postMessage(JSON.stringify({
-                action: 'ready',
-                timestamp: Date.now()
-            }));
-        }, 100); // Small delay to ensure everything is set up properly
-    });
-    
-    // Console logging override for debug purposes
-    // This sends console logs to Unity for debugging
-    const originalConsoleLog = console.log;
-    const originalConsoleWarn = console.warn;
-    const originalConsoleError = console.error;
-    
-    // Only enable this in debug mode
-    if (window._BALANCY_WEBVIEW_DEBUG_MODE) {
-        console.log = function() {
-            originalConsoleLog.apply(console, arguments);
-            const args = Array.prototype.slice.call(arguments);
-            try {
-                BalancyWebView.postMessage(JSON.stringify({
-                    action: 'console',
-                    level: 'log',
-                    message: args.map(arg => String(arg)).join(' ')
-                }));
-            } catch (e) {
-                originalConsoleError('Error sending console log to Unity:', e);
-            }
-        };
-        
-        console.warn = function() {
-            originalConsoleWarn.apply(console, arguments);
-            const args = Array.prototype.slice.call(arguments);
-            try {
-                BalancyWebView.postMessage(JSON.stringify({
-                    action: 'console',
-                    level: 'warn',
-                    message: args.map(arg => String(arg)).join(' ')
-                }));
-            } catch (e) {
-                originalConsoleError('Error sending console warning to Unity:', e);
-            }
-        };
-        
-        console.error = function() {
-            originalConsoleError.apply(console, arguments);
-            const args = Array.prototype.slice.call(arguments);
-            try {
-                BalancyWebView.postMessage(JSON.stringify({
-                    action: 'console',
-                    level: 'error',
-                    message: args.map(arg => String(arg)).join(' ')
-                }));
-            } catch (e) {
-                originalConsoleError('Error sending console error to Unity:', e);
-            }
-        };
-    }
-    
-    // Helper functions for message handling
-    
-    /**
-     * Handles messages from Unity based on standard protocol
-     * @param {string} messageStr - JSON string message from Unity
-     * @returns {Object|null} Response object or null if no response needed
-     */
-    window._handleUnityMessage = function(messageStr) {
+
+    balancy.getSystemProfileValue = (path) => {
+        return window.BalancyWebView.sendRequest(RequestAction.GetProfile, {profile: "UnnyProfile", path});
+    };
+
+    balancy.getProfileValue = (profile, path) => {
+        return window.BalancyWebView.sendRequest(RequestAction.GetProfile, {profile, path});
+    };
+
+    window.BalancyWebView.postMessage = function(message) {
+        if (typeof message !== 'string') message = JSON.stringify(message);
+        if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.BalancyWebView) {
+            window.webkit.messageHandlers.BalancyWebView.postMessage(message);
+            return true;
+        }
+        return false;
+    };
+
+    window.BalancyWebView._receiveMessageFromUnity = function(message) {
         try {
-            const message = JSON.parse(messageStr);
-            
-            // Standard protocol actions
-            switch (message.action) {
-                case 'eval':
-                    // Execute JavaScript code
-                    if (message.code) {
-                        try {
-                            const result = eval(message.code);
-                            return {
-                                success: true,
-                                result: result
-                            };
-                        } catch (e) {
-                            return {
-                                success: false,
-                                error: e.message
-                            };
-                        }
+            const response = JSON.parse(message);
+            if (response.type === 'response') {
+                const request = pendingRequests[response.id];
+                if (request) {
+                    delete pendingRequests[response.id];
+                    if (response.error) {
+                        request.reject(new Error(response.error));
+                    } else {
+                        request.resolve(response.result);
                     }
-                    break;
-                    
-                case 'callFunction':
-                    // Call a specific function by name with args
-                    if (message.function) {
-                        try {
-                            // Safely navigate the function path (e.g. "app.utils.doSomething")
-                            const parts = message.function.split('.');
-                            let func = window;
-                            
-                            for (let i = 0; i < parts.length; i++) {
-                                func = func[parts[i]];
-                                if (typeof func === 'undefined') {
-                                    throw new Error(`Function path ${message.function} is invalid at ${parts.slice(0, i+1).join('.')}`);
-                                }
-                            }
-                            
-                            if (typeof func !== 'function') {
-                                throw new Error(`${message.function} is not a function`);
-                            }
-                            
-                            const args = message.args || [];
-                            const result = func.apply(null, args);
-                            return {
-                                success: true,
-                                result: result
-                            };
-                        } catch (e) {
-                            return {
-                                success: false,
-                                error: e.message
-                            };
-                        }
-                    }
-                    break;
-                    
-                case 'setProperty':
-                    // Set a JavaScript property
-                    if (message.property && 'value' in message) {
-                        try {
-                            // Safely navigate the property path
-                            const parts = message.property.split('.');
-                            let obj = window;
-                            
-                            // Navigate to the parent object
-                            for (let i = 0; i < parts.length - 1; i++) {
-                                if (typeof obj[parts[i]] === 'undefined') {
-                                    obj[parts[i]] = {};
-                                }
-                                obj = obj[parts[i]];
-                            }
-                            
-                            // Set the property
-                            obj[parts[parts.length - 1]] = message.value;
-                            return { success: true };
-                        } catch (e) {
-                            return {
-                                success: false,
-                                error: e.message
-                            };
-                        }
-                    }
-                    break;
-                    
-                case 'getProperty':
-                    // Get a JavaScript property
-                    if (message.property) {
-                        try {
-                            // Safely navigate the property path
-                            const parts = message.property.split('.');
-                            let value = window;
-                            
-                            for (let i = 0; i < parts.length; i++) {
-                                value = value[parts[i]];
-                                if (typeof value === 'undefined') {
-                                    break;
-                                }
-                            }
-                            
-                            return {
-                                success: true,
-                                value: value
-                            };
-                        } catch (e) {
-                            return {
-                                success: false,
-                                error: e.message
-                            };
-                        }
-                    }
-                    break;
-                    
-                // Add more standard actions as needed
+                }
             }
-            
-            // If we get here, let the application handle the message
-            const event = new CustomEvent('BalancyWebViewMessage', {
-                detail: messageStr,
-                bubbles: true,
-                cancelable: true
-            });
-            document.dispatchEvent(event);
-            
-            // No immediate response needed
-            return null;
-        } catch (e) {
-            return {
-                success: false,
-                error: `Failed to parse message: ${e.message}`
-            };
+        }  catch (error) {
+            // console.error('Error handling response:', error);
         }
     };
     
-    // Log initialization
-    console.log('Balancy WebView Bridge initialized');
+    window.BalancyWebView.sendRequest = function(action, params = {}) {
+        return new Promise((resolve, reject) => {
+            const requestId = (requestCounter++).toString();
+            
+            pendingRequests[requestId] = {
+                resolve: resolve,
+                reject: reject,
+                timestamp: Date.now()
+            };
+            
+            const message = {
+                type: 'request',
+                id: requestId,
+                action: action,
+                params: params
+            };
+            
+            window.BalancyWebView.postMessage(JSON.stringify(message));
+
+            // setTimeout(() => {
+            //     const request = pendingRequests[requestId];
+            //     if (request) {
+            //         delete pendingRequests[requestId];
+            //         reject(new Error(`Request timeout: ${action}`));
+            //     }
+            // }, 10000); // 10 second timeout
+        });
+    };
+    
+    // Set up the message listener (runs only once during initialization)
+    window.BalancyWebView.initResponseHandler = function() {
+        if (window.BalancyWebView._responseHandlerInitialized) return;
+        
+        // Mark as initialized
+        window.BalancyWebView._responseHandlerInitialized = true;
+        
+        // Create a handler for incoming messages from Unity
+        window.BalancyWebView.handleResponse = function(responseJson) {
+            try {
+                const response = JSON.parse(responseJson);
+                
+                // Look for a matching request
+                const request = pendingRequests[response.id];
+                if (request) {
+                    // Remove from pending
+                    delete pendingRequests[response.id];
+                    
+                    // Call the appropriate callback
+                    if (response.error) {
+                        request.reject(new Error(response.error));
+                    } else {
+                        request.resolve(response.result);
+                    }
+                }
+            } catch (error) {
+                console.error('Error handling response:', error);
+            }
+        };
+    };
+    
+    // Initialize the response handler
+    window.BalancyWebView.initResponseHandler();
 })();

@@ -27,11 +27,11 @@ static CacheCompletedCallback _cacheCompletedCallback = NULL;
 - (BOOL)loadURL:(NSString *)url;
 - (void)close;
 - (BOOL)sendMessage:(NSString *)message;
+- (BOOL)injectJSCode:(NSString *)code;
 - (NSString *)callJavaScript:(NSString *)function args:(NSArray<NSString *> *)args;
 - (void)setViewportRect:(CGFloat)x y:(CGFloat)y width:(CGFloat)width height:(CGFloat)height;
 - (void)setTransparentBackground:(BOOL)transparent;
 - (void)setDebugLogging:(BOOL)enabled;
-- (void)sendResponseForRequest:(NSString *)requestId result:(NSString *)resultJson error:(NSString *)errorMessage;
 @end
 
 // Global WebView controller instance
@@ -183,51 +183,11 @@ static BalancyWebViewController* _sharedController = nil;
     return YES;
 }
 
-- (void)sendResponseForRequest:(NSString *)requestId result:(NSString *)resultJson error:(NSString *)errorMessage {
-    if (!_webView) {
-        NSLog(@"Cannot send response: WebView not initialized");
-        return;
-    }
+- (BOOL)injectJSCode:(NSString *)code {
+    if (!_webView) return NO;
     
-    // Create the response object
-    NSMutableDictionary *response = [NSMutableDictionary dictionary];
-    response[@"id"] = requestId;
-    
-    if (errorMessage) {
-        response[@"error"] = errorMessage;
-    } else {
-        // If resultJson is a string, it's already JSON serialized
-        if (resultJson) {
-            // We need to keep the response JSON as a string to avoid double parsing
-            response[@"result"] = resultJson;
-        } else {
-            response[@"result"] = [NSNull null];
-        }
-    }
-    
-    // Convert to JSON string
-    NSError *error = nil;
-    NSData *jsonData = [NSJSONSerialization dataWithJSONObject:response options:0 error:&error];
-    
-    if (error) {
-        NSLog(@"Error creating response JSON: %@", error);
-        return;
-    }
-    
-    NSString *jsonString = [[NSString alloc] initWithData:jsonData encoding:NSUTF8StringEncoding];
-    
-    // Escape single quotes for JavaScript
-    NSString *escapedJson = [jsonString stringByReplacingOccurrencesOfString:@"'" withString:@"\\'"];
-    
-    // Create JavaScript to call the response handler
-    NSString *js = [NSString stringWithFormat:@"if (window.BalancyWebView && window.BalancyWebView.handleResponse) { window.BalancyWebView.handleResponse('%@'); }", escapedJson];
-    
-    // Execute the JavaScript
-    [_webView evaluateJavaScript:js completionHandler:^(id result, NSError *error) {
-        if (error && _debugLogging) {
-            NSLog(@"Error sending response to WebView: %@", error);
-        }
-    }];
+    [_webView evaluateJavaScript:code completionHandler:nil];
+    return YES;
 }
 
 - (NSString *)callJavaScript:(NSString *)function args:(NSArray<NSString *> *)args {
@@ -379,6 +339,15 @@ bool _balancySendMessage(const char* message) {
     }
 }
 
+bool _balancyInjectJSCode(const char* message) {
+    @autoreleasepool {
+        if (_sharedController == nil) return false;
+        
+        NSString* nsMessage = [NSString stringWithUTF8String:message];
+        return [_sharedController injectJSCode:nsMessage];
+    }
+}
+
 const char* _balancyCallJavaScript(const char* function, const char** args, int argsCount) {
     @autoreleasepool {
         if (_sharedController == nil) {
@@ -439,21 +408,6 @@ void _balancyRegisterLoadCompletedCallback(LoadCompletedCallback callback) {
 
 void _balancyRegisterCacheCompletedCallback(CacheCompletedCallback callback) {
     _cacheCompletedCallback = callback;
-}
-
-void _balancySendResponse(const char* requestId, const char* resultJson, const char* errorMessage) {
-    @autoreleasepool {
-        if (_sharedController == nil) {
-            NSLog(@"Cannot send response: WebView controller not available");
-            return;
-        }
-        
-        NSString* nsRequestId = requestId ? [NSString stringWithUTF8String:requestId] : nil;
-        NSString* nsResultJson = resultJson ? [NSString stringWithUTF8String:resultJson] : nil;
-        NSString* nsErrorMessage = errorMessage ? [NSString stringWithUTF8String:errorMessage] : nil;
-        
-        [_sharedController sendResponseForRequest:nsRequestId result:nsResultJson error:nsErrorMessage];
-    }
 }
 
 }

@@ -49,7 +49,6 @@ namespace Balancy.WebView.Examples
             _webView = BalancyWebView.Instance;
             
             // Register event handlers
-            _webView.OnMessage += HandleWebViewMessage;
             _webView.OnLoadCompleted += HandleLoadCompleted;
             _webView.OnClosed += HandleWebViewClosed;
             
@@ -89,7 +88,6 @@ namespace Balancy.WebView.Examples
             // Unregister event handlers
             if (_webView != null)
             {
-                _webView.OnMessage -= HandleWebViewMessage;
                 _webView.OnLoadCompleted -= HandleLoadCompleted;
                 _webView.OnClosed -= HandleWebViewClosed;
                 
@@ -297,39 +295,6 @@ namespace Balancy.WebView.Examples
                     _webView.SetViewportRect(viewportX, viewportY, viewportWidth, viewportHeight);
                     LogStatus("WebView set to custom viewport");
                 }
-            }
-        }
-        
-        /// <summary>
-        /// Handle messages received from the WebView
-        /// </summary>
-        private void HandleWebViewMessage(string message)
-        {
-            LogStatus("Message from WebView: " + message);
-            
-            // Try to parse as JSON
-            try
-            {
-                // Simple validation to check if it's JSON
-                if (message.StartsWith("{") && message.EndsWith("}"))
-                {
-                    // Handle different message types based on action
-                    // (In a real app you would use proper JSON parsing)
-                    if (message.Contains("\"action\":\"getPlayerInfo\""))
-                    {
-                        // Send player info back to the WebView
-                        SendPlayerInfo();
-                    }
-                    else if (message.Contains("\"action\":\"getGameState\""))
-                    {
-                        // Send game state back to the WebView
-                        SendGameState();
-                    }
-                }
-            }
-            catch (Exception e)
-            {
-                Debug.LogError("Error parsing WebView message: " + e.Message);
             }
         }
         

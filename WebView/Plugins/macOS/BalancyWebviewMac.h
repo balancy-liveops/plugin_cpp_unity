@@ -15,6 +15,7 @@ extern "C" {
 bool _balancyOpenWebView(const char* url);
 void _balancyCloseWebView();
 bool _balancySendMessage(const char* message);
+bool _balancyInjectJSCode(const char* message);
 const char* _balancyCallJavaScript(const char* function, const char** args, int argsCount);
 
 // Configuration
@@ -31,7 +32,6 @@ typedef void (*CacheCompletedCallback)(bool success);
 void _balancyRegisterMessageCallback(MessageCallback callback);
 void _balancyRegisterLoadCompletedCallback(LoadCompletedCallback callback);
 void _balancyRegisterCacheCompletedCallback(CacheCompletedCallback callback);
-void _balancySendResponse(const char* requestId, const char* resultJson, const char* errorMessage);
 
 #ifdef __cplusplus
 }
