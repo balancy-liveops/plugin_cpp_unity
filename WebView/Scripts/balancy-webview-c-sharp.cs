@@ -208,6 +208,9 @@ namespace Balancy.WebView
 
             // Apply current settings before opening
             ApplySettings();
+            
+            // Set transparent background by default
+            SetTransparentBackground(true);
 
             bool success = false;
 

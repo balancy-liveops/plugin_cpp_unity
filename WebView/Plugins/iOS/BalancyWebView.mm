@@ -111,7 +111,7 @@ static NSString *const kBalancyWebViewBridgeScript = @"(function() {\
         // Default property values
         _offlineCacheEnabled = NO;
         _debugLogging = NO;
-        _transparentBackground = NO;
+        _transparentBackground = YES; // Set transparent background by default
         _viewportRect = CGRectMake(0.0f, 0.0f, 1.0f, 1.0f);
         
         // Setup WebView configuration
@@ -135,10 +135,33 @@ static NSString *const kBalancyWebViewBridgeScript = @"(function() {\
                                                      forMainFrameOnly:YES];
     [_userContentController addUserScript:bridgeScript];
     
+    // Add transparency CSS that will be injected at document start
+    NSString *transparencyCSS = @"\
+    (function() {\
+        document.addEventListener('DOMContentLoaded', function() {\
+            document.body.style.backgroundColor = 'transparent';\
+            document.documentElement.style.backgroundColor = 'transparent';\
+            var style = document.createElement('style');\
+            style.type = 'text/css';\
+            style.innerHTML = 'body, html { background-color: transparent !important; }';\
+            document.head.appendChild(style);\
+        });\
+    })();\
+    ";
+    
+    WKUserScript *transparencyScript = [[WKUserScript alloc] initWithSource:transparencyCSS
+                                                               injectionTime:WKUserScriptInjectionTimeAtDocumentStart
+                                                            forMainFrameOnly:YES];
+    [_userContentController addUserScript:transparencyScript];
+    
     // Create the WKWebView with the configuration
     _webView = [[WKWebView alloc] initWithFrame:CGRectZero configuration:configuration];
     _webView.navigationDelegate = self;
     _webView.UIDelegate = self;
+    
+    // Make WebView background transparent by default
+    _webView.backgroundColor = [UIColor clearColor];
+    _webView.opaque = NO;
     
     // Create activity indicator
     _activityIndicator = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleLarge];
@@ -411,7 +434,17 @@ static NSString *const kBalancyWebViewBridgeScript = @"(function() {\
         self.view.backgroundColor = [UIColor clearColor];
         
         // JavaScript to make the HTML document body transparent
-        NSString *transparencyScript = @"document.body.style.backgroundColor = 'transparent';";
+        NSString *transparencyScript = @"\
+        (function() {\
+            document.body.style.backgroundColor = 'transparent';\
+            document.documentElement.style.backgroundColor = 'transparent';\
+            var style = document.createElement('style');\
+            style.type = 'text/css';\
+            style.innerHTML = 'body { background-color: transparent !important; }';\
+            document.head.appendChild(style);\
+        })();\
+        ";
+        
         [_webView evaluateJavaScript:transparencyScript completionHandler:nil];
     } else {
         // Reset to default opaque background
