@@ -124,6 +124,22 @@ static NSString *const kBalancyWebViewBridgeScript = @"(function() {\
     // Create a WKWebViewConfiguration object
     WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
     
+    // Disable various WebView features to make it feel more like a game UI
+    // Note: Some of these preferences are only available in newer iOS versions,
+    // so we're using availability checks
+    if (@available(iOS 13.0, *)) {
+        // In iOS 13+, we can use these properties to disable some interactive features
+        // Uncomment if your deployment target is iOS 14+
+        // configuration.preferences.textInteractionEnabled = NO;
+    }
+    
+    // Disable all native context menus
+    // Note: Additional configuration options available in newer iOS versions
+    if (@available(iOS 14.0, *)) {
+        // Make sure JavaScript is enabled
+        configuration.defaultWebpagePreferences.allowsContentJavaScript = YES;
+    }
+    
     // Create user content controller and add script message handler
     _userContentController = [[WKUserContentController alloc] init];
     [_userContentController addScriptMessageHandler:self name:@"BalancyWebView"];
@@ -149,10 +165,74 @@ static NSString *const kBalancyWebViewBridgeScript = @"(function() {\
     })();\
     ";
     
+    // Add CSS to disable user interaction features to make it feel like a game UI
+    NSString *gameUICSS = @"\
+    (function() {\
+        document.addEventListener('DOMContentLoaded', function() {\
+            var style = document.createElement('style');\
+            style.type = 'text/css';\
+            style.innerHTML = `\
+                /* Disable text selection */\
+                * {\
+                    -webkit-user-select: none !important;\
+                    -moz-user-select: none !important;\
+                    -ms-user-select: none !important;\
+                    user-select: none !important;\
+                    -webkit-touch-callout: none !important;\
+                }\
+                \
+                /* Disable default touch behaviors */\
+                * {\
+                    -webkit-tap-highlight-color: transparent !important;\
+                }\
+                \
+                /* Hide scrollbars but allow programmatic scrolling if needed */\
+                ::-webkit-scrollbar {\
+                    width: 0px !important;\
+                    height: 0px !important;\
+                    background: transparent !important;\
+                }\
+                \
+                /* Custom cursor to match game feel */\
+                * {\
+                    cursor: default !important;\
+                }\
+                \
+                /* Make buttons feel more like game UI */\
+                button, input[type=button], input[type=submit] {\
+                    -webkit-appearance: none !important;\
+                }\
+                \
+                /* Remove focus outlines */\
+                *:focus {\
+                    outline: none !important;\
+                }\
+            `;\
+            document.head.appendChild(style);\
+            \
+            // Disable context menu (right click)\
+            document.addEventListener('contextmenu', function(e) {\
+                e.preventDefault();\
+                return false;\
+            }, false);\
+            \
+            // Disable user scaling (pinch to zoom)\
+            document.addEventListener('gesturestart', function(e) {\
+                e.preventDefault();\
+            }, false);\
+        });\
+    })();\
+    ";
+    
     WKUserScript *transparencyScript = [[WKUserScript alloc] initWithSource:transparencyCSS
                                                                injectionTime:WKUserScriptInjectionTimeAtDocumentStart
                                                             forMainFrameOnly:YES];
     [_userContentController addUserScript:transparencyScript];
+    
+    WKUserScript *gameUIScript = [[WKUserScript alloc] initWithSource:gameUICSS
+                                                         injectionTime:WKUserScriptInjectionTimeAtDocumentStart
+                                                      forMainFrameOnly:YES];
+    [_userContentController addUserScript:gameUIScript];
     
     // Create the WKWebView with the configuration
     _webView = [[WKWebView alloc] initWithFrame:CGRectZero configuration:configuration];
@@ -162,6 +242,20 @@ static NSString *const kBalancyWebViewBridgeScript = @"(function() {\
     // Make WebView background transparent by default
     _webView.backgroundColor = [UIColor clearColor];
     _webView.opaque = NO;
+    
+    // Disable scrolling bounce effect to make it feel more like a game UI
+    _webView.scrollView.bounces = NO;
+    _webView.scrollView.alwaysBounceVertical = NO;
+    _webView.scrollView.alwaysBounceHorizontal = NO;
+    
+    // Optional: Disable scrolling entirely if your content doesn't need to scroll
+    // Comment this out if you need scrolling in your web content
+    _webView.scrollView.scrollEnabled = NO;
+    
+    // Adjust content inset behavior if available
+    if (@available(iOS 11.0, *)) {
+        _webView.scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
+    }
     
     // Create activity indicator
     _activityIndicator = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleLarge];
@@ -387,6 +481,85 @@ static NSString *const kBalancyWebViewBridgeScript = @"(function() {\
         // TODO: Implement offline caching logic
         // This would typically involve setting up a custom URL scheme handler
         // and implementing NSURLProtocol to intercept requests and cache responses
+    }
+}
+
+- (void)setGameUIMode:(BOOL)enabled {
+    _gameUIMode = enabled;
+    
+    // Apply game UI settings
+    if (enabled) {
+        // Disable scrolling bounce effect
+        _webView.scrollView.bounces = NO;
+        _webView.scrollView.alwaysBounceVertical = NO;
+        _webView.scrollView.alwaysBounceHorizontal = NO;
+        
+        // Disable scrolling entirely unless content needs it
+        _webView.scrollView.scrollEnabled = NO;
+        
+        // Inject UI customizations for game-like feel
+        NSString *gameUIModeScript = @"\
+        (function() {\
+            // Disable text selection\
+            document.documentElement.style.webkitUserSelect = 'none';\
+            document.documentElement.style.userSelect = 'none';\
+            \
+            // Disable context menu\
+            document.documentElement.oncontextmenu = function() { return false; };\
+            \
+            // Disable text selection on tap\
+            document.documentElement.style.webkitTouchCallout = 'none';\
+            \
+            // Remove any focus outlines\
+            var styleElement = document.createElement('style');\
+            styleElement.textContent = '*:focus { outline: none !important; }';\
+            document.head.appendChild(styleElement);\
+            \
+            // Prevent default touch behavior\
+            document.addEventListener('touchstart', function(e) {\
+                // Allow clicking on links and buttons, but prevent other behaviors\
+                if (e.target.tagName !== 'A' && e.target.tagName !== 'BUTTON' && \
+                    e.target.tagName !== 'INPUT') {\
+                    e.preventDefault();\
+                }\
+            }, { passive: false });\
+        })();\
+        ";
+        
+        [_webView evaluateJavaScript:gameUIModeScript completionHandler:nil];
+    } else {
+        // Enable standard web browsing features
+        _webView.scrollView.bounces = YES;
+        _webView.scrollView.scrollEnabled = YES;
+        
+        // Re-enable standard web behaviors
+        NSString *standardWebScript = @"\
+        (function() {\
+            // Enable text selection\
+            document.documentElement.style.webkitUserSelect = 'auto';\
+            document.documentElement.style.userSelect = 'auto';\
+            \
+            // Enable context menu\
+            document.documentElement.oncontextmenu = null;\
+            \
+            // Enable text selection on tap\
+            document.documentElement.style.webkitTouchCallout = 'default';\
+            \
+            // Remove our custom style overrides\
+            var styleElements = document.head.querySelectorAll('style');\
+            for (var i = 0; i < styleElements.length; i++) {\
+                if (styleElements[i].textContent.indexOf('outline: none !important') !== -1) {\
+                    styleElements[i].remove();\
+                }\
+            }\
+        })();\
+        ";
+        
+        [_webView evaluateJavaScript:standardWebScript completionHandler:nil];
+    }
+    
+    if (_debugLogging) {
+        NSLog(@"[BalancyWebView] Game UI mode %@", enabled ? @"enabled" : @"disabled");
     }
 }
 
@@ -707,6 +880,21 @@ void _balancySetDebugLogging(bool enabled) {
             if ([childVC isKindOfClass:[BalancyWebViewController class]]) {
                 BalancyWebViewController* webViewController = (BalancyWebViewController*)childVC;
                 [webViewController setDebugLogging:enabled];
+                break;
+            }
+        }
+    }
+}
+
+// Enable or disable game UI mode
+void _balancySetGameUIMode(bool enabled) {
+    @autoreleasepool {
+        // Find the BalancyWebViewController
+        UIViewController* rootViewController = [UIApplication sharedApplication].keyWindow.rootViewController;
+        for (UIViewController* childVC in rootViewController.childViewControllers) {
+            if ([childVC isKindOfClass:[BalancyWebViewController class]]) {
+                BalancyWebViewController* webViewController = (BalancyWebViewController*)childVC;
+                [webViewController setGameUIMode:enabled];
                 break;
             }
         }

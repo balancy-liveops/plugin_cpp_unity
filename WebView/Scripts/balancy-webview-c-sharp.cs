@@ -65,6 +65,7 @@ namespace Balancy.WebView
 
         #region Private fields
 
+        private bool _gameUIMode = true;
         private bool _isWebViewOpen = false;
         private bool _transparentBackground = false;
         private bool _offlineCacheEnabled = false;
@@ -109,6 +110,9 @@ namespace Balancy.WebView
 
         [DllImport("__Internal")]
         private static extern void _balancySetDebugLogging(bool enabled);
+        
+        [DllImport("__Internal")]
+        private static extern void _balancySetGameUIMode(bool enabled);
         
         [DllImport("__Internal")]
         private static extern void _balancyRegisterMessageCallback(MessageDelegate callback);
@@ -211,6 +215,9 @@ namespace Balancy.WebView
             
             // Set transparent background by default
             SetTransparentBackground(true);
+            
+            // Enable game UI mode by default
+            SetGameUIMode(_gameUIMode);
 
             bool success = false;
 
@@ -326,6 +333,25 @@ namespace Balancy.WebView
             if (fullScreen)
             {
                 SetViewportRect(0f, 0f, 1f, 1f);
+            }
+        }
+
+        /// <summary>
+        /// Enables or disables game UI mode, which makes the WebView feel more like a part of your game
+        /// by disabling browser features like text selection, scrolling, and context menus.
+        /// </summary>
+        /// <param name="enabled">True to enable game UI mode, false for standard web browsing mode</param>
+        public void SetGameUIMode(bool enabled)
+        {
+            _gameUIMode = enabled;
+
+            if (_isWebViewOpen)
+            {
+                #if UNITY_IOS && !UNITY_EDITOR
+                _balancySetGameUIMode(enabled);
+                #elif UNITY_EDITOR
+                LogDebug($"[BalancyWebView] Game UI mode {(enabled ? "enabled" : "disabled")}");
+                #endif
             }
         }
 

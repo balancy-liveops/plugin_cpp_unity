@@ -14,6 +14,7 @@ NS_ASSUME_NONNULL_BEGIN
 // Properties
 @property (nonatomic, strong, readonly) WKWebView *webView;
 @property (nonatomic, assign) BOOL offlineCacheEnabled;
+@property (nonatomic, assign) BOOL gameUIMode; // New property for game UI mode
 
 // Initialize with context and callbacks
 - (instancetype)initWithMessageCallback:(void (*)(const char*))messageCallback
@@ -31,6 +32,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)setTransparentBackground:(BOOL)transparent;
 - (void)setOfflineCacheEnabled:(BOOL)enabled;
 - (void)setDebugLogging:(BOOL)enabled;
+- (void)setGameUIMode:(BOOL)enabled; // New method to toggle game UI mode
 
 @end
 
