@@ -1167,7 +1167,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1548fbee577b14b5f81dc82f7f064d67, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  webViewUrl: http://localhost:8000/balancy-webview-test-page.html
+  webViewUrl: http://192.168.10.1:8000/special_offer.html
   useLocalHtml: 0
   localHtmlAsset: {fileID: 4900000, guid: 4436b3a01410442fc9fa4c47dd10db75, type: 3}
   transparentBackground: 0

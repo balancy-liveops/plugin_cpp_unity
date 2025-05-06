@@ -12,6 +12,7 @@ NS_ASSUME_NONNULL_BEGIN
 @interface BalancyWebViewController : UIViewController <WKNavigationDelegate, WKScriptMessageHandler, WKUIDelegate>
 
 // Properties
+@property (nonatomic, strong, readonly) WKWebView *webView;
 @property (nonatomic, assign) BOOL offlineCacheEnabled;
 
 // Initialize with context and callbacks

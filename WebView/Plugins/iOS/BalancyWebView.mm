@@ -6,9 +6,11 @@
 #import "BalancyWebView.h"
 
 // C function pointers for callbacks
-static void (*_messageCallback)(const char*) = NULL;
-static void (*_loadCompletedCallback)(bool) = NULL;
-static void (*_cacheCompletedCallback)(bool) = NULL;
+extern "C" {
+    void (*_messageCallback)(const char*) = NULL;
+    void (*_loadCompletedCallback)(bool) = NULL;
+    void (*_cacheCompletedCallback)(bool) = NULL;
+}
 
 // JavaScript to inject into the WebView
 static NSString *const kBalancyWebViewBridgeScript = @"(function() {\
@@ -82,7 +84,7 @@ static NSString *const kBalancyWebViewBridgeScript = @"(function() {\
 
 @interface BalancyWebViewController ()
 
-@property (nonatomic, strong) WKWebView *webView;
+@property (nonatomic, strong, readwrite) WKWebView *webView;
 @property (nonatomic, strong) WKUserContentController *userContentController;
 @property (nonatomic, strong) UIActivityIndicatorView *activityIndicator;
 @property (nonatomic, assign) BOOL debugLogging;
@@ -687,149 +689,6 @@ void _balancyRegisterLoadCompletedCallback(void (*callback)(bool)) {
     _loadCompletedCallback = callback;
 }
 
-void _balancyRegisterCacheCompletedCallback(void (*callback)(bool)) {
-    _cacheCompletedCallback = callback;
-}
+// Note: _balancyRegisterCacheCompletedCallback is implemented in BalancyWebViewUnityBridge.mm
 
-} // extern "C"1.0f, 1.0f);
-        
-        // Setup WebView configuration
-        [self setupWebView];
-    }
-    return self;
-}
-
-- (void)setupWebView {
-    // Create a WKWebViewConfiguration object
-    WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
-    
-    // Create user content controller and add script message handler
-    _userContentController = [[WKUserContentController alloc] init];
-    [_userContentController addScriptMessageHandler:self name:@"BalancyWebView"];
-    configuration.userContentController = _userContentController;
-    
-    // Add the bridge script
-    WKUserScript *bridgeScript = [[WKUserScript alloc] initWithSource:kBalancyWebViewBridgeScript
-                                                        injectionTime:WKUserScriptInjectionTimeAtDocumentStart
-                                                     forMainFrameOnly:YES];
-    [_userContentController addUserScript:bridgeScript];
-    
-    // Create the WKWebView with the configuration
-    _webView = [[WKWebView alloc] initWithFrame:CGRectZero configuration:configuration];
-    _webView.navigationDelegate = self;
-    _webView.UIDelegate = self;
-    
-    // Create activity indicator
-    _activityIndicator = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleLarge];
-    _activityIndicator.hidesWhenStopped = YES;
-    
-    // Add the activity indicator to the view
-    [_activityIndicator startAnimating];
-}
-
-#pragma mark - View Lifecycle
-
-- (void)viewDidLoad {
-    [super viewDidLoad];
-    
-    // Add the WebView to the view controller's view
-    [self.view addSubview:_webView];
-    
-    // Add the activity indicator
-    [self.view addSubview:_activityIndicator];
-    _activityIndicator.center = self.view.center;
-    
-    // Set up auto layout constraints
-    _webView.translatesAutoresizingMaskIntoConstraints = NO;
-    
-    // Full screen by default
-    [NSLayoutConstraint activateConstraints:@[
-        [_webView.topAnchor constraintEqualToAnchor:self.view.topAnchor],
-        [_webView.leftAnchor constraintEqualToAnchor:self.view.leftAnchor],
-        [_webView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
-        [_webView.rightAnchor constraintEqualToAnchor:self.view.rightAnchor]
-    ]];
-    
-    // Apply transparency if needed
-    [self applyTransparencySettings];
-}
-
-- (void)viewDidLayoutSubviews {
-    [super viewDidLayoutSubviews];
-    
-    // Update the activity indicator position
-    _activityIndicator.center = self.view.center;
-    
-    // Apply viewport settings
-    [self applyViewportSettings];
-}
-
-#pragma mark - Public Methods
-
-- (BOOL)loadURL:(NSString *)urlString {
-    NSURL *url = [NSURL URLWithString:urlString];
-    if (!url) {
-        if (_debugLogging) {
-            NSLog(@"[BalancyWebView] Invalid URL: %@", urlString);
-        }
-        return NO;
-    }
-    
-    NSURLRequest *request = [NSURLRequest requestWithURL:url];
-    [_webView loadRequest:request];
-    
-    if (_debugLogging) {
-        NSLog(@"[BalancyWebView] Loading URL: %@", urlString);
-    }
-    
-    return YES;
-}
-
-- (void)close {
-    // Remove script message handler to avoid memory leaks
-    [_userContentController removeScriptMessageHandlerForName:@"BalancyWebView"];
-    
-    // Stop all loading
-    [_webView stopLoading];
-    
-    // Remove the WebView from its parent view
-    [_webView removeFromSuperview];
-    
-    // Remove the view controller from its parent
-    [self willMoveToParentViewController:nil];
-    [self.view removeFromSuperview];
-    [self removeFromParentViewController];
-    
-    if (_debugLogging) {
-        NSLog(@"[BalancyWebView] WebView closed");
-    }
-}
-
-- (BOOL)sendMessage:(NSString *)message {
-    if (!_webView) {
-        if (_debugLogging) {
-            NSLog(@"[BalancyWebView] Cannot send message: WebView is not initialized");
-        }
-        return NO;
-    }
-    
-    // Escape single quotes for JavaScript
-    NSString *escapedMessage = [message stringByReplacingOccurrencesOfString:@"'" withString:@"\\'"];
-    
-    // JavaScript to send the message to the web page
-    NSString *script = [NSString stringWithFormat:@"if (window.BalancyWebView) { window.BalancyWebView._receiveMessageFromUnity('%@'); }", escapedMessage];
-    
-    [_webView evaluateJavaScript:script completionHandler:^(id _Nullable result, NSError * _Nullable error) {
-        if (error && self.debugLogging) {
-            NSLog(@"[BalancyWebView] Error sending message: %@", error);
-        }
-    }];
-    
-    if (_debugLogging) {
-        NSLog(@"[BalancyWebView] Message sent: %@", message);
-    }
-    
-    return YES;
-}
-
--
+} // extern "C"

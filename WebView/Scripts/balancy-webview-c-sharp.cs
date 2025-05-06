@@ -110,6 +110,18 @@ namespace Balancy.WebView
         [DllImport("__Internal")]
         private static extern void _balancySetDebugLogging(bool enabled);
         
+        [DllImport("__Internal")]
+        private static extern void _balancyRegisterMessageCallback(MessageDelegate callback);
+        
+        [DllImport("__Internal")]
+        private static extern void _balancyRegisterLoadCompletedCallback(LoadCompletedDelegate callback);
+        
+        [DllImport("__Internal")]
+        private static extern void _balancyRegisterCacheCompletedCallback(LoadCompletedDelegate callback);
+        
+        [DllImport("__Internal")]
+        private static extern bool _balancyInjectJSCode(string code);
+        
         //#elif UNITY_STANDALONE_OSX && !UNITY_EDITOR
         #else
         [DllImport("libBalancyWebViewMac")]
@@ -163,6 +175,10 @@ namespace Balancy.WebView
             
             _balancyRegisterMessageCallback(OnMessageReceived);
             _balancyRegisterLoadCompletedCallback(OnLoadCompletedReceived);
+            
+            #if UNITY_IOS && !UNITY_EDITOR
+            _balancyRegisterCacheCompletedCallback(OnCacheCompletedReceived);
+            #endif
         }
 
         private void OnDestroy()
@@ -480,19 +496,24 @@ namespace Balancy.WebView
             
             _instance.OnLoadCompleted?.Invoke(success);
         }
-
+        
         /// <summary>
-        /// Called from native code when offline caching is completed
+        /// Called when offline caching is completed
         /// </summary>
-        /// <param name="successStr">String "true" if caching was successful, "false" otherwise</param>
-        private void OnCacheCompletedReceived(string successStr)
+        /// <param name="success">True if caching was successful, false otherwise</param>
+        [AOT.MonoPInvokeCallback(typeof(LoadCompletedDelegate))]
+        private static void OnCacheCompletedReceived(bool success)
         {
-            bool success = successStr.ToLower() == "true";
-
-            LogDebug($"[BalancyWebView] Cache completed: {success}");
-
-            OnCacheCompleted?.Invoke(success);
+            if (_instance._debugLogging)
+            {
+                Debug.Log($"[BalancyWebView] Cache completed: {success}");
+            }
+            
+            _instance.OnCacheCompleted?.Invoke(success);
         }
+
+        // Note: The previous string-based implementation has been replaced by the bool-based version above
+        // that matches the method signature expected by the native code.
 
         #endregion
     }
