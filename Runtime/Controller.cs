@@ -55,6 +55,7 @@ namespace Balancy
             LibraryMethods.General.balancyStop();
             Profiles.CleanUp();
             CMS.CleanUp();
+            Balancy.Network.UnityWebRequestBridge.Clear();
         }
 
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.ModelRefreshedCallback))]

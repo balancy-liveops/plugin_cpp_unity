@@ -12,6 +12,10 @@ namespace Balancy
         [SerializeField] private Constants.Environment environment = Constants.Environment.Development;
         [SerializeField] private string branchName;
         
+        public void SetGameId(string value) { apiGameId = value; }
+        public void SetPublicKey(string value) { apiPublicKey = value; }
+        public void SetBranchName(string value) { branchName = value; }
+        
         private static BalancyLauncher _instance;
 
         private void Start()

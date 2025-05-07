@@ -52,21 +52,16 @@ namespace Balancy.Network
         {
             if (_instance != null) return;
 
-            var go = new GameObject("Balancy_WebRequestBridge");
+            var guid = Guid.NewGuid().ToString();
+            var go = new GameObject("Balancy_WebRequestBridge_" + guid);
             
+            go.hideFlags = HideFlags.HideAndDontSave;
             if (Application.isPlaying)
-            {
-                go.hideFlags = HideFlags.HideAndDontSave;
                 DontDestroyOnLoad(go);
-            }
-            else
-            {
-                // In Editor mode, just hide in hierarchy but allow normal destruction
-                go.hideFlags = HideFlags.HideInHierarchy;
-            }
             
             _instance = go.AddComponent<UnityWebRequestBridge>();
 
+            Debug.LogError("*** CREATE BRIDGE");
             // Register C# callbacks with the native plugin
             balancyRegisterWebRequestCallback(StaticOnWebRequestReceived);
             balancyRegisterFileLoadCallback(StaticOnFileLoadReceived);
@@ -89,6 +84,7 @@ namespace Balancy.Network
         // Method to manually clean up resources
         private void CleanupResources()
         {
+            Debug.LogError("*** CleanupResources");
             balancyRegisterWebRequestCallback(null);
             balancyRegisterFileLoadCallback(null);
             
@@ -114,6 +110,7 @@ namespace Balancy.Network
         // Clean up resources when the application exits
         private void OnDestroy()
         {
+            Debug.LogError("*** OnDestroy : " + gameObject.GetInstanceID() + "  name = " + gameObject.name);
             CleanupResources();
         }
 
