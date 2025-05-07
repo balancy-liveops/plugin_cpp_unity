@@ -433,7 +433,7 @@ namespace Balancy.Editor
                 return;
                 
             // Find BalancyLauncher in the current scene
-            BalancyLauncher launcher = GameObject.FindObjectOfType<BalancyLauncher>();
+            BalancyLauncher launcher = UnityEngine.Object.FindAnyObjectByType<BalancyLauncher>();
             
             GUILayout.Space(10);
             EditorGUILayout.BeginHorizontal();
