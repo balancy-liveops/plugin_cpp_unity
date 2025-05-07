@@ -46,6 +46,8 @@ namespace Balancy.Network
         private static Dictionary<int, HttpClient> _httpClients = new Dictionary<int, HttpClient>();
         private static readonly object _httpClientLock = new object();
 #endif
+        
+        private static UnityMainThreadDispatcher _mainThreadInstance;
 
         // Initialize the bridge
         public static void Initialize()
@@ -60,8 +62,8 @@ namespace Balancy.Network
                 DontDestroyOnLoad(go);
             
             _instance = go.AddComponent<UnityWebRequestBridge>();
+            _mainThreadInstance = UnityMainThreadDispatcher.Instance();
 
-            Debug.LogError("*** CREATE BRIDGE");
             // Register C# callbacks with the native plugin
             balancyRegisterWebRequestCallback(StaticOnWebRequestReceived);
             balancyRegisterFileLoadCallback(StaticOnFileLoadReceived);
@@ -84,7 +86,6 @@ namespace Balancy.Network
         // Method to manually clean up resources
         private void CleanupResources()
         {
-            Debug.LogError("*** CleanupResources");
             balancyRegisterWebRequestCallback(null);
             balancyRegisterFileLoadCallback(null);
             
@@ -110,7 +111,6 @@ namespace Balancy.Network
         // Clean up resources when the application exits
         private void OnDestroy()
         {
-            Debug.LogError("*** OnDestroy : " + gameObject.GetInstanceID() + "  name = " + gameObject.name);
             CleanupResources();
         }
 
@@ -406,10 +406,8 @@ namespace Balancy.Network
 
             try
             {
-                Debug.LogError("*** GOGOG balancyHandleWebRequestComplete");
                 // Send the result back to the native plugin
                 balancyHandleWebRequestComplete(requestId, success, errorCode, dataPtr, dataSize);
-                Debug.LogError("*** GOGOG balancyHandleWebRequestComplete >>>");
             }
             finally
             {
@@ -480,10 +478,8 @@ namespace Balancy.Network
             
             try
             {
-                Debug.LogError("*** GOGOG balancyHandleFileLoadComplete");
                 // Send the result back to the native plugin
                 balancyHandleFileLoadComplete(requestId, success, errorCode, dataPtr, dataSize);
-                Debug.LogError("*** GOGOG balancyHandleFileLoadComplete >>>");
             }
             finally
             {

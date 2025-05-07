@@ -27,26 +27,17 @@ namespace Balancy
             // Check if the instance already exists and hasn't been destroyed
             if (!_instance || _instance._isDestroyed)
             {
+                var obj = new GameObject("MainThreadDispatcher (Hidden)");
+
+                // Hide the object from the hierarchy
+                obj.hideFlags = HideFlags.HideAndDontSave;
+
+                _instance = obj.AddComponent<UnityMainThreadDispatcher>();
                 // Create the dispatcher differently based on whether we're in play mode
                 if (Application.isPlaying)
-                {
-                    var obj = new GameObject("MainThreadDispatcher (Hidden)");
-
-                    // Hide the object from the hierarchy
-                    obj.hideFlags = HideFlags.HideAndDontSave;
-
-                    _instance = obj.AddComponent<UnityMainThreadDispatcher>();
-
-                    // Ensure the object is destroyed on game stop or when a new scene is loaded
                     DontDestroyOnLoad(obj);
-                }
                 else
                 {
-                    // In Editor mode, we create a hidden game object but don't need DontDestroyOnLoad
-                    var obj = new GameObject("MainThreadDispatcher (Editor)");
-                    obj.hideFlags = HideFlags.HideAndDontSave;
-                    _instance = obj.AddComponent<UnityMainThreadDispatcher>();
-                    
 #if UNITY_EDITOR
                     // Register with EditorApplication.update to process the queue in Editor mode
                     if (!_isEditorUpdateRegistered)
@@ -156,11 +147,12 @@ namespace Balancy
         
         private void OnApplicationQuit()
         {
+            StopDispatcher();
             Main.Stop();
         }
 
         // Explicitly stop the dispatcher, removing it when no longer needed
-        public static void StopDispatcher()
+        private static void StopDispatcher()
         {
             if (_instance)
             {

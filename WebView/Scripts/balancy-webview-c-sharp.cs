@@ -24,7 +24,7 @@ namespace Balancy.WebView
                 if (_instance == null)
                 {
                     // Check if an instance already exists in the scene
-                    _instance = FindObjectOfType<BalancyWebView>();
+                    _instance = FindAnyObjectByType<BalancyWebView>();
 
                     // If not, create a new GameObject with the component
                     if (_instance == null)
@@ -32,9 +32,22 @@ namespace Balancy.WebView
                         GameObject go = new GameObject("BalancyWebView");
                         go.hideFlags = HideFlags.HideAndDontSave;
                         _instance = go.AddComponent<BalancyWebView>();
+                        DontDestroyOnLoad(go);
                     }
                 }
                 return _instance;
+            }
+        }
+        
+        private void OnApplicationQuit()
+        {
+            if (_instance)
+            {
+                if (Application.isPlaying)
+                    Destroy(_instance.gameObject); // Destroy the game object
+                else
+                    DestroyImmediate(_instance.gameObject);
+                _instance = null;
             }
         }
 
