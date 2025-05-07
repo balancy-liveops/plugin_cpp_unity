@@ -59,6 +59,7 @@ namespace Balancy.Editor
 
             _isInitialized = true;
             LibraryMethods.General.balancySetLogCallback(LogMessage);
+            Balancy.Network.UnityWebRequestBridge.Initialize();
             UnityFileManager.Init();
             
             LibraryMethods.Editor.balancyConfigLaunch(LibraryMethods.Editor.Language.CSharp);

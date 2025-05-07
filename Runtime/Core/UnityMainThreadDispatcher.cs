@@ -26,7 +26,8 @@ namespace Balancy
                 _instance = obj.AddComponent<UnityMainThreadDispatcher>();
 
                 // Ensure the object is destroyed on game stop or when a new scene is loaded
-                DontDestroyOnLoad(obj);
+                if (Application.isPlaying)
+                    DontDestroyOnLoad(obj);
             }
 
             return _instance;

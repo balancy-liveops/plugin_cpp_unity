@@ -30,6 +30,7 @@ namespace Balancy.WebView
                     if (_instance == null)
                     {
                         GameObject go = new GameObject("BalancyWebView");
+                        go.hideFlags = HideFlags.HideAndDontSave;
                         _instance = go.AddComponent<BalancyWebView>();
                     }
                 }

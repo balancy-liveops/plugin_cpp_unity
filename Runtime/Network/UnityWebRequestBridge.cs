@@ -43,7 +43,9 @@ namespace Balancy.Network
 
             // Create a GameObject to host our MonoBehaviour
             var go = new GameObject("Balancy_WebRequestBridge");
-            DontDestroyOnLoad(go);
+            go.hideFlags = HideFlags.HideAndDontSave;
+            if (Application.isPlaying)
+                DontDestroyOnLoad(go);
             _instance = go.AddComponent<UnityWebRequestBridge>();
 
             // Register C# callbacks with the native plugin
