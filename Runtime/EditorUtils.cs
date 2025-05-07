@@ -59,10 +59,10 @@ namespace Balancy.Editor
 
             _isInitialized = true;
             LibraryMethods.General.balancySetLogCallback(LogMessage);
-            Balancy.Network.UnityWebRequestBridge.Initialize();
             UnityFileManager.Init();
             
             LibraryMethods.Editor.balancyConfigLaunch(LibraryMethods.Editor.Language.CSharp);
+            Balancy.Network.UnityWebRequestBridge.Initialize();
             UpdateStatus();
         }
 
@@ -234,6 +234,7 @@ namespace Balancy.Editor
         public static void Close()
         {
             _isInitialized = false;
+            Balancy.Network.UnityWebRequestBridge.Clear();
             LibraryMethods.Editor.balancyConfigClose();
         }
         
