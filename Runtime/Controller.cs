@@ -50,6 +50,7 @@ namespace Balancy
 
         public static void Stop()
         {
+            Debug.LogError("STOP!");
             LibraryMethods.Models.balancySetModelOnRefresh(null);
             LibraryMethods.Models.balancySetUserDataInitializedCallback(null);
             LibraryMethods.General.balancyStop();

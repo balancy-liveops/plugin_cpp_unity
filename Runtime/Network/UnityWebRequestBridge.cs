@@ -406,8 +406,10 @@ namespace Balancy.Network
 
             try
             {
+                Debug.LogError("*** GOGOG balancyHandleWebRequestComplete");
                 // Send the result back to the native plugin
                 balancyHandleWebRequestComplete(requestId, success, errorCode, dataPtr, dataSize);
+                Debug.LogError("*** GOGOG balancyHandleWebRequestComplete >>>");
             }
             finally
             {
@@ -475,10 +477,13 @@ namespace Balancy.Network
                 Marshal.Copy(data, 0, dataPtr, dataSize);
             }
 
+            
             try
             {
+                Debug.LogError("*** GOGOG balancyHandleFileLoadComplete");
                 // Send the result back to the native plugin
                 balancyHandleFileLoadComplete(requestId, success, errorCode, dataPtr, dataSize);
+                Debug.LogError("*** GOGOG balancyHandleFileLoadComplete >>>");
             }
             finally
             {

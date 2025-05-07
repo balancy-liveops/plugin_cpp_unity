@@ -33,7 +33,7 @@ namespace Balancy
                     var obj = new GameObject("MainThreadDispatcher (Hidden)");
 
                     // Hide the object from the hierarchy
-                    obj.hideFlags = HideFlags.HideInHierarchy | HideFlags.HideInInspector;
+                    obj.hideFlags = HideFlags.HideAndDontSave;
 
                     _instance = obj.AddComponent<UnityMainThreadDispatcher>();
 
@@ -44,7 +44,7 @@ namespace Balancy
                 {
                     // In Editor mode, we create a hidden game object but don't need DontDestroyOnLoad
                     var obj = new GameObject("MainThreadDispatcher (Editor)");
-                    obj.hideFlags = HideFlags.HideInHierarchy | HideFlags.HideInInspector;
+                    obj.hideFlags = HideFlags.HideAndDontSave;
                     _instance = obj.AddComponent<UnityMainThreadDispatcher>();
                     
 #if UNITY_EDITOR
