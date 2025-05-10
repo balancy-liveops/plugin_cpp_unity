@@ -462,7 +462,7 @@ namespace Balancy.Editor
             if (launcher != null)
             {
                 // BalancyLauncher exists in the scene
-                if (GUILayout.Button($"Synch with \"{gameName}\" branch \"{branchName}\"", GUILayout.Width(300)))
+                if (GUILayout.Button($"Sync with \"{gameName}\" branch \"{branchName}\""))
                 {
                     // Update existing BalancyLauncher properties
                     Undo.RecordObject(launcher, "Update BalancyLauncher");
@@ -472,11 +472,13 @@ namespace Balancy.Editor
                     EditorUtility.SetDirty(launcher);
                     EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
                 }
+
+                GUI.enabled = true;
             }
             else
             {
                 // No BalancyLauncher in the scene
-                if (GUILayout.Button($"Create BalancyLauncher for \"{gameName}\"", GUILayout.Width(300)))
+                if (GUILayout.Button($"Create BalancyLauncher for \"{gameName}\""))
                 {
                     // Create a new GameObject with BalancyLauncher component
                     GameObject newObject = new GameObject("BalancyLauncher");
@@ -493,7 +495,28 @@ namespace Balancy.Editor
                     // Mark the scene as dirty to ensure changes are saved
                     EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
                 }
+                
+                GUI.enabled = false;
             }
+            
+            if (GUILayout.Button($"Add Balancy UI"))
+            {
+                var existing = GameObject.Find("BalancyUI");
+                if (existing != null)
+                {
+                    EditorUtility.DisplayDialog("Balancy UI Exists",
+                        "An instance of 'BalancyUI' is already present in the scene.",
+                        "OK");
+                }
+                else
+                {
+                    var prefab = PrefabFinder.FindPrefabByName("BalancyUI");
+                    if (prefab)
+                        PrefabUtility.InstantiatePrefab(prefab);
+                }
+            }
+            
+            GUI.enabled = true;
             
             GUILayout.FlexibleSpace();
             EditorGUILayout.EndHorizontal();

@@ -13,6 +13,10 @@ const balancy = {};
         None: 0,
         GetProfile: 1,
     };
+    
+    balancy.closeView = () => {
+        window.BalancyWebView.postMessage("balancy_close_view");
+    };
 
     balancy.getSystemProfileValue = (path) => {
         return window.BalancyWebView.sendRequest(RequestAction.GetProfile, {profile: "UnnyProfile", path});

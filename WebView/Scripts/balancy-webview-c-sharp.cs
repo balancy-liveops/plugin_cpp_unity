@@ -519,9 +519,6 @@ namespace Balancy.WebView
                     Debug.LogError($"[BalancyWebView] Error in OnMessage event: {ex.Message}");
                 }
             }
-            
-            LogDebug($"[BalancyWebView] Message received: {message}");
-            OnMessage?.Invoke(message);
         }
 
         /// <summary>

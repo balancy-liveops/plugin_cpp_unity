@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 
 namespace Balancy.Cheats
@@ -10,11 +11,15 @@ namespace Balancy.Cheats
         
         private void Awake()
         {
-            Balancy.Callbacks.ClearAll();
             Balancy.Callbacks.InitExamplesWithLogs();
 
             var config = CreateAppConfig();
             Balancy.Main.Init(config);
+        }
+
+        private void OnDestroy()
+        {
+            Balancy.Callbacks.ClearAll();
         }
 
         private void OnApplicationQuit()

@@ -33,7 +33,7 @@ namespace Balancy
             LibraryMethods.Models.balancySetModelOnRefresh(ModelRefreshed);
             LibraryMethods.Models.balancySetUserDataInitializedCallback(UserDataInitialized);
             Profiles.Init();
-            WebViewManager.Init();
+            RenderViewsManager.Init();
 
             CppAppConfig config = CreateConfigForCPP(appConfig);
             IntPtr configPtr = Marshal.AllocHGlobal(Marshal.SizeOf(config));
