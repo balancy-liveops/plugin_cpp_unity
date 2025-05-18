@@ -254,6 +254,11 @@ namespace Balancy
             }
         }
 
+        public static void RestorePurchases()
+        {
+            Balancy.Actions.Purchasing.GetRestorePurchasesCallback()?.Invoke();
+        }
+
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.API.ResponseCallback))]
         private static Balancy.LibraryMethods.API.ResponseCallback ProtectedFromGCCallback<T>(
             Balancy.Core.ResponseCallback<T> callback) where T : Balancy.Core.Responses.ResponseData

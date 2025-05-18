@@ -108,12 +108,10 @@ namespace Balancy
             }
         }
 
-        // Delegate for the hard purchase callback
-        public delegate void HardPurchaseCallback(BalancyProductInfo productInfo);
-
         public static class Purchasing
         {
-            // Default implementation that just logs a warning
+            public delegate void HardPurchaseCallback(BalancyProductInfo productInfo);
+            
             private static readonly HardPurchaseCallback DefaultHardPurchaseCallback = (productInfo) =>
             {
                 UnityEngine.Debug.LogWarning(
@@ -121,25 +119,46 @@ namespace Balancy
                     "PurchaseCallbacks.SetHardPurchaseCallback or install the Balancy Purchasing package."); //TODO add here the id
             };
 
-            // Current implementation - defaults to the warning
             private static HardPurchaseCallback _hardPurchaseCallback = DefaultHardPurchaseCallback;
 
-            // Method for developers to set their own implementation
             public static void SetHardPurchaseCallback(HardPurchaseCallback callback)
             {
                 _hardPurchaseCallback = callback ?? DefaultHardPurchaseCallback;
             }
 
-            // Reset to default implementation (useful for testing)
             public static void ResetHardPurchaseCallback()
             {
                 _hardPurchaseCallback = DefaultHardPurchaseCallback;
             }
 
-            // Internal method to get the current implementation
             internal static HardPurchaseCallback GetHardPurchaseCallback()
             {
                 return _hardPurchaseCallback;
+            }
+            
+            //Write similar methods to Restore Purchases
+            public delegate void RestorePurchasesCallback();
+            private static readonly RestorePurchasesCallback DefaultRestorePurchasesCallback = () =>
+            {
+                UnityEngine.Debug.LogWarning(
+                    "No restore purchases implementation provided. Either implement your own using " +
+                    "PurchaseCallbacks.SetRestorePurchasesCallback or install the Balancy Purchasing package."); //TODO add here the id
+            };
+            private static RestorePurchasesCallback _restorePurchasesCallback = DefaultRestorePurchasesCallback;
+            
+            public static void SetRestorePurchasesCallback(RestorePurchasesCallback callback)
+            {
+                _restorePurchasesCallback = callback ?? DefaultRestorePurchasesCallback;
+            }
+            
+            public static void ResetRestorePurchasesCallback()
+            {
+                _restorePurchasesCallback = DefaultRestorePurchasesCallback;
+            }
+            
+            internal static RestorePurchasesCallback GetRestorePurchasesCallback()
+            {
+                return _restorePurchasesCallback;
             }
         }
     }
