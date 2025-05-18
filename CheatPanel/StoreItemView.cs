@@ -43,6 +43,12 @@ namespace Balancy.Cheats
 
         private void ApplyPrice()
         {
+            if (_storeItem.Price.IsFree())
+            {
+                buyButtonText.text = "FREE";
+                return;
+            }
+            
             switch (_storeItem?.Price.Type)
             {
                 case PriceType.Hard:

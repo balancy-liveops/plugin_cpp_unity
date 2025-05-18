@@ -72,15 +72,20 @@ namespace Balancy.CheatPanel
 
         private void TryToBuySlot(StoreItem storeItem)
         {
-            switch (storeItem?.Price.Type)
+            Balancy.API.InitPurchase(storeItem, (success, error) =>
             {
-                case PriceType.Hard:
-                    TryToBuyHard(storeItem);
-                    break;
-                default:
-                    Debug.LogError("This purchase type is not implemented");
-                    break;
-            }
+                Debug.Log("BUY COMPLETE : " + success + " error = " + error);
+            });
+        //     
+        //     switch (storeItem?.Price.Type)
+        //     {
+        //         case PriceType.Hard:
+        //             TryToBuyHard(storeItem);
+        //             break;
+        //         default:
+        //             Debug.LogError("This purchase type is not implemented");
+        //             break;
+        //     }
         }
         
         private void TryToBuyHard(StoreItem storeItem)

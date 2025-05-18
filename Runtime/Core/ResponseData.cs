@@ -21,6 +21,8 @@ namespace Balancy.Core
         public class PurchaseProductResponseData : ResponseData
         {
             [MarshalAs(UnmanagedType.LPStr)] public string ProductId;
+            private int removeFromPending;
+            public bool RemoveFromPending => removeFromPending == 1;
         }
     }
 }

@@ -1,4 +1,6 @@
+using Balancy.Core;
 using Balancy.Data.SmartObjects;
+using Balancy.Models.SmartObjects;
 using UnityEngine;
 
 namespace Balancy
@@ -42,6 +44,12 @@ namespace Balancy
         public delegate void OnNetworkDownloadStartedDelegate(NetworkDownloadInfo info);
         public delegate void OnNetworkDownloadFinishedDelegate(NetworkDownloadCompletedInfo info);
         
+        public delegate void OnHardPurchasedStoreItemDelegate(PaymentInfo paymentInfo, StoreItem storeItem);
+        public delegate void OnHardPurchasedOfferDelegate(PaymentInfo paymentInfo, GameOffer gameOffer);
+        public delegate void OnHardPurchasedOfferGroupDelegate(PaymentInfo paymentInfo, GameOfferGroup gameOffer, StoreItem storeItem);
+        
+        public delegate void OnPaymentIsReadyDelegate();
+        
         public static OnDataUpdatedDelegate OnDataUpdated = null;
         public static OnErrorDelegate OnAuthFailed = null;
         public static OnErrorDelegate OnCloudProfileFailedToLoad = null;
@@ -58,6 +66,11 @@ namespace Balancy
         public static OnShopUpdatedDelegate OnShopUpdated = null;
         public static OnNetworkDownloadStartedDelegate OnNetworkDownloadStarted = null;
         public static OnNetworkDownloadFinishedDelegate OnNetworkDownloadFinished = null;
+        public static OnPaymentIsReadyDelegate OnPaymentIsReady = null;
+        
+        public static OnHardPurchasedStoreItemDelegate OnHardPurchasedStoreItem = null;
+        public static OnHardPurchasedOfferDelegate OnHardPurchasedOffer = null;
+        public static OnHardPurchasedOfferGroupDelegate OnHardPurchasedOfferGroup = null;
         
         public struct NetworkDownloadInfo
         {
@@ -123,6 +136,12 @@ namespace Balancy
             OnSegmentInfoUpdated += segmentInfo => Debug.Log(" => Balancy.OnSegmentInfoUpdated: " + segmentInfo?.Segment?.Name + " isIn = " + segmentInfo?.IsIn);
             OnDailyBonusUpdated += dailyBonusInfo => Debug.Log(" => Balancy.OnDailyBonusUpdated: " + dailyBonusInfo?.DailyBonus?.Name);
             OnShopUpdated += () => Debug.Log(" => Balancy.OnShopUpdated");
+            OnPaymentIsReady += () => Debug.Log(" => Balancy.OnPaymentIsReady");
+            
+            OnHardPurchasedStoreItem += (paymentInfo, storeItem) => Debug.Log(" => Balancy.OnHardPurchasedStoreItem: " + storeItem?.Name + " UnnyId = " + storeItem?.UnnyId);
+            OnHardPurchasedOffer += (paymentInfo, gameOffer) => Debug.Log(" => Balancy.OnHardPurchasedOffer: " + gameOffer?.Name + " UnnyId = " + gameOffer?.UnnyId);
+            OnHardPurchasedOfferGroup += (paymentInfo, gameOfferGroup, storeItem) => Debug.Log(" => Balancy.OnHardPurchasedOfferGroup: " + gameOfferGroup?.Name + " UnnyId = " + gameOfferGroup?.UnnyId);
+            
             // OnNetworkDownloadStarted += info => Debug.Log($" => Balancy.OnNetworkDownloadStarted: {info.Url}, Type: {(info.IsCDNRequest ? "CDN" : "API")}");
             // OnNetworkDownloadFinished += info => Debug.Log($" => Balancy.OnNetworkDownloadFinished: {info.Url}, Time: {info.TimeMs}ms, Size: {info.DownloadedBytes}B, Speed: {info.SpeedKBps:F1}KB/s, Success: {info.Success}");
         }
@@ -143,6 +162,14 @@ namespace Balancy
             OnSegmentInfoUpdated = null;
             OnDailyBonusUpdated = null;
             OnShopUpdated = null;
+            OnNetworkDownloadStarted = null;
+            OnNetworkDownloadFinished = null;
+            OnPaymentIsReady = null;
+            
+            OnHardPurchasedStoreItem = null;
+            OnHardPurchasedOffer = null;
+            OnHardPurchasedOfferGroup = null;
+            
             OnNetworkDownloadStarted = null;
             OnNetworkDownloadFinished = null;
         }

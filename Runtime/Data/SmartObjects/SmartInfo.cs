@@ -43,5 +43,27 @@ namespace Balancy.Data.SmartObjects
         {
 	        return GetGameEvent(gameEvent) != null;
         }
+
+        public Balancy.Data.SmartObjects.OfferInfo FindOfferInfo(string instanceId)
+        {
+	        foreach (var offerInfo in GameOffers)
+	        {
+		        if (offerInfo?.InstanceId == instanceId)
+			        return offerInfo;
+	        }
+
+	        return null;
+        }
+        
+        public Balancy.Data.SmartObjects.OfferGroupInfo FindOfferGroupInfo(string instanceId)
+		{
+	        foreach (var offerInfo in GameOfferGroups)
+	        {
+		        if (offerInfo?.InstanceId == instanceId)
+			        return offerInfo;
+	        }
+
+	        return null;
+		}
     }
 }

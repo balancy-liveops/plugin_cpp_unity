@@ -10,7 +10,7 @@ namespace Balancy
 {
     public class UnityMainThreadDispatcher : MonoBehaviour
     {
-        private static readonly Queue<Action> _executionQueue = new Queue<Action>();
+        private readonly Queue<Action> _executionQueue = new Queue<Action>();
 
         private static UnityMainThreadDispatcher _instance;
 
@@ -82,7 +82,7 @@ namespace Balancy
         {
             if (_instance != null && !_instance._isDestroyed)
             {
-                ProcessQueue();
+                _instance.ProcessQueue();
             }
             else if (_isEditorUpdateRegistered)
             {
@@ -111,7 +111,7 @@ namespace Balancy
         }
 
         // Common queue processing method
-        private static void ProcessQueue()
+        private void ProcessQueue()
         {
             lock (_executionQueue)
             {

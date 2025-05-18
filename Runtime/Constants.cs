@@ -6,6 +6,19 @@ public class Constants
         Stage,
         Production
     }
+    
+    public class Errors
+    {
+        public const string PurchaseNotEnoughItems = "Not enough items in the inventory";
+        public const string PurchaseNotAds = "You need to watch ads first";
+        public const string PurchaseCancelled = "Purchase was cancelled by the user.";
+        public const string PurchaseFailed = "Purchase failed.";
+        public const string PurchaseInvalidPriceType = "Invalid price type for purchase.";
+        public const string StoreItemNull = "Store item cannot be null.";
+        public const string GameOfferNull = "Game offer cannot be null.";
+        public const string OfferInfoNull = "Offer info cannot be null.";
+        public const string OfferGroupInfoNull = "Offer group info cannot be null.";
+    }
 
     public enum Platform
     {

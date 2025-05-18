@@ -17,6 +17,8 @@ namespace Balancy
         
         private static UnityMainThreadDispatcher _mainThreadInstance; 
         
+        public static event Action OnCloudSynced;
+        
         public static void Init(AppConfig appConfig)
         {
             if (!CheckConfig(appConfig))
@@ -157,6 +159,8 @@ namespace Balancy
                         var notificationDataIsReady = Marshal.PtrToStructure<Notifications.InitNotificationDataIsReady>(notificationPtr);
                         DataUpdated(notificationDataIsReady.IsCMSUpdated, notificationDataIsReady.IsProfileUpdated);
                         _isReadyToUse = true;
+                        if (notificationDataIsReady.IsCloudSynced)
+                            OnCloudSynced?.Invoke();
                         Balancy.Callbacks.OnDataUpdated?.Invoke(new Balancy.Callbacks.DataUpdatedStatus(
                             notificationDataIsReady.IsCloudSynced, 
                             notificationDataIsReady.IsCMSUpdated,
