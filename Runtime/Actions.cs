@@ -16,24 +16,13 @@ namespace Balancy
             Pending // For purchases that might require additional verification
         }
 
-        // Additional information about the purchase
         public class PurchaseInfo
         {
-            // Receipt data for validation
             public string Receipt { get; set; }
-
-            // Product ID from the store
             public string ProductId { get; set; }
-
             public string TransactionId { get; set; }
-
-            // Error message if purchase failed
             public string ErrorMessage { get; set; }
-
-            // Currency code (e.g., USD, EUR)
             public string CurrencyCode { get; set; }
-
-            // Price of the item in the specified currency
             public float Price { get; set; }
         }
 

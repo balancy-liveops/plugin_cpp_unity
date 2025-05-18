@@ -23,10 +23,7 @@ namespace Balancy.Cheats
 
         private void TryToBuy()
         {
-            Balancy.API.InitPurchaseOffer(_offerInfo, (success, error) =>
-            {
-                Debug.Log("BUY COMPLETE : " + success + " error = " + error);
-            });
+            Balancy.API.InitPurchaseOffer(_offerInfo, (success, error) => Debug.Log("Purchase complete: " + success + " error = " + error));
         }
 
         private void TryToBuyHard()
