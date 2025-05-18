@@ -45,17 +45,11 @@ namespace Balancy.Cheats
 
         private void TryToBuy(StoreItem storeItem)
         {
-            //TODO implement purchase method here
-            
-            switch (storeItem?.Price.Type)
+            Balancy.API.InitPurchaseOffer(_offerInfo, storeItem, (success, error) =>
             {
-                case PriceType.Hard:
-                    TryToBuyHard(storeItem);
-                    break;
-                default:
-                    Debug.LogError("This purchase type is not implemented");
-                    break;
-            }
+                Debug.Log("BUY COMPLETE : " + success + " error = " + error);
+                Refresh();
+            });
         }
 
         private void TryToBuyHard(StoreItem storeItem)

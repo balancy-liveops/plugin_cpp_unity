@@ -16,6 +16,7 @@ public class Constants
         public const string PurchaseInvalidPriceType = "Invalid price type for purchase.";
         public const string StoreItemNull = "Store item cannot be null.";
         public const string GameOfferNull = "Game offer cannot be null.";
+        public const string GameOfferGroupNull = "Game offer group cannot be null.";
         public const string OfferInfoNull = "Offer info cannot be null.";
         public const string OfferGroupInfoNull = "Offer group info cannot be null.";
     }

@@ -23,17 +23,10 @@ namespace Balancy.Cheats
 
         private void TryToBuy()
         {
-            //TODO implement purchase method here
-            
-            switch (_offerInfo.GameOffer?.StoreItem?.Price.Type)
+            Balancy.API.InitPurchaseOffer(_offerInfo, (success, error) =>
             {
-                case PriceType.Hard:
-                    TryToBuyHard();
-                    break;
-                default:
-                    Debug.LogError("This purchase type is not implemented");
-                    break;
-            }
+                Debug.Log("BUY COMPLETE : " + success + " error = " + error);
+            });
         }
 
         private void TryToBuyHard()
@@ -80,6 +73,12 @@ namespace Balancy.Cheats
 
         private void ApplyPrice()
         {
+            if (_offerInfo.GameOffer?.StoreItem?.Price.IsFree() ?? false)
+            {
+                buyButtonText.text = "FREE";
+                return;
+            }
+            
             switch (_offerInfo.GameOffer?.StoreItem?.Price.Type)
             {
                 case PriceType.Hard:

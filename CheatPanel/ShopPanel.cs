@@ -76,16 +76,6 @@ namespace Balancy.CheatPanel
             {
                 Debug.Log("BUY COMPLETE : " + success + " error = " + error);
             });
-        //     
-        //     switch (storeItem?.Price.Type)
-        //     {
-        //         case PriceType.Hard:
-        //             TryToBuyHard(storeItem);
-        //             break;
-        //         default:
-        //             Debug.LogError("This purchase type is not implemented");
-        //             break;
-        //     }
         }
         
         private void TryToBuyHard(StoreItem storeItem)
