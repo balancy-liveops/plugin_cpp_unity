@@ -88,7 +88,8 @@ namespace Balancy
                 UpdatePeriod = _originalConfig.UpdatePeriod,
                 LaunchType = _originalConfig.LaunchType,
                 BranchName = _originalConfig.BranchName,
-                Platform = (int)FindPlatform(_originalConfig.Platform),
+                Platform = (int)FindPlatform(_originalConfig.BalancyPlatform),
+                DevicePlatform = (int)FindDevicePlatform(_originalConfig.DevicePlatform),
                 AutoLogin = (byte)(_originalConfig.AutoLogin ? 1 : 0),
                 OnStatusUpdate = OnStatusUpdate,
                 OnProgressUpdateCallback = OnProgressUpdate,
@@ -117,23 +118,45 @@ namespace Balancy
             return _cppConfig;
         }
 
-        private static Constants.Platform FindPlatform(Constants.Platform originalPlatform)
+        private static Constants.BalancyPlatform FindPlatform(Constants.BalancyPlatform originalBalancyPlatform)
         {
-            if (originalPlatform == 0)
+            if (originalBalancyPlatform == Constants.BalancyPlatform.Undefined)
             {
                 var platform = UnityEngine.Application.platform;
 
                 switch (platform)
                 {
                     case UnityEngine.RuntimePlatform.IPhonePlayer:
-                        return Constants.Platform.IosAppStore;
+                        return Constants.BalancyPlatform.IosAppStore;
                     case UnityEngine.RuntimePlatform.Android:
                     case UnityEngine.RuntimePlatform.OSXEditor:
                     case UnityEngine.RuntimePlatform.LinuxEditor:
                     case UnityEngine.RuntimePlatform.WindowsEditor:
-                        return Constants.Platform.AndroidGooglePlay;
+                        return Constants.BalancyPlatform.AndroidGooglePlay;
                     default:
-                        return Constants.Platform.Unknown;
+                        return Constants.BalancyPlatform.Unknown;
+                }
+            }
+
+            return originalBalancyPlatform;
+        }
+        
+        private static Constants.DevicePlatform FindDevicePlatform(Constants.DevicePlatform originalPlatform)
+        {
+            if (originalPlatform == Constants.DevicePlatform.Unknown)
+            {
+                var platform = UnityEngine.Application.platform;
+
+                switch (platform)
+                {
+                    case RuntimePlatform.WindowsEditor:
+                        return Constants.DevicePlatform.WindowsPlayer;
+                    case RuntimePlatform.OSXEditor:
+                        return Constants.DevicePlatform.OSXPlayer;
+                    case RuntimePlatform.LinuxEditor:
+                        return Constants.DevicePlatform.LinuxPlayer;
+                    default:
+                        return (Constants.DevicePlatform)(int)platform;
                 }
             }
 
