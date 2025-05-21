@@ -12,6 +12,8 @@ const balancy = {};
     const RequestAction = {
         None: 0,
         GetProfile: 1,
+        SetProfile: 2,
+        GetLocalization: 10,
     };
     
     balancy.closeView = () => {
@@ -24,6 +26,10 @@ const balancy = {};
 
     balancy.getProfileValue = (profile, path) => {
         return window.BalancyWebView.sendRequest(RequestAction.GetProfile, {profile, path});
+    };
+    
+    balancy.getLocalizedText = async function(key) {
+        return window.BalancyWebView.sendRequest(RequestAction.GetLocalization, {key});
     };
 
     window.BalancyWebView.postMessage = function(message) {
@@ -83,6 +89,20 @@ const balancy = {};
         });
     };
     
+    async function localizeAllElements() {
+        const elements = document.querySelectorAll('[data-localization-key]');
+
+        const localizationPromises = Array.from(elements).map(async (element) => {
+            const key = element.getAttribute('data-localization-key');
+            const localizedText = await balancy.getLocalizedText(key);
+            element.textContent = localizedText;
+        });
+
+        await Promise.all(localizationPromises);
+
+        document.dispatchEvent(new Event('localizationCompleted'));
+    }
+    
     // Set up the message listener (runs only once during initialization)
     window.BalancyWebView.initResponseHandler = function() {
         if (window.BalancyWebView._responseHandlerInitialized) return;
@@ -112,6 +132,8 @@ const balancy = {};
                 console.error('Error handling response:', error);
             }
         };
+        
+        localizeAllElements();
     };
     
     // Initialize the response handler
