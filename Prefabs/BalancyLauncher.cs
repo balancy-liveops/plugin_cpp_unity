@@ -59,6 +59,7 @@ namespace Balancy
         private void OnDestroy()
         {
             Balancy.Callbacks.ClearAll();
+            Main.Stop();
         }
     }
 }
