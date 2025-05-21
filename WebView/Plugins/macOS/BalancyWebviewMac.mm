@@ -68,81 +68,6 @@ static BalancyWebViewController* _sharedController = nil;
         [_userContentController addScriptMessageHandler:self name:@"BalancyWebView"];
         configuration.userContentController = _userContentController;
         
-        // Create bridge script
-        NSString *bridgeScript = @"(function() {\
-            if (window.BalancyWebView) return;\
-            var BalancyWebView = {\
-                postMessage: function(message) {\
-                    if (typeof message !== 'string') message = JSON.stringify(message);\
-                    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.BalancyWebView) {\
-                        window.webkit.messageHandlers.BalancyWebView.postMessage(message);\
-                        return true;\
-                    }\
-                    return false;\
-                },\
-                _receiveMessageFromUnity: function(message) {\
-                    var event = new CustomEvent('balancyMessage', {detail: message});\
-                    document.dispatchEvent(event);\
-                },\
-                // Setup for request-response functionality\
-                _pendingRequests: {},\
-                _requestCounter: 0,\
-                sendRequest: function(action, params) {\
-                    return new Promise((resolve, reject) => {\
-                        const requestId = (this._requestCounter++).toString();\
-                        this._pendingRequests[requestId] = {\
-                            resolve: resolve,\
-                            reject: reject,\
-                            timestamp: Date.now()\
-                        };\
-                        const message = {\
-                            type: 'request',\
-                            id: requestId,\
-                            action: action,\
-                            params: params || {}\
-                        };\
-                        this.postMessage(JSON.stringify(message));\
-                        setTimeout(() => {\
-                            const request = this._pendingRequests[requestId];\
-                            if (request) {\
-                                delete this._pendingRequests[requestId];\
-                                reject(new Error(`Request timeout: ${action}`));\
-                            }\
-                        }, 10000);\
-                    });\
-                },\
-                handleResponse: function(responseJson) {\
-                    try {\
-                        const response = JSON.parse(responseJson);\
-                        const request = this._pendingRequests[response.id];\
-                        if (request) {\
-                            delete this._pendingRequests[response.id];\
-                            if (response.error) {\
-                                request.reject(new Error(response.error));\
-                            } else {\
-                                request.resolve(response.result);\
-                            }\
-                        }\
-                    } catch (error) {\
-                        console.error('Error handling response:', error);\
-                    }\
-                },\
-                initResponseHandler: function() {\
-                    // This is just a marker function to show that the response handler is initialized\
-                    console.log('BalancyWebView response handler initialized');\
-                    return true;\
-                }\
-            };\
-            window.BalancyWebView = BalancyWebView;\
-            window.BalancyWebView.initResponseHandler();\
-        })();";
-        
-        // Add bridge script
-//         WKUserScript *script = [[WKUserScript alloc] initWithSource:bridgeScript
-//                                                      injectionTime:WKUserScriptInjectionTimeAtDocumentStart 
-//                                                   forMainFrameOnly:YES];
-//         [_userContentController addUserScript:script];
-        
         // Create WebView
         _webView = [[WKWebView alloc] initWithFrame:[[window contentView] bounds] configuration:configuration];
         _webView.navigationDelegate = self;
@@ -177,7 +102,7 @@ static BalancyWebViewController* _sharedController = nil;
     if (!_webView) return NO;
     
     NSString *escapedMessage = [message stringByReplacingOccurrencesOfString:@"'" withString:@"\\'"];
-    NSString *script = [NSString stringWithFormat:@"if (window.BalancyWebView) { window.BalancyWebView._receiveMessageFromUnity('%@'); }", escapedMessage];
+    NSString *script = [NSString stringWithFormat:@"if (balancy) { balancy._receiveMessageFromUnity('%@'); }", escapedMessage];
     
     [_webView evaluateJavaScript:script completionHandler:nil];
     return YES;

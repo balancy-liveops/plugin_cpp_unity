@@ -12,76 +12,6 @@ extern "C" {
     void (*_cacheCompletedCallback)(bool) = NULL;
 }
 
-// JavaScript to inject into the WebView
-static NSString *const kBalancyWebViewBridgeScript = @"(function() {\
-    if (window.BalancyWebView) { return; }\
-    \
-    const BalancyWebView = {\
-        postMessage: function(message) {\
-            if (typeof message !== 'string') {\
-                message = JSON.stringify(message);\
-            }\
-            \
-            try {\
-                if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.BalancyWebView) {\
-                    window.webkit.messageHandlers.BalancyWebView.postMessage(message);\
-                    return true;\
-                } else {\
-                    console.warn('BalancyWebView native bridge not found');\
-                    return false;\
-                }\
-            } catch (e) {\
-                console.error('Error sending message to Unity:', e);\
-                return false;\
-            }\
-        },\
-        \
-        callUnity: function(message) {\
-            if (typeof message !== 'string') {\
-                message = JSON.stringify(message);\
-            }\
-            \
-            try {\
-                if (window._BalancyWebViewSynchronousInterface) {\
-                    return window._BalancyWebViewSynchronousInterface.callUnity(message);\
-                } else {\
-                    console.warn('BalancyWebView synchronous interface not found');\
-                    return JSON.stringify({error: 'Bridge not available'});\
-                }\
-            } catch (e) {\
-                console.error('Error calling Unity synchronously:', e);\
-                return JSON.stringify({error: e.message});\
-            }\
-        },\
-        \
-        _receiveMessageFromUnity: function(message) {\
-            const event = new CustomEvent('BalancyWebViewMessage', {\
-                detail: message,\
-                bubbles: true,\
-                cancelable: true\
-            });\
-            document.dispatchEvent(event);\
-            \
-            if (typeof window.onBalancyWebViewMessage === 'function') {\
-                window.onBalancyWebViewMessage(message);\
-            }\
-        }\
-    };\
-    \
-    window.BalancyWebView = BalancyWebView;\
-    \
-    document.addEventListener('DOMContentLoaded', function() {\
-        setTimeout(function() {\
-            BalancyWebView.postMessage(JSON.stringify({\
-                action: 'ready',\
-                timestamp: Date.now()\
-            }));\
-        }, 100);\
-    });\
-    \
-    console.log('Balancy WebView Bridge initialized');\
-})();";
-
 @interface BalancyWebViewController ()
 
 @property (nonatomic, strong, readwrite) WKWebView *webView;
@@ -144,12 +74,6 @@ static NSString *const kBalancyWebViewBridgeScript = @"(function() {\
     _userContentController = [[WKUserContentController alloc] init];
     [_userContentController addScriptMessageHandler:self name:@"BalancyWebView"];
     configuration.userContentController = _userContentController;
-    
-    // Add the bridge script
-    WKUserScript *bridgeScript = [[WKUserScript alloc] initWithSource:kBalancyWebViewBridgeScript
-                                                        injectionTime:WKUserScriptInjectionTimeAtDocumentStart
-                                                     forMainFrameOnly:YES];
-    [_userContentController addUserScript:bridgeScript];
     
     // Add transparency CSS that will be injected at document start
     NSString *transparencyCSS = @"\
@@ -355,7 +279,7 @@ static NSString *const kBalancyWebViewBridgeScript = @"(function() {\
     NSString *escapedMessage = [message stringByReplacingOccurrencesOfString:@"'" withString:@"\\'"];
     
     // JavaScript to send the message to the web page
-    NSString *script = [NSString stringWithFormat:@"if (window.BalancyWebView) { window.BalancyWebView._receiveMessageFromUnity('%@'); }", escapedMessage];
+    NSString *script = [NSString stringWithFormat:@"if (balancy) { balancy._receiveMessageFromUnity('%@'); }", escapedMessage];
     
     [_webView evaluateJavaScript:script completionHandler:^(id _Nullable result, NSError * _Nullable error) {
         if (error && self.debugLogging) {
