@@ -73,6 +73,9 @@ namespace Balancy
         {
             [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
             public delegate void DataObjectWasCachedCallback(string id, IntPtr ptr);
+            
+            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+            public delegate void DataObjectViewWasCachedCallback(string id, string oath);
 
             
             //Getters
@@ -131,6 +134,10 @@ namespace Balancy
             public static extern void balancyDataObjectLoad(string unnyId, DataObjectWasCachedCallback callback);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyDataObjectDeleteFromDisk(string unnyId);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyDataObjectViewPreload(string unnyId, DataObjectViewWasCachedCallback callback);
+            
         }
         
         public static class Data

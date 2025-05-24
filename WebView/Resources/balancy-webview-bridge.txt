@@ -1,11 +1,7 @@
 const balancy = {};
         
-// Set up request-response functionality
 (function() {
-    // Store for pending requests
     const pendingRequests = {};
-    
-    // Counter for generating sequential IDs
     let requestCounter = 0;
 
     const RequestAction = {
@@ -13,6 +9,7 @@ const balancy = {};
         GetProfile: 1,
         SetProfile: 2,
         GetLocalization: 10,
+        GetImageUrl: 11,
     };
     
     balancy.closeView = () => {
@@ -29,6 +26,10 @@ const balancy = {};
     
     balancy.getLocalizedText = async function(key) {
         return balancy.sendRequest(RequestAction.GetLocalization, {key});
+    };
+    
+    balancy.getImageUrl = async function(id) {
+        return balancy.sendRequest(RequestAction.GetImageUrl, {id});
     };
 
     balancy.postMessage = function(message) {
@@ -102,30 +103,45 @@ const balancy = {};
         document.dispatchEvent(new Event('localizationCompleted'));
     }
     
-    // Set up the message listener (runs only once during initialization)
+    async function prepareAllSprites() {
+        const elements = document.querySelectorAll('[data-image-id]');
+
+        const imagesPromises = Array.from(elements).map(async (element) => {
+            const id = element.getAttribute('data-image-id');
+            const imageUri = await balancy.getImageUrl(id);
+            console.log('Image URI:', imageUri);
+            if (imageUri) {
+                console.log('tag:', element.tagName);
+                if (element.tagName === 'IMG')
+                    element.src = imageUri;
+                else
+                    element.style.backgroundImage = `url('${imageUri}')`;
+                element.classList.add('image-loaded');
+            }
+        });
+
+        await Promise.all(imagesPromises);
+
+        document.dispatchEvent(new Event('imagesLoaded'));
+    }
+    
     balancy.initResponseHandler = function() {
         if (balancy._responseHandlerInitialized) return;
         
-        // Mark as initialized
         balancy._responseHandlerInitialized = true;
         
-        // Create a handler for incoming messages from Unity
         balancy.handleResponse = function(responseJson) {
             try {
                 const response = JSON.parse(responseJson);
                 
-                // Look for a matching request
                 const request = pendingRequests[response.id];
                 if (request) {
-                    // Remove from pending
                     delete pendingRequests[response.id];
                     
-                    // Call the appropriate callback
-                    if (response.error) {
+                    if (response.error)
                         request.reject(new Error(response.error));
-                    } else {
+                    else
                         request.resolve(response.result);
-                    }
                 }
             } catch (error) {
                 console.error('Error handling response:', error);
@@ -133,8 +149,8 @@ const balancy = {};
         };
         
         localizeAllElements();
+        prepareAllSprites();
     };
     
-    // Initialize the response handler
     balancy.initResponseHandler();
 })();

@@ -17,6 +17,7 @@ OUTPUT_FILE="libBalancyWebViewMac.dylib"
 echo "Compiling for Intel and Apple Silicon..."
 clang++ -std=c++11 -dynamiclib -framework Cocoa -framework WebKit \
     -arch x86_64 -arch arm64 \
+    -Wl,-undefined,dynamic_lookup \
     -o "$OUTPUT_FILE" BalancyWebviewMac.mm \
     -install_name @rpath/libBalancyWebViewMac.dylib
 

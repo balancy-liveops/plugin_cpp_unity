@@ -39,8 +39,8 @@ namespace Balancy
                 Debug.LogError("View is already opened");
                 return;
             }
-            
-            var urlToLoad = url + "?timestamp=" + Guid.NewGuid().ToString();
+
+            var urlToLoad = url;// + "?timestamp=" + Guid.NewGuid().ToString();
 
             bool success = _webView.OpenWebView(urlToLoad);
             

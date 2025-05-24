@@ -15,6 +15,19 @@ static MessageCallback _messageCallback = NULL;
 static LoadCompletedCallback _loadCompletedCallback = NULL;
 static CacheCompletedCallback _cacheCompletedCallback = NULL;
 
+// Unity logging function - sends logs to Unity console
+// Note: UnitySendMessage is provided by Unity at runtime, not during library build
+extern "C" void UnitySendMessage(const char* obj, const char* method, const char* msg) __attribute__((weak));
+
+void LogToUnity(const char* message) {
+    // Send log message to Unity console if available
+    if (UnitySendMessage != NULL) {
+        UnitySendMessage("BalancyWebView", "LogFromNative", message);
+    }
+    // Always log to system console for debugging
+    NSLog(@"[BalancyWebView] %s", message);
+}
+
 // Forward declaration
 @interface BalancyWebViewController : NSWindowController <WKNavigationDelegate, WKScriptMessageHandler>
 @property (nonatomic, strong) WKWebView *webView;
@@ -68,6 +81,18 @@ static BalancyWebViewController* _sharedController = nil;
         [_userContentController addScriptMessageHandler:self name:@"BalancyWebView"];
         configuration.userContentController = _userContentController;
         
+        //debugging
+        // Enable developer extras for debugging
+        if (@available(macOS 10.11, *)) {
+            [configuration.preferences setValue:@YES forKey:@"developerExtrasEnabled"];
+        }
+        
+        // You might also want to enable these for better debugging
+        [configuration.preferences setValue:@YES forKey:@"fullScreenEnabled"];
+        [configuration.preferences setValue:@YES forKey:@"javaScriptCanAccessClipboard"];
+        [configuration.preferences setValue:@YES forKey:@"shouldAllowUserInstalledFonts"];
+        //debugging...
+        
         // Create WebView
         _webView = [[WKWebView alloc] initWithFrame:[[window contentView] bounds] configuration:configuration];
         _webView.navigationDelegate = self;
@@ -81,10 +106,35 @@ static BalancyWebViewController* _sharedController = nil;
     // Show window
     [[self window] makeKeyAndOrderFront:nil];
     
+    if ([url hasPrefix:@"file://"]) {
+        NSString *cleanUrl = url;
+        NSString *filePath = [cleanUrl stringByReplacingOccurrencesOfString:@"file://" withString:@""];
+
+        NSURL *fileURL = [NSURL fileURLWithPath:filePath];
+        NSURL *readAccessURL = [fileURL URLByDeletingLastPathComponent];
+        
+
+        NSString *htmlPath = [fileURL path];
+        NSString *parentDir = [htmlPath stringByDeletingLastPathComponent]; // Gets the immediate parent
+        NSString *filesDir = [parentDir stringByDeletingLastPathComponent];  // Goes up one more level to "Files"
+        
+        NSURL *broadReadAccessURL = [NSURL fileURLWithPath:filesDir];
+        
+        if (_debugLogging) {
+            NSString *logMsg = [NSString stringWithFormat:@"File URL: %@", fileURL];
+            LogToUnity([logMsg UTF8String]);
+            NSString *logMsg2 = [NSString stringWithFormat:@"Read access URL: %@", broadReadAccessURL];
+            LogToUnity([logMsg2 UTF8String]);
+        }
+        
+        [_webView loadFileURL:fileURL allowingReadAccessToURL:broadReadAccessURL];
+        return YES;
+    }
+    
     // Load URL
     NSURL *nsUrl = [NSURL URLWithString:url];
     if (!nsUrl) {
-        if (_debugLogging) NSLog(@"Invalid URL");
+        LogToUnity("Invalid URL");
         return NO;
     }
     
@@ -211,6 +261,8 @@ static BalancyWebViewController* _sharedController = nil;
 #pragma mark - WKNavigationDelegate
 
 - (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
+    LogToUnity("WebView navigation finished successfully");
+    
     if (_transparentBackground) {
         [self setTransparentBackground:YES];
     }
@@ -225,8 +277,26 @@ static BalancyWebViewController* _sharedController = nil;
 }
 
 - (void)webView:(WKWebView *)webView didFailNavigation:(WKNavigation *)navigation withError:(NSError *)error {
+    NSString *errorMsg = [NSString stringWithFormat:@"Navigation failed with error: %@", error.localizedDescription];
+    LogToUnity([errorMsg UTF8String]);
+    
     if (_loadCompletedCallback) {
         _loadCompletedCallback(false);
+    }
+}
+
+- (void)webView:(WKWebView *)webView didFailProvisionalNavigation:(WKNavigation *)navigation withError:(NSError *)error {
+    NSString *errorMsg = [NSString stringWithFormat:@"Provisional navigation failed with error: %@", error.localizedDescription];
+    LogToUnity([errorMsg UTF8String]);
+    
+    if (_loadCompletedCallback) {
+        _loadCompletedCallback(false);
+    }
+}
+
+- (void)webView:(WKWebView *)webView didStartProvisionalNavigation:(WKNavigation *)navigation {
+    if (_debugLogging) {
+        LogToUnity("WebView started loading");
     }
 }
 
@@ -237,12 +307,23 @@ extern "C" {
 
 bool _balancyOpenWebView(const char* url) {
     @autoreleasepool {
+        LogToUnity("_balancyOpenWebView called");
+        
         if (_sharedController == nil) {
+            LogToUnity("Creating new WebView controller");
             _sharedController = [[BalancyWebViewController alloc] init];
         }
         
         NSString* nsUrl = [NSString stringWithUTF8String:url];
-        return [_sharedController loadURL:nsUrl];
+        NSString *logMsg = [NSString stringWithFormat:@"Attempting to load URL: %@", nsUrl];
+        LogToUnity([logMsg UTF8String]);
+        
+        BOOL result = [_sharedController loadURL:nsUrl];
+        
+        NSString *resultMsg = [NSString stringWithFormat:@"_balancyOpenWebView result: %@", result ? @"SUCCESS" : @"FAILED"];
+        LogToUnity([resultMsg UTF8String]);
+        
+        return result;
     }
 }
 

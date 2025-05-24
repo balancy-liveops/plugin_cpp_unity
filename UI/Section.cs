@@ -85,13 +85,26 @@ namespace Balancy.UI
                 {
                     element.SetOnClick(() =>
                     {
+                        
                         if (string.IsNullOrEmpty(myOffer.View))
                         {
                             Debug.LogError("No webpage found");
                             return;
                         }
                         
-                        Balancy.RenderViewsManager.OpenView(myOffer.View);
+                        
+
+                        Balancy.Dictionaries.DataObjectsManager.GetObjectView("555", url =>
+                        {
+                            Debug.LogError("url = " + url);
+                            string fileUrl = "file://" + url;
+                            Debug.Log($"Opening local file: {fileUrl}");
+                            Balancy.RenderViewsManager.OpenView(fileUrl);
+                        });
+
+                        // var fileUrl ="file://"  + "/Users/pavelignatov/Library/Application Support/DefaultCompany/plugin_cpp_unity/Balancy/Models/67933064-2b8a-11f0-b3bd-1fec53a055ba_Cache/Files/TestArchive/index.html";
+                        // Balancy.RenderViewsManager.OpenView(fileUrl);
+                        // Balancy.RenderViewsManager.OpenView(myOffer.View);
                     });
                 }
 

@@ -115,9 +115,52 @@ namespace Balancy.Dictionaries
                 _callbacks.Add(info);
             }
         }
+        
+        private class OneObjectView
+        {
+            private class CallbackInfo
+            {
+                public Action<string> Callback;
+                public AsyncLoadHandler LoadHandler;
+            }
+
+            public bool Loaded = false;
+            private readonly List<CallbackInfo> _callbacks = new List<CallbackInfo>();
+            private string Path;
+
+            public string PathInStorage => Path;
+
+            public void SetPath(string path)
+            {
+                Path = path;
+                Loaded = true;
+
+                foreach (var info in _callbacks)
+                {
+                    if (info.LoadHandler.GetStatus() == AsyncLoadHandler.Status.Loading)
+                    {
+                        info.LoadHandler.Finish();
+                        info.Callback?.Invoke(PathInStorage);
+                    }
+                }
+                
+                _callbacks.Clear();
+            }
+
+            public void AddCallback(AsyncLoadHandler handler, Action<string> callback)
+            {
+                var info = new CallbackInfo
+                {
+                    LoadHandler = handler,
+                    Callback = callback
+                };
+                _callbacks.Add(info);
+            }
+        }
 
         private static readonly Dictionary<string, OneObjectSprite> AllSprites = new Dictionary<string, OneObjectSprite>();
-
+        private static readonly Dictionary<string, OneObjectView> AllViews = new Dictionary<string, OneObjectView>();
+        
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.Models.DataObjectWasCachedCallback))]
         private static void DataObjectLoaded(string id, IntPtr ptr)
         {
@@ -166,6 +209,44 @@ namespace Balancy.Dictionaries
                 else
                 {
                     oneObjectSprite.AddCallback(handler, callback);
+                }
+            }
+
+            return handler;
+        }
+        
+        [AOT.MonoPInvokeCallback(typeof(LibraryMethods.Models.DataObjectWasCachedCallback))]
+        private static void DataObjectViewLoaded(string id, string path)
+        {
+            if (AllViews.TryGetValue(id, out var oneObjectView))
+            {
+                _mainThreadInstance.Enqueue(() => { oneObjectView.SetPath(path); });
+            }
+            else
+                Debug.Log("No request object view found " + id);
+        }
+        
+        public static AsyncLoadHandler GetObjectView(string id, Action<string> callback)
+        {
+            var handler = AsyncLoadHandler.CreateHandler();
+            if (!AllViews.TryGetValue(id, out var oneObjectView))
+            {
+                oneObjectView = new OneObjectView();
+                oneObjectView.AddCallback(handler, callback);
+                AllViews.Add(id, oneObjectView);
+                
+                LibraryMethods.Models.balancyDataObjectViewPreload(id, DataObjectViewLoaded);
+            }
+            else
+            {
+                if (oneObjectView.Loaded)
+                {
+                    handler.Finish();
+                    callback?.Invoke(oneObjectView.PathInStorage);
+                }
+                else
+                {
+                    oneObjectView.AddCallback(handler, callback);
                 }
             }
 

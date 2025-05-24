@@ -53,6 +53,20 @@ namespace Balancy.WebView
 
         #endregion
 
+        #region Native Logging Method
+        
+        /// <summary>
+        /// Called from native code to log messages to Unity console
+        /// This method is called via UnitySendMessage from the native plugin
+        /// </summary>
+        /// <param name="message">The log message from native code</param>
+        public void LogFromNative(string message)
+        {
+            Debug.Log($"[BalancyWebView Native] {message}");
+        }
+        
+        #endregion
+
         #region Events
 
         /// <summary>
@@ -232,6 +246,8 @@ namespace Balancy.WebView
             
             // Enable game UI mode by default
             SetGameUIMode(_gameUIMode);
+            
+            SetDebugLogging(true);
 
             bool success = false;
 
