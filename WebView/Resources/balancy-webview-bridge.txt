@@ -109,9 +109,7 @@ const balancy = {};
         const imagesPromises = Array.from(elements).map(async (element) => {
             const id = element.getAttribute('data-image-id');
             const imageUri = await balancy.getImageUrl(id);
-            console.log('Image URI:', imageUri);
             if (imageUri) {
-                console.log('tag:', element.tagName);
                 if (element.tagName === 'IMG')
                     element.src = imageUri;
                 else
