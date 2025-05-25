@@ -229,6 +229,35 @@ extern "C" {
 #pragma mark - Public Methods
 
 - (BOOL)loadURL:(NSString *)urlString {
+    // Handle local file URLs
+    if ([urlString hasPrefix:@"file://"]) {
+        NSString *cleanUrl = urlString;
+        NSString *filePath = [cleanUrl stringByReplacingOccurrencesOfString:@"file://" withString:@""];
+
+        NSURL *fileURL = [NSURL fileURLWithPath:filePath];
+        NSURL *readAccessURL = [fileURL URLByDeletingLastPathComponent];
+        
+        NSString *htmlPath = [fileURL path];
+        NSString *parentDir = [htmlPath stringByDeletingLastPathComponent]; // Gets the immediate parent
+        NSString *filesDir = [parentDir stringByDeletingLastPathComponent];  // Goes up one more level to "Files"
+        
+        NSURL *broadReadAccessURL = [NSURL fileURLWithPath:filesDir];
+        
+        if (_debugLogging) {
+            NSLog(@"[BalancyWebView] File URL: %@", fileURL);
+            NSLog(@"[BalancyWebView] Read access URL: %@", broadReadAccessURL);
+        }
+        
+        [_webView loadFileURL:fileURL allowingReadAccessToURL:broadReadAccessURL];
+        
+        if (_debugLogging) {
+            NSLog(@"[BalancyWebView] Loading local file: %@", urlString);
+        }
+        
+        return YES;
+    }
+    
+    // Handle regular URLs
     NSURL *url = [NSURL URLWithString:urlString];
     if (!url) {
         if (_debugLogging) {

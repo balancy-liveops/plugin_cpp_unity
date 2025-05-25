@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -300,8 +301,61 @@ namespace Balancy.Editor
         {
             if (!success)
                 _errorMessage = message;
+            else
+                PrepareSprites();
             _downloading = false;
             _needRefresh = true;
+        }
+
+        private void PrepareSprites()
+        {
+            Debug.LogError("PrepareSprites called");
+
+            string resourcesPath = Application.dataPath + "/Balancy/Resources/";
+
+            if (Directory.Exists(resourcesPath))
+            {
+                // Get all image files from file system
+                string[] imageExtensions = { "*.png", "*.jpg", "*.jpeg", "*.bmp", "*.tga" };
+                var imageFiles = new List<string>();
+
+                foreach (string extension in imageExtensions)
+                {
+                    imageFiles.AddRange(Directory.GetFiles(resourcesPath, extension, SearchOption.AllDirectories));
+                }
+
+                Debug.LogError($"Found {imageFiles.Count} image files in file system");
+
+                // Import each file
+                foreach (string filePath in imageFiles)
+                {
+                    // Convert absolute path to relative Unity path
+                    string relativePath = "Assets" + filePath.Substring(Application.dataPath.Length);
+                    relativePath = relativePath.Replace('\\', '/'); // Ensure forward slashes
+
+                    Debug.LogError($"Importing: {relativePath}");
+
+                    // Import the asset
+                    AssetDatabase.ImportAsset(relativePath, ImportAssetOptions.ForceUpdate);
+
+                    // Configure texture import settings
+                    TextureImporter textureImporter = AssetImporter.GetAtPath(relativePath) as TextureImporter;
+                    if (textureImporter != null)
+                    {
+                        textureImporter.textureType = TextureImporterType.Sprite;
+                        textureImporter.mipmapEnabled = false;
+                        textureImporter.isReadable = true; // Essential for base64!
+                        textureImporter.textureCompression =
+                            TextureImporterCompression.Uncompressed; // Avoid compression issues
+
+                        // Re-import with new settings
+                        AssetDatabase.ImportAsset(relativePath, ImportAssetOptions.ForceUpdate);
+                    }
+                }
+
+                // Final refresh
+                AssetDatabase.Refresh();
+            }
         }
 
         private void OnProgressUpdate(string fileName, float progress)
