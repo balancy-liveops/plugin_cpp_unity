@@ -36,22 +36,25 @@ namespace Balancy.CheatPanel
             var shops = Profiles.System.ShopsInfo;
             if (shops.GameShops.Count == 0)
                 return;
-            
-            var activeShop = shops.GameShops[0];
-            foreach (var activePage in activeShop.ActivePages)
+
+            var activeShop = shops.ActiveShopInfo;
+            if (activeShop != null)
             {
-                var newItem = Instantiate(shopPageBtnPrefab, pagesContent);
-                newItem.SetActive(true);
-                var btnWithText = newItem.GetComponent<ButtonWithText>();
-                var page = activePage;
-                btnWithText.Init(activePage.Page?.Name?.Value, () =>
+                foreach (var activePage in activeShop.ActivePages)
                 {
-                    Debug.LogError("Page selected " + page?.Page?.Name.Value);
-                    ShowPage(page);
-                });
+                    var newItem = Instantiate(shopPageBtnPrefab, pagesContent);
+                    newItem.SetActive(true);
+                    var btnWithText = newItem.GetComponent<ButtonWithText>();
+                    var page = activePage;
+                    btnWithText.Init(activePage.Page?.Name?.Value, () =>
+                    {
+                        Debug.LogError("Page selected " + page?.Page?.Name.Value);
+                        ShowPage(page);
+                    });
+                }
+
+                ShowPage(activeShop.ActivePages.Count > 0 ? activeShop.ActivePages[0] : null);
             }
-            
-            ShowPage(activeShop.ActivePages.Count > 0 ? activeShop.ActivePages[0] : null);
         }
 
         private void ShowPage(ShopPage shopPage)

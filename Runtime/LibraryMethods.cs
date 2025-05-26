@@ -234,6 +234,14 @@ namespace Balancy
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancySetTimeOffset(int seconds);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancyStoreItem_GetAdsWatched(IntPtr storeItemPointer);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyStoreItem_AdWasWatched(IntPtr storeItemPointer);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern bool balancyStoreItem_HaveEnoughResources(IntPtr storeItemPointer);
         }
 
         public static class Localization

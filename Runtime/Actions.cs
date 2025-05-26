@@ -97,6 +97,34 @@ namespace Balancy
             }
         }
 
+        public static class Ads
+        {
+            public delegate void OnAdWatchCallback(StoreItem storeItem);
+            
+            private static readonly OnAdWatchCallback DefaultOnAdWatchCallback = (storeItem) =>
+            {
+                UnityEngine.Debug.LogWarning(
+                    "No Ad Watch implementation provided. Implement your logic using Balancy.Actions.Ads.SetAdWatchCallback");
+            };
+
+            private static OnAdWatchCallback _adWatchCallback = DefaultOnAdWatchCallback;
+
+            public static void SetAdWatchCallback(OnAdWatchCallback callback)
+            {
+                _adWatchCallback = callback ?? DefaultOnAdWatchCallback;
+            }
+
+            public static void ResetAdWatchCallback()
+            {
+                _adWatchCallback = DefaultOnAdWatchCallback;
+            }
+
+            internal static OnAdWatchCallback GetAdWatchCallback()
+            {
+                return _adWatchCallback;
+            }
+        }
+
         public static class Purchasing
         {
             public delegate void HardPurchaseCallback(BalancyProductInfo productInfo);
@@ -105,7 +133,7 @@ namespace Balancy
             {
                 UnityEngine.Debug.LogWarning(
                     "No hard purchase implementation provided. Either implement your own using " +
-                    "PurchaseCallbacks.SetHardPurchaseCallback or install the Balancy Purchasing package."); //TODO add here the id
+                    "Balancy.Actions.Purchasing.SetHardPurchaseCallback or install the Balancy Purchasing package."); //TODO add here the id
             };
 
             private static HardPurchaseCallback _hardPurchaseCallback = DefaultHardPurchaseCallback;

@@ -144,6 +144,17 @@ namespace Balancy
             }
         }
 
+        private static bool CheckSoftPrice(StoreItem storeItem)
+        {
+            if (storeItem.HaveEnoughResources())
+                return true;
+
+            if (storeItem.Price.Type == PriceType.Ads)
+                Balancy.Actions.Ads.GetAdWatchCallback()?.Invoke(storeItem);
+
+            return false;
+        }
+
         public static void InitPurchaseOffer(OfferInfo offerInfo, Action<bool, string> callback)
         {
             if (offerInfo?.GameOffer == null)
@@ -165,7 +176,7 @@ namespace Balancy
             }
             else
             {
-                if (!SoftPurchaseGameOffer(offerInfo))
+                if (!CheckSoftPrice(offerInfo.GameOffer.StoreItem) || !SoftPurchaseGameOffer(offerInfo))
                 {
                     switch (offerInfo.GameOffer.StoreItem.Price.Type)
                     {
@@ -204,7 +215,7 @@ namespace Balancy
             }
             else
             {
-                if (!SoftPurchaseGameOfferGroup(offerGroupInfo, storeItem))
+                if (!CheckSoftPrice(storeItem) || !SoftPurchaseGameOfferGroup(offerGroupInfo, storeItem))
                 {
                     switch (storeItem.Price.Type)
                     {
@@ -236,7 +247,7 @@ namespace Balancy
             }
             else
             {
-                if (!SoftPurchaseStoreItem(storeItem))
+                if (!CheckSoftPrice(storeItem) || !SoftPurchaseStoreItem(storeItem))
                 {
                     switch (storeItem.Price.Type)
                     {
