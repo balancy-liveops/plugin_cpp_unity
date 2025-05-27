@@ -30,6 +30,12 @@ namespace Balancy.Cheats
         {
             closeButton.onClick.AddListener(HideWindow);
             resetButton.onClick.AddListener(ResetProfiles);
+            
+            Balancy.Actions.Ads.SetAdWatchCallback((Balancy.Models.SmartObjects.StoreItem storeItem) => {
+                Debug.Log("WATCH AD - FAKE");
+                //TODO Implement your ad watch logic here
+                storeItem?.AdWasWatched();
+            });
         }
 
         private void ResetProfiles()

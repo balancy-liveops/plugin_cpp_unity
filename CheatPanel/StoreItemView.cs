@@ -13,8 +13,8 @@ namespace Balancy.Cheats
         [SerializeField] private Button buyButton;
         [SerializeField] private TMP_Text buyButtonText;
 
-        private StoreItem _storeItem;
-        private Action<StoreItem> _onBuy;
+        protected StoreItem _storeItem;
+        protected Action<StoreItem> _onBuy;
         
         public void Init(StoreItem storeItem, bool canBuy, Action<StoreItem> onBuy)
         {
@@ -43,21 +43,7 @@ namespace Balancy.Cheats
 
         private void ApplyPrice()
         {
-            if (_storeItem.Price.IsFree())
-            {
-                buyButtonText.text = "FREE";
-                return;
-            }
-            
-            switch (_storeItem?.Price.Type)
-            {
-                case PriceType.Hard:
-                    buyButtonText.text = "USD " + _storeItem.Price.Product.Price;
-                    break;
-                default:
-                    buyButtonText.text = "N/A";
-                    break;
-            }
+            buyButtonText.text = Utils.GetPriceText(_storeItem);
         }
     }
 }

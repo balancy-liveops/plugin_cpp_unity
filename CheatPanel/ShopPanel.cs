@@ -68,8 +68,8 @@ namespace Balancy.CheatPanel
             {
                 var newItem = Instantiate(shopSlotViewPrefab, slotsContent);
                 newItem.SetActive(true);
-                var storeItemView = newItem.GetComponent<StoreItemView>();
-                storeItemView.Init(activeSlot.Slot.StoreItem, true, TryToBuySlot);
+                var storeItemView = newItem.GetComponent<StoreItemViewAdvanced>();
+                storeItemView.Init(activeSlot.Slot, true, TryToBuySlot);
             }
         }
 
@@ -78,6 +78,7 @@ namespace Balancy.CheatPanel
             Balancy.API.InitPurchase(storeItem, (success, error) =>
             {
                 Debug.Log("BUY COMPLETE : " + success + " error = " + error);
+                Refresh();
             });
         }
         

@@ -22,5 +22,11 @@ namespace Balancy.Models.LiveOps.Store
 			_type = (Balancy.Models.LiveOps.Store.SlotType)GetIntParam("type");
         }
         
+        public bool IsAvailable() => LibraryMethods.Extra.balancyStoreSlot_IsAvailable(GetRawPointer());
+        public int GetSecondsLeftUntilAvailable() => LibraryMethods.Extra.balancyStoreSlot_GetSecondsLeftUntilAvailable(GetRawPointer());
+        public bool HasLimits() => LibraryMethods.Extra.balancyStoreSlot_HasLimits(GetRawPointer());
+        public int GetPurchasesLimitForCycle() => LibraryMethods.Extra.balancyStoreSlot_GetPurchasesLimitForCycle(GetRawPointer());
+        public int GetPurchasesDoneDuringTheLastCycle() => LibraryMethods.Extra.balancyStoreSlot_GetPurchasesDoneDuringTheLastCycle(GetRawPointer());
+        
     }
 }

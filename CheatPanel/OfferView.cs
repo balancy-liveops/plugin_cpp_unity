@@ -70,21 +70,7 @@ namespace Balancy.Cheats
 
         private void ApplyPrice()
         {
-            if (_offerInfo.GameOffer?.StoreItem?.Price.IsFree() ?? false)
-            {
-                buyButtonText.text = "FREE";
-                return;
-            }
-            
-            switch (_offerInfo.GameOffer?.StoreItem?.Price.Type)
-            {
-                case PriceType.Hard:
-                    buyButtonText.text = "USD " + _offerInfo.GameOffer.StoreItem.Price.Product.Price;
-                    break;
-                default:
-                    buyButtonText.text = "N/A";
-                    break;
-            }
+            buyButtonText.text = Utils.GetPriceText(_offerInfo.GameOffer?.StoreItem);
         }
     }
 }

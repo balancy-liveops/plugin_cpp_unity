@@ -242,6 +242,18 @@ namespace Balancy
             public static extern void balancyStoreItem_AdWasWatched(IntPtr storeItemPointer);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern bool balancyStoreItem_HaveEnoughResources(IntPtr storeItemPointer);
+            
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern bool balancyStoreSlot_IsAvailable(IntPtr storeSlotPointer);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancyStoreSlot_GetSecondsLeftUntilAvailable(IntPtr storeSlotPointer);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern bool balancyStoreSlot_HasLimits(IntPtr storeSlotPointer);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancyStoreSlot_GetPurchasesLimitForCycle(IntPtr storeSlotPointer);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancyStoreSlot_GetPurchasesDoneDuringTheLastCycle(IntPtr storeSlotPointer);
         }
 
         public static class Localization
