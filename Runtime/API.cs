@@ -190,7 +190,8 @@ namespace Balancy
                             callback?.Invoke(false, Constants.Errors.PurchaseInvalidPriceType);
                             break;
                     }
-                }
+                } else
+                    callback?.Invoke(true, null);
             }
         }
 
@@ -229,7 +230,8 @@ namespace Balancy
                             callback?.Invoke(false, Constants.Errors.PurchaseInvalidPriceType);
                             break;
                     }
-                }
+                } else
+                    callback?.Invoke(true, null);
             }
         }
 
@@ -261,7 +263,8 @@ namespace Balancy
                             callback?.Invoke(false, Constants.Errors.PurchaseInvalidPriceType);
                             break;
                     }
-                }
+                } else
+                    callback?.Invoke(true, null);
             }
         }
 
