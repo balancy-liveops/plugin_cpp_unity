@@ -46,29 +46,17 @@ namespace Balancy
         }
 
         public static void FinalizedHardPurchase(Actions.PurchaseResult result,
-            Balancy.Actions.BalancyProductInfo productInfo, Actions.PurchaseInfo purchaseInfo,
+            Balancy.Actions.BalancyProductInfo productInfo, Core.PaymentInfo paymentInfo,
             Action<bool, bool> validationCallback)
         {
             Debug.Log("HardPurchase result: " + result);
-            Debug.Log("HardPurchase Receipt: " + purchaseInfo.Receipt);
-            Debug.Log("HardPurchase Error: " + purchaseInfo.ErrorMessage);
+            Debug.Log("HardPurchase Receipt: " + paymentInfo.Receipt);
 
 #if UNITY_EDITOR
-            var receipt = "{\"Payload\":\"{\\\"json\\\":\\\"{\\\\\\\"orderId\\\\\\\":\\\\\\\"" +
-                          purchaseInfo.TransactionId + "\\\\\\\",\\\\\\\"productId\\\\\\\":\\\\\\\"" +
-                          purchaseInfo.ProductId + "\\\\\\\"}\\\",\\\"signature\\\":\\\"bypass\\\"}\"}";
-#else
-            var receipt = purchaseInfo.Receipt;
+            paymentInfo.Receipt = "{\"Payload\":\"{\\\"json\\\":\\\"{\\\\\\\"orderId\\\\\\\":\\\\\\\"" +
+                                  paymentInfo.OrderId + "\\\\\\\",\\\\\\\"productId\\\\\\\":\\\\\\\"" +
+                                  paymentInfo.ProductId + "\\\\\\\"}\\\",\\\"signature\\\":\\\"bypass\\\"}\"}";
 #endif
-            var paymentInfo = new Core.PaymentInfo
-            {
-                OrderId = purchaseInfo.TransactionId,
-                Receipt = receipt,
-                ProductId = purchaseInfo.ProductId,
-                Currency = purchaseInfo.CurrencyCode,
-                Price = (float)purchaseInfo.Price
-            };
-
             if (productInfo != null)
             {
                 var callback = GetCallbackData(productInfo);
@@ -148,7 +136,7 @@ namespace Balancy
                 }
                 else
                 {
-                    callback?.Callback?.Invoke(false, purchaseInfo.ErrorMessage);
+                    callback?.Callback?.Invoke(false, "");
                 }
             }
             else

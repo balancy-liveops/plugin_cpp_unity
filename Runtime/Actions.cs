@@ -16,16 +16,6 @@ namespace Balancy
             Pending // For purchases that might require additional verification
         }
 
-        public class PurchaseInfo
-        {
-            public string Receipt { get; set; }
-            public string ProductId { get; set; }
-            public string TransactionId { get; set; }
-            public string ErrorMessage { get; set; }
-            public string CurrencyCode { get; set; }
-            public float Price { get; set; }
-        }
-
         [Serializable]
         public class BalancyProductInfo
         {
