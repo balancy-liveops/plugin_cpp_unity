@@ -36,7 +36,7 @@ namespace Balancy.Network
         private static extern void balancyHandleWebRequestComplete(int requestId, bool success, int errorCode, IntPtr data, int dataSize);
 
         [DllImport(Balancy.LibraryMethods.DllName, CallingConvention = CallingConvention.Cdecl)]
-        private static extern void balancyHandleFileLoadComplete(int requestId, bool success, int errorCode, IntPtr data, int dataSize);
+        private static extern void balancyHandleFileLoadComplete(int requestId, bool success, int errorCode, IntPtr data, int dataSize, string contentType);
 
         // Active requests tracking
         private Dictionary<int, UnityWebRequest> _activeRequests = new Dictionary<int, UnityWebRequest>();
@@ -308,9 +308,16 @@ namespace Balancy.Network
             try
             {
                 // Download the file
-                byte[] data = await httpClient.GetByteArrayAsync(url);
-                bool success = true;
-                int errorCode = 200; // Assume OK
+                HttpResponseMessage response = await httpClient.GetAsync(url);
+                byte[] data = await response.Content.ReadAsByteArrayAsync();
+                bool success = response.IsSuccessStatusCode;
+                int errorCode = (int)response.StatusCode;
+                
+                string contentType = "";
+                if (response.Content.Headers.ContentType != null)
+                {
+                    contentType = response.Content.Headers.ContentType.MediaType ?? "";
+                }
 
                 // Convert data to a native pointer
                 IntPtr dataPtr = IntPtr.Zero;
@@ -326,7 +333,7 @@ namespace Balancy.Network
                 try
                 {
                     // Send the result back to the native plugin
-                    balancyHandleFileLoadComplete(requestId, success, errorCode, dataPtr, dataSize);
+                    balancyHandleFileLoadComplete(requestId, success, errorCode, dataPtr, dataSize, contentType);
                 }
                 finally
                 {
@@ -342,7 +349,7 @@ namespace Balancy.Network
                 Debug.LogError($"File download failed: {ex.Message}");
                 
                 // Send failure back to native plugin
-                balancyHandleFileLoadComplete(requestId, false, 0, IntPtr.Zero, 0);
+                balancyHandleFileLoadComplete(requestId, false, 0, IntPtr.Zero, 0, "");
             }
         }
 #endif
@@ -464,6 +471,21 @@ namespace Balancy.Network
             int errorCode = (int)webRequest.responseCode;
             byte[] data = webRequest.downloadHandler.data;
 
+            // Extract Content-Type header - this is the key part!
+            string contentType = "";
+            if (success && webRequest.GetResponseHeaders() != null)
+            {
+                webRequest.GetResponseHeaders().TryGetValue("Content-Type", out contentType);
+                if (contentType == null) contentType = "";
+                
+                // Clean up content type (remove charset and other parameters)
+                int semicolonIndex = contentType.IndexOf(';');
+                if (semicolonIndex >= 0)
+                {
+                    contentType = contentType.Substring(0, semicolonIndex).Trim();
+                }
+            }
+            
             // Convert data to a native pointer
             IntPtr dataPtr = IntPtr.Zero;
             int dataSize = 0;
@@ -479,7 +501,7 @@ namespace Balancy.Network
             try
             {
                 // Send the result back to the native plugin
-                balancyHandleFileLoadComplete(requestId, success, errorCode, dataPtr, dataSize);
+                balancyHandleFileLoadComplete(requestId, success, errorCode, dataPtr, dataSize, contentType);
             }
             finally
             {

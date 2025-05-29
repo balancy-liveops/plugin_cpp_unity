@@ -346,6 +346,8 @@ namespace Balancy
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyHardPurchaseGameOffer(IntPtr gameOfferPointer, Balancy.Core.PaymentInfo paymentInfo, ResponseCallback callback, bool requireValidation);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyHardPurchaseShopSlot(IntPtr shopSlotPointer, Balancy.Core.PaymentInfo paymentInfo, ResponseCallback callback, bool requireValidation);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyHardPurchaseGameOfferGroup(IntPtr gameOfferPointer, IntPtr storeItemPointer, Balancy.Core.PaymentInfo paymentInfo, ResponseCallback callback, bool requireValidation);
