@@ -34,6 +34,7 @@ namespace Balancy
                 StoreItem,
                 Offer,
                 OfferGroup,
+                ShopSlot
             }
 
             public string ProductId;
@@ -47,6 +48,14 @@ namespace Balancy
                 Type = PurchaseType.StoreItem;
                 ProductId = storeItem?.Price?.Product?.ProductId;
                 StoreItemUnnyId = storeItem?.UnnyId;
+            }
+            
+            public BalancyProductInfo(ShopSlot shopSlot)
+            {
+                Type = PurchaseType.ShopSlot;
+                ProductId = shopSlot?.Slot?.StoreItem?.Price?.Product?.ProductId;
+                StoreItemUnnyId = shopSlot?.Slot?.StoreItem?.UnnyId;
+                OfferUnnyId = shopSlot?.Slot?.UnnyId;
             }
             
             public BalancyProductInfo(OfferInfo offerInfo)
@@ -74,7 +83,21 @@ namespace Balancy
                        OfferInstanceId == other.OfferInstanceId;
             }
 
-            public StoreItem GetStoreItem() => CMS.GetModelByUnnyId<StoreItem>(StoreItemUnnyId);
+            public StoreItem GetStoreItem()
+            {
+                switch (Type)
+                {
+                    case PurchaseType.Offer:
+                        return GetGameOffer()?.StoreItem;
+                    case PurchaseType.ShopSlot:
+                        return GetShopSlot()?.StoreItem;
+                    default:
+                        return CMS.GetModelByUnnyId<StoreItem>(StoreItemUnnyId);
+                }
+                   
+            }
+            
+            public Balancy.Models.LiveOps.Store.Slot GetShopSlot() => CMS.GetModelByUnnyId<Balancy.Models.LiveOps.Store.Slot>(OfferUnnyId);
             public GameOffer GetGameOffer() => CMS.GetModelByUnnyId<GameOffer>(OfferUnnyId);
             public GameOfferGroup GetGameOfferGroup() => CMS.GetModelByUnnyId<GameOfferGroup>(OfferUnnyId);
 
@@ -84,6 +107,9 @@ namespace Balancy
                 {
                     case PurchaseType.StoreItem:
                         Balancy.Callbacks.OnHardPurchasedStoreItem?.Invoke(paymentInfo, GetStoreItem());
+                        break;
+                    case PurchaseType.ShopSlot:
+                        Balancy.Callbacks.OnHardPurchasedShopSlot?.Invoke(paymentInfo, GetShopSlot());
                         break;
                     case PurchaseType.Offer:
                         Balancy.Callbacks.OnHardPurchasedOffer?.Invoke(paymentInfo, GetGameOffer());

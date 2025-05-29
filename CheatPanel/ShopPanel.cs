@@ -63,43 +63,24 @@ namespace Balancy.CheatPanel
 
             if (shopPage == null)
                 return;
-            
-            foreach (var activeSlot in shopPage.ActiveSlots)
+
+            for (int i = 0; i < shopPage.ActiveSlots.Count; i++)
             {
+                var activeSlot = shopPage.ActiveSlots[i];
                 var newItem = Instantiate(shopSlotViewPrefab, slotsContent);
                 newItem.SetActive(true);
                 var storeItemView = newItem.GetComponent<StoreItemViewAdvanced>();
-                storeItemView.Init(activeSlot.Slot, true, TryToBuySlot);
+                storeItemView.Init(activeSlot.Slot, true, (storeItem)=> TryToBuySlot(activeSlot));
             }
         }
 
-        private void TryToBuySlot(StoreItem storeItem)
+        private void TryToBuySlot(Balancy.Data.SmartObjects.ShopSlot shopSlot)
         {
-            Balancy.API.InitPurchase(storeItem, (success, error) =>
+            Balancy.API.InitPurchaseShop(shopSlot, (success, error) =>
             {
                 Debug.Log("BUY COMPLETE : " + success + " error = " + error);
                 Refresh();
             });
-        }
-        
-        private void TryToBuyHard(StoreItem storeItem)
-        {
-            var price = storeItem?.Price;
-            if (price?.Product == null)
-                return;
-            
-            var paymentInfo = Utils.CreateTestPaymentInfo(price);
-            
-            void PurchaseCompleted(Balancy.Core.Responses.PurchaseProductResponseData responseData) {
-                Debug.Log("Purchase of " + responseData.ProductId + " success = " + responseData.Success);
-                if (!responseData.Success)
-                {
-                    Debug.Log("ErrorCode = " + responseData.ErrorCode);
-                    Debug.Log("ErrorMessage = " + responseData.ErrorMessage);
-                }
-            }
-            
-            Balancy.API.HardPurchaseStoreItem(storeItem, paymentInfo, PurchaseCompleted, false);
         }
     }
 }

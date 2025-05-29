@@ -92,7 +92,20 @@ namespace Balancy
                         case Actions.BalancyProductInfo.PurchaseType.StoreItem:
                         {
                             var storeItem = productInfo.GetStoreItem();
-                            HardPurchaseStoreItem(storeItem, paymentInfo, InvokeCallbacks, true);
+                            HardPurchaseStoreItem(storeItem, paymentInfo, InvokeCallbacks, false);
+                            break;
+                        }
+                        case Actions.BalancyProductInfo.PurchaseType.ShopSlot:
+                        {
+                            var shopSlot =
+                                Balancy.Profiles.System.ShopsInfo.FindShopSlot(productInfo.GetShopSlot());
+                            if (shopSlot != null)
+                                HardPurchaseShopSlot(shopSlot, paymentInfo, InvokeCallbacks, false);
+                            else
+                            {
+                                var storeItem = productInfo.GetStoreItem();
+                                HardPurchaseStoreItem(storeItem, paymentInfo, InvokeCallbacks, false);
+                            }
                             break;
                         }
                         case Actions.BalancyProductInfo.PurchaseType.Offer:
@@ -153,6 +166,46 @@ namespace Balancy
                 Balancy.Actions.Ads.GetAdWatchCallback()?.Invoke(storeItem);
 
             return false;
+        }
+        
+        public static void InitPurchaseShop(ShopSlot shopSlot, Action<bool, string> callback)
+        {
+            if (shopSlot?.Slot == null)
+            {
+                callback?.Invoke(false, Constants.Errors.ShopSlotNull);
+                return;
+            }
+
+            if (shopSlot.Slot.StoreItem == null)
+            {
+                callback?.Invoke(false, Constants.Errors.StoreItemNull);
+                return;
+            }
+
+            if (shopSlot.Slot.StoreItem.Price.Type == PriceType.Hard &&
+                !shopSlot.Slot.StoreItem.Price.IsFree())
+            {
+                HardPurchase(new Actions.BalancyProductInfo(shopSlot), callback);
+            }
+            else
+            {
+                if (!CheckSoftPrice(shopSlot.Slot.StoreItem) || !SoftPurchaseShopSlot(shopSlot))
+                {
+                    switch (shopSlot.Slot.StoreItem.Price.Type)
+                    {
+                        case PriceType.Soft:
+                            callback?.Invoke(false, Constants.Errors.PurchaseNotEnoughItems);
+                            break;
+                        case PriceType.Ads:
+                            callback?.Invoke(false, Constants.Errors.PurchaseNotAds);
+                            break;
+                        default:
+                            callback?.Invoke(false, Constants.Errors.PurchaseInvalidPriceType);
+                            break;
+                    }
+                } else
+                    callback?.Invoke(true, null);
+            }
         }
 
         public static void InitPurchaseOffer(OfferInfo offerInfo, Action<bool, string> callback)
@@ -235,6 +288,7 @@ namespace Balancy
             }
         }
 
+        [Obsolete("Try not to use it")]
         public static void InitPurchase(StoreItem storeItem, Action<bool, string> callback)
         {
             if (storeItem == null)

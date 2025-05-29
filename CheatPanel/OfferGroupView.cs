@@ -51,26 +51,5 @@ namespace Balancy.Cheats
                 Refresh();
             });
         }
-
-        private void TryToBuyHard(StoreItem storeItem)
-        {
-            var price = storeItem?.Price;
-            if (price?.Product == null)
-                return;
-            
-            var paymentInfo = Utils.CreateTestPaymentInfo(price);
-            
-            void PurchaseCompleted(Balancy.Core.Responses.PurchaseProductResponseData responseData) {
-                Debug.Log("Purchase of " + responseData.ProductId + " success = " + responseData.Success);
-                if (!responseData.Success)
-                {
-                    Debug.Log("ErrorCode = " + responseData.ErrorCode);
-                    Debug.Log("ErrorMessage = " + responseData.ErrorMessage);
-                }
-                Refresh();
-            }
-            
-            Balancy.API.HardPurchaseGameOfferGroup(_offerInfo, storeItem, paymentInfo, PurchaseCompleted, false);
-        }
     }
 }

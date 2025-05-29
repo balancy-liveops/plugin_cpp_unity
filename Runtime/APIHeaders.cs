@@ -26,9 +26,15 @@ namespace Balancy
             return _status;
         }
         
+        [Obsolete("Try not to use it")]
         public static bool SoftPurchaseStoreItem(StoreItem storeItem)
         {
             return Balancy.LibraryMethods.API.balancySoftPurchaseStoreItem(storeItem?.GetRawPointer() ?? IntPtr.Zero);
+        }
+        
+        public static bool SoftPurchaseShopSlot(ShopSlot shopSlot)
+        {
+            return Balancy.LibraryMethods.API.balancySoftPurchaseShopSlot(shopSlot?.GetRawPointer() ?? IntPtr.Zero);
         }
 
         public static bool SoftPurchaseGameOffer(OfferInfo offerInfo)
@@ -41,10 +47,18 @@ namespace Balancy
             return Balancy.LibraryMethods.API.balancySoftPurchaseGameOfferGroup(offerGroupInfo?.GetRawPointer() ?? IntPtr.Zero, storeItem?.GetRawPointer() ?? IntPtr.Zero);
         }
         
+        [Obsolete("Try not to use it")]
         public static void HardPurchaseStoreItem(StoreItem storeItem, Balancy.Core.PaymentInfo paymentInfo,
             Balancy.Core.ResponseCallback<Balancy.Core.Responses.PurchaseProductResponseData> callback, bool requireValidation)
         {
             Balancy.LibraryMethods.API.balancyHardPurchaseStoreItem(storeItem?.GetRawPointer() ?? IntPtr.Zero, paymentInfo,
+                ProtectedFromGCCallback(callback), requireValidation);
+        }
+        
+        public static void HardPurchaseShopSlot(ShopSlot shopSlot, Balancy.Core.PaymentInfo paymentInfo,
+            Balancy.Core.ResponseCallback<Balancy.Core.Responses.PurchaseProductResponseData> callback, bool requireValidation)
+        {
+            Balancy.LibraryMethods.API.balancyHardPurchaseShopSlot(shopSlot?.GetRawPointer() ?? IntPtr.Zero, paymentInfo,
                 ProtectedFromGCCallback(callback), requireValidation);
         }
 

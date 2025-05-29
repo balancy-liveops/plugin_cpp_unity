@@ -18,5 +18,16 @@ namespace Balancy.Data.SmartObjects
         }
         
         private void Update_unnyIdPage() { _unnyIdPage = GetStringParam("unnyIdPage"); }
+        
+        public Data.SmartObjects.ShopSlot FindShopSlot(Balancy.Models.LiveOps.Store.Slot slot)
+        {
+            foreach (var shopSlot in ActiveSlots)
+            {
+                if (shopSlot.Slot == slot)
+                    return shopSlot;
+            }
+
+            return null;
+        }
     }
 }

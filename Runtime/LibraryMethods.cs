@@ -335,6 +335,8 @@ namespace Balancy
             public static extern bool balancySoftPurchaseStoreItem(IntPtr storeItemPointer);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern bool balancySoftPurchaseShopSlot(IntPtr shopSlotPointer);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern bool balancySoftPurchaseGameOffer(IntPtr gameOfferPointer);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]

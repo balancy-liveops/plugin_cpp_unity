@@ -32,5 +32,17 @@ namespace Balancy.Data.SmartObjects
         }
         
         private void Update_unnyIdActiveShop() { _unnyIdActiveShop = GetStringParam("unnyIdActiveShop"); }
+
+        public Data.SmartObjects.ShopSlot FindShopSlot(Balancy.Models.LiveOps.Store.Slot slot)
+        {
+            foreach (var shop in GameShops)
+            {
+                var shopSlot = shop.FindShopSlot(slot);
+                if (shopSlot != null)
+                    return shopSlot;
+            }
+
+            return null;
+        }
     }
 }
