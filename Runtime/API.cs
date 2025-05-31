@@ -53,9 +53,12 @@ namespace Balancy
             Debug.Log("HardPurchase Receipt: " + paymentInfo.Receipt);
 
 #if UNITY_EDITOR
-            paymentInfo.Receipt = "{\"Payload\":\"{\\\"json\\\":\\\"{\\\\\\\"orderId\\\\\\\":\\\\\\\"" +
-                                  paymentInfo.OrderId + "\\\\\\\",\\\\\\\"productId\\\\\\\":\\\\\\\"" +
-                                  paymentInfo.ProductId + "\\\\\\\"}\\\",\\\"signature\\\":\\\"bypass\\\"}\"}";
+            bool requireValidation = false;
+            // paymentInfo.Receipt = "{\"Payload\":\"{\\\"json\\\":\\\"{\\\\\\\"orderId\\\\\\\":\\\\\\\"" +
+            //                       paymentInfo.OrderId + "\\\\\\\",\\\\\\\"productId\\\\\\\":\\\\\\\"" +
+            //                       paymentInfo.ProductId + "\\\\\\\"}\\\",\\\"signature\\\":\\\"bypass\\\"}\"}";
+#else
+            bool requireValidation = true;
 #endif
             if (productInfo != null)
             {
@@ -80,7 +83,7 @@ namespace Balancy
                         case Actions.BalancyProductInfo.PurchaseType.StoreItem:
                         {
                             var storeItem = productInfo.GetStoreItem();
-                            HardPurchaseStoreItem(storeItem, paymentInfo, InvokeCallbacks, false);
+                            HardPurchaseStoreItem(storeItem, paymentInfo, InvokeCallbacks, requireValidation);
                             break;
                         }
                         case Actions.BalancyProductInfo.PurchaseType.ShopSlot:
@@ -88,11 +91,11 @@ namespace Balancy
                             var shopSlot =
                                 Balancy.Profiles.System.ShopsInfo.FindShopSlot(productInfo.GetShopSlot());
                             if (shopSlot != null)
-                                HardPurchaseShopSlot(shopSlot, paymentInfo, InvokeCallbacks, false);
+                                HardPurchaseShopSlot(shopSlot, paymentInfo, InvokeCallbacks, requireValidation);
                             else
                             {
                                 var storeItem = productInfo.GetStoreItem();
-                                HardPurchaseStoreItem(storeItem, paymentInfo, InvokeCallbacks, false);
+                                HardPurchaseStoreItem(storeItem, paymentInfo, InvokeCallbacks, requireValidation);
                             }
                             break;
                         }
@@ -107,7 +110,7 @@ namespace Balancy
                             }
                             else
                             {
-                                HardPurchaseGameOffer(offerInfo, paymentInfo, InvokeCallbacks, true);
+                                HardPurchaseGameOffer(offerInfo, paymentInfo, InvokeCallbacks, requireValidation);
                             }
 
                             break;
@@ -125,7 +128,7 @@ namespace Balancy
                             {
                                 var storeItem = productInfo.GetStoreItem();
                                 HardPurchaseGameOfferGroup(offerGroupInfo, storeItem, paymentInfo,
-                                    InvokeCallbacks, true);
+                                    InvokeCallbacks, requireValidation);
                             }
 
                             break;
