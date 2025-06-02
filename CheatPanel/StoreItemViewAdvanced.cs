@@ -11,19 +11,19 @@ namespace Balancy.Cheats
         [SerializeField] private TMP_Text resetText;
         [SerializeField] private TMP_Text limitText;
 
-        private Balancy.Models.LiveOps.Store.Slot _storeSlot;
+        private Balancy.Data.SmartObjects.ShopSlot _shopSlot;
         private bool _originalCanBuy;
-        private CancellationTokenSource _timer;
+        private CancellationTokenSource _timer; 
 
-        public void Init(Balancy.Models.LiveOps.Store.Slot storeSlot, bool canBuy,
+        public void Init(Balancy.Data.SmartObjects.ShopSlot shopSlot, bool canBuy,
             Action<StoreItem> onBuy)
         {
-            _storeSlot = storeSlot;
+            _shopSlot = shopSlot;
             _originalCanBuy = canBuy;
-            var storeItem = _storeSlot.StoreItem;
+            var storeItem = _shopSlot.Slot.StoreItem;
             
             DisableTimers();
-            if (storeSlot.IsAvailable())
+            if (_shopSlot.IsAvailable())
                 Init(storeItem, canBuy, onBuy);
             else
             {
@@ -32,10 +32,10 @@ namespace Balancy.Cheats
                 _timer = Tasks.Periodic(1, UpdateTimers);
             }
             
-            if (_storeSlot.HasLimits())
+            if (_shopSlot.HasLimits())
             {
                 limitText.text =
-                    $" Purchased {_storeSlot.GetPurchasesDoneDuringTheLastCycle()}/{_storeSlot.GetPurchasesLimitForCycle()}";
+                    $" Purchased {_shopSlot.GetPurchasesDoneDuringTheLastCycle()}/{_shopSlot.GetPurchasesLimitForCycle()}";
             } else
                 limitText.gameObject.SetActive(false);
         }
@@ -57,15 +57,15 @@ namespace Balancy.Cheats
 
         private void UpdateTimers()
         {
-            if (_storeSlot.IsAvailable())
+            if (_shopSlot.IsAvailable())
             {
                 Tasks.StopTaskRemotely(_timer);
-                Init(_storeSlot, _originalCanBuy, _onBuy);
+                Init(_shopSlot, _originalCanBuy, _onBuy);
                 return;
             }
             
             resetText.gameObject.SetActive(true);
-            resetText.text = $"Available in {_storeSlot.GetSecondsLeftUntilAvailable()}";
+            resetText.text = $"Available in {_shopSlot.GetSecondsLeftUntilAvailable()}";
         }
     }
 }

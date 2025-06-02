@@ -70,12 +70,19 @@ namespace Balancy.CheatPanel
                 var newItem = Instantiate(shopSlotViewPrefab, slotsContent);
                 newItem.SetActive(true);
                 var storeItemView = newItem.GetComponent<StoreItemViewAdvanced>();
-                storeItemView.Init(activeSlot.Slot, true, (storeItem)=> TryToBuySlot(activeSlot));
+                storeItemView.Init(activeSlot, true, (storeItem)=> TryToBuySlot(activeSlot));
             }
         }
 
         private void TryToBuySlot(Balancy.Data.SmartObjects.ShopSlot shopSlot)
         {
+            var reward = shopSlot.Slot.StoreItem.Reward;
+            Debug.LogWarning("== Trying to buy " + reward.Items.Length);
+            for (int i = 0; i < reward.Items.Length; i++)
+            {
+                var item = reward.Items[i];
+                Debug.Log($"Item {i}: {item.Item.Name} x{item.Count}");
+            }
             Balancy.API.InitPurchaseShop(shopSlot, (success, error) =>
             {
                 Debug.Log("BUY COMPLETE : " + success + " error = " + error);
