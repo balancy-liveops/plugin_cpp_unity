@@ -89,7 +89,7 @@ namespace Balancy
                         case Actions.BalancyProductInfo.PurchaseType.ShopSlot:
                         {
                             var shopSlot =
-                                Balancy.Profiles.System.ShopsInfo.FindShopSlot(productInfo.GetShopSlot());
+                                Balancy.Profiles.System.ShopsInfo.FindShopSlot(productInfo.OfferUnnyId);
                             if (shopSlot != null)
                                 HardPurchaseShopSlot(shopSlot, paymentInfo, InvokeCallbacks, requireValidation);
                             else

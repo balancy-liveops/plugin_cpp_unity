@@ -20,11 +20,11 @@ namespace Balancy.Data.SmartObjects
         
         private void Update_unnyIdShop() { _unnyIdShop = GetStringParam("unnyIdShop"); }
         
-        public Data.SmartObjects.ShopSlot FindShopSlot(Balancy.Models.LiveOps.Store.Slot slot)
+        public Data.SmartObjects.ShopSlot FindShopSlot(string slotId)
         {
             foreach (var page in ActivePages)
             {
-                var shopSlot = page.FindShopSlot(slot);
+                var shopSlot = page.FindShopSlot(slotId);
                 if (shopSlot != null)
                     return shopSlot;
             }

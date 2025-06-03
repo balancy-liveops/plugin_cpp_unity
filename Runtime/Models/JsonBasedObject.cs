@@ -299,5 +299,10 @@ namespace Balancy.Models
                 storeItems[i] = GetModelByUnnyId<T>(unnyIds[i]);
             return storeItems;
         }
+        
+        public string ToJsonString(bool pretty)
+        {
+            return GetStringFromIntPtr(LibraryMethods.General.balancyGetParsedObject(GetRawPointer(), pretty));
+        }
     }
 }

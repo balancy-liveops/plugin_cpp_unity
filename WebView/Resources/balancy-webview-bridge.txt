@@ -10,10 +10,32 @@ const balancy = {};
         SetProfile: 2,
         GetLocalization: 10,
         GetImageUrl: 11,
+        
+        IBuyOffer: 101,
+        IBuyGroupOffer: 102,
+        IBuyShopSlot: 103,
     };
     
     balancy.closeView = () => {
-        balancy.postMessage("balancy_close_view");
+        balancy.postMessage("//:balancy_close_view");
+    };
+    
+    balancy.buyOffer = () => {
+        if (balancy.owner) {
+            balancy.postMessage("//:balancy_buy_offer:" + balancy.owner.instanceId);
+        }
+    };
+    
+    balancy.buyGroupOffer = (index) => {
+        if (balancy.owner) {
+            balancy.postMessage("//:balancy_buy_group_offer:" + balancy.owner.instanceId + ":" + index);
+        }
+    };
+    
+    balancy.buyShopSlot = (slotId) => {
+        if (balancy.owner) {
+            balancy.postMessage("//:balancy_buy_shop_slot:" + slotId);
+        }
     };
 
     balancy.getSystemProfileValue = (path) => {
@@ -79,14 +101,6 @@ const balancy = {};
             };
             
             balancy.postMessage(JSON.stringify(message));
-
-            // setTimeout(() => {
-            //     const request = pendingRequests[requestId];
-            //     if (request) {
-            //         delete pendingRequests[requestId];
-            //         reject(new Error(`Request timeout: ${action}`));
-            //     }
-            // }, 10000); // 10 second timeout
         });
     };
     
@@ -135,6 +149,21 @@ const balancy = {};
         if (isNaN(actionId) || actionId === RequestAction.None) {
             console.warn('Invalid action ID:', actionIdStr, button);
             return;
+        }
+        
+        switch (actionId) {
+            case RequestAction.IBuyOffer:
+                balancy.buyOffer();
+                return;
+            case RequestAction.IBuyGroupOffer:
+                balancy.buyGroupOffer(button.getAttribute('data-button-index') || 0);
+                return;
+            case RequestAction.IBuyShopSlot:
+                balancy.buyShopSlot(button.getAttribute('data-button-index') || 0);
+                return;
+            default:
+                // Other actions can proceed without owner
+                break;
         }
 
         const senderId = button.id || button.getAttribute('data-button-id') || 'unknown-button';

@@ -102,6 +102,7 @@ namespace Balancy.WebView
         private float _viewportWidth = 1f;
         private float _viewportHeight = 1f;
         private bool _debugLogging = false;
+        private string _ownerJson = string.Empty;
         
         #endregion
 
@@ -230,7 +231,7 @@ namespace Balancy.WebView
         /// </summary>
         /// <param name="url">The URL to open in the WebView</param>
         /// <returns>True if the WebView was opened successfully, false otherwise</returns>
-        public bool OpenWebView(string url)
+        public bool OpenWebView(string url, string ownerJson)
         {
             if (_isWebViewOpen)
             {
@@ -238,6 +239,8 @@ namespace Balancy.WebView
                 return false;
             }
 
+            _ownerJson = ownerJson;
+            
             // Apply current settings before opening
             ApplySettings();
             
@@ -549,6 +552,19 @@ namespace Balancy.WebView
             var bridge = Resources.Load<TextAsset>("balancy-webview-bridge");
             if (bridge)
                 _balancyInjectJSCode(bridge.text);
+
+            if (!string.IsNullOrEmpty(_instance._ownerJson))
+            {
+                //"balancy.owner =
+                var injectedCode = "try {\n                " +
+                                   $"balancy.owner = JSON.parse('{_instance._ownerJson}');\n" +
+                                   "           } catch (error) {\n " +
+                                   "               console.error('Error parsing button params JSON:', error);\n" +
+                                   "               balancy.owner = null;\n" +
+                                   "            }";
+
+                _balancyInjectJSCode(injectedCode);
+            }
             
             _instance.OnLoadCompleted?.Invoke(success);
         }

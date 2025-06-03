@@ -5,6 +5,8 @@ namespace Balancy.Data.SmartObjects
         private string _unnyIdSlot;
         public Balancy.Models.LiveOps.Store.Slot Slot => GetModelByUnnyId<Balancy.Models.LiveOps.Store.Slot>(_unnyIdSlot);
         
+        public string UnnyIdSlot => _unnyIdSlot;
+        
         public override void InitData()
         {
             base.InitData();

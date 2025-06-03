@@ -70,6 +70,9 @@ namespace Balancy
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern IntPtr balancyGetProductsIdAndType(out int size);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyGetParsedObject(IntPtr instance, bool pretty);
         }
 
         public static class Models
