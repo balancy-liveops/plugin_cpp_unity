@@ -57,7 +57,7 @@ namespace Balancy
             
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-            public static extern void balancyInitUnityFileHelper(string persistentDataPath, string assetDataPath, LoadFileCallback loadFromResources, IsFileExistsCallback isFileExistsCallback, LoadImageBase64Callback loadFromResourcesAsBase64);
+            public static extern void balancyInitUnityFileHelper(string persistentDataPath, string resourcesPath, string codePath, LoadFileCallback loadFromResources, IsFileExistsCallback isFileExistsCallback, LoadImageBase64Callback loadFromResourcesAsBase64);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern IntPtr balancyGetInheritance(out int size);

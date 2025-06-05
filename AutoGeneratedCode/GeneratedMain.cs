@@ -1,9 +1,10 @@
 using Balancy.Models;
 namespace Balancy
 {
-    public static partial class Main
+    public static class GeneratedMain
     {
-        static partial void PrepareCms()
+        [UnityEngine.RuntimeInitializeOnLoadMethod]
+        private static void PrepareCms()
         {
             CMS.OnTypeRequested = OnTypeRequested;
         }

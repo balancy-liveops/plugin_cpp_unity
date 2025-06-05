@@ -6,12 +6,10 @@ namespace Balancy.Models
         
 		private int _priority;
 		private string _placement;
-		private string _view;
         
         
 		public int Priority => _priority;
 		public string Placement => _placement;
-		public string View => _view;
         
         public override void InitData()
         {
@@ -19,7 +17,6 @@ namespace Balancy.Models
             
 			_priority = GetIntParam("priority");
 			_placement = GetStringParam("placement");
-			_view = GetStringParam("view");
         }
         
     }

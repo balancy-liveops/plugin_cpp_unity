@@ -309,8 +309,6 @@ namespace Balancy.Editor
 
         private void PrepareSprites()
         {
-            Debug.LogError("PrepareSprites called");
-
             string resourcesPath = Application.dataPath + "/Balancy/Resources/";
 
             if (Directory.Exists(resourcesPath))
@@ -324,16 +322,12 @@ namespace Balancy.Editor
                     imageFiles.AddRange(Directory.GetFiles(resourcesPath, extension, SearchOption.AllDirectories));
                 }
 
-                Debug.LogError($"Found {imageFiles.Count} image files in file system");
-
                 // Import each file
                 foreach (string filePath in imageFiles)
                 {
                     // Convert absolute path to relative Unity path
                     string relativePath = "Assets" + filePath.Substring(Application.dataPath.Length);
                     relativePath = relativePath.Replace('\\', '/'); // Ensure forward slashes
-
-                    Debug.LogError($"Importing: {relativePath}");
 
                     // Import the asset
                     AssetDatabase.ImportAsset(relativePath, ImportAssetOptions.ForceUpdate);
