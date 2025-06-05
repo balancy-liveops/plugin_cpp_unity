@@ -33,6 +33,13 @@ void _balancyRegisterMessageCallback(MessageCallback callback);
 void _balancyRegisterLoadCompletedCallback(LoadCompletedCallback callback);
 void _balancyRegisterCacheCompletedCallback(CacheCompletedCallback callback);
 
+// Embedding functionality (Unity Editor only)
+bool _balancyOpenWebViewEmbedded(const char* url, void* texturePtr, int width, int height);
+void _balancyCloseWebViewEmbedded();
+void _balancyUpdateEmbeddedTexture(void* texturePtr, int width, int height);
+void _balancySendMouseEvent(int x, int y, bool isClick);
+bool _balancyGetEmbeddedPixelData(unsigned char* buffer, int bufferSize);
+
 #ifdef __cplusplus
 }
 #endif

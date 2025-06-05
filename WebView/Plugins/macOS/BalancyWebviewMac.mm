@@ -4,6 +4,8 @@
 //
 
 #import "BalancyWebviewMac.h"
+#import <Metal/Metal.h>
+#import <QuartzCore/QuartzCore.h>
 
 // Function pointers for callbacks
 typedef void (*MessageCallback)(const char* message);
@@ -28,7 +30,7 @@ void LogToUnity(const char* message) {
     NSLog(@"[BalancyWebView] %s", message);
 }
 
-// Forward declaration
+// Forward declarations
 @interface BalancyWebViewController : NSWindowController <WKNavigationDelegate, WKScriptMessageHandler>
 @property (nonatomic, strong) WKWebView *webView;
 @property (nonatomic, strong) WKUserContentController *userContentController;
@@ -47,8 +49,447 @@ void LogToUnity(const char* message) {
 - (void)setDebugLogging:(BOOL)enabled;
 @end
 
-// Global WebView controller instance
+// Embedded WebView controller for rendering to texture
+@interface BalancyEmbeddedWebViewController : NSViewController <WKNavigationDelegate, WKScriptMessageHandler>
+@property (nonatomic, strong) WKWebView *webView;
+@property (nonatomic, strong) WKUserContentController *userContentController;
+@property (nonatomic, assign) BOOL debugLogging;
+@property (nonatomic, assign) void* texturePtr;
+@property (nonatomic, assign) int textureWidth;
+@property (nonatomic, assign) int textureHeight;
+@property (nonatomic, strong) NSTimer *renderTimer;
+@property (nonatomic, assign) unsigned char* pixelBuffer;
+@property (nonatomic, assign) BOOL pixelDataReady;
+@property (nonatomic, strong) NSWindow *offscreenWindow;
+
+- (instancetype)initWithTexture:(void*)texturePtr width:(int)width height:(int)height;
+- (BOOL)loadURL:(NSString *)url;
+- (void)close;
+- (BOOL)sendMessage:(NSString *)message;
+- (BOOL)injectJSCode:(NSString *)code;
+- (void)updateTexture:(void*)texturePtr width:(int)width height:(int)height;
+- (void)handleMouseEvent:(int)x y:(int)y isClick:(BOOL)isClick;
+- (void)renderToTexture;
+@end
+
+// Implementation of embedded WebView controller
+@implementation BalancyEmbeddedWebViewController
+
+- (instancetype)initWithTexture:(void*)texturePtr width:(int)width height:(int)height {
+    self = [super init];
+    if (self) {
+        _debugLogging = YES;
+        _texturePtr = texturePtr;
+        _textureWidth = width;
+        _textureHeight = height;
+        _pixelDataReady = NO;
+        
+        // Allocate pixel buffer
+        size_t bufferSize = width * height * 4; // RGBA
+        _pixelBuffer = (unsigned char*)malloc(bufferSize);
+        memset(_pixelBuffer, 0, bufferSize); // Initialize to transparent (all zeros)
+        
+        // Create off-screen window to host the WebView
+        NSRect windowFrame = NSMakeRect(-10000, -10000, width, height); // Position off-screen
+        _offscreenWindow = [[NSWindow alloc] initWithContentRect:windowFrame
+                                                      styleMask:NSWindowStyleMaskBorderless
+                                                        backing:NSBackingStoreBuffered
+                                                          defer:NO];
+        [_offscreenWindow setLevel:kCGMinimumWindowLevel]; // Ensure it's not visible
+        [_offscreenWindow setAlphaValue:0.0]; // Make it invisible
+        [_offscreenWindow orderBack:nil]; // Put it in the back
+        
+        // Create container view with layer backing and transparency
+        NSView *containerView = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, width, height)];
+        containerView.wantsLayer = YES; // Enable layer backing
+        containerView.layer.backgroundColor = [[NSColor clearColor] CGColor]; // Transparent background
+        containerView.layer.opaque = NO; // Enable transparency
+        self.view = containerView;
+        
+        // Set the container as the window's content view
+        [_offscreenWindow setContentView:containerView];
+        
+        // Configure WebView with better settings for off-screen rendering
+        WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
+        _userContentController = [[WKUserContentController alloc] init];
+        [_userContentController addScriptMessageHandler:self name:@"BalancyWebView"];
+        configuration.userContentController = _userContentController;
+        
+        // Enable developer extras for debugging
+        if (@available(macOS 10.11, *)) {
+            [configuration.preferences setValue:@YES forKey:@"developerExtrasEnabled"];
+        }
+        
+        // Additional WebView preferences for better rendering
+        // mediaTypesRequiringUserActionForPlayback is available on macOS 10.12+
+        if (@available(macOS 10.12, *)) {
+            configuration.mediaTypesRequiringUserActionForPlayback = WKAudiovisualMediaTypeNone;
+        }
+        
+        // Create WebView with the specified size
+        _webView = [[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, width, height) configuration:configuration];
+        _webView.navigationDelegate = self;
+        
+        // Enable layer backing for WebView with transparency support
+        _webView.wantsLayer = YES;
+        _webView.layer.backgroundColor = [[NSColor clearColor] CGColor]; // Use clear background
+        _webView.layer.contentsScale = 1.0;
+        _webView.layer.opaque = NO; // Enable transparency
+        
+        // Ensure WebView doesn't draw its own background
+        [_webView setValue:@NO forKey:@"drawsBackground"];
+        
+        // Make WebView container transparent too
+        containerView.layer.backgroundColor = [[NSColor clearColor] CGColor];
+        containerView.layer.opaque = NO;
+        
+        // Set proper autoresizing
+        _webView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+        
+        [containerView addSubview:_webView];
+        
+        // Start render timer (30 FPS)
+        _renderTimer = [NSTimer scheduledTimerWithTimeInterval:1.0/30.0
+                                                        target:self
+                                                      selector:@selector(renderToTexture)
+                                                      userInfo:nil
+                                                       repeats:YES];
+        
+        if (_debugLogging) {
+            LogToUnity("Embedded WebView controller initialized with off-screen window");
+        }
+    }
+    return self;
+}
+
+- (BOOL)loadURL:(NSString *)url {
+    if ([url hasPrefix:@"file://"]) {
+        NSString *cleanUrl = url;
+        NSString *filePath = [cleanUrl stringByReplacingOccurrencesOfString:@"file://" withString:@""];
+        
+        NSURL *fileURL = [NSURL fileURLWithPath:filePath];
+        NSString *htmlPath = [fileURL path];
+        NSString *parentDir = [htmlPath stringByDeletingLastPathComponent];
+        NSString *filesDir = [parentDir stringByDeletingLastPathComponent];
+        
+        NSURL *broadReadAccessURL = [NSURL fileURLWithPath:filesDir];
+        
+        if (_debugLogging) {
+            NSString *logMsg = [NSString stringWithFormat:@"Embedded File URL: %@", fileURL];
+            LogToUnity([logMsg UTF8String]);
+        }
+        
+        [_webView loadFileURL:fileURL allowingReadAccessToURL:broadReadAccessURL];
+        return YES;
+    }
+    
+    NSURL *nsUrl = [NSURL URLWithString:url];
+    if (!nsUrl) {
+        LogToUnity("Invalid URL for embedded WebView");
+        return NO;
+    }
+    
+    [_webView loadRequest:[NSURLRequest requestWithURL:nsUrl]];
+    return YES;
+}
+
+- (void)close {
+    if (_renderTimer) {
+        [_renderTimer invalidate];
+        _renderTimer = nil;
+    }
+    
+    // Free pixel buffer
+    if (_pixelBuffer) {
+        free(_pixelBuffer);
+        _pixelBuffer = nil;
+    }
+    
+    [_userContentController removeScriptMessageHandlerForName:@"BalancyWebView"];
+    [_webView stopLoading];
+    [_webView removeFromSuperview];
+    _webView = nil;
+    
+    // Close off-screen window
+    if (_offscreenWindow) {
+        [_offscreenWindow close];
+        _offscreenWindow = nil;
+    }
+    
+    if (_debugLogging) {
+        LogToUnity("Embedded WebView closed");
+    }
+}
+
+- (BOOL)sendMessage:(NSString *)message {
+    if (!_webView) return NO;
+    
+    NSString *escapedMessage = [message stringByReplacingOccurrencesOfString:@"'" withString:@"\\'"];
+    NSString *script = [NSString stringWithFormat:@"if (balancy) { balancy._receiveMessageFromUnity('%@'); }", escapedMessage];
+    
+    [_webView evaluateJavaScript:script completionHandler:nil];
+    return YES;
+}
+
+- (BOOL)injectJSCode:(NSString *)code {
+    if (!_webView) return NO;
+    
+    [_webView evaluateJavaScript:code completionHandler:nil];
+    return YES;
+}
+
+- (void)updateTexture:(void*)texturePtr width:(int)width height:(int)height {
+    _texturePtr = texturePtr;
+    _textureWidth = width;
+    _textureHeight = height;
+    
+    // Reallocate pixel buffer if size changed
+    size_t newBufferSize = width * height * 4; // RGBA
+    if (_pixelBuffer) {
+        free(_pixelBuffer);
+    }
+    _pixelBuffer = (unsigned char*)malloc(newBufferSize);
+    memset(_pixelBuffer, 0, newBufferSize); // Initialize to transparent
+    _pixelDataReady = NO;
+    
+    // Update WebView frame and window
+    _webView.frame = NSMakeRect(0, 0, width, height);
+    self.view.frame = NSMakeRect(0, 0, width, height);
+    
+    if (_offscreenWindow) {
+        NSRect windowFrame = NSMakeRect(-10000, -10000, width, height);
+        [_offscreenWindow setFrame:windowFrame display:NO];
+    }
+    
+    if (_debugLogging) {
+        NSString *logMsg = [NSString stringWithFormat:@"Updated embedded texture: %dx%d", width, height];
+        LogToUnity([logMsg UTF8String]);
+    }
+}
+
+- (void)handleMouseEvent:(int)x y:(int)y isClick:(BOOL)isClick {
+    if (!_webView) return;
+    
+    // Create mouse event and send to WebView
+    NSPoint point = NSMakePoint(x, _textureHeight - y); // Flip Y coordinate
+    
+    if (isClick) {
+        // Simulate mouse down and up events
+        NSEvent *mouseDown = [NSEvent mouseEventWithType:NSEventTypeLeftMouseDown
+                                                 location:point
+                                            modifierFlags:0
+                                                timestamp:[[NSProcessInfo processInfo] systemUptime]
+                                             windowNumber:0
+                                                  context:nil
+                                              eventNumber:0
+                                               clickCount:1
+                                                 pressure:1.0];
+        
+        NSEvent *mouseUp = [NSEvent mouseEventWithType:NSEventTypeLeftMouseUp
+                                               location:point
+                                          modifierFlags:0
+                                              timestamp:[[NSProcessInfo processInfo] systemUptime]
+                                           windowNumber:0
+                                                context:nil
+                                            eventNumber:0
+                                             clickCount:1
+                                               pressure:1.0];
+        
+        [_webView mouseDown:mouseDown];
+        [_webView mouseUp:mouseUp];
+        
+        if (_debugLogging) {
+            NSString *logMsg = [NSString stringWithFormat:@"Mouse click at (%d, %d)", x, y];
+            LogToUnity([logMsg UTF8String]);
+        }
+    }
+}
+
+- (void)renderToTexture {
+    if (!_webView || !_pixelBuffer) {
+        return;
+    }
+    
+    @try {
+        // Use WKWebView's snapshot API for better rendering
+        if (@available(macOS 10.13, *)) {
+            WKSnapshotConfiguration *config = [[WKSnapshotConfiguration alloc] init];
+            config.rect = CGRectMake(0, 0, _textureWidth, _textureHeight);
+            
+            [_webView takeSnapshotWithConfiguration:config completionHandler:^(NSImage * _Nullable snapshotImage, NSError * _Nullable error) {
+                if (error || !snapshotImage) {
+                    if (_debugLogging && error) {
+                        NSString *logMsg = [NSString stringWithFormat:@"Snapshot error: %@", error.localizedDescription];
+                        LogToUnity([logMsg UTF8String]);
+                    }
+                    return;
+                }
+                
+                // Convert NSImage to pixel data
+                CGImageRef cgImage = [snapshotImage CGImageForProposedRect:nil context:nil hints:nil];
+                if (cgImage) {
+                    CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
+                    size_t bytesPerRow = _textureWidth * 4; // RGBA
+                    
+                    CGContextRef context = CGBitmapContextCreate(
+                        _pixelBuffer,
+                        _textureWidth,
+                        _textureHeight,
+                        8, // bits per component
+                        bytesPerRow,
+                        colorSpace,
+                        kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big
+                    );
+                    
+                    if (context) {
+                        // Fill with transparent background
+                        CGContextClearRect(context, CGRectMake(0, 0, _textureWidth, _textureHeight));
+                        
+                        // Draw the image
+                        CGContextDrawImage(context, CGRectMake(0, 0, _textureWidth, _textureHeight), cgImage);
+                        
+                        _pixelDataReady = YES;
+                        
+                        CGContextRelease(context);
+                    }
+                    
+                    CGColorSpaceRelease(colorSpace);
+                }
+            }];
+            return;
+        }
+        
+        // Fallback for older macOS versions - use layer rendering with proper view hierarchy
+        if (!_webView.superview || !_webView.layer) {
+            return;
+        }
+        
+        // Create bitmap context
+        CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
+        size_t bytesPerRow = _textureWidth * 4; // RGBA
+        
+        CGContextRef context = CGBitmapContextCreate(
+            _pixelBuffer,
+            _textureWidth,
+            _textureHeight,
+            8, // bits per component
+            bytesPerRow,
+            colorSpace,
+            kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big
+        );
+        
+        if (context) {
+            // Fill with transparent background
+            CGContextClearRect(context, CGRectMake(0, 0, _textureWidth, _textureHeight));
+            
+            // Save context state
+            CGContextSaveGState(context);
+            
+            // Scale the layer to fit our texture dimensions
+            CGFloat scaleX = (CGFloat)_textureWidth / _webView.frame.size.width;
+            CGFloat scaleY = (CGFloat)_textureHeight / _webView.frame.size.height;
+            CGContextScaleCTM(context, scaleX, scaleY);
+            
+            // Render the WebView layer
+            [_webView.layer renderInContext:context];
+            
+            // Restore context state
+            CGContextRestoreGState(context);
+            
+            _pixelDataReady = YES;
+            
+            CGContextRelease(context);
+        }
+        
+        CGColorSpaceRelease(colorSpace);
+        
+    } @catch (NSException *exception) {
+        if (_debugLogging) {
+            NSString *logMsg = [NSString stringWithFormat:@"Render exception: %@", exception.reason];
+            LogToUnity([logMsg UTF8String]);
+        }
+    }
+}
+
+#pragma mark - WKScriptMessageHandler
+
+- (void)userContentController:(WKUserContentController *)userContentController didReceiveScriptMessage:(WKScriptMessage *)message {
+    if (![message.name isEqualToString:@"BalancyWebView"]) return;
+    
+    NSString *messageString;
+    if ([message.body isKindOfClass:[NSString class]]) {
+        messageString = (NSString *)message.body;
+    } else {
+        messageString = [NSString stringWithFormat:@"%@", message.body];
+    }
+    
+    if (_messageCallback) {
+        _messageCallback([messageString UTF8String]);
+    }
+}
+
+#pragma mark - WKNavigationDelegate
+
+- (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
+    if (_debugLogging) {
+        LogToUnity("Embedded WebView navigation finished successfully");
+    }
+    
+    // Inject minimal CSS to ensure proper rendering without forcing backgrounds
+    NSString *jsCode = @"\
+        var meta = document.querySelector('meta[name=viewport]'); \
+        if (!meta) { \
+            meta = document.createElement('meta'); \
+            meta.name = 'viewport'; \
+            document.head.appendChild(meta); \
+        } \
+        meta.content = 'width=device-width, initial-scale=1.0'; \
+        \
+        // Remove any forced overflow hidden that might hide content \
+        document.body.style.overflow = 'auto'; \
+        document.documentElement.style.overflow = 'auto';\
+    ";
+    
+    [_webView evaluateJavaScript:jsCode completionHandler:nil];
+    
+    // Ensure the response handler is initialized
+    NSString *initScript = @"if (window.BalancyWebView && typeof window.BalancyWebView.initResponseHandler === 'function') { window.BalancyWebView.initResponseHandler(); }";
+    [_webView evaluateJavaScript:initScript completionHandler:nil];
+    
+    if (_loadCompletedCallback) {
+        _loadCompletedCallback(true);
+    }
+}
+
+- (void)webView:(WKWebView *)webView didFailNavigation:(WKNavigation *)navigation withError:(NSError *)error {
+    NSString *errorMsg = [NSString stringWithFormat:@"Embedded navigation failed with error: %@", error.localizedDescription];
+    LogToUnity([errorMsg UTF8String]);
+    
+    if (_loadCompletedCallback) {
+        _loadCompletedCallback(false);
+    }
+}
+
+- (void)webView:(WKWebView *)webView didFailProvisionalNavigation:(WKNavigation *)navigation withError:(NSError *)error {
+    NSString *errorMsg = [NSString stringWithFormat:@"Embedded provisional navigation failed with error: %@", error.localizedDescription];
+    LogToUnity([errorMsg UTF8String]);
+    
+    if (_loadCompletedCallback) {
+        _loadCompletedCallback(false);
+    }
+}
+
+- (void)webView:(WKWebView *)webView didStartProvisionalNavigation:(WKNavigation *)navigation {
+    if (_debugLogging) {
+        LogToUnity("Embedded WebView started loading");
+    }
+}
+
+@end
+
+// Global WebView controller instances
 static BalancyWebViewController* _sharedController = nil;
+static BalancyEmbeddedWebViewController* _embeddedController = nil;
 
 @implementation BalancyWebViewController {
     NSRect _viewportRect;
@@ -414,6 +855,90 @@ void _balancyRegisterLoadCompletedCallback(LoadCompletedCallback callback) {
 
 void _balancyRegisterCacheCompletedCallback(CacheCompletedCallback callback) {
     _cacheCompletedCallback = callback;
+}
+
+// Embedding functionality implementation
+bool _balancyOpenWebViewEmbedded(const char* url, void* texturePtr, int width, int height) {
+    @autoreleasepool {
+        LogToUnity("_balancyOpenWebViewEmbedded called");
+        
+        if (_embeddedController != nil) {
+            LogToUnity("Closing existing embedded WebView");
+            [_embeddedController close];
+            _embeddedController = nil;
+        }
+        
+        LogToUnity("Creating new embedded WebView controller");
+        _embeddedController = [[BalancyEmbeddedWebViewController alloc] initWithTexture:texturePtr width:width height:height];
+        
+        NSString* nsUrl = [NSString stringWithUTF8String:url];
+        NSString *logMsg = [NSString stringWithFormat:@"Attempting to load URL in embedded mode: %@", nsUrl];
+        LogToUnity([logMsg UTF8String]);
+        
+        BOOL result = [_embeddedController loadURL:nsUrl];
+        
+        NSString *resultMsg = [NSString stringWithFormat:@"_balancyOpenWebViewEmbedded result: %@", result ? @"SUCCESS" : @"FAILED"];
+        LogToUnity([resultMsg UTF8String]);
+        
+        return result;
+    }
+}
+
+void _balancyCloseWebViewEmbedded() {
+    @autoreleasepool {
+        if (_embeddedController != nil) {
+            LogToUnity("Closing embedded WebView");
+            [_embeddedController close];
+            _embeddedController = nil;
+        }
+    }
+}
+
+void _balancyUpdateEmbeddedTexture(void* texturePtr, int width, int height) {
+    @autoreleasepool {
+        if (_embeddedController != nil) {
+            [_embeddedController updateTexture:texturePtr width:width height:height];
+        }
+    }
+}
+
+void _balancySendMouseEvent(int x, int y, bool isClick) {
+    @autoreleasepool {
+        if (_embeddedController != nil) {
+            [_embeddedController handleMouseEvent:x y:y isClick:isClick];
+        }
+    }
+}
+
+bool _balancyGetEmbeddedPixelData(unsigned char* buffer, int bufferSize) {
+    @autoreleasepool {
+        if (_embeddedController == nil) {
+            LogToUnity("_balancyGetEmbeddedPixelData: _embeddedController is nil");
+            return false;
+        }
+        
+        if (!_embeddedController.pixelDataReady) {
+            LogToUnity("_balancyGetEmbeddedPixelData: pixel data not ready");
+            return false;
+        }
+        
+        if (!_embeddedController.pixelBuffer) {
+            LogToUnity("_balancyGetEmbeddedPixelData: pixel buffer is null");
+            return false;
+        }
+        
+        size_t expectedSize = _embeddedController.textureWidth * _embeddedController.textureHeight * 4;
+        if (bufferSize < expectedSize) {
+            NSString *logMsg = [NSString stringWithFormat:@"_balancyGetEmbeddedPixelData: buffer too small. Expected: %zu, got: %d", expectedSize, bufferSize];
+            LogToUnity([logMsg UTF8String]);
+            return false;
+        }
+        
+        memcpy(buffer, _embeddedController.pixelBuffer, expectedSize);
+        NSString *logMsg = [NSString stringWithFormat:@"_balancyGetEmbeddedPixelData: copied %zu bytes successfully", expectedSize];
+        LogToUnity([logMsg UTF8String]);
+        return true;
+    }
 }
 
 }

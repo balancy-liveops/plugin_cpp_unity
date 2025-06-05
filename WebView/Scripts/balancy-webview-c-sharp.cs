@@ -95,6 +95,7 @@ namespace Balancy.WebView
 
         private bool _gameUIMode = true;
         private bool _isWebViewOpen = false;
+        private bool _isWebViewEmbedded = false;
         private bool _transparentBackground = false;
         private bool _offlineCacheEnabled = false;
         private float _viewportX = 0f;
@@ -103,6 +104,7 @@ namespace Balancy.WebView
         private float _viewportHeight = 1f;
         private bool _debugLogging = false;
         private string _ownerJson = string.Empty;
+        private RenderTexture _embeddedTexture = null;
         
         #endregion
 
@@ -189,6 +191,22 @@ namespace Balancy.WebView
         
         [DllImport("libBalancyWebViewMac")]
         private static extern void _balancyRegisterLoadCompletedCallback(LoadCompletedDelegate callback);
+        
+        // Embedding-specific methods (macOS only)
+        [DllImport("libBalancyWebViewMac")]
+        private static extern bool _balancyOpenWebViewEmbedded(string url, System.IntPtr texturePtr, int width, int height);
+        
+        [DllImport("libBalancyWebViewMac")]
+        private static extern void _balancyCloseWebViewEmbedded();
+        
+        [DllImport("libBalancyWebViewMac")]
+        private static extern void _balancyUpdateEmbeddedTexture(System.IntPtr texturePtr, int width, int height);
+        
+        [DllImport("libBalancyWebViewMac")]
+        private static extern void _balancySendMouseEvent(int x, int y, bool isClick);
+        
+        [DllImport("libBalancyWebViewMac")]
+        private static extern bool _balancyGetEmbeddedPixelData(System.IntPtr buffer, int bufferSize);
         #endif
 
         #endregion
@@ -219,6 +237,11 @@ namespace Balancy.WebView
             if (_isWebViewOpen)
             {
                 CloseWebView();
+            }
+            
+            if (_isWebViewEmbedded)
+            {
+                CloseEmbedded();
             }
         }
 
@@ -459,6 +482,108 @@ namespace Balancy.WebView
         public bool IsWebViewOpen()
         {
             return _isWebViewOpen;
+        }
+        
+        /// <summary>
+        /// Opens a WebView in embedded mode, rendering to a RenderTexture
+        /// Available only in Unity Editor on macOS
+        /// </summary>
+        /// <param name="url">The URL to open</param>
+        /// <param name="renderTexture">The RenderTexture to render into</param>
+        /// <param name="ownerJson">Owner JSON data</param>
+        /// <returns>True if opened successfully</returns>
+        public bool LoadEmbedded(string url, RenderTexture renderTexture, string ownerJson)
+        {
+            #if UNITY_EDITOR_OSX
+            if (_isWebViewOpen || _isWebViewEmbedded)
+            {
+                Debug.LogWarning("WebView is already open. Close it first before opening a new one.");
+                return false;
+            }
+            
+            if (renderTexture == null)
+            {
+                Debug.LogError("RenderTexture cannot be null for embedded WebView");
+                return false;
+            }
+            
+            _ownerJson = ownerJson;
+            _embeddedTexture = renderTexture;
+            
+            // Apply current settings
+            ApplySettings();
+            SetDebugLogging(true);
+            
+            bool success = _balancyOpenWebViewEmbedded(url, renderTexture.GetNativeTexturePtr(), renderTexture.width, renderTexture.height);
+            _isWebViewEmbedded = success;
+            
+            return success;
+            #else
+            Debug.LogWarning("Embedded WebView is only supported in Unity Editor on macOS");
+            return false;
+            #endif
+        }
+        
+        /// <summary>
+        /// Closes the embedded WebView
+        /// </summary>
+        public void CloseEmbedded()
+        {
+            #if UNITY_EDITOR_OSX
+            if (!_isWebViewEmbedded)
+            {
+                return;
+            }
+            
+            _balancyCloseWebViewEmbedded();
+            _isWebViewEmbedded = false;
+            _embeddedTexture = null;
+            OnClosed?.Invoke();
+            #endif
+        }
+        
+        /// <summary>
+        /// Updates the texture used for embedded rendering
+        /// </summary>
+        /// <param name="renderTexture">New RenderTexture to use</param>
+        public void UpdateEmbeddedTexture(RenderTexture renderTexture)
+        {
+            #if UNITY_EDITOR_OSX
+            if (!_isWebViewEmbedded || renderTexture == null)
+            {
+                return;
+            }
+            
+            _embeddedTexture = renderTexture;
+            _balancyUpdateEmbeddedTexture(renderTexture.GetNativeTexturePtr(), renderTexture.width, renderTexture.height);
+            #endif
+        }
+        
+        /// <summary>
+        /// Sends mouse event to the embedded WebView
+        /// </summary>
+        /// <param name="x">X coordinate in pixels</param>
+        /// <param name="y">Y coordinate in pixels</param>
+        /// <param name="isClick">Whether this is a click event</param>
+        public void SendMouseEvent(int x, int y, bool isClick)
+        {
+            #if UNITY_EDITOR_OSX
+            if (!_isWebViewEmbedded)
+            {
+                return;
+            }
+            
+            _balancySendMouseEvent(x, y, isClick);
+            #endif
+        }
+        
+        /// <summary>
+        /// Checks if a WebView is currently open in embedded mode
+        /// </summary>
+        /// <returns>True if an embedded WebView is open, false otherwise</returns>
+        public bool IsWebViewEmbedded()
+        {
+            return _isWebViewEmbedded;
         }
 
         #endregion
