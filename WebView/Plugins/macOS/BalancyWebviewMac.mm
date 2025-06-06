@@ -103,8 +103,11 @@ void LogToUnity(const char* message) {
         
         // ✅ УБИРАЕМ видимость - только минимально необходимое для работы браузера
         [_offscreenWindow setAlphaValue:0.01]; // Почти невидимое
-        [_offscreenWindow setLevel:NSNormalWindowLevel]; // Обычный уровень
-        [_offscreenWindow setCollectionBehavior:NSWindowCollectionBehaviorDefault];
+//         [_offscreenWindow setLevel:NSNormalWindowLevel]; // Обычный уровень
+//         [_offscreenWindow setCollectionBehavior:NSWindowCollectionBehaviorDefault];
+        [_offscreenWindow setBackgroundColor:[NSColor clearColor]];
+        [_offscreenWindow setOpaque:NO];
+        [_offscreenWindow setHasShadow:NO];
         
         // Простая конфигурация WebView
         WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
@@ -113,6 +116,7 @@ void LogToUnity(const char* message) {
         configuration.userContentController = _userContentController;
         
         // Только базовые настройки
+        // Enable debugging and transparency-related settings
         [configuration.preferences setValue:@YES forKey:@"developerExtrasEnabled"];
         
         // Простой контейнер
@@ -130,6 +134,7 @@ void LogToUnity(const char* message) {
         _webView.wantsLayer = YES;
         _webView.layer.backgroundColor = [[NSColor clearColor] CGColor];
         _webView.layer.opaque = NO;
+        [_webView setValue:@NO forKey:@"drawsBackground"];
         
         [containerView addSubview:_webView];
         
@@ -151,6 +156,33 @@ void LogToUnity(const char* message) {
         }
     }
     return self;
+}
+
+- (void)injectTransparencyScript {
+    if (!_webView) return;
+    
+    NSString *transparencyScript = @"\
+        (function() { \
+            console.log('🔍 Balancy: Injecting transparency script'); \
+            const style = document.createElement('style'); \
+            style.textContent = ` \
+                html { background: transparent !important; background-color: transparent !important; } \
+                body { background: transparent !important; background-color: transparent !important; } \
+            `; \
+            document.head.appendChild(style); \
+            document.documentElement.style.backgroundColor = 'transparent'; \
+            document.body.style.backgroundColor = 'transparent'; \
+            console.log('✅ Balancy: Transparency script applied'); \
+        })();";
+    
+    [_webView evaluateJavaScript:transparencyScript completionHandler:^(id result, NSError *error) {
+        if (error) {
+            NSString *logMsg = [NSString stringWithFormat:@"Transparency script error: %@", error.localizedDescription];
+            LogToUnity([logMsg UTF8String]);
+        } else {
+            LogToUnity("✅ Transparency script injected successfully");
+        }
+    }];
 }
 
 // OPTIMIZATION #2: Create persistent CGContext method
@@ -441,6 +473,7 @@ void LogToUnity(const char* message) {
                     // OPTIMIZATION #2: Use persistent context instead of creating new one
                     if (self->_persistentContext) {
                         CGContextClearRect(self->_persistentContext, CGRectMake(0, 0, self->_textureWidth, self->_textureHeight));
+                        CGContextSetBlendMode(self->_persistentContext, kCGBlendModeCopy);
                         CGContextDrawImage(self->_persistentContext, CGRectMake(0, 0, self->_textureWidth, self->_textureHeight), cgImage);
                         
                         self->_pixelDataReady = YES;
@@ -485,6 +518,7 @@ void LogToUnity(const char* message) {
         CGFloat scaleY = (CGFloat)_textureHeight / _webView.frame.size.height;
         CGContextScaleCTM(_persistentContext, scaleX, scaleY);
         CGContextSetInterpolationQuality(_persistentContext, kCGInterpolationHigh);
+        CGContextSetBlendMode(_persistentContext, kCGBlendModeCopy);
         
         // Render the WebView layer with all sublayers
         [_webView.layer renderInContext:_persistentContext];
@@ -525,6 +559,8 @@ void LogToUnity(const char* message) {
     if (_debugLogging) {
         LogToUnity("✅ Simple embedded WebView navigation finished");
     }
+    
+    [self injectTransparencyScript];
     
     // Простая проверка контента
     [_webView evaluateJavaScript:@"document.body ? document.body.innerHTML.length : -1" completionHandler:^(id result, NSError *error) {
