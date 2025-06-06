@@ -49,6 +49,8 @@ namespace Balancy.WebView
                 return _instance;
             }
         }
+        
+        private GameObject _parentGameObject;
 
         private static BalancyWebViewEmbedded CreateGameObject()
         {
@@ -86,6 +88,8 @@ namespace Balancy.WebView
             goCanvas.hideFlags = HideFlags.HideAndDontSave;
             DontDestroyOnLoad(goCanvas);
 
+            instance._parentGameObject = goCanvas;
+            goCanvas.SetActive(false);
             return instance;
         } 
 
@@ -154,6 +158,9 @@ namespace Balancy.WebView
                 _isLoading = true;
                 bool success = _webView.LoadEmbedded(url, _renderTexture, ownerJson);
                 
+                if (success)
+                    _parentGameObject.SetActive(true);
+                
                 _isInitialized = true;
                 LogDebug("Embedded View initialized successfully");
                 return success;
@@ -186,6 +193,8 @@ namespace Balancy.WebView
             
             _isInitialized = false;
             _isLoading = false;
+            
+            _parentGameObject.SetActive(false);
         }
 
         #endregion

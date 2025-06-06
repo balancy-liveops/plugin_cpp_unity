@@ -29,7 +29,7 @@ namespace Balancy.WebView
                     // If not, create a new GameObject with the component
                     if (_instance == null)
                     {
-                        GameObject go = new GameObject("BalancyWebView");
+                        GameObject go = new GameObject("BalancyView");
                         go.hideFlags = HideFlags.HideAndDontSave;
                         _instance = go.AddComponent<BalancyWebView>();
                         DontDestroyOnLoad(go);
@@ -703,7 +703,6 @@ namespace Balancy.WebView
 
             if (!string.IsNullOrEmpty(_instance._ownerJson))
             {
-                //"balancy.owner =
                 var injectedCode = "try {\n                " +
                                    $"balancy.owner = JSON.parse('{_instance._ownerJson}');\n" +
                                    "           } catch (error) {\n " +

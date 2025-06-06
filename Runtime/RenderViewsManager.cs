@@ -98,7 +98,11 @@ namespace Balancy
                     switch (command)
                     {
                         case "balancy_close_view":
+#if UNITY_EDITOR
+                            BalancyWebViewEmbedded.Instance.CloseEmbeddedWebView();
+#else
                             _webView.CloseWebView();
+#endif
                             break;
                         case "balancy_buy_offer":
                         {

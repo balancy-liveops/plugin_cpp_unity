@@ -1066,19 +1066,35 @@ void _balancyCloseWebView() {
 
 bool _balancySendMessage(const char* message) {
     @autoreleasepool {
-        if (_sharedController == nil) return false;
-        
         NSString* nsMessage = [NSString stringWithUTF8String:message];
-        return [_sharedController sendMessage:nsMessage];
+        
+        if (_sharedController != nil) {        
+            return [_sharedController sendMessage:nsMessage];
+        }
+        
+        if (_embeddedController != nil) {        
+            return [_embeddedController sendMessage:nsMessage];
+        }
+        return false;
     }
 }
 
 bool _balancyInjectJSCode(const char* message) {
     @autoreleasepool {
-        if (_sharedController == nil) return false;
-        
         NSString* nsMessage = [NSString stringWithUTF8String:message];
-        return [_sharedController injectJSCode:nsMessage];
+        
+        // Сначала пробуем popup контроллер
+        if (_sharedController != nil) {
+            return [_sharedController injectJSCode:nsMessage];
+        }
+        
+        // Если popup не открыт, пробуем embedded контроллер
+        if (_embeddedController != nil) {
+            return [_embeddedController injectJSCode:nsMessage];
+        }
+        
+        // Ни один контроллер не доступен
+        return false;
     }
 }
 
