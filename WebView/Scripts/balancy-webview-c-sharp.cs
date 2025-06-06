@@ -192,15 +192,15 @@ namespace Balancy.WebView
         [DllImport("libBalancyWebViewMac")]
         private static extern void _balancyRegisterLoadCompletedCallback(LoadCompletedDelegate callback);
         
-        // Embedding-specific methods (macOS only)
+        // Embedding-specific methods (macOS only) - OPTIMIZED VERSION
         [DllImport("libBalancyWebViewMac")]
-        private static extern bool _balancyOpenWebViewEmbedded(string url, System.IntPtr texturePtr, int width, int height);
+        private static extern bool _balancyOpenWebViewEmbedded(string url, int width, int height);
         
         [DllImport("libBalancyWebViewMac")]
         private static extern void _balancyCloseWebViewEmbedded();
         
         [DllImport("libBalancyWebViewMac")]
-        private static extern void _balancyUpdateEmbeddedTexture(System.IntPtr texturePtr, int width, int height);
+        private static extern void _balancyUpdateEmbeddedTexture(int width, int height);
         
         [DllImport("libBalancyWebViewMac")]
         private static extern void _balancySendMouseEvent(int x, int y, bool isClick);
@@ -486,7 +486,7 @@ namespace Balancy.WebView
         
         /// <summary>
         /// Opens a WebView in embedded mode, rendering to a RenderTexture
-        /// Available only in Unity Editor on macOS
+        /// Available only in Unity Editor on macOS - OPTIMIZED VERSION
         /// </summary>
         /// <param name="url">The URL to open</param>
         /// <param name="renderTexture">The RenderTexture to render into</param>
@@ -514,8 +514,14 @@ namespace Balancy.WebView
             ApplySettings();
             SetDebugLogging(true);
             
-            bool success = _balancyOpenWebViewEmbedded(url, renderTexture.GetNativeTexturePtr(), renderTexture.width, renderTexture.height);
+            // OPTIMIZATION: No longer pass texturePtr - native code manages its own pixel buffer
+            bool success = _balancyOpenWebViewEmbedded(url, renderTexture.width, renderTexture.height);
             _isWebViewEmbedded = success;
+            
+            if (success)
+            {
+                Debug.Log($"[BalancyWebView] OPTIMIZED embedded WebView opened successfully: {renderTexture.width}x{renderTexture.height}");
+            }
             
             return success;
             #else
@@ -543,7 +549,7 @@ namespace Balancy.WebView
         }
         
         /// <summary>
-        /// Updates the texture used for embedded rendering
+        /// Updates the texture used for embedded rendering - OPTIMIZED VERSION
         /// </summary>
         /// <param name="renderTexture">New RenderTexture to use</param>
         public void UpdateEmbeddedTexture(RenderTexture renderTexture)
@@ -555,7 +561,10 @@ namespace Balancy.WebView
             }
             
             _embeddedTexture = renderTexture;
-            _balancyUpdateEmbeddedTexture(renderTexture.GetNativeTexturePtr(), renderTexture.width, renderTexture.height);
+            // OPTIMIZATION: No longer pass texturePtr - native code manages its own pixel buffer
+            _balancyUpdateEmbeddedTexture(renderTexture.width, renderTexture.height);
+            
+            Debug.Log($"[BalancyWebView] OPTIMIZED: Updated embedded texture size: {renderTexture.width}x{renderTexture.height}");
             #endif
         }
         

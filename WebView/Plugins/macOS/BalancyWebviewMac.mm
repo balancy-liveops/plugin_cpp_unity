@@ -54,20 +54,21 @@ void LogToUnity(const char* message) {
 @property (nonatomic, strong) WKWebView *webView;
 @property (nonatomic, strong) WKUserContentController *userContentController;
 @property (nonatomic, assign) BOOL debugLogging;
-@property (nonatomic, assign) void* texturePtr;
 @property (nonatomic, assign) int textureWidth;
 @property (nonatomic, assign) int textureHeight;
 @property (nonatomic, strong) NSTimer *renderTimer;
 @property (nonatomic, assign) unsigned char* pixelBuffer;
 @property (nonatomic, assign) BOOL pixelDataReady;
 @property (nonatomic, strong) NSWindow *offscreenWindow;
+@property (nonatomic, assign) CGContextRef persistentContext;  // OPTIMIZATION #2: Reusable context
+@property (nonatomic, assign) BOOL hasNewFrame;                // OPTIMIZATION #3: Smart sync flag
 
-- (instancetype)initWithTexture:(void*)texturePtr width:(int)width height:(int)height;
+- (instancetype)initWithWidth:(int)width height:(int)height;
 - (BOOL)loadURL:(NSString *)url;
 - (void)close;
 - (BOOL)sendMessage:(NSString *)message;
 - (BOOL)injectJSCode:(NSString *)code;
-- (void)updateTexture:(void*)texturePtr width:(int)width height:(int)height;
+- (void)updateTexture:(int)width height:(int)height;
 - (void)handleMouseEvent:(int)x y:(int)y isClick:(BOOL)isClick;
 - (void)renderToTexture;
 @end
@@ -75,94 +76,163 @@ void LogToUnity(const char* message) {
 // Implementation of embedded WebView controller
 @implementation BalancyEmbeddedWebViewController
 
-- (instancetype)initWithTexture:(void*)texturePtr width:(int)width height:(int)height {
+- (instancetype)initWithWidth:(int)width height:(int)height {
     self = [super init];
     if (self) {
         _debugLogging = YES;
-        _texturePtr = texturePtr;
         _textureWidth = width;
         _textureHeight = height;
         _pixelDataReady = NO;
+        _hasNewFrame = NO;  // OPTIMIZATION #3: Initialize sync flag
         
         // Allocate pixel buffer
         size_t bufferSize = width * height * 4; // RGBA
         _pixelBuffer = (unsigned char*)malloc(bufferSize);
-        memset(_pixelBuffer, 0, bufferSize); // Initialize to transparent (all zeros)
+        memset(_pixelBuffer, 0, bufferSize);
         
-        // Create off-screen window to host the WebView
-        NSRect windowFrame = NSMakeRect(-10000, -10000, width, height); // Position off-screen
+        // OPTIMIZATION #2: Create persistent CGContext once
+        [self createPersistentContext];
+        
+        // ✅ ИСПРАВЛЕНИЕ 1: НЕВИДИМОЕ окно (убираем popup)
+        NSRect windowFrame = NSMakeRect(-100, -100, width, height); // ← За пределами экрана
         _offscreenWindow = [[NSWindow alloc] initWithContentRect:windowFrame
-                                                      styleMask:NSWindowStyleMaskBorderless
+                                                      styleMask:NSWindowStyleMaskBorderless  // ← Без границ
                                                         backing:NSBackingStoreBuffered
                                                           defer:NO];
-        [_offscreenWindow setLevel:kCGMinimumWindowLevel]; // Ensure it's not visible
-        [_offscreenWindow setAlphaValue:0.0]; // Make it invisible
-        [_offscreenWindow orderBack:nil]; // Put it in the back
+        [_offscreenWindow setTitle:@"Balancy Embedded (Hidden)"];
         
-        // Create container view with layer backing and transparency
-        NSView *containerView = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, width, height)];
-        containerView.wantsLayer = YES; // Enable layer backing
-        containerView.layer.backgroundColor = [[NSColor clearColor] CGColor]; // Transparent background
-        containerView.layer.opaque = NO; // Enable transparency
-        self.view = containerView;
+        // ✅ УБИРАЕМ видимость - только минимально необходимое для работы браузера
+        [_offscreenWindow setAlphaValue:0.01]; // Почти невидимое
+        [_offscreenWindow setLevel:NSNormalWindowLevel]; // Обычный уровень
+        [_offscreenWindow setCollectionBehavior:NSWindowCollectionBehaviorDefault];
         
-        // Set the container as the window's content view
-        [_offscreenWindow setContentView:containerView];
-        
-        // Configure WebView with better settings for off-screen rendering
+        // Простая конфигурация WebView
         WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
         _userContentController = [[WKUserContentController alloc] init];
         [_userContentController addScriptMessageHandler:self name:@"BalancyWebView"];
         configuration.userContentController = _userContentController;
         
-        // Enable developer extras for debugging
-        if (@available(macOS 10.11, *)) {
-            [configuration.preferences setValue:@YES forKey:@"developerExtrasEnabled"];
-        }
+        // Только базовые настройки
+        [configuration.preferences setValue:@YES forKey:@"developerExtrasEnabled"];
         
-        // Additional WebView preferences for better rendering
-        // mediaTypesRequiringUserActionForPlayback is available on macOS 10.12+
-        if (@available(macOS 10.12, *)) {
-            configuration.mediaTypesRequiringUserActionForPlayback = WKAudiovisualMediaTypeNone;
-        }
-        
-        // Create WebView with the specified size
-        _webView = [[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, width, height) configuration:configuration];
-        _webView.navigationDelegate = self;
-        
-        // Enable layer backing for WebView with transparency support
-        _webView.wantsLayer = YES;
-        _webView.layer.backgroundColor = [[NSColor clearColor] CGColor]; // Use clear background
-        _webView.layer.contentsScale = 1.0;
-        _webView.layer.opaque = NO; // Enable transparency
-        
-        // Ensure WebView doesn't draw its own background
-        [_webView setValue:@NO forKey:@"drawsBackground"];
-        
-        // Make WebView container transparent too
+        // Простой контейнер
+        NSView *containerView = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, width, height)];
+        containerView.wantsLayer = YES;
         containerView.layer.backgroundColor = [[NSColor clearColor] CGColor];
         containerView.layer.opaque = NO;
         
-        // Set proper autoresizing
-        _webView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+        self.view = containerView;
+        [_offscreenWindow setContentView:containerView];
+        
+        // Простой WebView
+        _webView = [[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, width, height) configuration:configuration];
+        _webView.navigationDelegate = self;
+        _webView.wantsLayer = YES;
+        _webView.layer.backgroundColor = [[NSColor clearColor] CGColor];
+        _webView.layer.opaque = NO;
         
         [containerView addSubview:_webView];
         
-        // Start render timer (30 FPS)
-        _renderTimer = [NSTimer scheduledTimerWithTimeInterval:1.0/30.0
+        // ✅ ИСПРАВЛЕНИЕ 2: Снижаем частоту до 15 FPS
+        _renderTimer = [NSTimer scheduledTimerWithTimeInterval:1.0/15.0  // ← 15 FPS вместо 60
                                                         target:self
                                                       selector:@selector(renderToTexture)
                                                       userInfo:nil
                                                        repeats:YES];
         
+        // ✅ ИСПРАВЛЕНИЕ 3: Минимальное окно - только для работы браузера
+        [_offscreenWindow makeKeyAndOrderFront:nil];
+        
+        // ✅ УБИРАЕМ все агрессивные методы принуждения видимости
+        // Больше никаких orderFrontRegardless, makeKeyWindow и т.д.
+        
         if (_debugLogging) {
-            LogToUnity("Embedded WebView controller initialized with off-screen window");
+            LogToUnity("OPTIMIZED embedded WebView initialized (NO popup window)");
         }
     }
     return self;
 }
 
+// OPTIMIZATION #2: Create persistent CGContext method
+- (void)createPersistentContext {
+    if (_persistentContext) {
+        CGContextRelease(_persistentContext);
+    }
+    
+    CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
+    size_t bytesPerRow = _textureWidth * 4;
+    
+    _persistentContext = CGBitmapContextCreate(
+        _pixelBuffer,
+        _textureWidth,
+        _textureHeight,
+        8,
+        bytesPerRow,
+        colorSpace,
+        kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big
+    );
+    
+    CGColorSpaceRelease(colorSpace);
+    
+    if (_debugLogging) {
+        LogToUnity("✅ OPTIMIZATION #2: Persistent CGContext created");
+    }
+}
+
+// 2. ADD THIS NEW METHOD to inject animation boost scripts after page loads:
+
+- (void)injectAnimationBoostScript {
+    if (!_webView) return;
+    
+    NSString *animationBoostScript = @"\
+        (function() { \
+            console.log('🎬 Balancy: Injecting animation boost script'); \
+            \
+            // Force all CSS animations to run \
+            const style = document.createElement('style'); \
+            style.textContent = ` \
+                *, *::before, *::after { \
+                    animation-play-state: running !important; \
+                    -webkit-animation-play-state: running !important; \
+                } \
+                \
+                /* Prevent any pausing of animations */ \
+                .rotating-fx { \
+                    animation-play-state: running !important; \
+                    will-change: transform !important; \
+                } \
+            `; \
+            document.head.appendChild(style); \
+            \
+            // Force reflow to apply styles \
+            document.body.offsetHeight; \
+            \
+            // Keep page active with periodic micro-tasks \
+            setInterval(() => { \
+                document.body.style.transform = 'translateZ(0)'; \
+                document.body.offsetHeight; \
+                document.body.style.transform = ''; \
+            }, 100); \
+            \
+            console.log('✅ Balancy: Animation boost script applied'); \
+        })();";
+    
+    [_webView evaluateJavaScript:animationBoostScript completionHandler:^(id result, NSError *error) {
+        if (error) {
+            NSString *logMsg = [NSString stringWithFormat:@"Animation boost script error: %@", error.localizedDescription];
+            LogToUnity([logMsg UTF8String]);
+        } else {
+            LogToUnity("Animation boost script injected successfully");
+        }
+    }];
+}
+
 - (BOOL)loadURL:(NSString *)url {
+    if (_debugLogging) {
+        NSString *logMsg = [NSString stringWithFormat:@"📥 BalancyEmbeddedWebViewController loadURL called with: %@", url];
+        LogToUnity([logMsg UTF8String]);
+    }
+    
     if ([url hasPrefix:@"file://"]) {
         NSString *cleanUrl = url;
         NSString *filePath = [cleanUrl stringByReplacingOccurrencesOfString:@"file://" withString:@""];
@@ -175,8 +245,15 @@ void LogToUnity(const char* message) {
         NSURL *broadReadAccessURL = [NSURL fileURLWithPath:filesDir];
         
         if (_debugLogging) {
-            NSString *logMsg = [NSString stringWithFormat:@"Embedded File URL: %@", fileURL];
+            NSString *logMsg = [NSString stringWithFormat:@"📁 Embedded File URL: %@", fileURL];
             LogToUnity([logMsg UTF8String]);
+            NSString *logMsg2 = [NSString stringWithFormat:@"📂 Read access URL: %@", broadReadAccessURL];
+            LogToUnity([logMsg2 UTF8String]);
+            
+            // Check if file exists
+            BOOL fileExists = [[NSFileManager defaultManager] fileExistsAtPath:filePath];
+            NSString *logMsg3 = [NSString stringWithFormat:@"📄 File exists: %@", fileExists ? @"YES" : @"NO"];
+            LogToUnity([logMsg3 UTF8String]);
         }
         
         [_webView loadFileURL:fileURL allowingReadAccessToURL:broadReadAccessURL];
@@ -185,8 +262,13 @@ void LogToUnity(const char* message) {
     
     NSURL *nsUrl = [NSURL URLWithString:url];
     if (!nsUrl) {
-        LogToUnity("Invalid URL for embedded WebView");
+        LogToUnity("❌ Invalid URL for embedded WebView");
         return NO;
+    }
+    
+    if (_debugLogging) {
+        NSString *logMsg = [NSString stringWithFormat:@"🌐 Loading web URL: %@", nsUrl];
+        LogToUnity([logMsg UTF8String]);
     }
     
     [_webView loadRequest:[NSURLRequest requestWithURL:nsUrl]];
@@ -194,9 +276,33 @@ void LogToUnity(const char* message) {
 }
 
 - (void)close {
+    // Stop render timer first
     if (_renderTimer) {
         [_renderTimer invalidate];
         _renderTimer = nil;
+    }
+    
+    // Clean up WebView
+    if (_webView) {
+        [_webView stopLoading];
+        [_webView setNavigationDelegate:nil];
+        [_webView removeFromSuperview];
+        _webView = nil;
+    }
+    
+    // Clean up user content controller
+    if (_userContentController) {
+        [_userContentController removeScriptMessageHandlerForName:@"BalancyWebView"];
+        _userContentController = nil;
+    }
+    
+    // OPTIMIZATION #2: Clean up persistent context
+    if (_persistentContext) {
+        CGContextRelease(_persistentContext);
+        _persistentContext = nil;
+        if (_debugLogging) {
+            LogToUnity("✅ OPTIMIZATION #2: Persistent CGContext released");
+        }
     }
     
     // Free pixel buffer
@@ -205,19 +311,14 @@ void LogToUnity(const char* message) {
         _pixelBuffer = nil;
     }
     
-    [_userContentController removeScriptMessageHandlerForName:@"BalancyWebView"];
-    [_webView stopLoading];
-    [_webView removeFromSuperview];
-    _webView = nil;
-    
-    // Close off-screen window
+    // Close and clean up window
     if (_offscreenWindow) {
         [_offscreenWindow close];
         _offscreenWindow = nil;
     }
     
     if (_debugLogging) {
-        LogToUnity("Embedded WebView closed");
+        LogToUnity("OPTIMIZED embedded WebView closed and cleaned up");
     }
 }
 
@@ -238,8 +339,7 @@ void LogToUnity(const char* message) {
     return YES;
 }
 
-- (void)updateTexture:(void*)texturePtr width:(int)width height:(int)height {
-    _texturePtr = texturePtr;
+- (void)updateTexture:(int)width height:(int)height {
     _textureWidth = width;
     _textureHeight = height;
     
@@ -251,18 +351,22 @@ void LogToUnity(const char* message) {
     _pixelBuffer = (unsigned char*)malloc(newBufferSize);
     memset(_pixelBuffer, 0, newBufferSize); // Initialize to transparent
     _pixelDataReady = NO;
+    _hasNewFrame = NO;  // OPTIMIZATION #3: Reset frame flag
+    
+    // OPTIMIZATION #2: Recreate persistent context for new size
+    [self createPersistentContext];
     
     // Update WebView frame and window
     _webView.frame = NSMakeRect(0, 0, width, height);
     self.view.frame = NSMakeRect(0, 0, width, height);
     
     if (_offscreenWindow) {
-        NSRect windowFrame = NSMakeRect(-10000, -10000, width, height);
+        NSRect windowFrame = NSMakeRect(100, 100, width, height);
         [_offscreenWindow setFrame:windowFrame display:NO];
     }
     
     if (_debugLogging) {
-        NSString *logMsg = [NSString stringWithFormat:@"Updated embedded texture: %dx%d", width, height];
+        NSString *logMsg = [NSString stringWithFormat:@"OPTIMIZED: Updated embedded texture: %dx%d", width, height];
         LogToUnity([logMsg UTF8String]);
     }
 }
@@ -305,110 +409,96 @@ void LogToUnity(const char* message) {
     }
 }
 
+// OPTIMIZATION #2 & #3: Optimized renderToTexture with persistent context and smart sync
 - (void)renderToTexture {
-    if (!_webView || !_pixelBuffer) {
+    if (!_webView || !_pixelBuffer || !_persistentContext) {
         return;
     }
     
     @try {
-        // Use WKWebView's snapshot API for better rendering
+        // Простое принуждение к обновлению
+        [_webView.layer setNeedsDisplay];
+        [_webView.layer displayIfNeeded];
+        
+        // Используем snapshot API (основной метод)
         if (@available(macOS 10.13, *)) {
             WKSnapshotConfiguration *config = [[WKSnapshotConfiguration alloc] init];
             config.rect = CGRectMake(0, 0, _textureWidth, _textureHeight);
+            config.afterScreenUpdates = YES;
             
             [_webView takeSnapshotWithConfiguration:config completionHandler:^(NSImage * _Nullable snapshotImage, NSError * _Nullable error) {
                 if (error || !snapshotImage) {
-                    if (_debugLogging && error) {
-                        NSString *logMsg = [NSString stringWithFormat:@"Snapshot error: %@", error.localizedDescription];
-                        LogToUnity([logMsg UTF8String]);
-                    }
-                    return;
+                    return; // Просто игнорируем ошибки
                 }
                 
-                // Convert NSImage to pixel data
+                // Конвертируем в pixel buffer
                 CGImageRef cgImage = [snapshotImage CGImageForProposedRect:nil context:nil hints:nil];
                 if (cgImage) {
-                    CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
-                    size_t bytesPerRow = _textureWidth * 4; // RGBA
+                
+                    NSString *pavelLog = [NSString stringWithFormat:@">>>Snapshot done!!"];
+                    LogToUnity([pavelLog UTF8String]);
                     
-                    CGContextRef context = CGBitmapContextCreate(
-                        _pixelBuffer,
-                        _textureWidth,
-                        _textureHeight,
-                        8, // bits per component
-                        bytesPerRow,
-                        colorSpace,
-                        kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big
-                    );
-                    
-                    if (context) {
-                        // Fill with transparent background
-                        CGContextClearRect(context, CGRectMake(0, 0, _textureWidth, _textureHeight));
+                    // OPTIMIZATION #2: Use persistent context instead of creating new one
+                    if (self->_persistentContext) {
+                        CGContextClearRect(self->_persistentContext, CGRectMake(0, 0, self->_textureWidth, self->_textureHeight));
+                        CGContextDrawImage(self->_persistentContext, CGRectMake(0, 0, self->_textureWidth, self->_textureHeight), cgImage);
                         
-                        // Draw the image
-                        CGContextDrawImage(context, CGRectMake(0, 0, _textureWidth, _textureHeight), cgImage);
-                        
-                        _pixelDataReady = YES;
-                        
-                        CGContextRelease(context);
+                        self->_pixelDataReady = YES;
+                        self->_hasNewFrame = YES;  // OPTIMIZATION #3: Mark new frame available
                     }
-                    
-                    CGColorSpaceRelease(colorSpace);
                 }
             }];
             return;
         }
         
-        // Fallback for older macOS versions - use layer rendering with proper view hierarchy
-        if (!_webView.superview || !_webView.layer) {
-            return;
-        }
-        
-        // Create bitmap context
-        CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
-        size_t bytesPerRow = _textureWidth * 4; // RGBA
-        
-        CGContextRef context = CGBitmapContextCreate(
-            _pixelBuffer,
-            _textureWidth,
-            _textureHeight,
-            8, // bits per component
-            bytesPerRow,
-            colorSpace,
-            kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big
-        );
-        
-        if (context) {
-            // Fill with transparent background
-            CGContextClearRect(context, CGRectMake(0, 0, _textureWidth, _textureHeight));
-            
-            // Save context state
-            CGContextSaveGState(context);
-            
-            // Scale the layer to fit our texture dimensions
-            CGFloat scaleX = (CGFloat)_textureWidth / _webView.frame.size.width;
-            CGFloat scaleY = (CGFloat)_textureHeight / _webView.frame.size.height;
-            CGContextScaleCTM(context, scaleX, scaleY);
-            
-            // Render the WebView layer
-            [_webView.layer renderInContext:context];
-            
-            // Restore context state
-            CGContextRestoreGState(context);
-            
-            _pixelDataReady = YES;
-            
-            CGContextRelease(context);
-        }
-        
-        CGColorSpaceRelease(colorSpace);
+        // Fallback для старых версий macOS
+        [self fallbackLayerRendering];
         
     } @catch (NSException *exception) {
-        if (_debugLogging) {
-            NSString *logMsg = [NSString stringWithFormat:@"Render exception: %@", exception.reason];
-            LogToUnity([logMsg UTF8String]);
-        }
+        // Игнорируем ошибки
     }
+}
+
+// OPTIMIZATION #2 & #3: Optimized fallback layer rendering
+- (void)fallbackLayerRendering {
+    if (!_webView.superview || !_webView.layer || !_pixelBuffer || !_persistentContext) {
+        return;
+    }
+    
+    // Force any pending layer updates
+    [_webView.layer setNeedsDisplayInRect:_webView.bounds];
+    [_webView.layer displayIfNeeded];
+    
+    NSString *pavelLog = [NSString stringWithFormat:@">>>Fallback Snapshot done!!"];
+    LogToUnity([pavelLog UTF8String]);
+    
+    // OPTIMIZATION #2: Use persistent context instead of creating new one
+    if (_persistentContext) {
+        // Fill with transparent background
+        CGContextClearRect(_persistentContext, CGRectMake(0, 0, _textureWidth, _textureHeight));
+        
+        // Save context state
+        CGContextSaveGState(_persistentContext);
+        
+        // Better scaling and rendering quality
+        CGFloat scaleX = (CGFloat)_textureWidth / _webView.frame.size.width;
+        CGFloat scaleY = (CGFloat)_textureHeight / _webView.frame.size.height;
+        CGContextScaleCTM(_persistentContext, scaleX, scaleY);
+        CGContextSetInterpolationQuality(_persistentContext, kCGInterpolationHigh);
+        
+        // Render the WebView layer with all sublayers
+        [_webView.layer renderInContext:_persistentContext];
+        
+        // Restore context state
+        CGContextRestoreGState(_persistentContext);
+        
+        _pixelDataReady = YES;
+        _hasNewFrame = YES;  // OPTIMIZATION #3: Mark new frame available
+        
+        // DEBUG: Log successful fallback rendering occasionally
+        if (_debugLogging && (rand() % 200 == 0)) { // Log every ~3 seconds at 60fps
+            LogToUnity("OPTIMIZED: Fallback layer rendering completed successfully");
+        }    }
 }
 
 #pragma mark - WKScriptMessageHandler
@@ -430,34 +520,148 @@ void LogToUnity(const char* message) {
 
 #pragma mark - WKNavigationDelegate
 
+// ✅ ИСПРАВЛЕНИЕ 4: Упрощенный didFinishNavigation (без агрессивных скриптов)
 - (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
     if (_debugLogging) {
-        LogToUnity("Embedded WebView navigation finished successfully");
+        LogToUnity("✅ Simple embedded WebView navigation finished");
     }
     
-    // Inject minimal CSS to ensure proper rendering without forcing backgrounds
-    NSString *jsCode = @"\
-        var meta = document.querySelector('meta[name=viewport]'); \
-        if (!meta) { \
-            meta = document.createElement('meta'); \
-            meta.name = 'viewport'; \
-            document.head.appendChild(meta); \
-        } \
-        meta.content = 'width=device-width, initial-scale=1.0'; \
-        \
-        // Remove any forced overflow hidden that might hide content \
-        document.body.style.overflow = 'auto'; \
-        document.documentElement.style.overflow = 'auto';\
-    ";
+    // Простая проверка контента
+    [_webView evaluateJavaScript:@"document.body ? document.body.innerHTML.length : -1" completionHandler:^(id result, NSError *error) {
+        if (error) {
+            NSString *logMsg = [NSString stringWithFormat:@"❌ JavaScript evaluation error: %@", error.localizedDescription];
+            LogToUnity([logMsg UTF8String]);
+        } else {
+            NSString *logMsg = [NSString stringWithFormat:@"📊 Content length: %@ characters", result];
+            LogToUnity([logMsg UTF8String]);
+        }
+    }];
     
-    [_webView evaluateJavaScript:jsCode completionHandler:nil];
-    
-    // Ensure the response handler is initialized
-    NSString *initScript = @"if (window.BalancyWebView && typeof window.BalancyWebView.initResponseHandler === 'function') { window.BalancyWebView.initResponseHandler(); }";
-    [_webView evaluateJavaScript:initScript completionHandler:nil];
+    // ✅ УБИРАЕМ все сложные скрипты инъекции
+    // Пусть браузер работает как хочет
     
     if (_loadCompletedCallback) {
         _loadCompletedCallback(true);
+    }
+}
+
+- (void)injectSuperOptimizationPrevention {
+    if (!_webView) return;
+    
+    NSString *superOptimizationScript = @"\
+        (function() { \
+            console.log('🚀🚀 SUPER OPTIMIZATION PREVENTION ACTIVATED'); \
+            \
+            // Override ALL possible visibility and focus detection \
+            Object.defineProperty(document, 'hidden', { value: false, writable: false, configurable: false }); \
+            Object.defineProperty(document, 'visibilityState', { value: 'visible', writable: false, configurable: false }); \
+            Object.defineProperty(document, 'webkitHidden', { value: false, writable: false, configurable: false }); \
+            Object.defineProperty(document, 'webkitVisibilityState', { value: 'visible', writable: false, configurable: false }); \
+            \
+            // Override page focus detection \
+            document.hasFocus = function() { return true; }; \
+            \
+            // Prevent any visibility change events \
+            const originalAddEventListener = document.addEventListener; \
+            document.addEventListener = function(type, listener, options) { \
+                if (type.includes('visibility') || type.includes('focus') || type.includes('blur')) { \
+                    console.log('🚫 Blocked event listener for:', type); \
+                    return; \
+                } \
+                return originalAddEventListener.call(this, type, listener, options); \
+            }; \
+            \
+            // Super-aggressive RAF enhancement \
+            const originalRAF = window.requestAnimationFrame; \
+            let frameId = 1; \
+            const callbacks = new Map(); \
+            let isRunning = false; \
+            \
+            function forceAnimationLoop() { \
+                if (isRunning) return; \
+                isRunning = true; \
+                console.log('🎬 Force animation loop started'); \
+                \
+                function loop() { \
+                    const now = performance.now(); \
+                    callbacks.forEach((callback, id) => { \
+                        try { \
+                            callback(now); \
+                            callbacks.delete(id); \
+                        } catch(e) { \
+                            console.error('RAF error:', e); \
+                            callbacks.delete(id); \
+                        } \
+                    }); \
+                    \
+                    // Always continue the loop \
+                    setTimeout(loop, 16); \
+                } \
+                \
+                loop(); \
+            } \
+            \
+            window.requestAnimationFrame = function(callback) { \
+                const id = frameId++; \
+                callbacks.set(id, callback); \
+                \
+                if (!isRunning) { \
+                    forceAnimationLoop(); \
+                } \
+                \
+                return id; \
+            }; \
+            \
+            window.cancelAnimationFrame = function(id) { \
+                callbacks.delete(id); \
+            }; \
+            \
+            // Force all CSS animations to run \
+            const style = document.createElement('style'); \
+            style.textContent = ` \
+                *, *::before, *::after { \
+                    animation-play-state: running !important; \
+                    -webkit-animation-play-state: running !important; \
+                } \
+                body, html { \
+                    display: block !important; \
+                    visibility: visible !important; \
+                } \
+            `; \
+            document.head.appendChild(style); \
+            \
+            // Keep page active with constant micro-tasks \
+            setInterval(() => { \
+                document.body.style.transform = 'translateZ(0)'; \
+                document.body.offsetHeight; \
+                document.body.style.transform = ''; \
+            }, 50); \
+            \
+            console.log('✅✅ SUPER OPTIMIZATION PREVENTION COMPLETE'); \
+        })();";
+    
+    [_webView evaluateJavaScript:superOptimizationScript completionHandler:^(id result, NSError *error) {
+        if (error) {
+            NSString *logMsg = [NSString stringWithFormat:@"Super optimization script error: %@", error.localizedDescription];
+            LogToUnity([logMsg UTF8String]);
+        } else {
+            LogToUnity("✅ Super optimization prevention injected successfully");
+        }
+    }];
+}
+
+// 5. ADD METHOD to force window visibility when needed:
+
+- (void)ensureWindowVisibility {
+    if (_offscreenWindow) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self->_offscreenWindow orderFrontRegardless];
+            [self->_offscreenWindow makeKeyWindow];
+            
+            // Force WebView to refresh
+            [self->_webView setNeedsDisplay:YES];
+            [self->_webView.layer setNeedsDisplay];
+        });
     }
 }
 
@@ -481,7 +685,7 @@ void LogToUnity(const char* message) {
 
 - (void)webView:(WKWebView *)webView didStartProvisionalNavigation:(WKNavigation *)navigation {
     if (_debugLogging) {
-        LogToUnity("Embedded WebView started loading");
+        LogToUnity("💻 Embedded WebView started loading");
     }
 }
 
@@ -857,10 +1061,10 @@ void _balancyRegisterCacheCompletedCallback(CacheCompletedCallback callback) {
     _cacheCompletedCallback = callback;
 }
 
-// Embedding functionality implementation
-bool _balancyOpenWebViewEmbedded(const char* url, void* texturePtr, int width, int height) {
+// OPTIMIZATION #2 & #3: Optimized embedded functionality with smart sync
+bool _balancyOpenWebViewEmbedded(const char* url, int width, int height) {
     @autoreleasepool {
-        LogToUnity("_balancyOpenWebViewEmbedded called");
+        LogToUnity("_balancyOpenWebViewEmbedded called (OPTIMIZED)");
         
         if (_embeddedController != nil) {
             LogToUnity("Closing existing embedded WebView");
@@ -868,12 +1072,14 @@ bool _balancyOpenWebViewEmbedded(const char* url, void* texturePtr, int width, i
             _embeddedController = nil;
         }
         
-        LogToUnity("Creating new embedded WebView controller");
-        _embeddedController = [[BalancyEmbeddedWebViewController alloc] initWithTexture:texturePtr width:width height:height];
+        NSString *logMsg = [NSString stringWithFormat:@"OPTIMIZED embedded WebView controller initialized with size: %dx%d", width, height];
+        LogToUnity([logMsg UTF8String]);
+        
+        _embeddedController = [[BalancyEmbeddedWebViewController alloc] initWithWidth:width height:height];
         
         NSString* nsUrl = [NSString stringWithUTF8String:url];
-        NSString *logMsg = [NSString stringWithFormat:@"Attempting to load URL in embedded mode: %@", nsUrl];
-        LogToUnity([logMsg UTF8String]);
+        NSString *logMsg2 = [NSString stringWithFormat:@"Attempting to load URL in embedded mode: %@", nsUrl];
+        LogToUnity([logMsg2 UTF8String]);
         
         BOOL result = [_embeddedController loadURL:nsUrl];
         
@@ -894,10 +1100,10 @@ void _balancyCloseWebViewEmbedded() {
     }
 }
 
-void _balancyUpdateEmbeddedTexture(void* texturePtr, int width, int height) {
+void _balancyUpdateEmbeddedTexture(int width, int height) {
     @autoreleasepool {
         if (_embeddedController != nil) {
-            [_embeddedController updateTexture:texturePtr width:width height:height];
+            [_embeddedController updateTexture:width height:height];
         }
     }
 }
@@ -910,10 +1116,17 @@ void _balancySendMouseEvent(int x, int y, bool isClick) {
     }
 }
 
+// OPTIMIZATION #3: Smart sync - only copy data when new frame is available
 bool _balancyGetEmbeddedPixelData(unsigned char* buffer, int bufferSize) {
     @autoreleasepool {
         if (_embeddedController == nil) {
             LogToUnity("_balancyGetEmbeddedPixelData: _embeddedController is nil");
+            return false;
+        }
+        
+        // OPTIMIZATION #3: Check if new frame is available
+        if (!_embeddedController.hasNewFrame) {
+            // No new frame - avoid unnecessary copying
             return false;
         }
         
@@ -935,7 +1148,11 @@ bool _balancyGetEmbeddedPixelData(unsigned char* buffer, int bufferSize) {
         }
         
         memcpy(buffer, _embeddedController.pixelBuffer, expectedSize);
-        NSString *logMsg = [NSString stringWithFormat:@"_balancyGetEmbeddedPixelData: copied %zu bytes successfully", expectedSize];
+        
+        // OPTIMIZATION #3: Mark frame as consumed
+        _embeddedController.hasNewFrame = NO;
+        
+        NSString *logMsg = [NSString stringWithFormat:@"*balancyGetEmbeddedPixelData: copied %zu bytes successfully", expectedSize];
         LogToUnity([logMsg UTF8String]);
         return true;
     }

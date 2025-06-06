@@ -13,10 +13,9 @@ namespace Balancy.WebView
     {
         [Header("WebView Settings")]
         [SerializeField] private string _url = "https://example.com";
-        [SerializeField] private int _textureWidth = 1024;
-        [SerializeField] private int _textureHeight = 768;
         [SerializeField] private bool _autoStart = true;
         [SerializeField] private bool _interactable = true;
+        [SerializeField] private int _maxTextureSize = 1000; // Maximum dimension (width or height)
         
         [Header("Debug")]
         [SerializeField] private bool _debugLogging = false;
@@ -29,6 +28,7 @@ namespace Balancy.WebView
         // Private fields
         private RenderTexture _renderTexture;
         private RawImage _renderer;
+        private RectTransform _rectTransform;
         private bool _isInitialized = false;
         private bool _isLoading = false;
         private Camera _webViewCamera;
@@ -36,6 +36,11 @@ namespace Balancy.WebView
         private Texture2D _textureBuffer;
         private byte[] _pixelBuffer;
         private byte[] _flippedPixelBuffer; // Buffer for vertically flipped pixels
+        
+        // Current texture dimensions (calculated from RectTransform)
+        private int _currentTextureWidth;
+        private int _currentTextureHeight;
+        private Vector2 _lastRectSize; // Track RectTransform size changes
         
         // WebView instance reference
         private BalancyWebView _webView;
@@ -45,9 +50,13 @@ namespace Balancy.WebView
         private void Awake()
         {
             _renderer = GetComponent<RawImage>();
+            _rectTransform = GetComponent<RectTransform>();
             
             // Get or create WebView instance
             _webView = BalancyWebView.Instance;
+            
+            // Calculate initial texture size from RectTransform
+            CalculateTextureSizeFromRect();
         }
 
         private void Start()
@@ -65,6 +74,9 @@ namespace Balancy.WebView
 
         private void Update()
         {
+            // Check if RectTransform size has changed
+            CheckForSizeChanges();
+            
             // Handle mouse input if interactable
             if (_interactable && _isInitialized && Input.GetMouseButtonDown(0))
             {
@@ -205,15 +217,14 @@ namespace Balancy.WebView
         }
 
         /// <summary>
-        /// Set the texture size and recreate the render texture
+        /// Set the maximum texture size constraint
         /// </summary>
-        /// <param name="width">New width</param>
-        /// <param name="height">New height</param>
-        public void SetTextureSize(int width, int height)
+        /// <param name="maxSize">Maximum width or height dimension</param>
+        public void SetMaxTextureSize(int maxSize)
         {
-            _textureWidth = width;
-            _textureHeight = height;
-
+            _maxTextureSize = maxSize;
+            CalculateTextureSizeFromRect();
+            
             if (_isInitialized)
             {
                 CreateRenderTexture();
@@ -229,6 +240,80 @@ namespace Balancy.WebView
 
         #region Private Methods
 
+        /// <summary>
+        /// Calculate optimal texture size from RectTransform with size constraints
+        /// </summary>
+        private void CalculateTextureSizeFromRect()
+        {
+            if (_rectTransform == null) return;
+            
+            // Get the rect size in pixels
+            Vector2 rectSize = _rectTransform.rect.size;
+            
+            // Convert to integer dimensions
+            int width = Mathf.RoundToInt(Mathf.Abs(rectSize.x));
+            int height = Mathf.RoundToInt(Mathf.Abs(rectSize.y));
+            
+            // Ensure minimum size
+            width = Mathf.Max(width, 64);
+            height = Mathf.Max(height, 64);
+            
+            // Apply size constraint: if min(width, height) > maxTextureSize, scale both proportionally
+            int minDimension = Mathf.Min(width, height);
+            if (minDimension > _maxTextureSize)
+            {
+                float scale = (float)_maxTextureSize / minDimension;
+                width = Mathf.RoundToInt(width * scale);
+                height = Mathf.RoundToInt(height * scale);
+                
+                LogDebug($"Scaled texture size from ({Mathf.RoundToInt(rectSize.x)}, {Mathf.RoundToInt(rectSize.y)}) to ({width}, {height}) due to max size constraint ({_maxTextureSize})");
+            }
+            
+            _currentTextureWidth = width;
+            _currentTextureHeight = height;
+            _lastRectSize = rectSize;
+            
+            LogDebug($"Calculated texture size: {_currentTextureWidth}x{_currentTextureHeight} from RectTransform: {rectSize}");
+        }
+        
+        /// <summary>
+        /// Check if RectTransform size has changed and update texture accordingly
+        /// </summary>
+        private void CheckForSizeChanges()
+        {
+            if (_rectTransform == null) return;
+            
+            Vector2 currentRectSize = _rectTransform.rect.size;
+            
+            // Check if size changed significantly (more than 1 pixel difference)
+            if (Vector2.Distance(currentRectSize, _lastRectSize) > 1f)
+            {
+                LogDebug($"RectTransform size changed from {_lastRectSize} to {currentRectSize}");
+                
+                int oldWidth = _currentTextureWidth;
+                int oldHeight = _currentTextureHeight;
+                
+                CalculateTextureSizeFromRect();
+                
+                // If texture dimensions actually changed, recreate texture
+                if (_currentTextureWidth != oldWidth || _currentTextureHeight != oldHeight)
+                {
+                    LogDebug($"Texture size changed from {oldWidth}x{oldHeight} to {_currentTextureWidth}x{_currentTextureHeight}, recreating...");
+                    
+                    if (_isInitialized)
+                    {
+                        CreateRenderTexture();
+                        
+                        // Update the native WebView with new texture size
+                        if (_webView != null)
+                        {
+                            _webView.UpdateEmbeddedTexture(_renderTexture);
+                        }
+                    }
+                }
+            }
+        }
+
         private void CreateRenderTexture()
         {
             // Clean up existing texture
@@ -243,18 +328,18 @@ namespace Balancy.WebView
                 DestroyImmediate(_textureBuffer);
             }
 
-            // Create new render texture
-            _renderTexture = new RenderTexture(_textureWidth, _textureHeight, 24, RenderTextureFormat.ARGB32);
+            // Create new render texture using calculated dimensions
+            _renderTexture = new RenderTexture(_currentTextureWidth, _currentTextureHeight, 24, RenderTextureFormat.ARGB32);
             _renderTexture.name = "WebView_RenderTexture";
             _renderTexture.Create();
             
             // Create texture buffer for pixel data transfer
-            _textureBuffer = new Texture2D(_textureWidth, _textureHeight, TextureFormat.RGBA32, false);
+            _textureBuffer = new Texture2D(_currentTextureWidth, _currentTextureHeight, TextureFormat.RGBA32, false);
             _textureBuffer.name = "WebView_TextureBuffer";
             
             // Allocate pixel buffers
-            _pixelBuffer = new byte[_textureWidth * _textureHeight * 4]; // RGBA
-            _flippedPixelBuffer = new byte[_textureWidth * _textureHeight * 4]; // RGBA for flipped data
+            _pixelBuffer = new byte[_currentTextureWidth * _currentTextureHeight * 4]; // RGBA
+            _flippedPixelBuffer = new byte[_currentTextureWidth * _currentTextureHeight * 4]; // RGBA for flipped data
 
             // Apply to renderer
             if (_renderer != null)
@@ -262,7 +347,7 @@ namespace Balancy.WebView
                 _renderer.texture = _textureBuffer;
             }
 
-            LogDebug($"Created RenderTexture: {_textureWidth}x{_textureHeight}");
+            LogDebug($"Created RenderTexture: {_currentTextureWidth}x{_currentTextureHeight}");
         }
 
         private void CleanupRenderTexture()
@@ -326,8 +411,8 @@ namespace Balancy.WebView
                 Vector2 uv = hit.textureCoord;
                 
                 // Convert UV to pixel coordinates
-                int pixelX = Mathf.RoundToInt(uv.x * _textureWidth);
-                int pixelY = Mathf.RoundToInt((1f - uv.y) * _textureHeight); // Flip Y coordinate
+                int pixelX = Mathf.RoundToInt(uv.x * _currentTextureWidth);
+                int pixelY = Mathf.RoundToInt((1f - uv.y) * _currentTextureHeight); // Flip Y coordinate
 
                 LogDebug($"Mouse click at UV: {uv}, Pixel: ({pixelX}, {pixelY})");
 
@@ -370,7 +455,7 @@ namespace Balancy.WebView
                     if (success)
                     {
                         // Vertically flip the pixel data before loading into texture
-                        FlipPixelDataVertically(_pixelBuffer, _flippedPixelBuffer, _textureWidth, _textureHeight);
+                        FlipPixelDataVertically(_pixelBuffer, _flippedPixelBuffer, _currentTextureWidth, _currentTextureHeight);
                         
                         // Load flipped pixel data into texture
                         _textureBuffer.LoadRawTextureData(_flippedPixelBuffer);
@@ -382,10 +467,10 @@ namespace Balancy.WebView
                             LogDebug("UpdateTextureFromNative: Texture updated successfully (periodic log)");
                         }
                     }
-                    else
-                    {
-                        LogDebug("UpdateTextureFromNative: Failed to get pixel data from native");
-                    }
+                    // else
+                    // {
+                    //     LogDebug("UpdateTextureFromNative: Failed to get pixel data from native");
+                    // }
                 }
             }
         }
