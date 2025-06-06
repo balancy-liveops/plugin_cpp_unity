@@ -69,7 +69,7 @@ void LogToUnity(const char* message) {
 - (BOOL)sendMessage:(NSString *)message;
 - (BOOL)injectJSCode:(NSString *)code;
 - (void)updateTexture:(int)width height:(int)height;
-- (void)handleMouseEvent:(int)x y:(int)y isClick:(BOOL)isClick;
+- (void)handleMouseEvent:(int)x y:(int)y eventType:(NSString*)eventType;
 - (void)renderToTexture;
 @end
 
@@ -152,7 +152,7 @@ void LogToUnity(const char* message) {
         // Больше никаких orderFrontRegardless, makeKeyWindow и т.д.
         
         if (_debugLogging) {
-            LogToUnity("OPTIMIZED embedded WebView initialized (NO popup window)");
+            LogToUnity("OPTIMIZED embedded View initialized (NO popup window)");
         }
     }
     return self;
@@ -276,17 +276,17 @@ void LogToUnity(const char* message) {
         
         NSURL *broadReadAccessURL = [NSURL fileURLWithPath:filesDir];
         
-        if (_debugLogging) {
-            NSString *logMsg = [NSString stringWithFormat:@"📁 Embedded File URL: %@", fileURL];
-            LogToUnity([logMsg UTF8String]);
-            NSString *logMsg2 = [NSString stringWithFormat:@"📂 Read access URL: %@", broadReadAccessURL];
-            LogToUnity([logMsg2 UTF8String]);
-            
-            // Check if file exists
-            BOOL fileExists = [[NSFileManager defaultManager] fileExistsAtPath:filePath];
-            NSString *logMsg3 = [NSString stringWithFormat:@"📄 File exists: %@", fileExists ? @"YES" : @"NO"];
-            LogToUnity([logMsg3 UTF8String]);
-        }
+//         if (_debugLogging) {
+//             NSString *logMsg = [NSString stringWithFormat:@"📁 Embedded File URL: %@", fileURL];
+//             LogToUnity([logMsg UTF8String]);
+//             NSString *logMsg2 = [NSString stringWithFormat:@"📂 Read access URL: %@", broadReadAccessURL];
+//             LogToUnity([logMsg2 UTF8String]);
+//             
+//             // Check if file exists
+//             BOOL fileExists = [[NSFileManager defaultManager] fileExistsAtPath:filePath];
+//             NSString *logMsg3 = [NSString stringWithFormat:@"📄 File exists: %@", fileExists ? @"YES" : @"NO"];
+//             LogToUnity([logMsg3 UTF8String]);
+//         }
         
         [_webView loadFileURL:fileURL allowingReadAccessToURL:broadReadAccessURL];
         return YES;
@@ -397,47 +397,93 @@ void LogToUnity(const char* message) {
         [_offscreenWindow setFrame:windowFrame display:NO];
     }
     
-    if (_debugLogging) {
-        NSString *logMsg = [NSString stringWithFormat:@"OPTIMIZED: Updated embedded texture: %dx%d", width, height];
-        LogToUnity([logMsg UTF8String]);
-    }
+//     if (_debugLogging) {
+//         NSString *logMsg = [NSString stringWithFormat:@"OPTIMIZED: Updated embedded texture: %dx%d", width, height];
+//         LogToUnity([logMsg UTF8String]);
+//     }
 }
 
-- (void)handleMouseEvent:(int)x y:(int)y isClick:(BOOL)isClick {
+- (void)handleMouseEvent:(int)x y:(int)y eventType:(NSString*)eventType {
     if (!_webView) return;
     
     // Create mouse event and send to WebView
     NSPoint point = NSMakePoint(x, _textureHeight - y); // Flip Y coordinate
     
-    if (isClick) {
-        // Simulate mouse down and up events
+//     if (_debugLogging) {
+//         NSString *logMsg = [NSString stringWithFormat:@"🖱️ Mouse %@ at (%d, %d) -> NSPoint(%.1f, %.1f)", eventType, x, y, point.x, point.y];
+//         LogToUnity([logMsg UTF8String]);
+//     }
+    
+    if ([eventType isEqualToString:@"down"]) {
         NSEvent *mouseDown = [NSEvent mouseEventWithType:NSEventTypeLeftMouseDown
                                                  location:point
                                             modifierFlags:0
                                                 timestamp:[[NSProcessInfo processInfo] systemUptime]
-                                             windowNumber:0
+                                             windowNumber:[_webView window].windowNumber
                                                   context:nil
                                               eventNumber:0
                                                clickCount:1
                                                  pressure:1.0];
+        [_webView mouseDown:mouseDown];
         
+    } else if ([eventType isEqualToString:@"up"]) {
         NSEvent *mouseUp = [NSEvent mouseEventWithType:NSEventTypeLeftMouseUp
                                                location:point
                                           modifierFlags:0
                                               timestamp:[[NSProcessInfo processInfo] systemUptime]
-                                           windowNumber:0
+                                           windowNumber:[_webView window].windowNumber
                                                 context:nil
                                             eventNumber:0
                                              clickCount:1
                                                pressure:1.0];
-        
-        [_webView mouseDown:mouseDown];
         [_webView mouseUp:mouseUp];
         
-        if (_debugLogging) {
-            NSString *logMsg = [NSString stringWithFormat:@"Mouse click at (%d, %d)", x, y];
-            LogToUnity([logMsg UTF8String]);
-        }
+    } else if ([eventType isEqualToString:@"move"]) {
+        NSEvent *mouseDrag = [NSEvent mouseEventWithType:NSEventTypeLeftMouseDragged
+                                                 location:point
+                                            modifierFlags:0
+                                                timestamp:[[NSProcessInfo processInfo] systemUptime]
+                                             windowNumber:[_webView window].windowNumber
+                                                  context:nil
+                                              eventNumber:0
+                                               clickCount:0
+                                               pressure:1.0];
+        [_webView mouseDragged:mouseDrag];
+    }
+}
+
+- (void)handleScrollEvent:(int)x y:(int)y deltaX:(float)deltaX deltaY:(float)deltaY {
+    if (!_webView) return;
+    
+    NSPoint point = NSMakePoint(x, _textureHeight - y);
+    
+//     if (_debugLogging) {
+//         NSString *logMsg = [NSString stringWithFormat:@"📜 Scroll at (%d, %d), delta: (%.2f, %.2f)", x, y, deltaX, deltaY];
+//         LogToUnity([logMsg UTF8String]);
+//     }
+    
+    // Convert window point to screen point for CGEvent
+    NSPoint screenPoint = [[_webView window] convertPointToScreen:point];
+    
+    // Create Core Graphics scroll event
+    CGEventRef scrollEvent = CGEventCreateScrollWheelEvent(
+        NULL,
+        kCGScrollEventUnitPixel,
+        2,  // Number of wheel axes (X and Y)
+        deltaY * 10.0f,  // Y delta (amplified)
+        deltaX * 10.0f   // X delta (amplified)
+    );
+    
+    if (scrollEvent) {
+        // Set the location
+        CGEventSetLocation(scrollEvent, CGPointMake(screenPoint.x, screenPoint.y));
+        
+        // Convert to NSEvent and send to WebView
+        NSEvent *nsScrollEvent = [NSEvent eventWithCGEvent:scrollEvent];
+        [_webView scrollWheel:nsScrollEvent];
+        
+        // Clean up
+        CFRelease(scrollEvent);
     }
 }
 
@@ -467,8 +513,8 @@ void LogToUnity(const char* message) {
                 CGImageRef cgImage = [snapshotImage CGImageForProposedRect:nil context:nil hints:nil];
                 if (cgImage) {
                 
-                    NSString *pavelLog = [NSString stringWithFormat:@">>>Snapshot done!!"];
-                    LogToUnity([pavelLog UTF8String]);
+//                     NSString *pavelLog = [NSString stringWithFormat:@">>>Snapshot done!!"];
+//                     LogToUnity([pavelLog UTF8String]);
                     
                     // OPTIMIZATION #2: Use persistent context instead of creating new one
                     if (self->_persistentContext) {
@@ -530,9 +576,10 @@ void LogToUnity(const char* message) {
         _hasNewFrame = YES;  // OPTIMIZATION #3: Mark new frame available
         
         // DEBUG: Log successful fallback rendering occasionally
-        if (_debugLogging && (rand() % 200 == 0)) { // Log every ~3 seconds at 60fps
-            LogToUnity("OPTIMIZED: Fallback layer rendering completed successfully");
-        }    }
+//         if (_debugLogging && (rand() % 200 == 0)) { // Log every ~3 seconds at 60fps
+//             LogToUnity("OPTIMIZED: Fallback layer rendering completed successfully");
+//         }    
+    }
 }
 
 #pragma mark - WKScriptMessageHandler
@@ -557,7 +604,7 @@ void LogToUnity(const char* message) {
 // ✅ ИСПРАВЛЕНИЕ 4: Упрощенный didFinishNavigation (без агрессивных скриптов)
 - (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
     if (_debugLogging) {
-        LogToUnity("✅ Simple embedded WebView navigation finished");
+        LogToUnity("✅ Simple embedded View navigation finished");
     }
     
     [self injectTransparencyScript];
@@ -721,7 +768,7 @@ void LogToUnity(const char* message) {
 
 - (void)webView:(WKWebView *)webView didStartProvisionalNavigation:(WKNavigation *)navigation {
     if (_debugLogging) {
-        LogToUnity("💻 Embedded WebView started loading");
+        LogToUnity("💻 Embedded View started loading");
     }
 }
 
@@ -1144,11 +1191,24 @@ void _balancyUpdateEmbeddedTexture(int width, int height) {
     }
 }
 
-void _balancySendMouseEvent(int x, int y, bool isClick) {
+bool _balancySendMouseEvent(int x, int y, const char* eventType) {
     @autoreleasepool {
         if (_embeddedController != nil) {
-            [_embeddedController handleMouseEvent:x y:y isClick:isClick];
+            NSString* nsEventType = [NSString stringWithUTF8String:eventType];
+            [_embeddedController handleMouseEvent:x y:y eventType:nsEventType];
+            return true;
         }
+        return false;
+    }
+}
+
+bool _balancySendScrollEvent(int x, int y, float deltaX, float deltaY) {
+    @autoreleasepool {
+        if (_embeddedController != nil) {
+            [_embeddedController handleScrollEvent:x y:y deltaX:deltaX deltaY:deltaY];
+            return true;
+        }
+        return false;
     }
 }
 
@@ -1188,8 +1248,8 @@ bool _balancyGetEmbeddedPixelData(unsigned char* buffer, int bufferSize) {
         // OPTIMIZATION #3: Mark frame as consumed
         _embeddedController.hasNewFrame = NO;
         
-        NSString *logMsg = [NSString stringWithFormat:@"*balancyGetEmbeddedPixelData: copied %zu bytes successfully", expectedSize];
-        LogToUnity([logMsg UTF8String]);
+//         NSString *logMsg = [NSString stringWithFormat:@"*balancyGetEmbeddedPixelData: copied %zu bytes successfully", expectedSize];
+//         LogToUnity([logMsg UTF8String]);
         return true;
     }
 }

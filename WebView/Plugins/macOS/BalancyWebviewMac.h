@@ -37,7 +37,8 @@ void _balancyRegisterCacheCompletedCallback(CacheCompletedCallback callback);
 bool _balancyOpenWebViewEmbedded(const char* url, int width, int height);
 void _balancyCloseWebViewEmbedded();
 void _balancyUpdateEmbeddedTexture(int width, int height);
-void _balancySendMouseEvent(int x, int y, bool isClick);
+bool _balancySendMouseEvent(int x, int y, const char* eventType);
+bool _balancySendScrollEvent(int x, int y, float deltaX, float deltaY);
 bool _balancyGetEmbeddedPixelData(unsigned char* buffer, int bufferSize);
 
 #ifdef __cplusplus

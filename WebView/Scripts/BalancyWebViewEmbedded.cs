@@ -78,28 +78,17 @@ namespace Balancy.WebView
             CheckForSizeChanges();
             
             // Handle mouse input if interactable
-            if (_interactable && _isInitialized && Input.GetMouseButtonDown(0))
+            if (_interactable && _isInitialized)
             {
                 HandleMouseInput();
+                HandleScrollInput();
             }
             
             // Update texture with pixel data from native side
             #if UNITY_EDITOR_OSX
             if (_isInitialized && _webView != null && _webView.IsWebViewEmbedded())
             {
-                // Add a frame counter to reduce log spam
-                if (Time.frameCount % 30 == 0) // Log every 30 frames (~1 second at 30fps)
-                {
-                    LogDebug($"Update: Calling UpdateTextureFromNative, frame {Time.frameCount}");
-                }
                 UpdateTextureFromNative();
-            }
-            else if (_isInitialized)
-            {
-                if (Time.frameCount % 60 == 0) // Log every 60 frames
-                {
-                    LogDebug($"Update: WebView not embedded. IsInitialized: {_isInitialized}, WebView: {_webView != null}, IsEmbedded: {_webView?.IsWebViewEmbedded()}");
-                }
             }
             #endif
         }
@@ -137,7 +126,7 @@ namespace Balancy.WebView
                 _webView.LoadEmbedded(_url, _renderTexture, string.Empty);
                 
                 _isInitialized = true;
-                LogDebug("Embedded WebView initialized successfully");
+                LogDebug("Embedded View initialized successfully");
             }
             catch (Exception ex)
             {
@@ -178,7 +167,7 @@ namespace Balancy.WebView
         {
             if (!_isInitialized || _webView == null)
             {
-                LogDebug("Cannot send message: WebView not initialized");
+                LogDebug("Cannot send message: View not initialized");
                 return false;
             }
 
@@ -401,25 +390,93 @@ namespace Balancy.WebView
 
         private void HandleMouseInput()
         {
-            // Convert mouse position to UV coordinates relative to this object
-            Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
-            RaycastHit hit;
-
-            if (Physics.Raycast(ray, out hit) && hit.collider.gameObject == gameObject)
+            // Check if mouse is over the WebView area
+            Vector2 localMousePosition;
+            if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                    _rectTransform, 
+                    Input.mousePosition, 
+                    null, // For screen space overlay
+                    out localMousePosition))
             {
-                // Convert hit point to UV coordinates
-                Vector2 uv = hit.textureCoord;
-                
-                // Convert UV to pixel coordinates
-                int pixelX = Mathf.RoundToInt(uv.x * _currentTextureWidth);
-                int pixelY = Mathf.RoundToInt((1f - uv.y) * _currentTextureHeight); // Flip Y coordinate
-
-                LogDebug($"Mouse click at UV: {uv}, Pixel: ({pixelX}, {pixelY})");
-
-                // Send mouse event to WebView
+                return; // Mouse not over WebView
+            }
+    
+            // Convert local position to UV coordinates (0-1 range)
+            Rect rect = _rectTransform.rect;
+            Vector2 uv = new Vector2(
+                (localMousePosition.x - rect.x) / rect.width,
+                (localMousePosition.y - rect.y) / rect.height
+            );
+    
+            // Check if UV is within bounds
+            if (uv.x < 0 || uv.x > 1 || uv.y < 0 || uv.y > 1)
+                return;
+    
+            // Convert UV to pixel coordinates
+            int pixelX = Mathf.RoundToInt(uv.x * _currentTextureWidth);
+            int pixelY = Mathf.RoundToInt((1f - uv.y) * _currentTextureHeight); // Flip Y coordinate
+    
+            // Handle mouse down
+            if (Input.GetMouseButtonDown(0))
+            {
                 if (_webView != null)
                 {
-                    _webView.SendMouseEvent(pixelX, pixelY, true);
+                    _webView.SendMouseEvent(pixelX, pixelY, "down");
+                }
+            }
+    
+            // Handle mouse up
+            if (Input.GetMouseButtonUp(0))
+            {
+                if (_webView != null)
+                {
+                    _webView.SendMouseEvent(pixelX, pixelY, "up");
+                }
+            }
+    
+            // Handle mouse move (while button is held down for drag)
+            if (Input.GetMouseButton(0))
+            {
+                if (_webView != null)
+                {
+                    _webView.SendMouseEvent(pixelX, pixelY, "move");
+                }
+            }
+        }
+        
+        private void HandleScrollInput()
+        {
+            // Check if mouse is over the WebView area
+            Vector2 localMousePosition;
+            if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                    _rectTransform, 
+                    Input.mousePosition, 
+                    null,
+                    out localMousePosition))
+            {
+                return; // Mouse not over WebView
+            }
+    
+            // Get scroll delta
+            Vector2 scrollDelta = Input.mouseScrollDelta;
+            if (scrollDelta.magnitude > 0.01f)
+            {
+                // Convert local position to pixel coordinates for scroll position
+                Rect rect = _rectTransform.rect;
+                Vector2 uv = new Vector2(
+                    (localMousePosition.x - rect.x) / rect.width,
+                    (localMousePosition.y - rect.y) / rect.height
+                );
+        
+                if (uv.x >= 0 && uv.x <= 1 && uv.y >= 0 && uv.y <= 1)
+                {
+                    int pixelX = Mathf.RoundToInt(uv.x * _currentTextureWidth);
+                    int pixelY = Mathf.RoundToInt((1f - uv.y) * _currentTextureHeight);
+            
+                    if (_webView != null)
+                    {
+                        _webView.SendScrollEvent(pixelX, pixelY, scrollDelta.x, scrollDelta.y);
+                    }
                 }
             }
         }

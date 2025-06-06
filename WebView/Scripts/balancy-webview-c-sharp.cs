@@ -202,8 +202,13 @@ namespace Balancy.WebView
         [DllImport("libBalancyWebViewMac")]
         private static extern void _balancyUpdateEmbeddedTexture(int width, int height);
         
-        [DllImport("libBalancyWebViewMac")]
-        private static extern void _balancySendMouseEvent(int x, int y, bool isClick);
+#if UNITY_EDITOR_OSX
+        [System.Runtime.InteropServices.DllImport("libBalancyWebViewMac")]
+        private static extern bool _balancySendMouseEvent(int x, int y, string eventType);
+
+        [System.Runtime.InteropServices.DllImport("libBalancyWebViewMac")]
+        private static extern bool _balancySendScrollEvent(int x, int y, float deltaX, float deltaY);
+#endif
         
         [DllImport("libBalancyWebViewMac")]
         private static extern bool _balancyGetEmbeddedPixelData(System.IntPtr buffer, int bufferSize);
@@ -520,7 +525,7 @@ namespace Balancy.WebView
             
             if (success)
             {
-                Debug.Log($"[BalancyWebView] OPTIMIZED embedded WebView opened successfully: {renderTexture.width}x{renderTexture.height}");
+                Debug.Log($"[BalancyWebView] OPTIMIZED embedded View opened successfully: {renderTexture.width}x{renderTexture.height}");
             }
             
             return success;
@@ -573,8 +578,8 @@ namespace Balancy.WebView
         /// </summary>
         /// <param name="x">X coordinate in pixels</param>
         /// <param name="y">Y coordinate in pixels</param>
-        /// <param name="isClick">Whether this is a click event</param>
-        public void SendMouseEvent(int x, int y, bool isClick)
+        /// <param name="eventType">"down", "up", "move"</param>
+        public void SendMouseEvent(int x, int y, string eventType)
         {
             #if UNITY_EDITOR_OSX
             if (!_isWebViewEmbedded)
@@ -582,8 +587,17 @@ namespace Balancy.WebView
                 return;
             }
             
-            _balancySendMouseEvent(x, y, isClick);
+            _balancySendMouseEvent(x, y, eventType);
             #endif
+        }
+        
+        public bool SendScrollEvent(int x, int y, float deltaX, float deltaY)
+        {
+#if UNITY_EDITOR_OSX
+            return _balancySendScrollEvent(x, y, deltaX, deltaY);
+#else
+    return false;
+#endif
         }
         
         /// <summary>
