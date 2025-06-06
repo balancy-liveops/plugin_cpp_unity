@@ -1,3 +1,4 @@
+#if UNITY_EDITOR
 using System;
 using UnityEngine;
 using UnityEngine.UI;
@@ -11,61 +12,98 @@ namespace Balancy.WebView
     /// </summary>
     public class BalancyWebViewEmbedded : MonoBehaviour
     {
-        [Header("WebView Settings")]
-        [SerializeField] private string _url = "https://example.com";
-        [SerializeField] private bool _autoStart = true;
-        [SerializeField] private bool _interactable = true;
-        [SerializeField] private int _maxTextureSize = 1000; // Maximum dimension (width or height)
+        private const int _maxTextureSize = 1000;
+        private const bool _debugLogging = false;
         
-        [Header("Debug")]
-        [SerializeField] private bool _debugLogging = false;
-        
-        // Events
-        public event Action<bool> OnLoadCompleted;
-        public event Func<string, string> OnMessage;
-        public event Action OnClosed;
-        
-        // Private fields
         private RenderTexture _renderTexture;
         private RawImage _renderer;
         private RectTransform _rectTransform;
         private bool _isInitialized = false;
         private bool _isLoading = false;
-        private Camera _webViewCamera;
-        private GameObject _webViewPlane;
         private Texture2D _textureBuffer;
         private byte[] _pixelBuffer;
         private byte[] _flippedPixelBuffer; // Buffer for vertically flipped pixels
         
-        // Current texture dimensions (calculated from RectTransform)
         private int _currentTextureWidth;
         private int _currentTextureHeight;
         private Vector2 _lastRectSize; // Track RectTransform size changes
         
-        // WebView instance reference
         private BalancyWebView _webView;
 
         #region Unity Lifecycle
+        
+        private static BalancyWebViewEmbedded _instance;
+
+        /// <summary>
+        /// Singleton instance of the BalancyWebView
+        /// </summary>
+        public static BalancyWebViewEmbedded Instance
+        {
+            get
+            {
+                if (_instance == null)
+                {
+                    if (_instance == null)
+                        _instance = CreateGameObject();
+                }
+                return _instance;
+            }
+        }
+
+        private static BalancyWebViewEmbedded CreateGameObject()
+        {
+            GameObject goCanvas = new GameObject("BalancyEmbeddedViewCanvas", typeof(RectTransform));
+            var parentTrm = goCanvas.GetComponent<RectTransform>();
+            parentTrm.localScale = Vector3.one;
+            var canvas = goCanvas.AddComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvas.sortingOrder = 10000;
+            goCanvas.AddComponent<GraphicRaycaster>();
+            var scaler = goCanvas.AddComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
+            if (Screen.width > Screen.height)
+            {
+                scaler.referenceResolution = new Vector2(2 * _maxTextureSize, _maxTextureSize);
+                scaler.matchWidthOrHeight = 1;
+            }
+            else
+            {
+                scaler.referenceResolution = new Vector2(_maxTextureSize, 2 * _maxTextureSize);
+                scaler.matchWidthOrHeight = 0;
+            }
+            GameObject go = new GameObject("BalancyEmbeddedView", typeof(RectTransform));
+            var trm = go.GetComponent<RectTransform>();
+            trm.SetParent(parentTrm);
+            trm.localScale = Vector3.one;
+            trm.anchorMin = Vector2.zero;
+            trm.anchorMax = Vector2.one;
+            trm.offsetMin = Vector2.zero;
+            trm.offsetMax = Vector2.zero;
+            go.AddComponent<RawImage>();
+            var instance = go.AddComponent<BalancyWebViewEmbedded>();
+                        
+            goCanvas.hideFlags = HideFlags.HideAndDontSave;
+            DontDestroyOnLoad(goCanvas);
+
+            return instance;
+        } 
 
         private void Awake()
         {
+            _instance = this;
             _renderer = GetComponent<RawImage>();
             _rectTransform = GetComponent<RectTransform>();
             
-            // Get or create WebView instance
             _webView = BalancyWebView.Instance;
             
-            // Calculate initial texture size from RectTransform
             CalculateTextureSizeFromRect();
         }
-
-        private void Start()
-        {
-            if (_autoStart)
-            {
-                InitializeEmbeddedWebView();
-            }
-        }
+        
+        // private void Start()
+        // {
+        //     InitializeEmbeddedWebView("file:///Users/pavelignatov/Library/Application Support/DefaultCompany/plugin_cpp_unity/Balancy/Models/67933064-2b8a-11f0-b3bd-1fec53a055ba_Cache/Files/644_1748945133983/index.html", null);
+        // }
 
         private void OnDestroy()
         {
@@ -74,11 +112,9 @@ namespace Balancy.WebView
 
         private void Update()
         {
-            // Check if RectTransform size has changed
             CheckForSizeChanges();
             
-            // Handle mouse input if interactable
-            if (_interactable && _isInitialized)
+            if (_isInitialized)
             {
                 HandleMouseInput();
                 HandleScrollInput();
@@ -101,20 +137,13 @@ namespace Balancy.WebView
         /// Initialize the embedded WebView with the specified URL
         /// </summary>
         /// <param name="url">URL to load in the WebView</param>
-        public void InitializeEmbeddedWebView(string url = null)
+        public bool InitializeEmbeddedWebView(string url, string ownerJson)
         {
             if (_isInitialized)
             {
                 LogDebug("WebView already initialized");
-                return;
+                return false;
             }
-
-            if (!string.IsNullOrEmpty(url))
-            {
-                _url = url;
-            }
-
-            LogDebug($"Initializing embedded WebView with URL: {_url}");
 
             try
             {
@@ -123,15 +152,18 @@ namespace Balancy.WebView
                 
                 // Start loading the WebView in embedded mode
                 _isLoading = true;
-                _webView.LoadEmbedded(_url, _renderTexture, string.Empty);
+                bool success = _webView.LoadEmbedded(url, _renderTexture, ownerJson);
                 
                 _isInitialized = true;
                 LogDebug("Embedded View initialized successfully");
+                return success;
             }
             catch (Exception ex)
             {
                 Debug.LogError($"Failed to initialize embedded WebView: {ex.Message}");
             }
+
+            return false;
         }
 
         /// <summary>
@@ -154,75 +186,6 @@ namespace Balancy.WebView
             
             _isInitialized = false;
             _isLoading = false;
-            
-            OnClosed?.Invoke();
-        }
-
-        /// <summary>
-        /// Send a message to the embedded WebView
-        /// </summary>
-        /// <param name="message">Message to send</param>
-        /// <returns>True if message was sent successfully</returns>
-        public bool SendMessageToWebView(string message)
-        {
-            if (!_isInitialized || _webView == null)
-            {
-                LogDebug("Cannot send message: View not initialized");
-                return false;
-            }
-
-            return _webView.SendMessageToWebView(message);
-        }
-
-        /// <summary>
-        /// Reload the current page
-        /// </summary>
-        public void Reload()
-        {
-            if (!_isInitialized) return;
-
-            LogDebug("Reloading embedded WebView");
-            CloseEmbeddedWebView();
-            InitializeEmbeddedWebView();
-        }
-
-        /// <summary>
-        /// Navigate to a new URL
-        /// </summary>
-        /// <param name="url">New URL to navigate to</param>
-        public void NavigateTo(string url)
-        {
-            _url = url;
-            Reload();
-        }
-
-        /// <summary>
-        /// Get the current render texture
-        /// </summary>
-        /// <returns>The RenderTexture displaying WebView content</returns>
-        public RenderTexture GetRenderTexture()
-        {
-            return _renderTexture;
-        }
-
-        /// <summary>
-        /// Set the maximum texture size constraint
-        /// </summary>
-        /// <param name="maxSize">Maximum width or height dimension</param>
-        public void SetMaxTextureSize(int maxSize)
-        {
-            _maxTextureSize = maxSize;
-            CalculateTextureSizeFromRect();
-            
-            if (_isInitialized)
-            {
-                CreateRenderTexture();
-                // Update the native WebView with new texture
-                if (_webView != null)
-                {
-                    _webView.UpdateEmbeddedTexture(_renderTexture);
-                }
-            }
         }
 
         #endregion
@@ -354,7 +317,6 @@ namespace Balancy.WebView
             if (_webView == null) return;
 
             _webView.OnLoadCompleted += OnWebViewLoadCompleted;
-            _webView.OnMessage += OnWebViewMessage;
             _webView.OnClosed += OnWebViewClosed;
         }
 
@@ -363,7 +325,6 @@ namespace Balancy.WebView
             if (_webView == null) return;
 
             _webView.OnLoadCompleted -= OnWebViewLoadCompleted;
-            _webView.OnMessage -= OnWebViewMessage;
             _webView.OnClosed -= OnWebViewClosed;
         }
 
@@ -371,13 +332,6 @@ namespace Balancy.WebView
         {
             _isLoading = false;
             LogDebug($"WebView load completed: {success}");
-            OnLoadCompleted?.Invoke(success);
-        }
-
-        private string OnWebViewMessage(string message)
-        {
-            LogDebug($"Received message from WebView: {message}");
-            return OnMessage?.Invoke(message);
         }
 
         private void OnWebViewClosed()
@@ -385,7 +339,6 @@ namespace Balancy.WebView
             LogDebug("WebView closed");
             _isInitialized = false;
             _isLoading = false;
-            OnClosed?.Invoke();
         }
 
         private void HandleMouseInput()
@@ -511,23 +464,11 @@ namespace Balancy.WebView
                     
                     if (success)
                     {
-                        // Vertically flip the pixel data before loading into texture
                         FlipPixelDataVertically(_pixelBuffer, _flippedPixelBuffer, _currentTextureWidth, _currentTextureHeight);
                         
-                        // Load flipped pixel data into texture
                         _textureBuffer.LoadRawTextureData(_flippedPixelBuffer);
                         _textureBuffer.Apply();
-                        
-                        // Only log success occasionally to reduce spam
-                        if (Time.frameCount % 120 == 0) // Log every 120 frames (~4 seconds at 30fps)
-                        {
-                            LogDebug("UpdateTextureFromNative: Texture updated successfully (periodic log)");
-                        }
                     }
-                    // else
-                    // {
-                    //     LogDebug("UpdateTextureFromNative: Failed to get pixel data from native");
-                    // }
                 }
             }
         }
@@ -556,27 +497,6 @@ namespace Balancy.WebView
         #endif
 
         #endregion
-
-        #region Inspector Methods
-
-        [ContextMenu("Initialize WebView")]
-        private void InitializeFromContext()
-        {
-            InitializeEmbeddedWebView();
-        }
-
-        [ContextMenu("Close WebView")]
-        private void CloseFromContext()
-        {
-            CloseEmbeddedWebView();
-        }
-
-        [ContextMenu("Reload WebView")]
-        private void ReloadFromContext()
-        {
-            Reload();
-        }
-
-        #endregion
     }
 }
+#endif

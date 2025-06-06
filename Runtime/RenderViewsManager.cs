@@ -1,4 +1,3 @@
-using System;
 using Balancy.Models;
 using Balancy.WebView;
 using UnityEngine;
@@ -60,7 +59,11 @@ namespace Balancy
             var urlToLoad = url;// + "?timestamp=" + Guid.NewGuid().ToString();
 
             string ownerJson = owner?.ToJsonString(false);
+#if UNITY_EDITOR
+            bool success = BalancyWebViewEmbedded.Instance.InitializeEmbeddedWebView(urlToLoad, ownerJson);
+#else
             bool success = _webView.OpenWebView(urlToLoad, ownerJson);
+#endif
             
             if (success)
                 Debug.Log("Opening View: " + urlToLoad);
