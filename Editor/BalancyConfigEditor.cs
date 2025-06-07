@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using UnityEditor;
+using UnityEditor.SceneManagement;
 using UnityEngine;
 
 namespace Balancy.Editor
@@ -8,9 +10,67 @@ namespace Balancy.Editor
     [ExecuteInEditMode]
     public class BalancyConfigEditor : EditorWindow
     {
+        // Static method to reset the cleanup flag
+        public static void ResetCleanupFlag()
+        {
+            _alreadyCleanedUp = false;
+        }
+        
+        // Static method to close all open Balancy Config windows and clean up resources
+        // This can be called from anywhere, including before play mode starts
+        private static bool _alreadyCleanedUp = false;
+        public static void CloseAllWindowsAndCleanup()
+        {
+            // Only perform cleanup once to avoid multiple cleanup operations
+            if (_alreadyCleanedUp)
+                return;
+                
+            _alreadyCleanedUp = true;
+            
+            // Find all open BalancyConfigEditor windows
+            BalancyConfigEditor[] windows = Resources.FindObjectsOfTypeAll<BalancyConfigEditor>();
+            
+            // Close each window and perform cleanup
+            foreach (var window in windows)
+            {
+                if (window != null)
+                {
+                    try
+                    {
+                        // Ensure we don't call OnDestroy (which would call EditorUtils.Close() again)
+                        window.skipOnDestroyCleanup = true;
+                        
+                        // Close the window
+                        window.Close();
+                    }
+                    catch (System.Exception e)
+                    {
+                        Debug.LogError($"Error closing Balancy Config window: {e.Message}");
+                    }
+                }
+            }
+            
+            try
+            {
+                // Perform any additional cleanup needed
+                EditorUtils.Close();
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"Error during EditorUtils.Close(): {e.Message}");
+            }
+        }
+        
         [MenuItem("Tools/Balancy/Config", false, -104002)]
         public static void ShowWindow()
         {
+            // Don't allow opening the window if in play mode
+            if (EditorApplication.isPlaying)
+            {
+                Debug.LogWarning("Cannot open Balancy Config window while in Play mode. Stop the game first.");
+                return;
+            }
+            
             var window = GetWindow(typeof(BalancyConfigEditor));
             window.titleContent.text = "Balancy Config";
             window.titleContent.image = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/Balancy/Editor/BalancyLogo.png");
@@ -70,6 +130,17 @@ namespace Balancy.Editor
                         _selectedGame = i;
                 }
             }
+
+            public EditorUtils.GameInfo GetSelectedGameInfo()
+            {
+                for (int i = 0; i < Games.Count; i++)
+                {
+                    if (Games[i].GameId == SelectedGameId)
+                        return Games[i];
+                }
+
+                return null;
+            }
             
             public void Render()
             {
@@ -115,9 +186,20 @@ namespace Balancy.Editor
         private bool _downloading;
         private float _downloadingProgress;
         private string _downloadingFileName;
+        
+        // Flag to control whether OnDestroy should clean up resources
+        private bool skipOnDestroyCleanup = false;
 
         private void Awake()
         {
+            // Prevent opening the window if in play mode
+            if (EditorApplication.isPlaying)
+            {
+                Debug.LogWarning("Cannot open Balancy Config window while in Play mode. Window will be closed.");
+                EditorApplication.delayCall += Close;
+                return;
+            }
+            
             minSize = new Vector2(500, 500);
             EditorUtils.Launch();
             _userEmail = UserEmail;
@@ -128,12 +210,29 @@ namespace Balancy.Editor
 
         private void OnDestroy()
         {
-            EditorUtils.Close();
+            // Skip cleanup if we're already handling it elsewhere (e.g., when entering Play mode)
+            if (!skipOnDestroyCleanup)
+            {
+                EditorUtils.Close();
+            }
+            
             m_EditorDispatcher?.StopEditorDispatcher();
         }
 
         private void OnGUI()
         {
+            // Close immediately if in play mode
+            if (EditorApplication.isPlaying)
+            {
+                EditorGUILayout.HelpBox("Balancy Config cannot be used in Play mode.", MessageType.Warning);
+                EditorGUILayout.Space();
+                if (GUILayout.Button("Close Window"))
+                {
+                    Close();
+                }
+                return;
+            }
+            
             Render();
             EditorGUILayout.Space();
             RenderLoader();
@@ -145,6 +244,7 @@ namespace Balancy.Editor
             RenderAuth();
             RenderGames();
             RenderBranches();
+            RenderActions();
             GUILayout.EndVertical();
         }
         
@@ -201,8 +301,55 @@ namespace Balancy.Editor
         {
             if (!success)
                 _errorMessage = message;
+            else
+                PrepareSprites();
             _downloading = false;
             _needRefresh = true;
+        }
+
+        private void PrepareSprites()
+        {
+            string resourcesPath = Application.dataPath + "/Balancy/Resources/";
+
+            if (Directory.Exists(resourcesPath))
+            {
+                // Get all image files from file system
+                string[] imageExtensions = { "*.png", "*.jpg", "*.jpeg", "*.bmp", "*.tga" };
+                var imageFiles = new List<string>();
+
+                foreach (string extension in imageExtensions)
+                {
+                    imageFiles.AddRange(Directory.GetFiles(resourcesPath, extension, SearchOption.AllDirectories));
+                }
+
+                // Import each file
+                foreach (string filePath in imageFiles)
+                {
+                    // Convert absolute path to relative Unity path
+                    string relativePath = "Assets" + filePath.Substring(Application.dataPath.Length);
+                    relativePath = relativePath.Replace('\\', '/'); // Ensure forward slashes
+
+                    // Import the asset
+                    AssetDatabase.ImportAsset(relativePath, ImportAssetOptions.ForceUpdate);
+
+                    // Configure texture import settings
+                    TextureImporter textureImporter = AssetImporter.GetAtPath(relativePath) as TextureImporter;
+                    if (textureImporter != null)
+                    {
+                        textureImporter.textureType = TextureImporterType.Sprite;
+                        textureImporter.mipmapEnabled = false;
+                        textureImporter.isReadable = true; // Essential for base64!
+                        textureImporter.textureCompression =
+                            TextureImporterCompression.Uncompressed; // Avoid compression issues
+
+                        // Re-import with new settings
+                        AssetDatabase.ImportAsset(relativePath, ImportAssetOptions.ForceUpdate);
+                    }
+                }
+
+                // Final refresh
+                AssetDatabase.Refresh();
+            }
         }
 
         private void OnProgressUpdate(string fileName, float progress)
@@ -327,6 +474,102 @@ namespace Balancy.Editor
                 }
             }
         }
+
+        private void RenderActions()
+        {
+            if (!IsAuthorized || _gamesInfo == null || !_gamesInfo.HasSelectedGame() || _downloading || EditorApplication.isCompiling)
+                return;
+                
+            // Find BalancyLauncher in the current scene
+            BalancyLauncher launcher = UnityEngine.Object.FindAnyObjectByType<BalancyLauncher>();
+            
+            GUILayout.Space(10);
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.FlexibleSpace();
+
+            var gameInfo = _gamesInfo.GetSelectedGameInfo();
+            string gameName = gameInfo?.GameName;
+            string gameId = gameInfo?.GameId;
+            string publicKey = gameInfo?.PublicKey;
+            
+            // Get the branch name if branches are loaded
+            string branchName = "";
+            if (_gamesInfo.HasBranches && _gamesInfo.GetBranches != null && _gamesInfo.GetBranches.Count > 0)
+            {
+                // Find the branch with the selected branch ID
+                foreach (var branch in _gamesInfo.GetBranches)
+                {
+                    if (branch.BranchId == _gamesInfo.SelectedBranchId)
+                    {
+                        branchName = branch.BranchName;
+                        break;
+                    }
+                }
+            }
+                
+            if (launcher != null)
+            {
+                // BalancyLauncher exists in the scene
+                if (GUILayout.Button($"Sync with \"{gameName}\" branch \"{branchName}\""))
+                {
+                    // Update existing BalancyLauncher properties
+                    Undo.RecordObject(launcher, "Update BalancyLauncher");
+                    launcher.SetGameId(gameId);
+                    launcher.SetPublicKey(publicKey);
+                    launcher.SetBranchName(branchName);
+                    EditorUtility.SetDirty(launcher);
+                    EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
+                }
+
+                GUI.enabled = true;
+            }
+            else
+            {
+                // No BalancyLauncher in the scene
+                if (GUILayout.Button($"Create BalancyLauncher for \"{gameName}\""))
+                {
+                    // Create a new GameObject with BalancyLauncher component
+                    GameObject newObject = new GameObject("BalancyLauncher");
+                    BalancyLauncher newLauncher = newObject.AddComponent<BalancyLauncher>();
+                    
+                    // Set properties
+                    newLauncher.SetGameId(gameId);
+                    newLauncher.SetPublicKey(publicKey);
+                    newLauncher.SetBranchName("");
+                    
+                    // Select the new GameObject in the hierarchy
+                    Selection.activeGameObject = newObject;
+                    
+                    // Mark the scene as dirty to ensure changes are saved
+                    EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
+                }
+                
+                GUI.enabled = false;
+            }
+            
+            if (GUILayout.Button($"Add Balancy UI"))
+            {
+                var existing = GameObject.Find("BalancyUI");
+                if (existing != null)
+                {
+                    EditorUtility.DisplayDialog("Balancy UI Exists",
+                        "An instance of 'BalancyUI' is already present in the scene.",
+                        "OK");
+                }
+                else
+                {
+                    var prefab = PrefabFinder.FindPrefabByName("BalancyUI");
+                    if (prefab)
+                        PrefabUtility.InstantiatePrefab(prefab);
+                }
+            }
+            
+            GUI.enabled = true;
+            
+            GUILayout.FlexibleSpace();
+            EditorGUILayout.EndHorizontal();
+            GUILayout.Space(10);
+        }
         
         private void OnEnable()
         {
@@ -341,6 +584,14 @@ namespace Balancy.Editor
         private bool _needRefresh = false;
         private void update()
         {
+            // Check if we entered play mode and close the window if we did
+            if (EditorApplication.isPlaying && this != null)
+            {
+                // Use the static method that properly cleans up all resources
+                CloseAllWindowsAndCleanup();
+                return;
+            }
+            
             if (!_needRefresh)
                 return;
 

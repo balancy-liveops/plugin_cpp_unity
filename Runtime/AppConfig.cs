@@ -53,6 +53,7 @@ namespace Balancy
     internal class CppAppConfig : CppBaseAppConfig
     {
         public int Platform;
+        public int DevicePlatform;
         public byte AutoLogin = 1;
         
         [MarshalAs(UnmanagedType.LPStr)]
@@ -103,7 +104,8 @@ namespace Balancy
         public LaunchType LaunchType = LaunchType.Local | LaunchType.Cloud | LaunchType.AutoRetry;
         public string BranchName;//If left blank, we'll use the branchConditions to find the best branch.
         
-        public Constants.Platform Platform;
+        public Constants.BalancyPlatform BalancyPlatform = Constants.BalancyPlatform.Undefined;
+        public Constants.DevicePlatform DevicePlatform = Constants.DevicePlatform.Unknown;
         public bool AutoLogin = true;
         
         public string DeviceId = null;

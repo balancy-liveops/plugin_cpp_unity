@@ -9,6 +9,7 @@ namespace Balancy.Data.SmartObjects
 		private string _engineVersion;
 		private string _platform;
 		private int _platformId;
+		private int _balancyPlatformId;
 		private string _systemLanguage;
 		private string _country;
 		private int _timeSincePurchase;
@@ -61,6 +62,13 @@ namespace Balancy.Data.SmartObjects
 			get => _platformId;
 			// set => SetStringValue("platform", value);
 		}
+		
+		public int BalancyPlatformId
+		{
+			get => _balancyPlatformId;
+			// set => SetStringValue("balancyPlatformId", value);
+		}
+		
 		public string SystemLanguage
 		{
 			get => _systemLanguage;
@@ -196,6 +204,7 @@ namespace Balancy.Data.SmartObjects
 			InitAndSubscribeForParamChange("engineVersion", Update_engineVersion);
 			InitAndSubscribeForParamChange("platform", Update_platform);
 			InitAndSubscribeForParamChange("platformId", Update_platformId);
+			InitAndSubscribeForParamChange("balancyPlatformId", Update_balancyPlatformId);
 			InitAndSubscribeForParamChange("systemLanguage", Update_systemLanguage);
 			InitAndSubscribeForParamChange("country", Update_country);
 			InitAndSubscribeForParamChange("timeSincePurchase", Update_timeSincePurchase);
@@ -228,6 +237,7 @@ namespace Balancy.Data.SmartObjects
 		private void Update_engineVersion() { _engineVersion = GetStringParam("engineVersion"); }
 		private void Update_platform() { _platform = GetStringParam("platform"); }
 		private void Update_platformId() { _platformId = GetIntParam("platformId"); }
+		private void Update_balancyPlatformId() { _balancyPlatformId = GetIntParam("balancyPlatformId"); }
 		private void Update_systemLanguage() { _systemLanguage = GetStringParam("systemLanguage"); }
 		private void Update_country() { _country = GetStringParam("country"); }
 		private void Update_timeSincePurchase() { _timeSincePurchase = GetIntParam("timeSincePurchase"); }

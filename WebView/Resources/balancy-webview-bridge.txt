@@ -1,0 +1,285 @@
+const balancy = {};
+        
+(function() {
+    const pendingRequests = {};
+    let requestCounter = 0;
+
+    const RequestAction = {
+        None: 0,
+        GetProfile: 1,
+        SetProfile: 2,
+        GetLocalization: 10,
+        GetImageUrl: 11,
+        
+        IBuyOffer: 101,
+        IBuyGroupOffer: 102,
+        IBuyShopSlot: 103,
+    };
+    
+    balancy.closeView = () => {
+        balancy.postMessage("//:balancy_close_view");
+    };
+    
+    balancy.buyOffer = () => {
+        if (balancy.owner) {
+            balancy.postMessage("//:balancy_buy_offer:" + balancy.owner.instanceId);
+        }
+    };
+    
+    balancy.buyGroupOffer = (index) => {
+        if (balancy.owner) {
+            balancy.postMessage("//:balancy_buy_group_offer:" + balancy.owner.instanceId + ":" + index);
+        }
+    };
+    
+    balancy.buyShopSlot = (slotId) => {
+        if (balancy.owner) {
+            balancy.postMessage("//:balancy_buy_shop_slot:" + slotId);
+        }
+    };
+
+    balancy.getSystemProfileValue = (path) => {
+        return balancy.sendRequest(null, RequestAction.GetProfile, {profile: "UnnyProfile", path});
+    };
+
+    balancy.getProfileValue = (profile, path) => {
+        return balancy.sendRequest(null, RequestAction.GetProfile, {profile, path});
+    };
+    
+    balancy.getLocalizedText = async function(key) {
+        return balancy.sendRequest(null, RequestAction.GetLocalization, {key});
+    };
+    
+    balancy.getImageUrl = async function(id) {
+        return balancy.sendRequest(null, RequestAction.GetImageUrl, {id});
+    };
+
+    balancy.postMessage = function(message) {
+        if (typeof message !== 'string') message = JSON.stringify(message);
+        if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.BalancyWebView) {
+            window.webkit.messageHandlers.BalancyWebView.postMessage(message);
+            return true;
+        }
+        return false;
+    };
+
+    balancy._receiveMessageFromUnity = function(message) {
+        try {
+            const response = JSON.parse(message);
+            if (response.type === 'response') {
+                const request = pendingRequests[response.id];
+                if (request) {
+                    delete pendingRequests[response.id];
+                    if (response.error) {
+                        request.reject(new Error(response.error));
+                    } else {
+                        request.resolve(response.result);
+                    }
+                }
+            }
+        }  catch (error) {
+            // console.error('Error handling response:', error);
+        }
+    };
+    
+    balancy.sendRequest = function(sender, action, params = {}) {
+        return new Promise((resolve, reject) => {
+            const requestId = (requestCounter++).toString();
+            
+            pendingRequests[requestId] = {
+                resolve: resolve,
+                reject: reject,
+                timestamp: Date.now()
+            };
+            
+            const message = {
+                type: 'request',
+                sender,
+                id: requestId,
+                action: action,
+                params: params
+            };
+            
+            balancy.postMessage(JSON.stringify(message));
+        });
+    };
+    
+    async function localizeAllElements() {
+        const elements = document.querySelectorAll('[data-localization-key]');
+
+        const localizationPromises = Array.from(elements).map(async (element) => {
+            const key = element.getAttribute('data-localization-key');
+            const localizedText = await balancy.getLocalizedText(key);
+            element.textContent = localizedText;
+        });
+
+        await Promise.all(localizationPromises);
+
+        document.dispatchEvent(new Event('localizationCompleted'));
+    }
+    
+    async function prepareAllSprites() {
+        const elements = document.querySelectorAll('[data-image-id]');
+
+        const imagesPromises = Array.from(elements).map(async (element) => {
+            const id = element.getAttribute('data-image-id');
+            const imageUri = await balancy.getImageUrl(id);
+            if (imageUri) {
+                if (element.tagName === 'IMG')
+                    element.src = imageUri;
+                else
+                    element.style.backgroundImage = `url('${imageUri}')`;
+                element.classList.add('image-loaded');
+            }
+        });
+
+        await Promise.all(imagesPromises);
+
+        document.dispatchEvent(new Event('imagesLoaded'));
+    }
+    
+    function balancyButtonClicked(button) {
+        const actionIdStr = button.getAttribute('data-button-action');
+        if (!actionIdStr) {
+            console.warn('Button missing data-button-action attribute', button);
+            return;
+        }
+
+        const actionId = parseInt(actionIdStr, 10);
+        if (isNaN(actionId) || actionId === RequestAction.None) {
+            console.warn('Invalid action ID:', actionIdStr, button);
+            return;
+        }
+        
+        switch (actionId) {
+            case RequestAction.IBuyOffer:
+                balancy.buyOffer();
+                return;
+            case RequestAction.IBuyGroupOffer:
+                balancy.buyGroupOffer(button.getAttribute('data-button-index') || 0);
+                return;
+            case RequestAction.IBuyShopSlot:
+                balancy.buyShopSlot(button.getAttribute('data-button-index') || 0);
+                return;
+            default:
+                // Other actions can proceed without owner
+                break;
+        }
+
+        const senderId = button.id || button.getAttribute('data-button-id') || 'unknown-button';
+        const paramsAttr = button.getAttribute('data-button-params');
+        let paramsJson = {};
+        
+        // Safely parse JSON params
+        if (paramsAttr && paramsAttr.trim() !== '') {
+            try {
+                paramsJson = JSON.parse(paramsAttr);
+            } catch (error) {
+                console.error('Error parsing button params JSON:', error, 'Raw params:', paramsAttr);
+                // Dispatch error event but don't return - continue with empty params
+                button.dispatchEvent(new CustomEvent('balancyButtonError', {
+                    detail: { actionId, error: 'Invalid JSON in data-button-params', paramsAttr }
+                }));
+                paramsJson = {};
+            }
+        }
+        
+        // Disable button to prevent double-clicks
+        const originalDisabled = button.disabled;
+        button.disabled = true;
+        button.classList.add('balancy-button-processing');
+        
+        balancy.sendRequest(senderId, actionId, paramsJson)
+            .then(result => {
+                console.log(`Button action ${actionId} executed successfully`, result);
+                // Dispatch success event
+                button.dispatchEvent(new CustomEvent('balancyButtonResponse', {
+                    detail: { actionId, result, success: true, senderId }
+                }));
+            })
+            .catch(error => {
+                console.error(`Error executing button action ${actionId}:`, error);
+                // Dispatch error event
+                button.dispatchEvent(new CustomEvent('balancyButtonResponse', {
+                    detail: { actionId, error: error.message, success: false, senderId }
+                }));
+            })
+            .finally(() => {
+                // Re-enable button and remove processing class
+                button.disabled = originalDisabled;
+                button.classList.remove('balancy-button-processing');
+            });
+    }
+    
+    function prepareAllButtons() {
+        const elements = document.querySelectorAll('[data-button-action]');
+        let preparedCount = 0;
+    
+        elements.forEach(element => {
+            // Skip if already prepared
+            if (element.classList.contains('balancy-button-prepared')) {
+                return;
+            }
+            
+            // Remove any existing click listeners to avoid duplicates
+            if (element._balancyClickHandler) {
+                element.removeEventListener('click', element._balancyClickHandler);
+            }
+            
+            // Create and store the click handler
+            element._balancyClickHandler = function(event) {
+                event.preventDefault();
+                event.stopPropagation();
+                balancyButtonClicked(element);
+            };
+            
+            // Add the click listener
+            element.addEventListener('click', element._balancyClickHandler);
+            
+            // Mark as prepared
+            element.classList.add('balancy-button-prepared');
+            preparedCount++;
+        });
+        
+        console.log(`Prepared ${preparedCount} Balancy buttons (${elements.length} total found)`);
+        document.dispatchEvent(new CustomEvent('balancyButtonsPrepared', {
+            detail: { preparedCount, totalFound: elements.length }
+        }));
+    }
+    
+    balancy.initResponseHandler = function() {
+        if (balancy._responseHandlerInitialized) return;
+        
+        balancy._responseHandlerInitialized = true;
+        
+        balancy.handleResponse = function(responseJson) {
+            try {
+                const response = JSON.parse(responseJson);
+                
+                const request = pendingRequests[response.id];
+                if (request) {
+                    delete pendingRequests[response.id];
+                    
+                    if (response.error)
+                        request.reject(new Error(response.error));
+                    else
+                        request.resolve(response.result);
+                }
+            } catch (error) {
+                console.error('Error handling response:', error);
+            }
+        };
+        
+        localizeAllElements();
+        prepareAllSprites();
+        prepareAllButtons();
+    };
+    
+    // Expose balancyButtonClicked for manual use if needed
+    balancy.triggerButtonAction = balancyButtonClicked;
+    
+    // Function to refresh buttons (useful for dynamically added content)
+    balancy.refreshButtons = prepareAllButtons;
+    
+    balancy.initResponseHandler();
+})();

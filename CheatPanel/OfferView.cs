@@ -23,37 +23,7 @@ namespace Balancy.Cheats
 
         private void TryToBuy()
         {
-            //TODO implement purchase method here
-            
-            switch (_offerInfo.GameOffer?.StoreItem?.Price.Type)
-            {
-                case PriceType.Hard:
-                    TryToBuyHard();
-                    break;
-                default:
-                    Debug.LogError("This purchase type is not implemented");
-                    break;
-            }
-        }
-
-        private void TryToBuyHard()
-        {
-            var price = _offerInfo.GameOffer?.StoreItem?.Price;
-            if (price?.Product == null)
-                return;
-
-            var paymentInfo = Utils.CreateTestPaymentInfo(price);
-            
-            void PurchaseCompleted(Balancy.Core.Responses.PurchaseProductResponseData responseData) {
-                Debug.Log("Purchase of " + responseData.ProductId + " success = " + responseData.Success);
-                if (!responseData.Success)
-                {
-                    Debug.Log("ErrorCode = " + responseData.ErrorCode);
-                    Debug.Log("ErrorMessage = " + responseData.ErrorMessage);
-                }
-            }
-            
-            Balancy.API.HardPurchaseGameOffer(_offerInfo, paymentInfo, PurchaseCompleted, false);
+            Balancy.API.InitPurchaseOffer(_offerInfo, (success, error) => Debug.Log("Purchase complete: " + success + " error = " + error));
         }
 
         public void Init(OfferInfo offerInfo)
@@ -80,15 +50,7 @@ namespace Balancy.Cheats
 
         private void ApplyPrice()
         {
-            switch (_offerInfo.GameOffer?.StoreItem?.Price.Type)
-            {
-                case PriceType.Hard:
-                    buyButtonText.text = "USD " + _offerInfo.GameOffer.StoreItem.Price.Product.Price;
-                    break;
-                default:
-                    buyButtonText.text = "N/A";
-                    break;
-            }
+            buyButtonText.text = Utils.GetPriceText(_offerInfo.GameOffer?.StoreItem);
         }
     }
 }

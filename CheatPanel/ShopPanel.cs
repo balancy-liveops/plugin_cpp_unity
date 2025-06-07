@@ -36,22 +36,25 @@ namespace Balancy.CheatPanel
             var shops = Profiles.System.ShopsInfo;
             if (shops.GameShops.Count == 0)
                 return;
-            
-            var activeShop = shops.GameShops[0];
-            foreach (var activePage in activeShop.ActivePages)
+
+            var activeShop = shops.ActiveShopInfo;
+            if (activeShop != null)
             {
-                var newItem = Instantiate(shopPageBtnPrefab, pagesContent);
-                newItem.SetActive(true);
-                var btnWithText = newItem.GetComponent<ButtonWithText>();
-                var page = activePage;
-                btnWithText.Init(activePage.Page?.Name?.Value, () =>
+                foreach (var activePage in activeShop.ActivePages)
                 {
-                    Debug.LogError("Page selected " + page?.Page?.Name.Value);
-                    ShowPage(page);
-                });
+                    var newItem = Instantiate(shopPageBtnPrefab, pagesContent);
+                    newItem.SetActive(true);
+                    var btnWithText = newItem.GetComponent<ButtonWithText>();
+                    var page = activePage;
+                    btnWithText.Init(activePage.Page?.Name?.Value, () =>
+                    {
+                        Debug.LogError("Page selected " + page?.Page?.Name.Value);
+                        ShowPage(page);
+                    });
+                }
+
+                ShowPage(activeShop.ActivePages.Count > 0 ? activeShop.ActivePages[0] : null);
             }
-            
-            ShowPage(activeShop.ActivePages.Count > 0 ? activeShop.ActivePages[0] : null);
         }
 
         private void ShowPage(ShopPage shopPage)
@@ -60,47 +63,31 @@ namespace Balancy.CheatPanel
 
             if (shopPage == null)
                 return;
-            
-            foreach (var activeSlot in shopPage.ActiveSlots)
+
+            for (int i = 0; i < shopPage.ActiveSlots.Count; i++)
             {
+                var activeSlot = shopPage.ActiveSlots[i];
                 var newItem = Instantiate(shopSlotViewPrefab, slotsContent);
                 newItem.SetActive(true);
-                var storeItemView = newItem.GetComponent<StoreItemView>();
-                storeItemView.Init(activeSlot.Slot.StoreItem, true, TryToBuySlot);
+                var storeItemView = newItem.GetComponent<StoreItemViewAdvanced>();
+                storeItemView.Init(activeSlot, true, (storeItem)=> TryToBuySlot(activeSlot));
             }
         }
 
-        private void TryToBuySlot(StoreItem storeItem)
+        private void TryToBuySlot(Balancy.Data.SmartObjects.ShopSlot shopSlot)
         {
-            switch (storeItem?.Price.Type)
+            var reward = shopSlot.Slot.StoreItem.Reward;
+            Debug.LogWarning("== Trying to buy " + reward.Items.Length);
+            for (int i = 0; i < reward.Items.Length; i++)
             {
-                case PriceType.Hard:
-                    TryToBuyHard(storeItem);
-                    break;
-                default:
-                    Debug.LogError("This purchase type is not implemented");
-                    break;
+                var item = reward.Items[i];
+                Debug.Log($"Item {i}: {item.Item.Name} x{item.Count}");
             }
-        }
-        
-        private void TryToBuyHard(StoreItem storeItem)
-        {
-            var price = storeItem?.Price;
-            if (price?.Product == null)
-                return;
-            
-            var paymentInfo = Utils.CreateTestPaymentInfo(price);
-            
-            void PurchaseCompleted(Balancy.Core.Responses.PurchaseProductResponseData responseData) {
-                Debug.Log("Purchase of " + responseData.ProductId + " success = " + responseData.Success);
-                if (!responseData.Success)
-                {
-                    Debug.Log("ErrorCode = " + responseData.ErrorCode);
-                    Debug.Log("ErrorMessage = " + responseData.ErrorMessage);
-                }
-            }
-            
-            Balancy.API.HardPurchaseStoreItem(storeItem, paymentInfo, PurchaseCompleted, false);
+            Balancy.API.InitPurchaseShop(shopSlot, (success, error) =>
+            {
+                Debug.Log("BUY COMPLETE : " + success + " error = " + error);
+                Refresh();
+            });
         }
     }
 }

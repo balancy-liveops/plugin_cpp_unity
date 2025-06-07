@@ -35,6 +35,9 @@ namespace Balancy
             public delegate string LoadFileCallback(string path);
             
             [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+            public delegate string LoadImageBase64Callback(string path);
+            
+            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
             public delegate bool IsFileExistsCallback(string path);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
@@ -54,19 +57,31 @@ namespace Balancy
             
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-            public static extern void balancyInitUnityFileHelper(string persistentDataPath, string assetDataPath, LoadFileCallback loadFromResources, IsFileExistsCallback isFileExistsCallback);
+            public static extern void balancyInitUnityFileHelper(string persistentDataPath, string resourcesPath, string codePath, LoadFileCallback loadFromResources, IsFileExistsCallback isFileExistsCallback, LoadImageBase64Callback loadFromResourcesAsBase64);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern IntPtr balancyGetInheritance(out int size);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern IntPtr balancyGetStatus();
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyWebViewRequest(string paramName);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyGetProductsIdAndType(out int size);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyGetParsedObject(IntPtr instance, bool pretty);
         }
 
         public static class Models
         {
             [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
             public delegate void DataObjectWasCachedCallback(string id, IntPtr ptr);
+            
+            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+            public delegate void DataObjectViewWasCachedCallback(string id, string oath);
 
             
             //Getters
@@ -125,6 +140,10 @@ namespace Balancy
             public static extern void balancyDataObjectLoad(string unnyId, DataObjectWasCachedCallback callback);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyDataObjectDeleteFromDisk(string unnyId);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyDataObjectViewPreload(string unnyId, DataObjectViewWasCachedCallback callback);
+            
         }
         
         public static class Data
@@ -218,6 +237,26 @@ namespace Balancy
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancySetTimeOffset(int seconds);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancyStoreItem_GetAdsWatched(IntPtr storeItemPointer);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyStoreItem_AdWasWatched(IntPtr storeItemPointer);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern bool balancyStoreItem_HaveEnoughResources(IntPtr storeItemPointer);
+            
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern bool balancyShopSlot_IsAvailable(IntPtr shopSlotPointer);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancyShopSlot_GetSecondsLeftUntilAvailable(IntPtr shopSlotPointer);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern bool balancyShopSlot_HasLimits(IntPtr shopSlotPointer);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancyShopSlot_GetPurchasesLimitForCycle(IntPtr shopSlotPointer);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancyShopSlot_GetPurchasesDoneDuringTheLastCycle(IntPtr shopSlotPointer);
         }
 
         public static class Localization
@@ -299,6 +338,8 @@ namespace Balancy
             public static extern bool balancySoftPurchaseStoreItem(IntPtr storeItemPointer);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern bool balancySoftPurchaseShopSlot(IntPtr shopSlotPointer);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern bool balancySoftPurchaseGameOffer(IntPtr gameOfferPointer);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
@@ -310,6 +351,8 @@ namespace Balancy
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyHardPurchaseGameOffer(IntPtr gameOfferPointer, Balancy.Core.PaymentInfo paymentInfo, ResponseCallback callback, bool requireValidation);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyHardPurchaseShopSlot(IntPtr shopSlotPointer, Balancy.Core.PaymentInfo paymentInfo, ResponseCallback callback, bool requireValidation);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyHardPurchaseGameOfferGroup(IntPtr gameOfferPointer, IntPtr storeItemPointer, Balancy.Core.PaymentInfo paymentInfo, ResponseCallback callback, bool requireValidation);

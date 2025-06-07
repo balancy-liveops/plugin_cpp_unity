@@ -21,6 +21,5 @@ namespace Balancy.Models.LiveOps.Store
 			_unnyIdStoreItem = GetStringParam("unnyIdStoreItem");
 			_type = (Balancy.Models.LiveOps.Store.SlotType)GetIntParam("type");
         }
-        
     }
 }

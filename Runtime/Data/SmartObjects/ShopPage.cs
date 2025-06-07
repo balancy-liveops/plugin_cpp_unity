@@ -18,5 +18,16 @@ namespace Balancy.Data.SmartObjects
         }
         
         private void Update_unnyIdPage() { _unnyIdPage = GetStringParam("unnyIdPage"); }
+        
+        public Data.SmartObjects.ShopSlot FindShopSlot(string slotId)
+        {
+            foreach (var shopSlot in ActiveSlots)
+            {
+                if (shopSlot.Slot.UnnyId == slotId)
+                    return shopSlot;
+            }
+
+            return null;
+        }
     }
 }

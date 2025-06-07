@@ -1,114 +1,351 @@
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Balancy.Data.SmartObjects;
 using Balancy.Models;
 using Balancy.Models.SmartObjects;
+using UnityEngine;
 
 namespace Balancy
 {
-    public static class API
+    public static partial class API
     {
-        private static BalancyStatus _status;
+        private class CallbacksData
+        {
+            public Actions.BalancyProductInfo ProductInfo;
+            public Action<bool, string> Callback;
+
+            public CallbacksData(Actions.BalancyProductInfo productInfo, Action<bool, string> callback)
+            {
+                ProductInfo = productInfo;
+                Callback = callback;
+            }
+        }
+
+        private static List<CallbacksData> _callbacks = new List<CallbacksData>();
+
+        private static void HardPurchase(Actions.BalancyProductInfo productInfo, Action<bool, string> callback)
+        {
+            _callbacks.Add(new CallbacksData(productInfo, callback));
+            Balancy.Actions.Purchasing.GetHardPurchaseCallback()(productInfo);
+        }
+
+        private static CallbacksData GetCallbackData(Actions.BalancyProductInfo productInfo)
+        {
+            for (int i = _callbacks.Count - 1; i >= 0; i--)
+            {
+                if (_callbacks[i].ProductInfo.Equals(productInfo))
+                {
+                    var data = _callbacks[i];
+                    _callbacks.RemoveAt(i);
+                    return data;
+                }
+            }
+
+            return null;
+        }
+
+        public static void FinalizedHardPurchase(Actions.PurchaseResult result,
+            Balancy.Actions.BalancyProductInfo productInfo, Core.PaymentInfo paymentInfo,
+            Action<bool, bool> validationCallback)
+        {
+            Debug.Log("HardPurchase result: " + result);
+            Debug.Log("HardPurchase Receipt: " + paymentInfo.Receipt);
+
+#if UNITY_EDITOR
+            bool requireValidation = false;
+            // paymentInfo.Receipt = "{\"Payload\":\"{\\\"json\\\":\\\"{\\\\\\\"orderId\\\\\\\":\\\\\\\"" +
+            //                       paymentInfo.OrderId + "\\\\\\\",\\\\\\\"productId\\\\\\\":\\\\\\\"" +
+            //                       paymentInfo.ProductId + "\\\\\\\"}\\\",\\\"signature\\\":\\\"bypass\\\"}\"}";
+#else
+            bool requireValidation = true;
+#endif
+            if (productInfo != null)
+            {
+                var callback = GetCallbackData(productInfo);
+
+                if (result == Actions.PurchaseResult.Success)
+                {
+                    void InvokeCallbacks(Balancy.Core.Responses.PurchaseProductResponseData responseData)
+                    {
+                        Debug.Log(
+                            $"Response: {responseData.Success} ErrorCode = {responseData.ErrorCode} Message = {responseData.ErrorMessage} Product = {responseData.ProductId}");
+
+                        validationCallback?.Invoke(responseData.Success, responseData.RemoveFromPending);
+                        callback?.Callback?.Invoke(responseData.Success, responseData.ErrorMessage);
+
+                        if (responseData.Success)
+                            productInfo.ReportThePurchase(paymentInfo);
+                    }
+
+                    switch (productInfo.Type)
+                    {
+                        case Actions.BalancyProductInfo.PurchaseType.StoreItem:
+                        {
+                            var storeItem = productInfo.GetStoreItem();
+                            HardPurchaseStoreItem(storeItem, paymentInfo, InvokeCallbacks, requireValidation);
+                            break;
+                        }
+                        case Actions.BalancyProductInfo.PurchaseType.ShopSlot:
+                        {
+                            var shopSlot =
+                                Balancy.Profiles.System.ShopsInfo.FindShopSlot(productInfo.OfferUnnyId);
+                            if (shopSlot != null)
+                                HardPurchaseShopSlot(shopSlot, paymentInfo, InvokeCallbacks, requireValidation);
+                            else
+                            {
+                                var storeItem = productInfo.GetStoreItem();
+                                HardPurchaseStoreItem(storeItem, paymentInfo, InvokeCallbacks, requireValidation);
+                            }
+                            break;
+                        }
+                        case Actions.BalancyProductInfo.PurchaseType.Offer:
+                        {
+                            var offerInfo =
+                                Balancy.Profiles.System.SmartInfo.FindOfferInfo(productInfo.OfferInstanceId);
+                            if (offerInfo == null)
+                            {
+                                validationCallback?.Invoke(false, false);
+                                callback?.Callback?.Invoke(false, Constants.Errors.OfferInfoNull);
+                            }
+                            else
+                            {
+                                HardPurchaseGameOffer(offerInfo, paymentInfo, InvokeCallbacks, requireValidation);
+                            }
+
+                            break;
+                        }
+                        case Actions.BalancyProductInfo.PurchaseType.OfferGroup:
+                        {
+                            var offerGroupInfo =
+                                Balancy.Profiles.System.SmartInfo.FindOfferGroupInfo(productInfo.OfferInstanceId);
+                            if (offerGroupInfo == null)
+                            {
+                                validationCallback?.Invoke(false, false);
+                                callback?.Callback?.Invoke(false, Constants.Errors.OfferGroupInfoNull);
+                            }
+                            else
+                            {
+                                var storeItem = productInfo.GetStoreItem();
+                                HardPurchaseGameOfferGroup(offerGroupInfo, storeItem, paymentInfo,
+                                    InvokeCallbacks, requireValidation);
+                            }
+
+                            break;
+                        }
+                        default:
+                            throw new ArgumentOutOfRangeException();
+                    }
+                }
+                else
+                {
+                    callback?.Callback?.Invoke(false, "");
+                }
+            }
+            else
+            {
+                Debug.LogError("productInfo is null -> can't validate it");
+            }
+        }
+
+        private static bool CheckSoftPrice(StoreItem storeItem)
+        {
+            if (storeItem.HaveEnoughResources())
+                return true;
+
+            if (storeItem.Price.Type == PriceType.Ads)
+                Balancy.Actions.Ads.GetAdWatchCallback()?.Invoke(storeItem);
+
+            return false;
+        }
         
-        public enum AdType
+        public static void InitPurchaseShop(ShopSlot shopSlot, Action<bool, string> callback)
         {
-            None = 0,
-            Rewarded,
-            Interstitial,
-            Custom
+            if (shopSlot?.Slot == null)
+            {
+                callback?.Invoke(false, Constants.Errors.ShopSlotNull);
+                return;
+            }
+
+            if (shopSlot.Slot.StoreItem == null)
+            {
+                callback?.Invoke(false, Constants.Errors.StoreItemNull);
+                return;
+            }
+
+            if (shopSlot.Slot.StoreItem.Price.Type == PriceType.Hard &&
+                !shopSlot.Slot.StoreItem.Price.IsFree())
+            {
+                HardPurchase(new Actions.BalancyProductInfo(shopSlot), callback);
+            }
+            else
+            {
+                if (!CheckSoftPrice(shopSlot.Slot.StoreItem) || !SoftPurchaseShopSlot(shopSlot))
+                {
+                    switch (shopSlot.Slot.StoreItem.Price.Type)
+                    {
+                        case PriceType.Soft:
+                            callback?.Invoke(false, Constants.Errors.PurchaseNotEnoughItems);
+                            break;
+                        case PriceType.Ads:
+                            callback?.Invoke(false, Constants.Errors.PurchaseNotAds);
+                            break;
+                        default:
+                            callback?.Invoke(false, Constants.Errors.PurchaseInvalidPriceType);
+                            break;
+                    }
+                } else
+                    callback?.Invoke(true, null);
+            }
         }
 
-        public static BalancyStatus GetStatus()
+        public static void InitPurchaseOffer(OfferInfo offerInfo, Action<bool, string> callback)
         {
-            var ptr = Balancy.LibraryMethods.General.balancyGetStatus();
-            if (_status == null)
-                _status = new BalancyStatus();
-            _status.SetData(ptr);
-            return _status;
-        }
-        
-        public static bool SoftPurchaseStoreItem(StoreItem storeItem)
-        {
-            return Balancy.LibraryMethods.API.balancySoftPurchaseStoreItem(storeItem?.GetRawPointer() ?? IntPtr.Zero);
+            if (offerInfo?.GameOffer == null)
+            {
+                callback?.Invoke(false, Constants.Errors.GameOfferNull);
+                return;
+            }
+
+            if (offerInfo.GameOffer.StoreItem == null)
+            {
+                callback?.Invoke(false, Constants.Errors.StoreItemNull);
+                return;
+            }
+
+            if (offerInfo.GameOffer.StoreItem.Price.Type == PriceType.Hard &&
+                !offerInfo.GameOffer.StoreItem.Price.IsFree())
+            {
+                HardPurchase(new Actions.BalancyProductInfo(offerInfo), callback);
+            }
+            else
+            {
+                if (!CheckSoftPrice(offerInfo.GameOffer.StoreItem) || !SoftPurchaseGameOffer(offerInfo))
+                {
+                    switch (offerInfo.GameOffer.StoreItem.Price.Type)
+                    {
+                        case PriceType.Soft:
+                            callback?.Invoke(false, Constants.Errors.PurchaseNotEnoughItems);
+                            break;
+                        case PriceType.Ads:
+                            callback?.Invoke(false, Constants.Errors.PurchaseNotAds);
+                            break;
+                        default:
+                            callback?.Invoke(false, Constants.Errors.PurchaseInvalidPriceType);
+                            break;
+                    }
+                } else
+                    callback?.Invoke(true, null);
+            }
         }
 
-        public static bool SoftPurchaseGameOffer(OfferInfo offerInfo)
+        public static void InitPurchaseOffer(OfferGroupInfo offerGroupInfo, StoreItem storeItem,
+            Action<bool, string> callback)
         {
-            return Balancy.LibraryMethods.API.balancySoftPurchaseGameOffer(offerInfo?.GetRawPointer() ?? IntPtr.Zero);
+            if (offerGroupInfo?.GameOfferGroup == null)
+            {
+                callback?.Invoke(false, Constants.Errors.GameOfferGroupNull);
+                return;
+            }
+
+            if (storeItem == null)
+            {
+                callback?.Invoke(false, Constants.Errors.StoreItemNull);
+                return;
+            }
+
+            if (storeItem.Price.Type == PriceType.Hard && !storeItem.Price.IsFree())
+            {
+                HardPurchase(new Actions.BalancyProductInfo(offerGroupInfo, storeItem), callback);
+            }
+            else
+            {
+                if (!CheckSoftPrice(storeItem) || !SoftPurchaseGameOfferGroup(offerGroupInfo, storeItem))
+                {
+                    switch (storeItem.Price.Type)
+                    {
+                        case PriceType.Soft:
+                            callback?.Invoke(false, Constants.Errors.PurchaseNotEnoughItems);
+                            break;
+                        case PriceType.Ads:
+                            callback?.Invoke(false, Constants.Errors.PurchaseNotAds);
+                            break;
+                        default:
+                            callback?.Invoke(false, Constants.Errors.PurchaseInvalidPriceType);
+                            break;
+                    }
+                } else
+                    callback?.Invoke(true, null);
+            }
         }
 
-        public static bool SoftPurchaseGameOfferGroup(OfferGroupInfo offerGroupInfo, StoreItem storeItem)
+        [Obsolete("Try not to use it")]
+        public static void InitPurchase(StoreItem storeItem, Action<bool, string> callback)
         {
-            return Balancy.LibraryMethods.API.balancySoftPurchaseGameOfferGroup(offerGroupInfo?.GetRawPointer() ?? IntPtr.Zero, storeItem?.GetRawPointer() ?? IntPtr.Zero);
-        }
-        
-        public static void HardPurchaseStoreItem(StoreItem storeItem, Balancy.Core.PaymentInfo paymentInfo,
-            Balancy.Core.ResponseCallback<Balancy.Core.Responses.PurchaseProductResponseData> callback, bool requireValidation)
-        {
-            Balancy.LibraryMethods.API.balancyHardPurchaseStoreItem(storeItem?.GetRawPointer() ?? IntPtr.Zero, paymentInfo,
-                ProtectedFromGCCallback(callback), requireValidation);
+            if (storeItem == null)
+            {
+                callback?.Invoke(false, Constants.Errors.StoreItemNull);
+                return;
+            }
+
+            if (storeItem.Price.Type == PriceType.Hard && !storeItem.Price.IsFree())
+            {
+                HardPurchase(new Actions.BalancyProductInfo(storeItem), callback);
+            }
+            else
+            {
+                if (!CheckSoftPrice(storeItem) || !SoftPurchaseStoreItem(storeItem))
+                {
+                    switch (storeItem.Price.Type)
+                    {
+                        case PriceType.Soft:
+                            callback?.Invoke(false, Constants.Errors.PurchaseNotEnoughItems);
+                            break;
+                        case PriceType.Ads:
+                            callback?.Invoke(false, Constants.Errors.PurchaseNotAds);
+                            break;
+                        default:
+                            callback?.Invoke(false, Constants.Errors.PurchaseInvalidPriceType);
+                            break;
+                    }
+                } else
+                    callback?.Invoke(true, null);
+            }
         }
 
-        public static void HardPurchaseGameOffer(OfferInfo offerInfo, Balancy.Core.PaymentInfo paymentInfo,
-            Balancy.Core.ResponseCallback<Balancy.Core.Responses.PurchaseProductResponseData> callback, bool requireValidation)
+        public static void RestorePurchases()
         {
-            Balancy.LibraryMethods.API.balancyHardPurchaseGameOffer(offerInfo?.GetRawPointer() ?? IntPtr.Zero, paymentInfo,
-                ProtectedFromGCCallback(callback), requireValidation);
-        }
-
-        public static void HardPurchaseGameOfferGroup(OfferGroupInfo offerGroupInfo, StoreItem storeItem, Balancy.Core.PaymentInfo paymentInfo,
-            Balancy.Core.ResponseCallback<Balancy.Core.Responses.PurchaseProductResponseData> callback, bool requireValidation)
-        {
-            Balancy.LibraryMethods.API.balancyHardPurchaseGameOfferGroup(offerGroupInfo?.GetRawPointer() ?? IntPtr.Zero, storeItem?.GetRawPointer() ?? IntPtr.Zero, paymentInfo,
-                ProtectedFromGCCallback(callback), requireValidation);
+            Balancy.Actions.Purchasing.GetRestorePurchasesCallback()?.Invoke();
         }
 
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.API.ResponseCallback))]
-        private static Balancy.LibraryMethods.API.ResponseCallback ProtectedFromGCCallback<T>(Balancy.Core.ResponseCallback<T> callback) where T : Balancy.Core.Responses.ResponseData
+        private static Balancy.LibraryMethods.API.ResponseCallback ProtectedFromGCCallback<T>(
+            Balancy.Core.ResponseCallback<T> callback) where T : Balancy.Core.Responses.ResponseData
         {
             System.Runtime.InteropServices.GCHandle? gch = null;
-            Balancy.LibraryMethods.API.ResponseCallback innerCallback = (responseDataPtr) => {
+            Balancy.LibraryMethods.API.ResponseCallback innerCallback = (responseDataPtr) =>
+            {
                 var responseData = Marshal.PtrToStructure<T>(responseDataPtr);
                 if (gch.HasValue)
                     gch.Value.Free();
                 try
                 {
                     callback(responseData);
-                } catch (Exception e)
+                }
+                catch (Exception e)
                 {
                     UnityEngine.Debug.LogError("Exception in callback: " + e);
                 }
             };
-            
+
             gch = GCHandle.Alloc(innerCallback);
             return innerCallback;
         }
-        
-        public static void TrackAdRevenue(AdType type, double revenue, string placement) => 
-            LibraryMethods.Profile.balancySystemProfileTrackRevenue(type, revenue, placement);
 
-        public static class Localization
+        public static string[] GetProductsIdAndType()
         {
-            public static string GetLocalizedValue(string key) {
-                return JsonBasedObject.GetStringFromIntPtr(Balancy.LibraryMethods.Localization.balancyLocalization_GetLocalizedValue(key));
-            }
-            
-            public static void ChangeLocalization(string code) {
-                Balancy.LibraryMethods.Localization.balancyLocalization_ChangeLocalization(code);
-            }
-            
-            public static string GetCurrentLocalizationCode() {
-                return JsonBasedObject.GetStringFromIntPtr(Balancy.LibraryMethods.Localization.balancyLocalization_GetCurrentLocalizationCode());
-            }
-            
-            public static string[] GetAllLocalizationCodes() {
-                IntPtr ptr = Balancy.LibraryMethods.Localization.balancyLocalization_GetAllLocalizationCodes(out int size);
-                return JsonBasedObject.ReadStringArrayValues(ptr, size);
-            }
+            IntPtr ptr = LibraryMethods.General.balancyGetProductsIdAndType(out var size);
+            return JsonBasedObject.ReadStringArrayValues(ptr, size);
         }
-        
-        //This method doesn't work in production
-        public static void SetTimeCheatingOffset(int seconds) => LibraryMethods.Extra.balancySetTimeOffset(seconds);
-        public static int GetTimeCheatingOffset() => LibraryMethods.Extra.balancyGetTimeOffset();
     }
 }
