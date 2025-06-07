@@ -59,7 +59,7 @@ namespace Balancy.WebView
             parentTrm.localScale = Vector3.one;
             var canvas = goCanvas.AddComponent<Canvas>();
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            canvas.sortingOrder = 10000;
+            canvas.sortingOrder = 2000;
             goCanvas.AddComponent<GraphicRaycaster>();
             var scaler = goCanvas.AddComponent<CanvasScaler>();
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
@@ -84,8 +84,8 @@ namespace Balancy.WebView
             trm.offsetMax = Vector2.zero;
             go.AddComponent<RawImage>();
             var instance = go.AddComponent<BalancyWebViewEmbedded>();
-                        
-            goCanvas.hideFlags = HideFlags.HideAndDontSave;
+
+            goCanvas.hideFlags = HideFlags.HideInHierarchy;
             DontDestroyOnLoad(goCanvas);
 
             instance._parentGameObject = goCanvas;

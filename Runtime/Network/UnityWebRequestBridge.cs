@@ -56,10 +56,14 @@ namespace Balancy.Network
 
             var guid = Guid.NewGuid().ToString();
             var go = new GameObject("Balancy_WebRequestBridge_" + guid);
-            
-            go.hideFlags = HideFlags.HideAndDontSave;
+
             if (Application.isPlaying)
+            {
+                go.hideFlags = HideFlags.HideInHierarchy;
                 DontDestroyOnLoad(go);
+            }
+            else
+                go.hideFlags = HideFlags.HideAndDontSave;
             
             _instance = go.AddComponent<UnityWebRequestBridge>();
             _mainThreadInstance = UnityMainThreadDispatcher.Instance();

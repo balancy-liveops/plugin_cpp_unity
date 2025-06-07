@@ -30,14 +30,16 @@ namespace Balancy
                 var obj = new GameObject("MainThreadDispatcher (Hidden)");
 
                 // Hide the object from the hierarchy
-                obj.hideFlags = HideFlags.HideAndDontSave;
-
                 _instance = obj.AddComponent<UnityMainThreadDispatcher>();
                 // Create the dispatcher differently based on whether we're in play mode
                 if (Application.isPlaying)
+                {
+                    obj.hideFlags = HideFlags.HideInHierarchy;
                     DontDestroyOnLoad(obj);
+                }
                 else
                 {
+                    obj.hideFlags = HideFlags.HideAndDontSave;
 #if UNITY_EDITOR
                     // Register with EditorApplication.update to process the queue in Editor mode
                     if (!_isEditorUpdateRegistered)
