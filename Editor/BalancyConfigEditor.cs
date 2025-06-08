@@ -104,13 +104,15 @@ namespace Balancy.Editor
             {
                 SelectedGameBranches = branches;
                 
+                _selectedBranchOrder = -1;
                 BranchNames = new string[SelectedGameBranches.Count];
                 for (int i = 0; i < SelectedGameBranches.Count; i++)
                 {
                     BranchNames[i] = SelectedGameBranches[i].BranchName;
                     if (SelectedGameBranches[i].BranchId == selectedBranch)
                         _selectedBranchOrder = i;
-                }
+                } 
+                SelectedBranchId = selectedBranch;
             }
 
             public bool HasBranches => GetBranches?.Count > 0;
@@ -142,21 +144,25 @@ namespace Balancy.Editor
                 return null;
             }
             
-            public void Render()
+            public bool Render()
             {
                 EditorGUI.BeginChangeCheck();
                 _selectedGame = EditorGUILayout.Popup("Selected Game: ", _selectedGame, GameNames);
 
                 if (EditorGUI.EndChangeCheck())
                     if (_selectedGame != -1)
+                    {
                         SelectGameByIndex(_selectedGame);
+                        return true;
+                    }
+
+                return false;
             }
             
             public void RenderBranches()
             {
                 EditorGUI.BeginChangeCheck();
                 _selectedBranchOrder = EditorGUILayout.Popup("Selected Branch: ", _selectedBranchOrder, BranchNames);
-
                 if (EditorGUI.EndChangeCheck())
                     if (_selectedBranchOrder != -1)
                         SelectBranchByIndex(_selectedBranchOrder);
@@ -251,7 +257,7 @@ namespace Balancy.Editor
         private void RenderLoader()
         {
             //GUI.enabled = !_downloading && AuthHelper.HasSelectedBranch() && !EditorApplication.isCompiling;
-            GUI.enabled = !_downloading && _gamesInfo != null && _gamesInfo.HasSelectedGame() && !EditorApplication.isCompiling;
+            GUI.enabled = !_downloading && _gamesInfo != null && _gamesInfo.HasSelectedGame() && HasValidBranchSelected() && !EditorApplication.isCompiling;
             GUILayout.BeginVertical(EditorStyles.helpBox);
 
             GUILayout.Label("Content Management");
@@ -362,8 +368,26 @@ namespace Balancy.Editor
         private bool IsAuthorized => EditorUtils.GetStatus()?.IsAuthorized ?? false;
         private string UserEmail => EditorUtils.GetStatus()?.Email;
         
+        private bool HasValidBranchSelected()
+        {
+            if (_gamesInfo == null || !_gamesInfo.HasBranches || _gamesInfo.GetBranches == null || _gamesInfo.GetBranches.Count == 0)
+                return false;
+                
+            // Check if we can find a branch with the selected branch ID
+            foreach (var branch in _gamesInfo.GetBranches)
+            {
+                if (branch.BranchId == _gamesInfo.SelectedBranchId)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+        
         private string _userEmail = "";
         private string _userPassword = "";
+        private string _authErrorMessage = "";
+        private bool _showAuthError = false;
         
         private void RenderAuth()
         {
@@ -386,8 +410,27 @@ namespace Balancy.Editor
             {
                 GUILayout.BeginVertical(EditorStyles.helpBox);
                 GUILayout.Label("Balancy User");
+                
+                // Track changes to email and password to clear error message
+                EditorGUI.BeginChangeCheck();
                 _userEmail = EditorGUILayout.TextField("Email", _userEmail);
                 _userPassword = EditorGUILayout.PasswordField("Password", _userPassword);
+                if (EditorGUI.EndChangeCheck())
+                {
+                    // Clear error message when user starts typing
+                    _showAuthError = false;
+                    _authErrorMessage = "";
+                }
+                
+                // Show authentication error if it exists
+                if (_showAuthError && !string.IsNullOrEmpty(_authErrorMessage))
+                {
+                    var originalColor = GUI.color;
+                    GUI.color = Color.red;
+                    EditorGUILayout.HelpBox(_authErrorMessage, MessageType.Error);
+                    GUI.color = originalColor;
+                }
+                
                 GUILayout.BeginHorizontal();
                 if (GUILayout.Button("Click to create a new Account"))
                 {
@@ -399,6 +442,17 @@ namespace Balancy.Editor
                 {
                     EditorUtils.Auth(_userEmail, _userPassword, status =>
                     {
+                        if (!status.IsAuthorized)
+                        {
+                            _authErrorMessage = "Failed to auth, no connection or wrong password";
+                            _showAuthError = true;
+                        }
+                        else
+                        {
+                            // Clear any existing error message on successful authentication
+                            _showAuthError = false;
+                            _authErrorMessage = "";
+                        }
                         m_EditorDispatcher.Enqueue(Repaint);
                     });
                 }
@@ -419,7 +473,11 @@ namespace Balancy.Editor
             {
                 if (_gamesInfo != null)
                 {
-                    _gamesInfo.Render();
+                    if (_gamesInfo.Render())
+                    {
+                        m_EditorDispatcher.Enqueue(Repaint);
+                        _needRefresh = true;
+                    }
                 }
                 else
                 {
@@ -432,6 +490,7 @@ namespace Balancy.Editor
                             _gamesInfo = new GamesInfo(games, selectedGame);
                             _loadingGames = false;
                             _needRefresh = true;
+                            m_EditorDispatcher.Enqueue(Repaint);
                         }
                         catch (Exception e)
                         {
@@ -448,7 +507,7 @@ namespace Balancy.Editor
             if (!IsAuthorized)
                 return;
 
-            if (!_loadingGames && !_loadingBranches && _gamesInfo != null)
+            if (!_loadingGames && !_loadingBranches && _gamesInfo != null && _gamesInfo.HasSelectedGame())
             {
                 if (_gamesInfo.HasBranches)
                 {
@@ -465,6 +524,7 @@ namespace Balancy.Editor
                             _gamesInfo.SetBranches(branches, selectedBranch);
                             _loadingBranches = false;
                             _needRefresh = true;
+                            m_EditorDispatcher.Enqueue(Repaint);
                         }
                         catch (Exception e)
                         {
@@ -479,13 +539,6 @@ namespace Balancy.Editor
         {
             if (!IsAuthorized || _gamesInfo == null || !_gamesInfo.HasSelectedGame() || _downloading || EditorApplication.isCompiling)
                 return;
-                
-            // Find BalancyLauncher in the current scene
-            BalancyLauncher launcher = UnityEngine.Object.FindAnyObjectByType<BalancyLauncher>();
-            
-            GUILayout.Space(10);
-            EditorGUILayout.BeginHorizontal();
-            GUILayout.FlexibleSpace();
 
             var gameInfo = _gamesInfo.GetSelectedGameInfo();
             string gameName = gameInfo?.GameName;
@@ -506,6 +559,31 @@ namespace Balancy.Editor
                     }
                 }
             }
+            
+            // Check if a valid branch is selected
+            if (string.IsNullOrEmpty(branchName))
+            {
+                GUILayout.Space(10);
+                EditorGUILayout.BeginHorizontal();
+                GUILayout.FlexibleSpace();
+                
+                var originalColor = GUI.color;
+                GUI.color = Color.yellow;
+                EditorGUILayout.HelpBox("Please select a branch", MessageType.Warning);
+                GUI.color = originalColor;
+                
+                GUILayout.FlexibleSpace();
+                EditorGUILayout.EndHorizontal();
+                GUILayout.Space(10);
+                return;
+            }
+                
+            // Find BalancyLauncher in the current scene
+            BalancyLauncher launcher = UnityEngine.Object.FindAnyObjectByType<BalancyLauncher>();
+            
+            GUILayout.Space(10);
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.FlexibleSpace();
                 
             if (launcher != null)
             {
