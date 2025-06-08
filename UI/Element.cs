@@ -48,6 +48,7 @@ namespace Balancy.UI
         private void UpdateTimer(float time)
         {
             var secondsLeft = _getSecondsLeft?.Invoke() ?? 0;
+            Debug.Log("secondsLeft " + secondsLeft);
             timerText.SetText(TimeFormatter.FormatUnixTime(secondsLeft));
         }
     }
