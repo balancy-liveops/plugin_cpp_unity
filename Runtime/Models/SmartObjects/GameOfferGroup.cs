@@ -11,6 +11,9 @@ namespace Balancy.Models.SmartObjects
 		private int _duration;
 		private bool _wait;
         
+		private int _unnyPriority;
+		private UnnyObject _unnyView;
+		private Balancy.Models.SmartObjects.ViewPlacement _unnyPlacement;
         
 		public Balancy.Models.SmartObjects.OfferGroupType Type => _type;
 		public Balancy.Models.SmartObjects.StoreItem[] StoreItems => GetModelsByUnnyIds<Balancy.Models.SmartObjects.StoreItem>(_unnyIdStoreItems);
@@ -18,6 +21,10 @@ namespace Balancy.Models.SmartObjects
 		public Localization.LocalizedString Name => _name;
 		public int Duration => _duration;
 		public bool Wait => _wait;
+		
+		public int UnnyPriority => _unnyPriority;
+		public UnnyObject UnnyView => _unnyView;
+		public Balancy.Models.SmartObjects.ViewPlacement UnnyPlacement => _unnyPlacement;
         
         public override void InitData()
         {
@@ -29,7 +36,10 @@ namespace Balancy.Models.SmartObjects
 			_name = GetLocalizedString("name");
 			_duration = GetIntParam("duration");
 			_wait = GetBoolParam("wait");
+			
+			_unnyPriority = GetIntParam("unnyPriority");
+			_unnyView = GetObjectParam<UnnyObject>("unnyView");
+			_unnyPlacement = (Balancy.Models.SmartObjects.ViewPlacement)GetIntParam("unnyPlacement");
         }
-        
     }
 }

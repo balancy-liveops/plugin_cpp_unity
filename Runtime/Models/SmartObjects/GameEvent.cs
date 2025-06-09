@@ -10,7 +10,10 @@ namespace Balancy.Models.SmartObjects
 		private Localization.LocalizedString _name;
 		private int _duration;
 		private string _unnyIdScript;
-        
+		
+		private int _unnyPriority;
+		private UnnyObject _unnyView;
+		private Balancy.Models.SmartObjects.ViewPlacement _unnyPlacement;
         
 		// public Balancy.Models.SmartObjects.Conditions.Logic Condition => GetModelByUnnyId<Balancy.Models.SmartObjects.Conditions.Logic>(_unnyIdCondition);
 		public string Description => _description;
@@ -18,6 +21,10 @@ namespace Balancy.Models.SmartObjects
 		public Localization.LocalizedString Name => _name;
 		public int Duration => _duration;
 		// public string Script => GetModelByUnnyId<string>(_unnyIdScript);
+		
+		public int UnnyPriority => _unnyPriority;
+		public UnnyObject UnnyView => _unnyView;
+		public Balancy.Models.SmartObjects.ViewPlacement UnnyPlacement => _unnyPlacement;
         
         public override void InitData()
         {
@@ -29,6 +36,10 @@ namespace Balancy.Models.SmartObjects
 			_name = GetLocalizedString("name");
 			_duration = GetIntParam("duration");
 			_unnyIdScript = GetStringParam("unnyIdScript");
+			
+			_unnyPriority = GetIntParam("unnyPriority");
+			_unnyView = GetObjectParam<UnnyObject>("unnyView");
+			_unnyPlacement = (Balancy.Models.SmartObjects.ViewPlacement)GetIntParam("unnyPlacement");
         }
         
         public int GetSecondsLeftBeforeDeactivation() => LibraryMethods.Extra.balancyGameEvent_GetSecondsLeftBeforeDeactivation(GetRawPointer());

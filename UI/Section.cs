@@ -9,7 +9,7 @@ namespace Balancy.UI
     {
         [SerializeField] private GameObject elementPrefab;
         [SerializeField] private RectTransform content;
-        [SerializeField] private string placement;
+        [SerializeField] private Balancy.Models.SmartObjects.ViewPlacement placement;
 
         class ElementInfo
         {
@@ -75,24 +75,16 @@ namespace Balancy.UI
 
         private void TryToAddOffer(OfferInfo offerInfo)
         {
-            if (offerInfo.GameOffer == null)
-                return;
-
-            if (offerInfo.GameOffer is MyGameOffer myGameOffer)
-            {
-                if (!string.Equals(myGameOffer.Placement, placement))
-                    return;
-
+            if (offerInfo.GameOffer?.UnnyPlacement == placement)
                 AddOfferDisplay(offerInfo);
-            }
         }
 
         private void AddOfferDisplay(OfferInfo info)
         {
-            var myOffer = info.GameOffer as MyGameOffer;
+            var myOffer = info.GameOffer;
             _activeElements.Add(info.InstanceId, new ElementInfo
             {
-                Priority = myOffer?.Priority ?? 0
+                Priority = info.GameOffer?.UnnyPriority ?? 0
             });
             
             info.GameOffer?.Icon.LoadSprite(sprite =>
@@ -110,14 +102,14 @@ namespace Balancy.UI
                     element.SetOnClick(() =>
                     {
                         
-                        // if (string.IsNullOrEmpty(myOffer.View))
-                        // {
-                        //     Debug.LogError("No webpage found");
-                        //     return;
-                        // }
+                        if (myOffer.UnnyView == null)
+                        {
+                            Debug.LogError("No view found");
+                            return;
+                        }
                         
-                        Debug.Log("CLICKED");
-                        Balancy.Dictionaries.DataObjectsManager.GetObjectView("644", url =>
+                        //Balancy.Dictionaries.DataObjectsManager.GetObjectView("644", url =>
+                        Balancy.Dictionaries.DataObjectsManager.GetObjectView(myOffer.UnnyView.Id, url =>
                         {
                             Debug.LogError("Opening = " + url);
                             Balancy.RenderViewsManager.OpenLocalView(url, info);

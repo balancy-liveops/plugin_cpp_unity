@@ -12,7 +12,10 @@ namespace Balancy.Models.SmartObjects
 		private UnnyObject _icon;
 		private int _limit;
 		private bool _wait;
-        
+
+		private int _unnyPriority;
+		private UnnyObject _unnyView;
+		private Balancy.Models.SmartObjects.ViewPlacement _unnyPlacement;
         
 		public UnnyObject Sprite => _sprite;
 		public Balancy.Models.SmartObjects.StoreItem StoreItem => GetModelByUnnyId<Balancy.Models.SmartObjects.StoreItem>(_unnyIdStoreItem);
@@ -22,6 +25,10 @@ namespace Balancy.Models.SmartObjects
 		public UnnyObject Icon => _icon;
 		public int Limit => _limit;
 		public bool Wait => _wait;
+		
+		public int UnnyPriority => _unnyPriority;
+		public UnnyObject UnnyView => _unnyView;
+		public Balancy.Models.SmartObjects.ViewPlacement UnnyPlacement => _unnyPlacement;
         
         public override void InitData()
         {
@@ -35,6 +42,10 @@ namespace Balancy.Models.SmartObjects
 			_icon = GetObjectParam<UnnyObject>("icon");
 			_limit = GetIntParam("limit");
 			_wait = GetBoolParam("wait");
+			
+			_unnyPriority = GetIntParam("unnyPriority");
+			_unnyView = GetObjectParam<UnnyObject>("unnyView");
+			_unnyPlacement = (Balancy.Models.SmartObjects.ViewPlacement)GetIntParam("unnyPlacement");
         }
         
     }
