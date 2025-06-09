@@ -27,6 +27,7 @@ namespace Balancy.WebView
         private int _currentTextureWidth;
         private int _currentTextureHeight;
         private Vector2 _lastRectSize; // Track RectTransform size changes
+        private bool _hasFirstTextureUpdate = false; // Track if we've had the first texture update
         
         private BalancyWebView _webView;
 
@@ -193,6 +194,7 @@ namespace Balancy.WebView
             
             _isInitialized = false;
             _isLoading = false;
+            _hasFirstTextureUpdate = false;
             
             _parentGameObject.SetActive(false);
         }
@@ -302,11 +304,15 @@ namespace Balancy.WebView
             _pixelBuffer = new byte[_currentTextureWidth * _currentTextureHeight * 4]; // RGBA
             _flippedPixelBuffer = new byte[_currentTextureWidth * _currentTextureHeight * 4]; // RGBA for flipped data
 
-            // Apply to renderer
+            // Apply to renderer and initially hide it until first texture update
             if (_renderer != null)
             {
                 _renderer.texture = _textureBuffer;
+                _renderer.enabled = false; // Hide until first texture update
             }
+            
+            // Reset first texture update flag
+            _hasFirstTextureUpdate = false;
 
             LogDebug($"Created RenderTexture: {_currentTextureWidth}x{_currentTextureHeight}");
         }
@@ -477,6 +483,14 @@ namespace Balancy.WebView
                         
                         _textureBuffer.LoadRawTextureData(_flippedPixelBuffer);
                         _textureBuffer.Apply();
+                        
+                        // Show the RawImage after first successful texture update
+                        if (!_hasFirstTextureUpdate && _renderer != null)
+                        {
+                            _renderer.enabled = true;
+                            _hasFirstTextureUpdate = true;
+                            LogDebug("First texture update completed, showing RawImage");
+                        }
                     }
                 }
             }
