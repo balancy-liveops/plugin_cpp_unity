@@ -5,7 +5,7 @@ namespace Balancy.Data
 {
     public class SmartList<T> : BaseData where T : BaseData, new()
     {
-        private readonly List<T> _list = new List<T>();
+        private List<T> _list = new List<T>();
 
         public T Add()
         {
@@ -91,10 +91,43 @@ namespace Balancy.Data
 
         private void RefreshList()
         {
-            var p = GetRawPointer();
-            CleanUp(false);
-            SetData(p);
-            InitData();
+            var size = LibraryMethods.Data.balancySmartListGetSize(_pointer);
+            List<IntPtr> newListIds = new List<IntPtr>();
+            for (int i = 0; i < size; i++)
+            {
+                var ptr = LibraryMethods.Data.balancySmartListGetElementAt(_pointer, i);
+                newListIds.Add(ptr);
+            }
+            
+            List<T> newList = new List<T>();
+            foreach (var ptr in newListIds)
+            {
+                bool found = false;
+                for (int i = 0; i < _list.Count; i++)
+                {
+                    var oldElement = _list[i];
+                    if (oldElement.Equals(ptr))
+                    {
+                        newList.Add(oldElement);
+                        _list.RemoveAt(i);
+                        found = true;
+                        break;
+                    }
+                }
+
+                if (!found)
+                {
+                    var element = CreateObject<T>(ptr, TempCopy);
+                    newList.Add(element);
+                }
+            }
+            
+            //Clean up the elements that are no longer in the list
+            foreach (var child in _list)
+                child.CleanUp(false);
+            _list.Clear();
+            
+            _list = newList;
         }
 
         internal override void CleanUp(bool parentWasDestroyed)
