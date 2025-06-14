@@ -41,6 +41,9 @@ bool _balancySendMouseEvent(int x, int y, const char* eventType);
 bool _balancySendScrollEvent(int x, int y, float deltaX, float deltaY);
 bool _balancyGetEmbeddedPixelData(unsigned char* buffer, int bufferSize);
 
+// Emergency Exit functionality
+void _balancySetEmergencyExitEnabled(bool enabled);
+
 #ifdef __cplusplus
 }
 #endif

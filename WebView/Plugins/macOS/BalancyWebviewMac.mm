@@ -37,6 +37,7 @@ void LogToUnity(const char* message) {
 @property (nonatomic, assign) BOOL debugLogging;
 @property (nonatomic, assign) BOOL transparentBackground;
 @property (nonatomic, assign) BOOL offlineCacheEnabled;
+@property (nonatomic, strong) NSButton *emergencyExitButton;  // Emergency Exit button
 
 - (instancetype)init;
 - (BOOL)loadURL:(NSString *)url;
@@ -403,17 +404,59 @@ void LogToUnity(const char* message) {
 //     }
 }
 
+// Check if point is in emergency exit zone (5% x 5% in top-right corner)
+- (BOOL)isPointInEmergencyExitZone:(CGPoint)point {
+    // Emergency exit zone is top-right corner, 5% x 5% of WebView size
+    CGFloat exitZoneWidth = _textureWidth * 0.05;
+    CGFloat exitZoneHeight = _textureHeight * 0.05;
+    
+    CGFloat exitZoneX = _textureWidth - exitZoneWidth;
+    CGFloat exitZoneY = _textureHeight - exitZoneHeight;
+    
+    BOOL inZone = (point.x >= exitZoneX && point.x <= _textureWidth &&
+                   point.y >= exitZoneY && point.y <= _textureHeight);
+    
+    if (inZone && _debugLogging) {
+        NSString *logMsg = [NSString stringWithFormat:@"🚨 Point (%.1f, %.1f) is in emergency exit zone [%.1f-%.1f, %.1f-%.1f]", 
+                           point.x, point.y, exitZoneX, (float)_textureWidth, exitZoneY, (float)_textureHeight];
+        LogToUnity([logMsg UTF8String]);
+    }
+    
+    return inZone;
+}
+
+// Handle emergency exit activation
+- (void)triggerEmergencyExit {
+    if (_debugLogging) {
+        LogToUnity("🚨 Emergency exit triggered in embedded mode");
+    }
+    
+    // Send message to Unity
+    if (_messageCallback) {
+        _messageCallback("//:balancy_close_view");
+    }
+}
+
 - (void)handleMouseEvent:(int)x y:(int)y eventType:(NSString*)eventType {
     if (!_webView) return;
     
-    // Create mouse event and send to WebView
+    // Convert Unity coordinates to our coordinate system
     NSPoint point = NSMakePoint(x, _textureHeight - y); // Flip Y coordinate
     
+    // Check if this is a mouse down event in the emergency exit zone
+    if ([eventType isEqualToString:@"down"] && [self isPointInEmergencyExitZone:point]) {
+        // Emergency exit triggered - don't pass event to WebView
+        [self triggerEmergencyExit];
+        return;  // Early return - don't process this event further
+    }
+    
+    // Not in emergency exit zone or not a down event - handle normally
 //     if (_debugLogging) {
 //         NSString *logMsg = [NSString stringWithFormat:@"🖱️ Mouse %@ at (%d, %d) -> NSPoint(%.1f, %.1f)", eventType, x, y, point.x, point.y];
 //         LogToUnity([logMsg UTF8String]);
 //     }
     
+    // Continue with original mouse event handling
     if ([eventType isEqualToString:@"down"]) {
         NSEvent *mouseDown = [NSEvent mouseEventWithType:NSEventTypeLeftMouseDown
                                                  location:point
@@ -826,6 +869,15 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
         _webView.navigationDelegate = self;
         _webView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
         [[window contentView] addSubview:_webView];
+        
+        // Setup emergency exit button after WebView is created
+        [self setupEmergencyExitButton];
+        
+        // Observe window resize to update button position
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(windowDidResize:)
+                                                     name:NSWindowDidResizeNotification
+                                                   object:[self window]];
     }
     return self;
 }
@@ -870,7 +922,86 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
     return YES;
 }
 
+// Emergency exit button creation and setup
+- (void)setupEmergencyExitButton {
+    if (!_webView) return;
+    
+    // Calculate button size (5% of WebView size)
+    CGRect webViewFrame = _webView.frame;
+    CGFloat buttonWidth = webViewFrame.size.width * 0.05;
+    CGFloat buttonHeight = webViewFrame.size.height * 0.05;
+    
+    // Position in top-right corner
+    CGFloat buttonX = webViewFrame.origin.x + webViewFrame.size.width - buttonWidth;
+    CGFloat buttonY = webViewFrame.origin.y + webViewFrame.size.height - buttonHeight;
+    
+    NSRect buttonFrame = NSMakeRect(buttonX, buttonY, buttonWidth, buttonHeight);
+    
+    // Remove existing button if any
+    if (_emergencyExitButton) {
+        [_emergencyExitButton removeFromSuperview];
+    }
+    
+    // Create invisible button
+    _emergencyExitButton = [[NSButton alloc] initWithFrame:buttonFrame];
+    [_emergencyExitButton setTarget:self];
+    [_emergencyExitButton setAction:@selector(emergencyExitButtonClicked:)];
+    [_emergencyExitButton setButtonType:NSButtonTypeMomentaryChange];
+    [_emergencyExitButton setBordered:NO];  // No border
+    [_emergencyExitButton setTransparent:YES];  // Transparent
+    [_emergencyExitButton setTitle:@""];  // No title
+    [_emergencyExitButton setAlphaValue:0.0];  // Completely invisible
+    
+    // Add to the window's content view (above WebView)
+    [[[self window] contentView] addSubview:_emergencyExitButton positioned:NSWindowAbove relativeTo:_webView];
+    
+    if (_debugLogging) {
+        NSString *logMsg = [NSString stringWithFormat:@"Emergency exit button created at (%.1f, %.1f) size (%.1f x %.1f)", 
+                           buttonX, buttonY, buttonWidth, buttonHeight];
+        LogToUnity([logMsg UTF8String]);
+    }
+}
+
+// Emergency exit button click handler
+- (void)emergencyExitButtonClicked:(NSButton *)sender {
+    if (_debugLogging) {
+        LogToUnity("🚨 Emergency exit button clicked in popup mode");
+    }
+    
+    // Send message to Unity
+    if (_messageCallback) {
+        _messageCallback("//:balancy_close_view");
+    }
+}
+
+// Update emergency exit button position when window resizes
+- (void)updateEmergencyExitButtonPosition {
+    if (!_emergencyExitButton || !_webView) return;
+    
+    CGRect webViewFrame = _webView.frame;
+    CGFloat buttonWidth = webViewFrame.size.width * 0.05;
+    CGFloat buttonHeight = webViewFrame.size.height * 0.05;
+    
+    CGFloat buttonX = webViewFrame.origin.x + webViewFrame.size.width - buttonWidth;
+    CGFloat buttonY = webViewFrame.origin.y + webViewFrame.size.height - buttonHeight;
+    
+    NSRect buttonFrame = NSMakeRect(buttonX, buttonY, buttonWidth, buttonHeight);
+    [_emergencyExitButton setFrame:buttonFrame];
+}
+
+// Handle window resize notifications
+- (void)windowDidResize:(NSNotification *)notification {
+    [self updateEmergencyExitButtonPosition];
+}
+
 - (void)close {
+    // Remove observer and clean up button
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+    if (_emergencyExitButton) {
+        [_emergencyExitButton removeFromSuperview];
+        _emergencyExitButton = nil;
+    }
+    
     [_userContentController removeScriptMessageHandlerForName:@"BalancyWebView"];
     [_webView stopLoading];
     [[self window] close];
@@ -1267,6 +1398,27 @@ bool _balancyGetEmbeddedPixelData(unsigned char* buffer, int bufferSize) {
 //         NSString *logMsg = [NSString stringWithFormat:@"*balancyGetEmbeddedPixelData: copied %zu bytes successfully", expectedSize];
 //         LogToUnity([logMsg UTF8String]);
         return true;
+    }
+}
+
+// Optional C function to enable/disable emergency exit
+void _balancySetEmergencyExitEnabled(bool enabled) {
+    @autoreleasepool {
+        // For popup mode
+        if (_sharedController != nil) {
+            if (enabled) {
+                [_sharedController setupEmergencyExitButton];
+            } else if (_sharedController.emergencyExitButton) {
+                [_sharedController.emergencyExitButton removeFromSuperview];
+                _sharedController.emergencyExitButton = nil;
+            }
+        }
+        
+        // For embedded mode - the emergency exit is always enabled via mouse event interception
+        // Could add a flag here if you want to disable it programmatically
+        
+        NSString *logMsg = [NSString stringWithFormat:@"Emergency exit %@", enabled ? @"enabled" : @"disabled"];
+        LogToUnity([logMsg UTF8String]);
     }
 }
 
