@@ -23,6 +23,11 @@ namespace Balancy
         {
             _status = Status.Finished;
         }
+        
+        public bool IsFinished()
+        {
+            return _status == Status.Finished;
+        }
 
         private AsyncLoadHandler()
         {

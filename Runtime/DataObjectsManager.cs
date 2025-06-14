@@ -10,6 +10,13 @@ namespace Balancy.Dictionaries
     public class DataObjectsManager
     {
         private static string CACHE_PATH;
+
+        enum Status
+        {
+            None = 0,
+            Loading = 1,
+            Loaded = 2
+        }
         
         [StructLayout(LayoutKind.Sequential, Pack = 1, CharSet = CharSet.Ansi)]
         internal class SharedObjectInfo
@@ -42,7 +49,7 @@ namespace Balancy.Dictionaries
 
             private SharedObjectInfo _spriteInfo = null;
             
-            public bool Loaded = false;
+            public Status Status = Status.None;
             private readonly List<CallbackInfo> _callbacks = new List<CallbackInfo>();
             public Sprite Sprite;
             
@@ -91,7 +98,7 @@ namespace Balancy.Dictionaries
             private void SetSprite(Sprite sprite)
             {
                 Sprite = sprite;
-                Loaded = Sprite != null;
+                Status = Sprite != null ? Status.Loaded : Status.None;
 
                 foreach (var info in _callbacks)
                 {
@@ -169,6 +176,11 @@ namespace Balancy.Dictionaries
                 if (ptr == IntPtr.Zero)
                 {
                     Debug.LogError("Failed to load DataObject " + id);
+                    if (AllSprites.TryGetValue(id, out var oneObjectSprite))
+                    {
+                        _mainThreadInstance.Enqueue(() => { oneObjectSprite.PrepareSprite(null); });
+                    } else
+                        Debug.Log("No request object found " + id);
                 }
                 else
                 {
@@ -196,12 +208,10 @@ namespace Balancy.Dictionaries
                 oneObjectSprite = new OneObjectSprite();
                 oneObjectSprite.AddCallback(handler, callback);
                 AllSprites.Add(id, oneObjectSprite);
-                
-                LibraryMethods.Models.balancyDataObjectLoad(id, DataObjectLoaded);
             }
             else
             {
-                if (oneObjectSprite.Loaded)
+                if (oneObjectSprite.Status == Status.Loaded)
                 {
                     handler.Finish();
                     callback?.Invoke(oneObjectSprite.Sprite);
@@ -210,6 +220,12 @@ namespace Balancy.Dictionaries
                 {
                     oneObjectSprite.AddCallback(handler, callback);
                 }
+            }
+
+            if (oneObjectSprite.Status == Status.None && !handler.IsFinished())
+            {
+                oneObjectSprite.Status = Status.Loading;
+                LibraryMethods.Models.balancyDataObjectLoad(id, DataObjectLoaded);
             }
 
             return handler;

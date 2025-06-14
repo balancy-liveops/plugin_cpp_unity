@@ -94,18 +94,42 @@ namespace Balancy.Models
     
     public class UnnyObject : JsonBasedObject
     {
+        public enum ObjectType
+        {
+            Unknown = 0,
+            Sprite = 1 << 0,
+            Asset = 1 << 2,
+            View = 1 << 4
+        }
+        
         private string id;
+        private ObjectType type;
         public string Id => id;
 
         public override void InitData()
         {
             base.InitData();
             id = GetStringParam("id");
+            type = (ObjectType)GetIntParam("type");
         }
         
         public AsyncLoadHandler LoadSprite(Action<UnityEngine.Sprite> callback)
         {
-            return DataObjectsManager.GetObject(Id, callback);
+            switch (type)
+            {
+                case ObjectType.Unknown:
+                case ObjectType.Sprite:
+                    return DataObjectsManager.GetObject(Id, callback);
+                case ObjectType.Asset:
+                {
+                    // if (OnLoadAssetAsSprite != null)
+                    //     return OnLoadAssetAsSprite?.Invoke(Name, callback);
+                    Debug.LogError($"Addressables plugin wasn't found. Please add it to the project. {Id}");
+                    break;
+                }
+            }
+
+            return null;
         }
         
         /// <summary>
@@ -123,17 +147,67 @@ namespace Balancy.Models
         {
             DataObjectsManager.ClearFromDisk(Id);
         }
-    }
-    
-    public class UnnyAsset : JsonBasedObject
-    {
-        private string name;
-        public string Name => name;
-
-        public override void InitData()
+        
+        public AsyncLoadHandler LoadAsset(Action<UnityEngine.Object> callback)
         {
-            base.InitData();
-            name = GetStringParam("name");
+            switch (type)
+            {
+                case ObjectType.Unknown:
+                case ObjectType.Sprite:
+                    Debug.LogError($"You are trying to load sprite as an Object. Please use LoadSprite instead. {Id}");
+                    return null;
+                case ObjectType.Asset:
+                    // if (OnLoadAssetAsObject != null)
+                    //     return OnLoadAssetAsObject?.Invoke(Name, callback);
+                    Debug.LogError($"Addressables plugin wasn't found. Please add it to the project. {Id}");
+                    break;
+            }
+
+            return null;
+        }
+
+        public void Preload()
+        {
+            switch (type)
+            {
+                case ObjectType.Unknown:
+                case ObjectType.Sprite:
+                    //DataObjectsManager.PreloadObject(Id);
+                    Debug.LogError("Not implemented yet. PreloadObject for sprite " + Id);
+                    break;
+                case ObjectType.Asset:
+                    LoadAsset(asset =>
+                    {
+                        if (asset == null)
+                            Debug.LogError($"Failed to preload asset {Id}");
+                        else
+                            Debug.Log("Preloaded asset " + Id);
+                    });
+                    break;
+                case ObjectType.View:
+                {
+                    Balancy.Dictionaries.DataObjectsManager.GetObjectView(id, url =>
+                    {
+                    });
+                    break;
+                }
+            }
+        }
+
+        public void OpenView(Action onShown, JsonBasedObject owner = null)
+        {
+            if (type != ObjectType.View)
+            {
+                Debug.LogError("You are trying to open view for object that is not a view. " + Id);
+                return;
+            }
+
+            Balancy.Dictionaries.DataObjectsManager.GetObjectView(id, url =>
+            {
+                Debug.LogError("Opening = " + url);
+                Balancy.RenderViewsManager.OpenLocalView(url, owner);
+                onShown?.Invoke();
+            });
         }
     }
     
