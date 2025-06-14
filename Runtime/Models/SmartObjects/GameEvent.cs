@@ -1,15 +1,15 @@
 
 namespace Balancy.Models.SmartObjects
 {
-    public class GameEvent : Balancy.Models.BaseModel 
+    public class GameEvent : Balancy.Models.BaseModel, IViewModel
     {
-        
 		private string _unnyIdCondition;
 		private string _description;
 		private Balancy.Models.SmartObjects.EventFinishType _finishType;
 		private Localization.LocalizedString _name;
 		private int _duration;
 		private string _unnyIdScript;
+		private UnnyObject _icon;
 		
 		private int _unnyPriority;
 		private UnnyObject _unnyView;
@@ -20,6 +20,7 @@ namespace Balancy.Models.SmartObjects
 		public Balancy.Models.SmartObjects.EventFinishType FinishType => _finishType;
 		public Localization.LocalizedString Name => _name;
 		public int Duration => _duration;
+		public UnnyObject Icon => _icon;
 		// public string Script => GetModelByUnnyId<string>(_unnyIdScript);
 		
 		public int UnnyPriority => _unnyPriority;
@@ -36,6 +37,7 @@ namespace Balancy.Models.SmartObjects
 			_name = GetLocalizedString("name");
 			_duration = GetIntParam("duration");
 			_unnyIdScript = GetStringParam("unnyIdScript");
+			_icon = GetObjectParam<UnnyObject>("unnyIcon");
 			
 			_unnyPriority = GetIntParam("unnyPriority");
 			_unnyView = GetObjectParam<UnnyObject>("unnyView");

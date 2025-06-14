@@ -1,9 +1,8 @@
 
 namespace Balancy.Models.SmartObjects
 {
-    public class GameOfferGroup : Balancy.Models.BaseModel 
+    public class GameOfferGroup : Balancy.Models.BaseModel, IViewModel 
     {
-        
 		private Balancy.Models.SmartObjects.OfferGroupType _type;
 		private string[] _unnyIdStoreItems;
 		private UnnyObject _icon;

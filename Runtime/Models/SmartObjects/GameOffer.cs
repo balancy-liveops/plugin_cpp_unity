@@ -1,9 +1,8 @@
 
 namespace Balancy.Models.SmartObjects
 {
-    public class GameOffer : Balancy.Models.BaseModel 
+    public class GameOffer : Balancy.Models.BaseModel, IViewModel
     {
-        
 		private UnnyObject _sprite;
 		private string _unnyIdStoreItem;
 		private Localization.LocalizedString _description;

@@ -1,6 +1,8 @@
+using System;
 using System.Collections.Generic;
 using Balancy.Data.SmartObjects;
 using Balancy.Models;
+using Balancy.Models.SmartObjects;
 using UnityEngine;
 
 namespace Balancy.UI
@@ -21,6 +23,7 @@ namespace Balancy.UI
         private void Awake()
         {
             Balancy.Callbacks.OnNewEventActivated += OnNewEventActivated;
+            Balancy.Callbacks.OnEventDeactivated += OnEventDeactivated;
             Balancy.Callbacks.OnNewOfferActivated += OnNewOfferActivated;
             Balancy.Callbacks.OnNewOfferGroupActivated += OnNewOfferGroupActivated;
             Balancy.Callbacks.OnOfferDeactivated += OnOfferDeactivated;
@@ -34,11 +37,22 @@ namespace Balancy.UI
         private void OnDestroy()
         {
             Balancy.Callbacks.OnNewEventActivated -= OnNewEventActivated;
+            Balancy.Callbacks.OnEventDeactivated -= OnEventDeactivated;
             Balancy.Callbacks.OnNewOfferActivated -= OnNewOfferActivated;
             Balancy.Callbacks.OnNewOfferGroupActivated -= OnNewOfferGroupActivated;
             Balancy.Callbacks.OnOfferDeactivated -= OnOfferDeactivated;
             Balancy.Callbacks.OnOfferGroupDeactivated -= OnOfferGroupDeactivated;
             Balancy.Callbacks.OnDataUpdated -= OnDataUpdated;
+        }
+        
+        private void OnEventDeactivated(EventInfo eventInfo)
+        {
+            if (_activeElements.TryGetValue(eventInfo.GameEventUnnyId, out var elementInfo))
+            {
+                if (elementInfo.Element != null)
+                    Destroy(elementInfo.Element.gameObject);
+                _activeElements.Remove(eventInfo.GameEventUnnyId);
+            }
         }
 
         private void OnOfferDeactivated(OfferInfo offerInfo, bool wasPurchased)
@@ -69,60 +83,75 @@ namespace Balancy.UI
             var allEvents = Profiles.System.SmartInfo.GameEvents;
             var allOffers = Profiles.System.SmartInfo.GameOffers;
 
+            foreach (var eventInfo in allEvents)
+                TryToAddEvent(eventInfo);
+            
             foreach (var offerInfo in allOffers)
                 TryToAddOffer(offerInfo);
         }
 
-        private void TryToAddOffer(OfferInfo offerInfo)
+        private void TryToAddEvent(EventInfo info)
         {
-            if (offerInfo.GameOffer?.UnnyPlacement == placement)
-                AddOfferDisplay(offerInfo);
-        }
+            if (info.GameEvent?.UnnyPlacement != placement)
+                return;
+            
+            _activeElements.Add(info.GameEventUnnyId, new ElementInfo
+            {
+                Priority = info.GameEvent?.UnnyPriority ?? 0
+            });
 
-        private void AddOfferDisplay(OfferInfo info)
+            void OnIconLoaded(Sprite sprite)
+            {
+                AddIconDisplay(info.GameEventUnnyId, info.GameEvent, info, info.GetSecondsLeftBeforeDeactivation,
+                    sprite);
+            }
+
+            if (info.GameEvent?.Icon == null)
+                OnIconLoaded(null);
+            else
+                info.GameEvent?.Icon?.LoadSprite(OnIconLoaded);
+        }
+        
+        private void TryToAddOffer(OfferInfo info)
         {
-            var myOffer = info.GameOffer;
+            if (info.GameOffer?.UnnyPlacement != placement)
+                return;
+            
             _activeElements.Add(info.InstanceId, new ElementInfo
             {
                 Priority = info.GameOffer?.UnnyPriority ?? 0
             });
             
-            info.GameOffer?.Icon.LoadSprite(sprite =>
+            void OnIconLoaded(Sprite sprite)
             {
-                if (!_activeElements.ContainsKey(info.InstanceId))
-                    return;
+                AddIconDisplay(info.InstanceId, info.GameOffer, info, info.GetSecondsLeftBeforeDeactivation, sprite);
+            }
+
+            if (info.GameOffer?.Icon == null)
+                OnIconLoaded(null);
+            else
+                info.GameOffer?.Icon?.LoadSprite(OnIconLoaded);
+        }
+
+        private void AddIconDisplay(string id, IViewModel info, JsonBasedObject owner, Func<int> getSecondsLeft, Sprite sprite)
+        {
+            if (!_activeElements.ContainsKey(id) || info == null)
+                return;
                 
-                var elementGameObject = GameObject.Instantiate(elementPrefab, content);
-                var element = elementGameObject.GetComponent<Element>();
-                element.Init(sprite, info.GetSecondsLeftBeforeDeactivation);
-                elementGameObject.SetActive(true);
+            var elementGameObject = GameObject.Instantiate(elementPrefab, content);
+            var element = elementGameObject.GetComponent<Element>();
+            element.Init(sprite, getSecondsLeft);
+            elementGameObject.SetActive(true);
 
-                if (myOffer != null)
-                {
-                    element.SetOnClick(() =>
-                    {
-                        
-                        if (myOffer.UnnyView == null)
-                        {
-                            Debug.LogError("No view found");
-                            return;
-                        }
-                        
-                        //Balancy.Dictionaries.DataObjectsManager.GetObjectView("644", url =>
-                        Balancy.Dictionaries.DataObjectsManager.GetObjectView(myOffer.UnnyView.Id, url =>
-                        {
-                            Debug.LogError("Opening = " + url);
-                            Balancy.RenderViewsManager.OpenLocalView(url, info);
-                        });
-
-                        // var fileUrl ="file://"  + "/Users/pavelignatov/Library/Application Support/DefaultCompany/plugin_cpp_unity/Balancy/Models/67933064-2b8a-11f0-b3bd-1fec53a055ba_Cache/Files/TestArchive/index.html";
-                        // Balancy.RenderViewsManager.OpenView(fileUrl);
-                        // Balancy.RenderViewsManager.OpenView(myOffer.View);
-                    });
-                }
-
-                _activeElements[info.InstanceId].Element = element;
+            element.SetOnClick(() =>
+            {
+                if (info.UnnyView != null)
+                    info.UnnyView.OpenView(null, owner);
             });
+
+            _activeElements[id].Element = element;
+
+            SortElements();
         }
 
         private void OnDataUpdated(Callbacks.DataUpdatedStatus status)
@@ -142,10 +171,26 @@ namespace Balancy.UI
 
         private void OnNewEventActivated(EventInfo eventInfo)
         {
-            
+            TryToAddEvent(eventInfo);
         }
         
-        private void RemoveChildren()
+        private void SortElements()
+        {
+            var elements = new List<ElementInfo>(_activeElements.Values);
+            elements.Sort((a, b) => b.Priority.CompareTo(a.Priority));
+
+            RemoveChildren(false);
+
+            foreach (var elementInfo in elements)
+            {
+                if (elementInfo.Element == null) continue;
+                RectTransform transform1;
+                (transform1 = elementInfo.Element.transform as RectTransform).SetParent(content, false);
+                transform1.localScale = Vector3.one;
+            }
+        }
+        
+        private void RemoveChildren(bool destroy = true)
         {
             int n = content.childCount - 1;
 
@@ -153,7 +198,10 @@ namespace Balancy.UI
             {
                 var child = content.GetChild(i);
                 if (child == null) continue;
-                Destroy(child.gameObject);
+                if (destroy)
+                    Destroy(child.gameObject);
+                else
+                    child.SetParent(null);
             }
         }
     }
