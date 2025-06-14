@@ -201,6 +201,9 @@ extern "C" {
     [self.view addSubview:_activityIndicator];
     _activityIndicator.center = self.view.center;
     
+    // Setup emergency exit button after WebView is added
+    [self setupEmergencyExitButton];
+    
     // Set up auto layout constraints
     _webView.translatesAutoresizingMaskIntoConstraints = NO;
     
@@ -224,6 +227,9 @@ extern "C" {
     
     // Apply viewport settings
     [self applyViewportSettings];
+    
+    // Update emergency exit button position
+    [self updateEmergencyExitButtonPosition];
 }
 
 #pragma mark - Public Methods
@@ -277,6 +283,12 @@ extern "C" {
 }
 
 - (void)close {
+    // Remove emergency exit button
+    if (_emergencyExitButton) {
+        [_emergencyExitButton removeFromSuperview];
+        _emergencyExitButton = nil;
+    }
+    
     // Remove script message handler to avoid memory leaks
     [_userContentController removeScriptMessageHandlerForName:@"BalancyWebView"];
     
@@ -513,6 +525,97 @@ extern "C" {
     
     if (_debugLogging) {
         NSLog(@"[BalancyWebView] Game UI mode %@", enabled ? @"enabled" : @"disabled");
+    }
+}
+
+#pragma mark - Emergency Exit Methods
+
+// Setup emergency exit button (10% x 10% in top-right corner)
+- (void)setupEmergencyExitButton {
+    if (!self.isViewLoaded) return;
+    
+    // Remove existing button if any
+    if (_emergencyExitButton) {
+        [_emergencyExitButton removeFromSuperview];
+    }
+    
+    // Calculate button size (10% of view size)
+    CGFloat buttonWidth = self.view.bounds.size.width * 0.10;
+    CGFloat buttonHeight = self.view.bounds.size.height * 0.10;
+    
+    // Position in top-right corner
+    CGFloat buttonX = self.view.bounds.size.width - buttonWidth;
+    CGFloat buttonY = 0;  // Top of the view
+    
+    CGRect buttonFrame = CGRectMake(buttonX, buttonY, buttonWidth, buttonHeight);
+    
+    // Create invisible button (iOS compatible - minimal visibility for touch events)
+    _emergencyExitButton = [UIButton buttonWithType:UIButtonTypeCustom];
+    _emergencyExitButton.frame = buttonFrame;
+    
+    // Make button invisible but still touchable
+    _emergencyExitButton.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.01];  // Barely visible but not completely transparent
+    _emergencyExitButton.alpha = 1.0;  // Keep alpha at 1.0 for touch events to work
+    
+    // Add action for touch up inside
+    [_emergencyExitButton addTarget:self
+                             action:@selector(emergencyExitButtonTapped:)
+                   forControlEvents:UIControlEventTouchUpInside];
+    
+    // Ensure button can receive touch events
+    _emergencyExitButton.userInteractionEnabled = YES;
+    _emergencyExitButton.exclusiveTouch = YES;  // Prevent other touches while this button is being touched
+    
+    // Add to the view (above WebView)
+    [self.view addSubview:_emergencyExitButton];
+    [self.view bringSubviewToFront:_emergencyExitButton];
+    
+    if (_debugLogging) {
+        NSLog(@"[BalancyWebView] Emergency exit button created at (%.1f, %.1f) size (%.1f x %.1f)",
+              buttonX, buttonY, buttonWidth, buttonHeight);
+    }
+}
+
+// Emergency exit button tap handler
+- (void)emergencyExitButtonTapped:(UIButton *)sender {
+    if (_debugLogging) {
+        NSLog(@"[BalancyWebView] Emergency exit button tapped in iOS mode");
+    }
+    
+    // Send message to Unity
+    if (_messageCallback != NULL) {
+        _messageCallback("//:balancy_close_view");
+    }
+}
+
+// Update emergency exit button position when view layout changes
+- (void)updateEmergencyExitButtonPosition {
+    if (!_emergencyExitButton || !self.isViewLoaded) return;
+    
+    CGFloat buttonWidth = self.view.bounds.size.width * 0.10;
+    CGFloat buttonHeight = self.view.bounds.size.height * 0.10;
+    
+    CGFloat buttonX = self.view.bounds.size.width - buttonWidth;
+    CGFloat buttonY = 0;  // Top of the view
+    
+    _emergencyExitButton.frame = CGRectMake(buttonX, buttonY, buttonWidth, buttonHeight);
+}
+
+// Enable or disable emergency exit
+- (void)setEmergencyExitEnabled:(BOOL)enabled {
+    if (enabled) {
+        if (!_emergencyExitButton) {
+            [self setupEmergencyExitButton];
+        }
+        _emergencyExitButton.hidden = NO;
+    } else {
+        if (_emergencyExitButton) {
+            _emergencyExitButton.hidden = YES;
+        }
+    }
+    
+    if (_debugLogging) {
+        NSLog(@"[BalancyWebView] Emergency exit %@", enabled ? @"enabled" : @"disabled");
     }
 }
 
@@ -848,6 +951,21 @@ void _balancySetGameUIMode(bool enabled) {
             if ([childVC isKindOfClass:[BalancyWebViewController class]]) {
                 BalancyWebViewController* webViewController = (BalancyWebViewController*)childVC;
                 [webViewController setGameUIMode:enabled];
+                break;
+            }
+        }
+    }
+}
+
+// Enable or disable emergency exit
+void _balancySetEmergencyExitEnabled(bool enabled) {
+    @autoreleasepool {
+        // Find the BalancyWebViewController
+        UIViewController* rootViewController = [UIApplication sharedApplication].keyWindow.rootViewController;
+        for (UIViewController* childVC in rootViewController.childViewControllers) {
+            if ([childVC isKindOfClass:[BalancyWebViewController class]]) {
+                BalancyWebViewController* webViewController = (BalancyWebViewController*)childVC;
+                [webViewController setEmergencyExitEnabled:enabled];
                 break;
             }
         }

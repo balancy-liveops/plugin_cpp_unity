@@ -404,11 +404,11 @@ void LogToUnity(const char* message) {
 //     }
 }
 
-// Check if point is in emergency exit zone (5% x 5% in top-right corner)
+// Check if point is in emergency exit zone (10% x 10% in top-right corner)
 - (BOOL)isPointInEmergencyExitZone:(CGPoint)point {
-    // Emergency exit zone is top-right corner, 5% x 5% of WebView size
-    CGFloat exitZoneWidth = _textureWidth * 0.05;
-    CGFloat exitZoneHeight = _textureHeight * 0.05;
+    // Emergency exit zone is top-right corner, 10% x 10% of WebView size
+    CGFloat exitZoneWidth = _textureWidth * 0.10;
+    CGFloat exitZoneHeight = _textureHeight * 0.10;
     
     CGFloat exitZoneX = _textureWidth - exitZoneWidth;
     CGFloat exitZoneY = _textureHeight - exitZoneHeight;
@@ -926,10 +926,10 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
 - (void)setupEmergencyExitButton {
     if (!_webView) return;
     
-    // Calculate button size (5% of WebView size)
+    // Calculate button size (10% of WebView size)
     CGRect webViewFrame = _webView.frame;
-    CGFloat buttonWidth = webViewFrame.size.width * 0.05;
-    CGFloat buttonHeight = webViewFrame.size.height * 0.05;
+    CGFloat buttonWidth = webViewFrame.size.width * 0.10;
+    CGFloat buttonHeight = webViewFrame.size.height * 0.10;
     
     // Position in top-right corner
     CGFloat buttonX = webViewFrame.origin.x + webViewFrame.size.width - buttonWidth;
@@ -979,8 +979,8 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
     if (!_emergencyExitButton || !_webView) return;
     
     CGRect webViewFrame = _webView.frame;
-    CGFloat buttonWidth = webViewFrame.size.width * 0.05;
-    CGFloat buttonHeight = webViewFrame.size.height * 0.05;
+    CGFloat buttonWidth = webViewFrame.size.width * 0.10;
+    CGFloat buttonHeight = webViewFrame.size.height * 0.10;
     
     CGFloat buttonX = webViewFrame.origin.x + webViewFrame.size.width - buttonWidth;
     CGFloat buttonY = webViewFrame.origin.y + webViewFrame.size.height - buttonHeight;

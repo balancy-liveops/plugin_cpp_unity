@@ -15,6 +15,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong, readonly) WKWebView *webView;
 @property (nonatomic, assign) BOOL offlineCacheEnabled;
 @property (nonatomic, assign) BOOL gameUIMode; // New property for game UI mode
+@property (nonatomic, strong) UIButton *emergencyExitButton;  // Emergency Exit button
 
 // Initialize with context and callbacks
 - (instancetype)initWithMessageCallback:(void (*)(const char*))messageCallback
@@ -33,6 +34,9 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)setOfflineCacheEnabled:(BOOL)enabled;
 - (void)setDebugLogging:(BOOL)enabled;
 - (void)setGameUIMode:(BOOL)enabled; // New method to toggle game UI mode
+
+// Emergency Exit functionality (10% x 10% invisible button in top-right corner)
+- (void)setEmergencyExitEnabled:(BOOL)enabled;
 
 @end
 

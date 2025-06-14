@@ -49,4 +49,7 @@ bool _balancyInjectJSCode(const char* code) {
     }
 }
 
+// Declare emergency exit function (implementation is in BalancyWebView.mm)
+void _balancySetEmergencyExitEnabled(bool enabled);
+
 } // extern "C"
