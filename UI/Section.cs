@@ -29,6 +29,7 @@ namespace Balancy.UI
             Balancy.Callbacks.OnOfferDeactivated += OnOfferDeactivated;
             Balancy.Callbacks.OnOfferGroupDeactivated += OnOfferGroupDeactivated;
             Balancy.Callbacks.OnDataUpdated += OnDataUpdated;
+            Balancy.Callbacks.OnProfileReset += RefreshAll;
             
             if (Main.IsReadyToUse)
                 RefreshAll();
@@ -43,6 +44,7 @@ namespace Balancy.UI
             Balancy.Callbacks.OnOfferDeactivated -= OnOfferDeactivated;
             Balancy.Callbacks.OnOfferGroupDeactivated -= OnOfferGroupDeactivated;
             Balancy.Callbacks.OnDataUpdated -= OnDataUpdated;
+            Balancy.Callbacks.OnProfileReset -= RefreshAll;
         }
         
         private void OnEventDeactivated(EventInfo eventInfo)

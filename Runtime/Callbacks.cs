@@ -49,6 +49,8 @@ namespace Balancy
         public delegate void OnHardPurchasedOfferDelegate(PaymentInfo paymentInfo, GameOffer gameOffer);
         public delegate void OnHardPurchasedOfferGroupDelegate(PaymentInfo paymentInfo, GameOfferGroup gameOffer, StoreItem storeItem);
         
+        public delegate void OnProfileResetDelegate();
+        
         public delegate void OnPaymentIsReadyDelegate();
         
         public static OnDataUpdatedDelegate OnDataUpdated = null;
@@ -73,6 +75,8 @@ namespace Balancy
         public static OnHardPurchasedShopSlotDelegate OnHardPurchasedShopSlot = null;
         public static OnHardPurchasedOfferDelegate OnHardPurchasedOffer = null;
         public static OnHardPurchasedOfferGroupDelegate OnHardPurchasedOfferGroup = null;
+        
+        public static OnProfileResetDelegate OnProfileReset = null;
         
         public struct NetworkDownloadInfo
         {
@@ -147,6 +151,8 @@ namespace Balancy
             
             // OnNetworkDownloadStarted += info => Debug.Log($" => Balancy.OnNetworkDownloadStarted: {info.Url}, Type: {(info.IsCDNRequest ? "CDN" : "API")}");
             // OnNetworkDownloadFinished += info => Debug.Log($" => Balancy.OnNetworkDownloadFinished: {info.Url}, Time: {info.TimeMs}ms, Size: {info.DownloadedBytes}B, Speed: {info.SpeedKBps:F1}KB/s, Success: {info.Success}");
+            
+            OnProfileReset += () => Debug.Log(" => Balancy.OnProfileReset: Profile has been reset.");
         }
         
         public static void ClearAll()
@@ -176,6 +182,8 @@ namespace Balancy
             
             OnNetworkDownloadStarted = null;
             OnNetworkDownloadFinished = null;
+
+            OnProfileReset = null;
         }
     }
 }

@@ -6,6 +6,13 @@ namespace Balancy
 {
     public class RenderViewsManager
     {
+#if UNITY_EDITOR
+        // private const bool UseEmbeddedWebView = true;
+        private const bool UseEmbeddedWebView = false;
+#else
+        private const bool UseEmbeddedWebView = false;
+#endif
+        
         private static BalancyWebView _webView;
         
         internal static void Init()
@@ -59,11 +66,17 @@ namespace Balancy
             var urlToLoad = url;// + "?timestamp=" + Guid.NewGuid().ToString();
 
             string ownerJson = owner?.ToJsonString(false);
+            bool success = false;
+            if (UseEmbeddedWebView)
+            {
 #if UNITY_EDITOR
-            bool success = BalancyWebViewEmbedded.Instance.InitializeEmbeddedWebView(urlToLoad, ownerJson);
-#else
-            bool success = _webView.OpenWebView(urlToLoad, ownerJson);
+                success = BalancyWebViewEmbedded.Instance.InitializeEmbeddedWebView(urlToLoad, ownerJson);
 #endif
+            }
+            else
+            {
+                success = _webView.OpenWebView(urlToLoad, ownerJson);
+            }
             
             if (success)
                 Debug.Log("Opening View: " + urlToLoad);
@@ -89,6 +102,7 @@ namespace Balancy
             {
                 Debug.LogError("Balancy View Bad Command: " + msg);
             }
+            
             if (msg.StartsWith("//:"))
             {
                 var prms = msg.Split(":");
@@ -98,11 +112,14 @@ namespace Balancy
                     switch (command)
                     {
                         case "balancy_close_view":
+                            if (UseEmbeddedWebView)
+                            {
 #if UNITY_EDITOR
-                            BalancyWebViewEmbedded.Instance.CloseEmbeddedWebView();
-#else
-                            _webView.CloseWebView();
+                                BalancyWebViewEmbedded.Instance.CloseEmbeddedWebView();
 #endif
+                            }
+                            else
+                                _webView.CloseWebView();
                             break;
                         case "balancy_buy_offer":
                         {
