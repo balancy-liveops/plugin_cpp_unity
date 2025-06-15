@@ -120,6 +120,9 @@ namespace Balancy.WebView
         #if UNITY_IOS && !UNITY_EDITOR
         [DllImport("__Internal")]
         private static extern bool _balancyOpenWebView(string url);
+        
+        [DllImport("__Internal")]
+        private static extern bool _balancyOpenWebViewWithSize(string url, int width, int height);
 
         [DllImport("__Internal")]
         private static extern void _balancyCloseWebView();
@@ -161,6 +164,9 @@ namespace Balancy.WebView
         #else
         [DllImport("libBalancyWebViewMac")]
         private static extern bool _balancyOpenWebView(string url);
+        
+        [DllImport("libBalancyWebViewMac")]
+        private static extern bool _balancyOpenWebViewWithSize(string url, int width, int height);
 
         [DllImport("libBalancyWebViewMac")]
         private static extern void _balancyCloseWebView();
@@ -261,6 +267,20 @@ namespace Balancy.WebView
         /// <returns>True if the WebView was opened successfully, false otherwise</returns>
         public bool OpenWebView(string url, string ownerJson)
         {
+            // Use Screen dimensions to match game view size
+            return OpenWebView(url, ownerJson, Screen.width, Screen.height);
+        }
+        
+        /// <summary>
+        /// Opens a WebView with the specified URL and custom size
+        /// </summary>
+        /// <param name="url">The URL to open in the WebView</param>
+        /// <param name="ownerJson">Owner JSON data</param>
+        /// <param name="width">Width of the WebView window</param>
+        /// <param name="height">Height of the WebView window</param>
+        /// <returns>True if the WebView was opened successfully, false otherwise</returns>
+        public bool OpenWebView(string url, string ownerJson, int width, int height)
+        {
             if (_isWebViewOpen)
             {
                 Debug.LogWarning("WebView is already open. Close it first before opening a new one.");
@@ -283,7 +303,7 @@ namespace Balancy.WebView
             bool success = false;
 
             #if UNITY_IOS || UNITY_STANDALONE_OSX || UNITY_EDITOR_OSX
-            success = _balancyOpenWebView(url);
+            success = _balancyOpenWebViewWithSize(url, width, height);
             #else
             Debug.LogWarning("BalancyWebView is not supported on this platform.");
             success = false;

@@ -75,7 +75,8 @@ namespace Balancy
             }
             else
             {
-                success = _webView.OpenWebView(urlToLoad, ownerJson);
+                // Use game view size for popup mode to match embedded mode behavior
+                success = _webView.OpenWebView(urlToLoad, ownerJson, Screen.width / 2, Screen.height / 2);
             }
             
             if (success)

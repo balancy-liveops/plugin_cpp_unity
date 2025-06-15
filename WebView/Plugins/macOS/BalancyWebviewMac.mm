@@ -40,6 +40,7 @@ void LogToUnity(const char* message) {
 @property (nonatomic, strong) NSButton *emergencyExitButton;  // Emergency Exit button
 
 - (instancetype)init;
+- (instancetype)initWithSize:(NSSize)size;
 - (BOOL)loadURL:(NSString *)url;
 - (void)close;
 - (BOOL)sendMessage:(NSString *)message;
@@ -826,6 +827,10 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
 }
 
 - (instancetype)init {
+    return [self initWithSize:NSMakeSize(800, 600)]; // Default size
+}
+
+- (instancetype)initWithSize:(NSSize)size {
     self = [super init];
     if (self) {
         _debugLogging = NO;
@@ -833,9 +838,8 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
         _offlineCacheEnabled = NO;
         _viewportRect = NSMakeRect(0, 0, 1, 1);
         
-        // Create a window
-        NSRect screenRect = [[NSScreen mainScreen] frame];
-        NSRect windowRect = NSMakeRect(0, 0, screenRect.size.width * 0.8, screenRect.size.height * 0.8);
+        // Create a window with the specified size
+        NSRect windowRect = NSMakeRect(0, 0, size.width, size.height);
         NSWindow *window = [[NSWindow alloc] initWithContentRect:windowRect
                                                       styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable 
                                                         backing:NSBackingStoreBuffered 
@@ -1169,7 +1173,7 @@ bool _balancyOpenWebView(const char* url) {
         LogToUnity("_balancyOpenWebView called");
         
         if (_sharedController == nil) {
-            LogToUnity("Creating new WebView controller");
+            LogToUnity("Creating new WebView controller with default size");
             _sharedController = [[BalancyWebViewController alloc] init];
         }
         
@@ -1180,6 +1184,30 @@ bool _balancyOpenWebView(const char* url) {
         BOOL result = [_sharedController loadURL:nsUrl];
         
         NSString *resultMsg = [NSString stringWithFormat:@"_balancyOpenWebView result: %@", result ? @"SUCCESS" : @"FAILED"];
+        LogToUnity([resultMsg UTF8String]);
+        
+        return result;
+    }
+}
+
+bool _balancyOpenWebViewWithSize(const char* url, int width, int height) {
+    @autoreleasepool {
+        NSString *logMsg = [NSString stringWithFormat:@"_balancyOpenWebViewWithSize called with size: %dx%d", width, height];
+        LogToUnity([logMsg UTF8String]);
+        
+        if (_sharedController == nil) {
+            LogToUnity("Creating new WebView controller with custom size");
+            NSSize windowSize = NSMakeSize(width, height);
+            _sharedController = [[BalancyWebViewController alloc] initWithSize:windowSize];
+        }
+        
+        NSString* nsUrl = [NSString stringWithUTF8String:url];
+        NSString *logMsg2 = [NSString stringWithFormat:@"Attempting to load URL: %@", nsUrl];
+        LogToUnity([logMsg2 UTF8String]);
+        
+        BOOL result = [_sharedController loadURL:nsUrl];
+        
+        NSString *resultMsg = [NSString stringWithFormat:@"_balancyOpenWebViewWithSize result: %@", result ? @"SUCCESS" : @"FAILED"];
         LogToUnity([resultMsg UTF8String]);
         
         return result;
