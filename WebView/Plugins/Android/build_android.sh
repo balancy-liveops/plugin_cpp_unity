@@ -14,7 +14,7 @@ echo "📂 Working directory: $SCRIPT_DIR"
 
 # Clean up any previous failed builds first
 echo "🧹 Pre-build cleanup..."
-for ABI in "arm64-v8a" "x86_64"; do
+for ABI in "arm64-v8a" "armeabi-v7a" "x86_64"; do
     BUILD_DIR="build_$ABI"
     if [ -d "$BUILD_DIR" ]; then
         echo "   🗑️ Removing previous build directory: $BUILD_DIR"
@@ -27,7 +27,7 @@ chmod +x build_android.sh
 
 # Configuration
 ANDROID_NDK_HOME="${ANDROID_NDK_HOME:-/Applications/Unity/Hub/Editor/2022.3.25f1/PlaybackEngines/AndroidPlayer/NDK}"
-ARCHS=("arm64-v8a" "x86_64")
+ARCHS=("arm64-v8a" "armeabi-v7a" "x86_64")
 
 echo "📱 Using Android NDK: $ANDROID_NDK_HOME"
 
@@ -123,14 +123,19 @@ for ABI in "${ARCHS[@]}"; do
     
     # Set environment variables for 16KB alignment
     export LDFLAGS="-Wl,-z,max-page-size=16384 -Wl,-z,separate-code"
+    # Unset any conflicting environment variables
+    unset CMAKE_SYSTEM_VERSION
+    unset ANDROID_PLATFORM
     
     # Configure with CMake
     cmake .. \
         -DANDROID=ON \
         -DCMAKE_SYSTEM_NAME=Android \
+        -DCMAKE_SYSTEM_VERSION=21 \
         -DCMAKE_ANDROID_NDK="$ANDROID_NDK_HOME" \
         -DANDROID_ABI="$ABI" \
         -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
+        -DANDROID_PLATFORM=android-21 \
         -DCMAKE_ANDROID_API=21 \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-z,max-page-size=16384 -Wl,-z,separate-code" \
