@@ -121,6 +121,9 @@ for ABI in "${ARCHS[@]}"; do
     mkdir -p "$BUILD_DIR"
     cd "$BUILD_DIR"
     
+    # Set environment variables for 16KB alignment
+    export LDFLAGS="-Wl,-z,max-page-size=16384 -Wl,-z,separate-code"
+    
     # Configure with CMake
     cmake .. \
         -DANDROID=ON \
@@ -129,7 +132,10 @@ for ABI in "${ARCHS[@]}"; do
         -DANDROID_ABI="$ABI" \
         -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
         -DCMAKE_ANDROID_API=21 \
-        -DCMAKE_BUILD_TYPE=Release
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_SHARED_LINKER_FLAGS="-Wl,-z,max-page-size=16384 -Wl,-z,separate-code" \
+        -DCMAKE_EXE_LINKER_FLAGS="-Wl,-z,max-page-size=16384 -Wl,-z,separate-code" \
+        -DANDROID_LD_FLAGS="-Wl,-z,max-page-size=16384 -Wl,-z,separate-code"
     
     # Build
     cmake --build . --config Release

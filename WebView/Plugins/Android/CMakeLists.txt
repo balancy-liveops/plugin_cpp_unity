@@ -17,6 +17,11 @@ set(CMAKE_SYSTEM_NAME Android)
 set(LIBRARY_TYPE SHARED)
 add_definitions(-D__ANDROID__=1 -DPLATFORM_ANDROID=1)
 
+# Add 16KB alignment for Android 15+ compatibility - linker flags only
+set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-z,max-page-size=16384 -Wl,-z,separate-code")
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,max-page-size=16384 -Wl,-z,separate-code")
+set(ANDROID_LD_FLAGS "-Wl,-z,max-page-size=16384 -Wl,-z,separate-code")
+
 # Create the Android WebView library
 add_library(BalancyWebViewAndroid ${LIBRARY_TYPE}
     BalancyWebViewJNI.cpp
@@ -27,6 +32,12 @@ target_link_libraries(BalancyWebViewAndroid PUBLIC
     log
     android
 )
+
+# Add 16KB alignment for Android 15+ compatibility - multiple approaches
+target_link_options(BalancyWebViewAndroid PRIVATE -Wl,-z,max-page-size=16384 -Wl,-z,separate-code)
+target_link_options(BalancyWebViewAndroid PRIVATE "LINKER:-z,max-page-size=16384")
+target_link_options(BalancyWebViewAndroid PRIVATE "LINKER:-z,separate-code")
+set_target_properties(BalancyWebViewAndroid PROPERTIES LINK_FLAGS "-Wl,-z,max-page-size=16384 -Wl,-z,separate-code")
 
 # Set output name and properties
 set_target_properties(BalancyWebViewAndroid PROPERTIES
