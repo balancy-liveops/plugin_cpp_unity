@@ -58,14 +58,41 @@ const balancy = {};
 
     balancy.postMessage = function(message) {
         if (typeof message !== 'string') message = JSON.stringify(message);
+        
+        // Debug logging
+        if (window.BalancyWebView && window.BalancyWebView.log) {
+            window.BalancyWebView.log('info', 'Sending message: ' + message.substring(0, 100) + '...');
+        } else {
+            console.log('BalancyWebView: Sending message:', message.substring(0, 100) + '...');
+        }
+        
+        // iOS/macOS WebKit implementation
         if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.BalancyWebView) {
             window.webkit.messageHandlers.BalancyWebView.postMessage(message);
             return true;
+        }
+        
+        // Android JavascriptInterface implementation
+        if (window.BalancyWebView && window.BalancyWebView.sendMessageToUnity) {
+            window.BalancyWebView.sendMessageToUnity(message);
+            return true;
+        }
+        
+        console.warn('BalancyWebView: No message handler available for platform');
+        if (window.BalancyWebView && window.BalancyWebView.log) {
+            window.BalancyWebView.log('warn', 'No message handler available for platform');
         }
         return false;
     };
 
     balancy._receiveMessageFromUnity = function(message) {
+        // Debug logging
+        if (window.BalancyWebView && window.BalancyWebView.log) {
+            window.BalancyWebView.log('info', 'Received message from Unity: ' + message.substring(0, 100) + '...');
+        } else {
+            console.log('BalancyWebView: Received message from Unity:', message.substring(0, 100) + '...');
+        }
+        
         try {
             const response = JSON.parse(message);
             if (response.type === 'response') {
@@ -80,7 +107,11 @@ const balancy = {};
                 }
             }
         }  catch (error) {
-            // console.error('Error handling response:', error);
+            if (window.BalancyWebView && window.BalancyWebView.log) {
+                window.BalancyWebView.log('error', 'Error handling response: ' + error.message);
+            } else {
+                console.error('Error handling response:', error);
+            }
         }
     };
     
@@ -285,6 +316,26 @@ const balancy = {};
     
     // Function to refresh buttons (useful for dynamically added content)
     balancy.refreshButtons = prepareAllButtons;
+    
+    // Debug functions for testing communication
+    balancy.testMessage = function(message) {
+        return balancy.postMessage(message || 'Test message from WebView');
+    };
+    
+    balancy.testRequest = function(action, params) {
+        return balancy.sendRequest('test-sender', action || 1, params || {test: 'data'});
+    };
+    
+    // Log platform detection
+    if (window.BalancyWebView && window.BalancyWebView.log) {
+        if (window.webkit && window.webkit.messageHandlers) {
+            window.BalancyWebView.log('info', 'Platform detected: iOS/macOS WebKit');
+        } else if (window.BalancyWebView.sendMessageToUnity) {
+            window.BalancyWebView.log('info', 'Platform detected: Android JavascriptInterface');
+        } else {
+            window.BalancyWebView.log('warn', 'Platform unknown - no message handler found');
+        }
+    }
     
     balancy.initResponseHandler();
 })();

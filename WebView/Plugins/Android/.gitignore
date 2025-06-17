@@ -1,0 +1,20 @@
+# Build artifacts - ignore these directories
+build_*/
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+compile_commands.json
+
+# Object files and dependencies
+*.o
+*.d
+
+# Temporary files
+*.tmp
+.DS_Store
+
+# Only keep the final library files in architecture directories
+# arm64-v8a/ and x86_64/ should be kept for Unity

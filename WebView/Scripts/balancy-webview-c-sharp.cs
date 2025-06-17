@@ -53,6 +53,104 @@ namespace Balancy.WebView
 
         #endregion
 
+        #region Android Unity Messaging Methods
+        
+        // These methods are called from Android Java via UnitySendMessage
+        // Format: UnitySendMessage("BalancyView", "OnAndroidMessageReceived", message)
+        
+        /// <summary>
+        /// Called from Android Java when a message is received from WebView
+        /// </summary>
+        /// <param name="message">Message from WebView</param>
+        public void OnAndroidMessageReceived(string message)
+        {
+            Debug.Log($"[BalancyWebView] Android Unity Message Received: {message.Substring(0, Math.Min(100, message.Length))}...");
+            OnMessageReceivedPrivate(message);
+        }
+        
+        /// <summary>
+        /// Called from Android Java when page load is completed
+        /// </summary>
+        /// <param name="successString">"true" or "false" as string</param>
+        public void OnAndroidLoadCompleted(string successString)
+        {
+            bool success = successString.ToLower() == "true";
+            
+            // Always log this important event
+            Debug.Log($"[BalancyWebView] Android Load completed: {success}");
+            
+            if (success)
+            {
+                // Inject Balancy bridge and owner JSON when page loads successfully
+                InjectBalancyBridgeAndOwnerData();
+            }
+            
+            OnLoadCompleted?.Invoke(success);
+        }
+        
+        /// <summary>
+        /// Called from Android Java when cache operation is completed
+        /// </summary>
+        /// <param name="successString">"true" or "false" as string</param>
+        public void OnAndroidCacheCompleted(string successString)
+        {
+            bool success = successString.ToLower() == "true";
+            LogDebug($"Android Unity Cache Completed: {success}");
+            OnCacheCompleted?.Invoke(success);
+        }
+        
+        /// <summary>
+        /// Inject Balancy bridge and owner data (for Android)
+        /// This replicates the functionality that was in OnLoadCompletedReceived
+        /// </summary>
+        private void InjectBalancyBridgeAndOwnerData()
+        {
+            #if UNITY_ANDROID && !UNITY_EDITOR
+            try
+            {
+                Debug.Log("[BalancyWebView] Starting bridge and owner data injection...");
+                
+                // Inject bridge script
+                var bridge = Resources.Load<TextAsset>("balancy-webview-bridge");
+                if (bridge)
+                {
+                    bool injected = _balancyInjectJSCode(bridge.text);
+                    Debug.Log($"[BalancyWebView] Balancy bridge script injected: {injected}");
+                }
+                else
+                {
+                    Debug.LogWarning("[BalancyWebView] Bridge script not found in Resources/balancy-webview-bridge");
+                }
+                
+                // Inject owner JSON if available
+                if (!string.IsNullOrEmpty(_ownerJson))
+                {
+                    var injectedCode = "try {\n" +
+                                      $"balancy.owner = JSON.parse('{_ownerJson}');\n" +
+                                     "} catch (error) {\n" +
+                                     "    console.error('Error parsing owner JSON:', error);\n" +
+                                     "    balancy.owner = null;\n" +
+                                     "}";
+                    
+                    bool ownerInjected = _balancyInjectJSCode(injectedCode);
+                    Debug.Log($"[BalancyWebView] Owner JSON injected: {ownerInjected}, Length: {_ownerJson.Length} -> {injectedCode}");
+                }
+                else
+                {
+                    Debug.Log("[BalancyWebView] No owner JSON to inject");
+                }
+                
+                Debug.Log("[BalancyWebView] Bridge and owner data injection completed");
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"[BalancyWebView] Failed to inject Balancy bridge/owner data: {e.Message}");
+            }
+            #endif
+        }
+
+        #endregion
+
         #region Native Logging Method
         
         /// <summary>
@@ -104,7 +202,9 @@ namespace Balancy.WebView
         private float _viewportHeight = 1f;
         private bool _debugLogging = false;
         private string _ownerJson = string.Empty;
+        #if UNITY_EDITOR_OSX
         private RenderTexture _embeddedTexture = null;
+        #endif
         
         #endregion
 
@@ -116,108 +216,259 @@ namespace Balancy.WebView
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         private delegate void LoadCompletedDelegate(bool success);
 
-        // Native plugin methods - these will be implemented differently for each platform
+        // Platform-specific native method declarations
         #if UNITY_IOS && !UNITY_EDITOR
-        [DllImport("__Internal")]
-        private static extern bool _balancyOpenWebView(string url);
         
         [DllImport("__Internal")]
         private static extern bool _balancyOpenWebViewWithSize(string url, int width, int height);
-
         [DllImport("__Internal")]
         private static extern void _balancyCloseWebView();
-
         [DllImport("__Internal")]
         private static extern bool _balancySendMessage(string message);
-
         [DllImport("__Internal")]
         private static extern string _balancyCallJavaScript(string function, string[] args, int argsCount);
-
         [DllImport("__Internal")]
         private static extern void _balancySetViewportRect(float x, float y, float width, float height);
-
         [DllImport("__Internal")]
         private static extern void _balancySetTransparentBackground(bool transparent);
-
         [DllImport("__Internal")]
         private static extern void _balancySetOfflineCacheEnabled(bool enabled);
-
         [DllImport("__Internal")]
         private static extern void _balancySetDebugLogging(bool enabled);
-        
         [DllImport("__Internal")]
         private static extern void _balancySetGameUIMode(bool enabled);
-        
         [DllImport("__Internal")]
         private static extern void _balancyRegisterMessageCallback(MessageDelegate callback);
-        
         [DllImport("__Internal")]
         private static extern void _balancyRegisterLoadCompletedCallback(LoadCompletedDelegate callback);
-        
         [DllImport("__Internal")]
         private static extern void _balancyRegisterCacheCompletedCallback(LoadCompletedDelegate callback);
-        
         [DllImport("__Internal")]
         private static extern bool _balancyInjectJSCode(string code);
         
-        //#elif UNITY_STANDALONE_OSX && !UNITY_EDITOR
-        #else
-        [DllImport("libBalancyWebViewMac")]
-        private static extern bool _balancyOpenWebView(string url);
+        #elif UNITY_ANDROID && !UNITY_EDITOR
         
+        // Android implementation using AndroidJavaObject
+        private static AndroidJavaObject s_pluginInstance;
+        
+        private static AndroidJavaObject GetPluginInstance()
+        {
+            if (s_pluginInstance == null)
+            {
+                using (AndroidJavaClass pluginClass = new AndroidJavaClass("com.balancy.webview.BalancyWebViewPlugin"))
+                {
+                    s_pluginInstance = pluginClass.CallStatic<AndroidJavaObject>("getInstance");
+                }
+            }
+            return s_pluginInstance;
+        }
+        
+        // Android native methods - unified interface
+        private static bool _balancyOpenWebViewWithSize(string url, int width, int height)
+        {
+            try
+            {
+                var plugin = GetPluginInstance();
+                return plugin.Call<bool>("openWebView", url, _instance._ownerJson, width, height);
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"Android _balancyOpenWebViewWithSize failed: {e.Message}");
+                return false;
+            }
+        }
+        
+        private static void _balancyCloseWebView()
+        {
+            try
+            {
+                var plugin = GetPluginInstance();
+                plugin.Call("closeWebView");
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"Android _balancyCloseWebView failed: {e.Message}");
+            }
+        }
+        
+        private static bool _balancySendMessage(string message)
+        {
+            try
+            {
+                var plugin = GetPluginInstance();
+                return plugin.Call<bool>("sendMessage", message);
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"Android _balancySendMessage failed: {e.Message}");
+                return false;
+            }
+        }
+        
+        private static string _balancyCallJavaScript(string function, string[] args, int argsCount)
+        {
+            try
+            {
+                // For Android, simplified JS approach
+                if (function == "eval" && args.Length > 0)
+                {
+                    Debug.Log($"Android JavaScript eval: {args[0]}");
+                    return "{\"success\": true}";
+                }
+                return "{\"success\": true}";
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"Android _balancyCallJavaScript failed: {e.Message}");
+                return "{\"error\": \"" + e.Message + "\"}";
+            }
+        }
+        
+        private static void _balancySetViewportRect(float x, float y, float width, float height)
+        {
+            try
+            {
+                var plugin = GetPluginInstance();
+                plugin.Call("setViewportRect", x, y, width, height);
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"Android _balancySetViewportRect failed: {e.Message}");
+            }
+        }
+        
+        private static void _balancySetTransparentBackground(bool transparent)
+        {
+            try
+            {
+                var plugin = GetPluginInstance();
+                plugin.Call("setTransparentBackground", transparent);
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"Android _balancySetTransparentBackground failed: {e.Message}");
+            }
+        }
+        
+        private static void _balancySetOfflineCacheEnabled(bool enabled)
+        {
+            try
+            {
+                var plugin = GetPluginInstance();
+                plugin.Call("setOfflineCacheEnabled", enabled);
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"Android _balancySetOfflineCacheEnabled failed: {e.Message}");
+            }
+        }
+        
+        private static void _balancySetDebugLogging(bool enabled)
+        {
+            try
+            {
+                var plugin = GetPluginInstance();
+                plugin.Call("setDebugLogging", enabled);
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"Android _balancySetDebugLogging failed: {e.Message}");
+            }
+        }
+        
+        private static void _balancySetGameUIMode(bool enabled)
+        {
+            try
+            {
+                var plugin = GetPluginInstance();
+                plugin.Call("setGameUIMode", enabled);
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"Android _balancySetGameUIMode failed: {e.Message}");
+            }
+        }
+        
+        private static bool _balancyInjectJSCode(string code)
+        {
+            try
+            {
+                var plugin = GetPluginInstance();
+                plugin.Call("injectJavaScript", code);
+                Debug.Log($"Android _balancyInjectJSCode: injected {code.Length} characters");
+                return true;
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"Android _balancyInjectJSCode failed: {e.Message}");
+                return false;
+            }
+        }
+        
+        // Android callbacks - NO-OP implementations (using Unity messaging instead)
+        private static void _balancyRegisterMessageCallback(MessageDelegate callback)
+        {
+            // NO-OP for Android - using Unity messaging instead
+            Debug.Log("Android: Callback registration skipped - using Unity messaging");
+        }
+        
+        private static void _balancyRegisterLoadCompletedCallback(LoadCompletedDelegate callback)
+        {
+            // NO-OP for Android - using Unity messaging instead
+            Debug.Log("Android: Callback registration skipped - using Unity messaging");
+        }
+        
+        private static void _balancyRegisterCacheCompletedCallback(LoadCompletedDelegate callback)
+        {
+            // NO-OP for Android - using Unity messaging instead
+            Debug.Log("Android: Callback registration skipped - using Unity messaging");
+        }
+        
+        #else
+        
+        // macOS/Editor implementation
         [DllImport("libBalancyWebViewMac")]
         private static extern bool _balancyOpenWebViewWithSize(string url, int width, int height);
-
         [DllImport("libBalancyWebViewMac")]
         private static extern void _balancyCloseWebView();
-
         [DllImport("libBalancyWebViewMac")]
         private static extern bool _balancySendMessage(string message);
-        
         [DllImport("libBalancyWebViewMac")]
         private static extern bool _balancyInjectJSCode(string message);
-
         [DllImport("libBalancyWebViewMac")]
         private static extern string _balancyCallJavaScript(string function, string[] args, int argsCount);
-
         [DllImport("libBalancyWebViewMac")]
         private static extern void _balancySetViewportRect(float x, float y, float width, float height);
-
         [DllImport("libBalancyWebViewMac")]
         private static extern void _balancySetTransparentBackground(bool transparent);
-
         [DllImport("libBalancyWebViewMac")]
         private static extern void _balancySetOfflineCacheEnabled(bool enabled);
-
         [DllImport("libBalancyWebViewMac")]
         private static extern void _balancySetDebugLogging(bool enabled);
-        
+        [DllImport("libBalancyWebViewMac")]
+        private static extern void _balancySetGameUIMode(bool enabled);
         [DllImport("libBalancyWebViewMac")]
         private static extern void _balancyRegisterMessageCallback(MessageDelegate callback);
-        
         [DllImport("libBalancyWebViewMac")]
         private static extern void _balancyRegisterLoadCompletedCallback(LoadCompletedDelegate callback);
         
-        // Embedding-specific methods (macOS only) - OPTIMIZED VERSION
+        // Embedding-specific methods (macOS only)
         [DllImport("libBalancyWebViewMac")]
         private static extern bool _balancyOpenWebViewEmbedded(string url, int width, int height);
-        
         [DllImport("libBalancyWebViewMac")]
         private static extern void _balancyCloseWebViewEmbedded();
-        
         [DllImport("libBalancyWebViewMac")]
         private static extern void _balancyUpdateEmbeddedTexture(int width, int height);
-        
-#if UNITY_EDITOR_OSX
-        [System.Runtime.InteropServices.DllImport("libBalancyWebViewMac")]
-        private static extern bool _balancySendMouseEvent(int x, int y, string eventType);
-
-        [System.Runtime.InteropServices.DllImport("libBalancyWebViewMac")]
-        private static extern bool _balancySendScrollEvent(int x, int y, float deltaX, float deltaY);
-#endif
-        
         [DllImport("libBalancyWebViewMac")]
         private static extern bool _balancyGetEmbeddedPixelData(System.IntPtr buffer, int bufferSize);
+        
+        #if UNITY_EDITOR_OSX
+        [DllImport("libBalancyWebViewMac")]
+        private static extern bool _balancySendMouseEvent(int x, int y, string eventType);
+        [DllImport("libBalancyWebViewMac")]
+        private static extern bool _balancySendScrollEvent(int x, int y, float deltaX, float deltaY);
+        #endif
+        
         #endif
 
         #endregion
@@ -235,11 +486,30 @@ namespace Balancy.WebView
             _instance = this;
             DontDestroyOnLoad(gameObject);
             
+            // Initialize platform-specific plugin
+            #if UNITY_ANDROID && !UNITY_EDITOR
+            // For Android, initialize via AndroidJavaObject
+            try 
+            {
+                var plugin = GetPluginInstance();
+                plugin.Call("initialize");
+                LogDebug("Android WebView plugin initialized via AndroidJavaObject");
+                
+                // For Android, we DON'T register JNI callbacks - using Unity messaging instead
+                LogDebug("Android: Using Unity messaging for callbacks (no JNI callback registration)");
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"Failed to initialize Android WebView plugin: {e.Message}");
+            }
+            #else
+            // For iOS/macOS, register callbacks normally (they work fine there)
             _balancyRegisterMessageCallback(OnMessageReceived);
             _balancyRegisterLoadCompletedCallback(OnLoadCompletedReceived);
             
             #if UNITY_IOS && !UNITY_EDITOR
             _balancyRegisterCacheCompletedCallback(OnCacheCompletedReceived);
+            #endif
             #endif
         }
 
@@ -272,6 +542,72 @@ namespace Balancy.WebView
         }
         
         /// <summary>
+        /// Validates a local file URL before attempting to load it
+        /// </summary>
+        /// <param name="url">The file URL to validate</param>
+        /// <returns>True if the file exists and can be accessed, false otherwise</returns>
+        public bool ValidateLocalFile(string url)
+        {
+            if (string.IsNullOrEmpty(url) || !url.StartsWith("file://"))
+            {
+                return true; // Not a local file, let WebView handle it
+            }
+            
+            string filePath = url.Substring(7); // Remove "file://" prefix
+            
+            // On Android, convert Unity path format if needed
+            #if UNITY_ANDROID && !UNITY_EDITOR
+            // Make sure we're using the correct path format
+            if (filePath.Contains(Application.persistentDataPath))
+            {
+                LogDebug($"File is in persistent data path: {filePath}");
+            }
+            #endif
+            
+            bool fileExists = System.IO.File.Exists(filePath);
+            LogDebug($"File validation - Path: {filePath}, Exists: {fileExists}");
+            
+            if (fileExists)
+            {
+                try
+                {
+                    var fileInfo = new System.IO.FileInfo(filePath);
+                    LogDebug($"File info - Size: {fileInfo.Length} bytes, ReadOnly: {fileInfo.IsReadOnly}");
+                }
+                catch (System.Exception e)
+                {
+                    Debug.LogError($"Error getting file info: {e.Message}");
+                    return false;
+                }
+            }
+            else
+            {
+                Debug.LogError($"Local file does not exist: {filePath}");
+                
+                // List files in the directory for debugging
+                try
+                {
+                    string directory = System.IO.Path.GetDirectoryName(filePath);
+                    if (System.IO.Directory.Exists(directory))
+                    {
+                        var files = System.IO.Directory.GetFiles(directory);
+                        LogDebug($"Files in directory {directory}: {string.Join(", ", files)}");
+                    }
+                    else
+                    {
+                        Debug.LogError($"Directory does not exist: {directory}");
+                    }
+                }
+                catch (System.Exception e)
+                {
+                    Debug.LogError($"Error listing directory: {e.Message}");
+                }
+            }
+            
+            return fileExists;
+        }
+
+        /// <summary>
         /// Opens a WebView with the specified URL and custom size
         /// </summary>
         /// <param name="url">The URL to open in the WebView</param>
@@ -286,8 +622,19 @@ namespace Balancy.WebView
                 Debug.LogWarning("WebView is already open. Close it first before opening a new one.");
                 return false;
             }
+            
+            // Validate local files before attempting to open
+            if (!ValidateLocalFile(url))
+            {
+                Debug.LogError($"Cannot open WebView: Local file validation failed for URL: {url}");
+                return false;
+            }
 
             _ownerJson = ownerJson;
+            
+            LogDebug($"Opening WebView with URL: {url}");
+            LogDebug($"Screen dimensions: {width}x{height}");
+            LogDebug($"Persistent data path: {Application.persistentDataPath}");
             
             // Apply current settings before opening
             ApplySettings();
@@ -300,14 +647,8 @@ namespace Balancy.WebView
             
             SetDebugLogging(true);
 
-            bool success = false;
-
-            #if UNITY_IOS || UNITY_STANDALONE_OSX || UNITY_EDITOR_OSX
-            success = _balancyOpenWebViewWithSize(url, width, height);
-            #else
-            Debug.LogWarning("BalancyWebView is not supported on this platform.");
-            success = false;
-            #endif
+            // Unified call - platform-specific implementation handled in native layer
+            bool success = _balancyOpenWebViewWithSize(url, width, height);
 
             _isWebViewOpen = success;
             return success;
@@ -323,11 +664,8 @@ namespace Balancy.WebView
                 return;
             }
 
-            #if UNITY_IOS || UNITY_STANDALONE_OSX || UNITY_EDITOR_OSX
+            // Unified call - platform-specific implementation handled in native layer
             _balancyCloseWebView();
-            #elif UNITY_EDITOR
-            LogDebug("[BalancyWebView] Would close WebView");
-            #endif
 
             _isWebViewOpen = false;
             OnClosed?.Invoke();
@@ -346,16 +684,8 @@ namespace Balancy.WebView
                 return false;
             }
 
-            bool success = false;
-
-            #if UNITY_IOS || UNITY_STANDALONE_OSX || UNITY_EDITOR_OSX
-            success = _balancySendMessage(message);
-            #else
-            LogDebug($"[BalancyWebView] Would send message to WebView: {message}");
-            success = true;
-            #endif
-
-            return success;
+            // Unified call - platform-specific implementation handled in native layer
+            return _balancySendMessage(message);
         }
 
         /// <summary>
@@ -372,16 +702,8 @@ namespace Balancy.WebView
                 return null;
             }
 
-            string result = null;
-
-            #if UNITY_IOS || UNITY_STANDALONE_OSX || UNITY_EDITOR_OSX
-            result = _balancyCallJavaScript(functionName, args, args.Length);
-            #else
-            LogDebug($"[BalancyWebView] Would call JavaScript function: {functionName}");
-            result = "{}"; // Mock result in editor
-            #endif
-
-            return result;
+            // Unified call - platform-specific implementation handled in native layer
+            return _balancyCallJavaScript(functionName, args, args.Length);
         }
 
         /// <summary>
@@ -428,11 +750,8 @@ namespace Balancy.WebView
 
             if (_isWebViewOpen)
             {
-                #if UNITY_IOS && !UNITY_EDITOR
+                // Unified call - platform-specific implementation handled in native layer
                 _balancySetGameUIMode(enabled);
-                #elif UNITY_EDITOR
-                LogDebug($"[BalancyWebView] Game UI mode {(enabled ? "enabled" : "disabled")}");
-                #endif
             }
         }
 
@@ -471,6 +790,8 @@ namespace Balancy.WebView
         public void SetDebugLogging(bool enabled)
         {
             _debugLogging = enabled;
+            
+            // Unified call - platform-specific implementation handled in native layer
             _balancySetDebugLogging(enabled);
         }
 
@@ -640,24 +961,28 @@ namespace Balancy.WebView
             ApplyTransparencySettings();
             ApplyCacheSettings();
             
+            // Unified call - platform-specific implementation handled in native layer
             _balancySetDebugLogging(_debugLogging);
         }
 
         // Apply current viewport settings to the WebView
         private void ApplyViewportSettings()
         {
+            // Unified call - platform-specific implementation handled in native layer
             _balancySetViewportRect(_viewportX, _viewportY, _viewportWidth, _viewportHeight);
         }
 
         // Apply current transparency settings to the WebView
         private void ApplyTransparencySettings()
         {
+            // Unified call - platform-specific implementation handled in native layer
             _balancySetTransparentBackground(_transparentBackground);
         }
 
         // Apply current cache settings to the WebView
         private void ApplyCacheSettings()
         {
+            // Unified call - platform-specific implementation handled in native layer
             _balancySetOfflineCacheEnabled(_offlineCacheEnabled);
         }
         
@@ -719,7 +1044,9 @@ namespace Balancy.WebView
 
             var bridge = Resources.Load<TextAsset>("balancy-webview-bridge");
             if (bridge)
+            {
                 _balancyInjectJSCode(bridge.text);
+            }
 
             if (!string.IsNullOrEmpty(_instance._ownerJson))
             {

@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace Balancy
@@ -60,6 +62,28 @@ namespace Balancy
         {
             Balancy.Callbacks.ClearAll();
             Main.Stop();
+        }
+
+        private void OnGUI()
+        {
+            if (!Balancy.Main.IsReadyToUse)
+                return;
+        
+            var rect = new Rect(200, 500, 200, 100);
+            var newLevel = GUI.TextField(rect, Profiles.System.GeneralInfo.Level.ToString());
+            if (int.TryParse(newLevel, out var intLevel) && intLevel != Profiles.System.GeneralInfo.Level)
+            {
+                Profiles.System.GeneralInfo.Level = intLevel;
+                Debug.Log($"Set new level: {intLevel}");
+            }
+        
+            rect.y += rect.height * 1.5f;
+
+            if (GUI.Button(rect, "RESET"))
+            {
+                Profiles.Reset();
+                // RenderViewsManager.OpenView("https://balancy.co");
+            }
         }
     }
 }
