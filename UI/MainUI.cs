@@ -1,16 +1,28 @@
+using System;
 using UnityEngine;
 
-public class MainUI : MonoBehaviour
+namespace Balancy.UI
 {
-    // Start is called once before the first execution of Update after the MonoBehaviour is created
-    void Start()
+    public class MainUI : MonoBehaviour
     {
+        [SerializeField] private MessageUI messageUI;
         
-    }
+        private static MainUI _instance = null;
 
-    // Update is called once per frame
-    void Update()
-    {
+        private void Awake()
+        {
+            _instance = this;
+        }
+
+        public static void ShowMessage(string header, string message, string buttonText, Action callback)
+        {
+            _instance?.ShowMessagePrivate(header, message, buttonText, callback);
+        }
         
+
+        private void ShowMessagePrivate(string header, string message, string buttonText, Action callback)
+        {
+            messageUI.ShowMessage(header, message, buttonText, callback);
+        }
     }
 }

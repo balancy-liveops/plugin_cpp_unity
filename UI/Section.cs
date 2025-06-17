@@ -149,6 +149,8 @@ namespace Balancy.UI
             {
                 if (info.UnnyView != null)
                     info.UnnyView.OpenView(null, owner);
+                else
+                    MainUI.ShowMessage("Error", "This element doesn't have a View associated with it.", "OK", null);
             });
 
             _activeElements[id].Element = element;
