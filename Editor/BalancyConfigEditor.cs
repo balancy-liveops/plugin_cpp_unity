@@ -453,7 +453,7 @@ namespace Balancy.Editor
                             _showAuthError = false;
                             _authErrorMessage = "";
                         }
-                        m_EditorDispatcher.Enqueue(Repaint);
+                        m_EditorDispatcher?.Enqueue(Repaint);
                     });
                 }
 
@@ -475,7 +475,7 @@ namespace Balancy.Editor
                 {
                     if (_gamesInfo.Render())
                     {
-                        m_EditorDispatcher.Enqueue(Repaint);
+                        m_EditorDispatcher?.Enqueue(Repaint);
                         _needRefresh = true;
                     }
                 }
@@ -490,7 +490,7 @@ namespace Balancy.Editor
                             _gamesInfo = new GamesInfo(games, selectedGame);
                             _loadingGames = false;
                             _needRefresh = true;
-                            m_EditorDispatcher.Enqueue(Repaint);
+                            m_EditorDispatcher?.Enqueue(Repaint);
                         }
                         catch (Exception e)
                         {
@@ -524,7 +524,7 @@ namespace Balancy.Editor
                             _gamesInfo.SetBranches(branches, selectedBranch);
                             _loadingBranches = false;
                             _needRefresh = true;
-                            m_EditorDispatcher.Enqueue(Repaint);
+                            m_EditorDispatcher?.Enqueue(Repaint);
                         }
                         catch (Exception e)
                         {
