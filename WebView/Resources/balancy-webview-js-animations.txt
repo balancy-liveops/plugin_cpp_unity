@@ -1,0 +1,477 @@
+// Balancy WebView JavaScript Animation Stress Test
+// Flying balls with physics simulation and collision detection
+
+(function() {
+    'use strict';
+    
+    let canvas = null;
+    let ctx = null;
+    let animationId = null;
+    let isAnimationsActive = false;
+    let balls = [];
+    let lastTime = 0;
+    
+    // Configuration
+    const PHYSICS_CONFIG = {
+        ballCount: 15,
+        minRadius: 8,
+        maxRadius: 25,
+        minSpeed: 50,
+        maxSpeed: 200,
+        gravity: 0, // Set to 0 for floating balls, increase for falling effect
+        friction: 0.99,
+        bounceDamping: 0.8,
+        colors: [
+            '#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', 
+            '#feca57', '#ff9ff3', '#54a0ff', '#5f27cd',
+            '#00d2d3', '#ff9f43', '#10ac84', '#ee5a24'
+        ],
+        trailLength: 10, // Number of trail points
+        showTrails: true
+    };
+    
+    // Ball class
+    class Ball {
+        constructor(x, y) {
+            this.x = x || Math.random() * (canvas.width - 100) + 50;
+            this.y = y || Math.random() * (canvas.height - 100) + 50;
+            this.radius = PHYSICS_CONFIG.minRadius + Math.random() * (PHYSICS_CONFIG.maxRadius - PHYSICS_CONFIG.minRadius);
+            
+            // Random velocity
+            const angle = Math.random() * Math.PI * 2;
+            const speed = PHYSICS_CONFIG.minSpeed + Math.random() * (PHYSICS_CONFIG.maxSpeed - PHYSICS_CONFIG.minSpeed);
+            this.vx = Math.cos(angle) * speed;
+            this.vy = Math.sin(angle) * speed;
+            
+            this.color = PHYSICS_CONFIG.colors[Math.floor(Math.random() * PHYSICS_CONFIG.colors.length)];
+            this.mass = this.radius * 0.1;
+            this.trail = [];
+            
+            // Visual effects
+            this.glow = Math.random() > 0.5;
+            this.pulse = Math.random() > 0.7;
+            this.pulsePhase = Math.random() * Math.PI * 2;
+        }
+        
+        update(deltaTime) {
+            const dt = deltaTime / 1000; // Convert to seconds
+            
+            // Apply gravity
+            this.vy += PHYSICS_CONFIG.gravity * dt;
+            
+            // Update position
+            this.x += this.vx * dt;
+            this.y += this.vy * dt;
+            
+            // Apply friction
+            this.vx *= PHYSICS_CONFIG.friction;
+            this.vy *= PHYSICS_CONFIG.friction;
+            
+            // Wall collision detection
+            if (this.x - this.radius <= 0) {
+                this.x = this.radius;
+                this.vx = -this.vx * PHYSICS_CONFIG.bounceDamping;
+            } else if (this.x + this.radius >= canvas.width) {
+                this.x = canvas.width - this.radius;
+                this.vx = -this.vx * PHYSICS_CONFIG.bounceDamping;
+            }
+            
+            if (this.y - this.radius <= 0) {
+                this.y = this.radius;
+                this.vy = -this.vy * PHYSICS_CONFIG.bounceDamping;
+            } else if (this.y + this.radius >= canvas.height) {
+                this.y = canvas.height - this.radius;
+                this.vy = -this.vy * PHYSICS_CONFIG.bounceDamping;
+            }
+            
+            // Update trail
+            if (PHYSICS_CONFIG.showTrails) {
+                this.trail.push({ x: this.x, y: this.y, time: Date.now() });
+                
+                // Remove old trail points
+                const now = Date.now();
+                this.trail = this.trail.filter(point => now - point.time < 500);
+                if (this.trail.length > PHYSICS_CONFIG.trailLength) {
+                    this.trail.shift();
+                }
+            }
+            
+            // Update pulse phase
+            if (this.pulse) {
+                this.pulsePhase += dt * 4;
+            }
+        }
+        
+        draw(ctx) {
+            // Draw trail
+            if (PHYSICS_CONFIG.showTrails && this.trail.length > 1) {
+                ctx.save();
+                ctx.globalCompositeOperation = 'lighter';
+                
+                for (let i = 1; i < this.trail.length; i++) {
+                    const point = this.trail[i];
+                    const prevPoint = this.trail[i - 1];
+                    const alpha = i / this.trail.length * 0.3;
+                    
+                    ctx.strokeStyle = this.color.replace(')', `, ${alpha})`);
+                    ctx.lineWidth = (this.radius * alpha) / 2;
+                    ctx.lineCap = 'round';
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(prevPoint.x, prevPoint.y);
+                    ctx.lineTo(point.x, point.y);
+                    ctx.stroke();
+                }
+                
+                ctx.restore();
+            }
+            
+            ctx.save();
+            
+            // Glow effect
+            if (this.glow) {
+                ctx.shadowColor = this.color;
+                ctx.shadowBlur = this.radius * 2;
+            }
+            
+            // Pulse effect
+            let currentRadius = this.radius;
+            if (this.pulse) {
+                currentRadius = this.radius * (1 + Math.sin(this.pulsePhase) * 0.3);
+            }
+            
+            // Gradient fill
+            const gradient = ctx.createRadialGradient(
+                this.x - currentRadius * 0.3, this.y - currentRadius * 0.3, 0,
+                this.x, this.y, currentRadius
+            );
+            gradient.addColorStop(0, this.color);
+            gradient.addColorStop(1, this.color.replace(')', ', 0.3)'));
+            
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, currentRadius, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Border
+            ctx.strokeStyle = this.color;
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            
+            ctx.restore();
+        }
+        
+        // Ball-to-ball collision
+        collideWith(other) {
+            const dx = other.x - this.x;
+            const dy = other.y - this.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            const minDistance = this.radius + other.radius;
+            
+            if (distance < minDistance) {
+                // Normalize collision vector
+                const nx = dx / distance;
+                const ny = dy / distance;
+                
+                // Separate balls
+                const overlap = minDistance - distance;
+                const separationX = nx * overlap * 0.5;
+                const separationY = ny * overlap * 0.5;
+                
+                this.x -= separationX;
+                this.y -= separationY;
+                other.x += separationX;
+                other.y += separationY;
+                
+                // Calculate relative velocity
+                const dvx = other.vx - this.vx;
+                const dvy = other.vy - this.vy;
+                
+                // Relative velocity in collision normal direction
+                const dvn = dvx * nx + dvy * ny;
+                
+                // Do not resolve if velocities are separating
+                if (dvn > 0) return;
+                
+                // Calculate collision impulse
+                const impulse = 2 * dvn / (this.mass + other.mass);
+                
+                // Update velocities
+                this.vx += impulse * other.mass * nx * PHYSICS_CONFIG.bounceDamping;
+                this.vy += impulse * other.mass * ny * PHYSICS_CONFIG.bounceDamping;
+                other.vx -= impulse * this.mass * nx * PHYSICS_CONFIG.bounceDamping;
+                other.vy -= impulse * this.mass * ny * PHYSICS_CONFIG.bounceDamping;
+            }
+        }
+    }
+    
+    // Create canvas
+    function createCanvas() {
+        if (canvas) return;
+        
+        canvas = document.createElement('canvas');
+        canvas.id = 'balancy-js-animations-canvas';
+        canvas.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100vh;
+            pointer-events: none;
+            z-index: 999996;
+            background: linear-gradient(135deg, rgba(0,0,0,0.05), rgba(255,255,255,0.02));
+        `;
+        
+        // Set canvas size
+        const rect = { width: window.innerWidth, height: window.innerHeight };
+        canvas.width = rect.width;
+        canvas.height = rect.height;
+        
+        ctx = canvas.getContext('2d');
+        document.body.appendChild(canvas);
+        
+        // Handle resize
+        window.addEventListener('resize', () => {
+            if (canvas) {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+            }
+        });
+        
+        // Create toggle button
+        const toggleButton = document.createElement('button');
+        toggleButton.className = 'balancy-js-anim-toggle';
+        toggleButton.textContent = 'JS Animations: OFF';
+        toggleButton.style.cssText = `
+            position: fixed;
+            bottom: 80px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            border: 2px solid #4ecdc4;
+            border-radius: 50px;
+            padding: 12px 20px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            cursor: pointer;
+            z-index: 999998;
+            transition: all 0.3s ease;
+            user-select: none;
+            -webkit-user-select: none;
+        `;
+        
+        toggleButton.addEventListener('mouseenter', () => {
+            toggleButton.style.background = 'rgba(78, 205, 196, 0.2)';
+            toggleButton.style.transform = 'scale(1.05)';
+        });
+        
+        toggleButton.addEventListener('mouseleave', () => {
+            toggleButton.style.background = 'rgba(0, 0, 0, 0.8)';
+            toggleButton.style.transform = 'scale(1)';
+        });
+        
+        toggleButton.addEventListener('click', () => {
+            toggleButton.style.transform = 'scale(0.95)';
+            setTimeout(() => {
+                toggleButton.style.transform = 'scale(1)';
+            }, 100);
+            toggleAnimations();
+        });
+        
+        document.body.appendChild(toggleButton);
+        
+        console.log('Balancy JavaScript Animation canvas created');
+    }
+    
+    // Initialize balls
+    function initBalls() {
+        balls = [];
+        for (let i = 0; i < PHYSICS_CONFIG.ballCount; i++) {
+            balls.push(new Ball());
+        }
+        console.log(`Created ${PHYSICS_CONFIG.ballCount} animated balls`);
+    }
+    
+    // Animation loop
+    function animate(currentTime) {
+        if (!isAnimationsActive) return;
+        
+        const deltaTime = currentTime - lastTime;
+        lastTime = currentTime;
+        
+        // Clear canvas with fade effect
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Update and draw balls
+        balls.forEach(ball => {
+            ball.update(deltaTime);
+        });
+        
+        // Handle ball-to-ball collisions
+        for (let i = 0; i < balls.length; i++) {
+            for (let j = i + 1; j < balls.length; j++) {
+                balls[i].collideWith(balls[j]);
+            }
+        }
+        
+        // Draw all balls
+        balls.forEach(ball => {
+            ball.draw(ctx);
+        });
+        
+        // Draw FPS counter
+        if (deltaTime > 0) {
+            const fps = (1000 / deltaTime).toFixed(1);
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '14px Courier New';
+            ctx.fillText(`JS Anim FPS: ${fps}`, canvas.width - 150, 25);
+        }
+        
+        animationId = requestAnimationFrame(animate);
+    }
+    
+    // Start animations
+    function startAnimations() {
+        if (isAnimationsActive) return;
+        
+        initBalls();
+        isAnimationsActive = true;
+        lastTime = performance.now();
+        animationId = requestAnimationFrame(animate);
+        updateToggleButton();
+        
+        console.log('Started JavaScript ball animations');
+    }
+    
+    // Stop animations
+    function stopAnimations() {
+        if (!isAnimationsActive) return;
+        
+        isAnimationsActive = false;
+        if (animationId) {
+            cancelAnimationFrame(animationId);
+            animationId = null;
+        }
+        
+        // Clear canvas
+        if (ctx) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+        
+        updateToggleButton();
+        console.log('Stopped JavaScript ball animations');
+    }
+    
+    // Toggle animations
+    function toggleAnimations() {
+        if (isAnimationsActive) {
+            stopAnimations();
+        } else {
+            startAnimations();
+        }
+    }
+    
+    // Update toggle button
+    function updateToggleButton() {
+        const button = document.querySelector('.balancy-js-anim-toggle');
+        if (button) {
+            button.textContent = `JS Animations: ${isAnimationsActive ? 'ON' : 'OFF'}`;
+            button.style.borderColor = isAnimationsActive ? '#ff6b6b' : '#4ecdc4';
+        }
+    }
+    
+    // Add ball on click/touch
+    function addInteractiveBall(event) {
+        if (!isAnimationsActive) return;
+        
+        const rect = canvas.getBoundingClientRect();
+        const x = (event.clientX || (event.touches && event.touches[0].clientX)) - rect.left;
+        const y = (event.clientY || (event.touches && event.touches[0].clientY)) - rect.top;
+        
+        if (x >= 0 && x <= canvas.width && y >= 0 && y <= canvas.height) {
+            balls.push(new Ball(x, y));
+            console.log('Added interactive ball at', x, y);
+        }
+    }
+    
+    // Cleanup function
+    function cleanup() {
+        stopAnimations();
+        
+        if (canvas) {
+            canvas.remove();
+            canvas = null;
+            ctx = null;
+        }
+        
+        const button = document.querySelector('.balancy-js-anim-toggle');
+        if (button) {
+            button.remove();
+        }
+        
+        balls = [];
+    }
+    
+    // Expose global controls
+    window.balancyJSAnimations = {
+        start: startAnimations,
+        stop: stopAnimations,
+        toggle: toggleAnimations,
+        cleanup: cleanup,
+        isActive: () => isAnimationsActive,
+        addBall: (x, y) => {
+            if (isAnimationsActive) {
+                balls.push(new Ball(x, y));
+            }
+        },
+        setBallCount: (count) => {
+            PHYSICS_CONFIG.ballCount = Math.max(1, Math.min(50, count));
+            if (isAnimationsActive) {
+                stopAnimations();
+                startAnimations();
+            }
+        },
+        setGravity: (gravity) => {
+            PHYSICS_CONFIG.gravity = gravity;
+        },
+        toggleTrails: () => {
+            PHYSICS_CONFIG.showTrails = !PHYSICS_CONFIG.showTrails;
+        },
+        explode: () => {
+            // Add explosion effect
+            balls.forEach(ball => {
+                const angle = Math.random() * Math.PI * 2;
+                const force = 300 + Math.random() * 200;
+                ball.vx += Math.cos(angle) * force;
+                ball.vy += Math.sin(angle) * force;
+            });
+        }
+    };
+    
+    // Initialize
+    function init() {
+        console.log('Balancy JavaScript Animation Stress Test initialized');
+        createCanvas();
+        
+        // Auto-start animations after a short delay
+        setTimeout(() => {
+            startAnimations();
+        }, 1000);
+        
+        // Add click/touch interaction
+        if (canvas) {
+            canvas.style.pointerEvents = 'auto';
+            canvas.addEventListener('click', addInteractiveBall);
+            canvas.addEventListener('touchstart', addInteractiveBall, { passive: false });
+        }
+    }
+    
+    // Initialize when DOM is ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+    
+})();

@@ -1,0 +1,384 @@
+// Balancy WebView CSS Animation Stress Test
+// Inject this script to add various CSS animations for performance testing
+
+(function() {
+    'use strict';
+    
+    let animationContainer = null;
+    let isAnimationsActive = false;
+    let animationElements = [];
+    
+    // Configuration
+    const ANIMATION_CONFIG = {
+        elementCount: 20,
+        containerSize: { width: '100%', height: '100vh' },
+        shapes: ['circle', 'square', 'triangle', 'star'],
+        colors: ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#feca57', '#ff9ff3', '#54a0ff'],
+        animations: ['spin', 'pulse', 'bounce', 'float', 'wiggle', 'zoom']
+    };
+    
+    // CSS Animation Styles
+    const animationCSS = `
+        <style id="balancy-css-animations">
+            .balancy-anim-container {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100vh;
+                pointer-events: none;
+                z-index: 999997;
+                overflow: hidden;
+                background: linear-gradient(45deg, rgba(255,107,107,0.05), rgba(78,205,196,0.05));
+            }
+            
+            .balancy-anim-element {
+                position: absolute;
+                border-radius: 50%;
+                transform-origin: center;
+            }
+            
+            .balancy-shape-circle {
+                border-radius: 50%;
+            }
+            
+            .balancy-shape-square {
+                border-radius: 10%;
+            }
+            
+            .balancy-shape-triangle {
+                width: 0 !important;
+                height: 0 !important;
+                border-left: 15px solid transparent;
+                border-right: 15px solid transparent;
+                border-bottom: 26px solid;
+                border-radius: 0;
+                background: transparent !important;
+            }
+            
+            .balancy-shape-star {
+                clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+                border-radius: 0;
+            }
+            
+            /* Spin Animation */
+            @keyframes balancy-spin {
+                0% { transform: rotate(0deg) scale(1); }
+                50% { transform: rotate(180deg) scale(1.2); }
+                100% { transform: rotate(360deg) scale(1); }
+            }
+            
+            .balancy-anim-spin {
+                animation: balancy-spin 2s linear infinite;
+            }
+            
+            /* Pulse Animation */
+            @keyframes balancy-pulse {
+                0%, 100% { transform: scale(1) opacity(0.8); }
+                50% { transform: scale(1.5) opacity(1); }
+            }
+            
+            .balancy-anim-pulse {
+                animation: balancy-pulse 1.5s ease-in-out infinite;
+            }
+            
+            /* Bounce Animation */
+            @keyframes balancy-bounce {
+                0%, 20%, 50%, 80%, 100% { transform: translateY(0) scale(1); }
+                40% { transform: translateY(-30px) scale(1.1); }
+                60% { transform: translateY(-15px) scale(0.9); }
+            }
+            
+            .balancy-anim-bounce {
+                animation: balancy-bounce 2s infinite;
+            }
+            
+            /* Float Animation */
+            @keyframes balancy-float {
+                0%, 100% { transform: translateY(0px) rotate(0deg); }
+                33% { transform: translateY(-20px) rotate(5deg); }
+                66% { transform: translateY(10px) rotate(-3deg); }
+            }
+            
+            .balancy-anim-float {
+                animation: balancy-float 3s ease-in-out infinite;
+            }
+            
+            /* Wiggle Animation */
+            @keyframes balancy-wiggle {
+                0%, 100% { transform: rotate(0deg) translateX(0px); }
+                25% { transform: rotate(5deg) translateX(5px); }
+                50% { transform: rotate(0deg) translateX(-5px); }
+                75% { transform: rotate(-5deg) translateX(5px); }
+            }
+            
+            .balancy-anim-wiggle {
+                animation: balancy-wiggle 0.8s ease-in-out infinite;
+            }
+            
+            /* Zoom Animation */
+            @keyframes balancy-zoom {
+                0%, 100% { transform: scale(1) rotate(0deg); }
+                25% { transform: scale(0.5) rotate(90deg); }
+                50% { transform: scale(1.8) rotate(180deg); }
+                75% { transform: scale(0.8) rotate(270deg); }
+            }
+            
+            .balancy-anim-zoom {
+                animation: balancy-zoom 2.5s ease-in-out infinite;
+            }
+            
+            /* Combined Complex Animation */
+            @keyframes balancy-complex {
+                0% { 
+                    transform: translateX(0px) translateY(0px) rotate(0deg) scale(1);
+                    opacity: 0.8;
+                }
+                25% { 
+                    transform: translateX(50px) translateY(-25px) rotate(90deg) scale(1.2);
+                    opacity: 1;
+                }
+                50% { 
+                    transform: translateX(100px) translateY(25px) rotate(180deg) scale(0.8);
+                    opacity: 0.6;
+                }
+                75% { 
+                    transform: translateX(50px) translateY(-10px) rotate(270deg) scale(1.5);
+                    opacity: 1;
+                }
+                100% { 
+                    transform: translateX(0px) translateY(0px) rotate(360deg) scale(1);
+                    opacity: 0.8;
+                }
+            }
+            
+            .balancy-anim-complex {
+                animation: balancy-complex 4s ease-in-out infinite;
+            }
+            
+            /* Control Button */
+            .balancy-anim-toggle {
+                position: fixed;
+                bottom: 20px;
+                right: 20px;
+                background: rgba(0, 0, 0, 0.8);
+                color: white;
+                border: 2px solid #00ff00;
+                border-radius: 50px;
+                padding: 12px 20px;
+                font-family: 'Courier New', monospace;
+                font-size: 14px;
+                cursor: pointer;
+                z-index: 999998;
+                transition: all 0.3s ease;
+                user-select: none;
+                -webkit-user-select: none;
+            }
+            
+            .balancy-anim-toggle:hover {
+                background: rgba(0, 255, 0, 0.2);
+                transform: scale(1.05);
+            }
+            
+            .balancy-anim-toggle:active {
+                transform: scale(0.95);
+            }
+        </style>
+    `;
+    
+    // Create animation container
+    function createAnimationContainer() {
+        if (animationContainer) return;
+        
+        // Add CSS styles
+        document.head.insertAdjacentHTML('beforeend', animationCSS);
+        
+        // Create container
+        animationContainer = document.createElement('div');
+        animationContainer.className = 'balancy-anim-container';
+        animationContainer.id = 'balancy-css-animations-container';
+        document.body.appendChild(animationContainer);
+        
+        // Create toggle button
+        const toggleButton = document.createElement('button');
+        toggleButton.className = 'balancy-anim-toggle';
+        toggleButton.textContent = 'CSS Animations: OFF';
+        toggleButton.addEventListener('click', toggleAnimations);
+        document.body.appendChild(toggleButton);
+        
+        console.log('Balancy CSS Animation container created');
+    }
+    
+    // Generate random position
+    function getRandomPosition() {
+        const containerRect = animationContainer.getBoundingClientRect();
+        return {
+            x: Math.random() * (containerRect.width - 60),
+            y: Math.random() * (containerRect.height - 60)
+        };
+    }
+    
+    // Get random array element
+    function getRandomElement(array) {
+        return array[Math.floor(Math.random() * array.length)];
+    }
+    
+    // Create animation element
+    function createAnimationElement(index) {
+        const element = document.createElement('div');
+        const shape = getRandomElement(ANIMATION_CONFIG.shapes);
+        const color = getRandomElement(ANIMATION_CONFIG.colors);
+        const animation = getRandomElement(ANIMATION_CONFIG.animations);
+        const position = getRandomPosition();
+        const size = Math.random() * 30 + 20; // 20-50px
+        
+        element.className = `balancy-anim-element balancy-shape-${shape} balancy-anim-${animation}`;
+        element.style.cssText = `
+            left: ${position.x}px;
+            top: ${position.y}px;
+            width: ${size}px;
+            height: ${size}px;
+            background: ${color};
+            animation-delay: ${Math.random() * 2}s;
+            animation-duration: ${1 + Math.random() * 3}s;
+        `;
+        
+        // Special handling for triangle
+        if (shape === 'triangle') {
+            element.style.borderBottomColor = color;
+        }
+        
+        // Add some elements with complex animations
+        if (Math.random() > 0.7) {
+            element.classList.remove(`balancy-anim-${animation}`);
+            element.classList.add('balancy-anim-complex');
+        }
+        
+        return element;
+    }
+    
+    // Start animations
+    function startAnimations() {
+        if (!animationContainer || isAnimationsActive) return;
+        
+        // Clear existing elements
+        animationContainer.innerHTML = '';
+        animationElements = [];
+        
+        // Create animation elements
+        for (let i = 0; i < ANIMATION_CONFIG.elementCount; i++) {
+            const element = createAnimationElement(i);
+            animationContainer.appendChild(element);
+            animationElements.push(element);
+        }
+        
+        isAnimationsActive = true;
+        updateToggleButton();
+        
+        console.log(`Started ${ANIMATION_CONFIG.elementCount} CSS animations`);
+        
+        // Periodically randomize some elements
+        setInterval(() => {
+            if (!isAnimationsActive) return;
+            
+            // Randomly change some elements
+            const elementsToChange = Math.floor(ANIMATION_CONFIG.elementCount * 0.3);
+            for (let i = 0; i < elementsToChange; i++) {
+                const randomIndex = Math.floor(Math.random() * animationElements.length);
+                const element = animationElements[randomIndex];
+                if (element) {
+                    const newPosition = getRandomPosition();
+                    element.style.left = newPosition.x + 'px';
+                    element.style.top = newPosition.y + 'px';
+                    element.style.background = getRandomElement(ANIMATION_CONFIG.colors);
+                }
+            }
+        }, 5000);
+    }
+    
+    // Stop animations
+    function stopAnimations() {
+        if (!animationContainer || !isAnimationsActive) return;
+        
+        animationContainer.innerHTML = '';
+        animationElements = [];
+        isAnimationsActive = false;
+        updateToggleButton();
+        
+        console.log('Stopped CSS animations');
+    }
+    
+    // Toggle animations
+    function toggleAnimations() {
+        if (isAnimationsActive) {
+            stopAnimations();
+        } else {
+            startAnimations();
+        }
+    }
+    
+    // Update toggle button text
+    function updateToggleButton() {
+        const button = document.querySelector('.balancy-anim-toggle');
+        if (button) {
+            button.textContent = `CSS Animations: ${isAnimationsActive ? 'ON' : 'OFF'}`;
+            button.style.borderColor = isAnimationsActive ? '#ff6b6b' : '#00ff00';
+        }
+    }
+    
+    // Cleanup function
+    function cleanup() {
+        if (animationContainer) {
+            animationContainer.remove();
+            animationContainer = null;
+        }
+        
+        const style = document.getElementById('balancy-css-animations');
+        if (style) {
+            style.remove();
+        }
+        
+        const button = document.querySelector('.balancy-anim-toggle');
+        if (button) {
+            button.remove();
+        }
+        
+        animationElements = [];
+        isAnimationsActive = false;
+    }
+    
+    // Expose global controls
+    window.balancyCSSAnimations = {
+        start: startAnimations,
+        stop: stopAnimations,
+        toggle: toggleAnimations,
+        cleanup: cleanup,
+        isActive: () => isAnimationsActive,
+        setElementCount: (count) => {
+            ANIMATION_CONFIG.elementCount = Math.max(1, Math.min(100, count));
+            if (isAnimationsActive) {
+                stopAnimations();
+                startAnimations();
+            }
+        }
+    };
+    
+    // Initialize
+    function init() {
+        console.log('Balancy CSS Animation Stress Test initialized');
+        createAnimationContainer();
+        
+        // Auto-start animations after a short delay
+        setTimeout(() => {
+            startAnimations();
+        }, 1000);
+    }
+    
+    // Initialize when DOM is ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+    
+})();

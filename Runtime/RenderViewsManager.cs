@@ -7,8 +7,8 @@ namespace Balancy
     public class RenderViewsManager
     {
 #if UNITY_EDITOR
-        private const bool UseEmbeddedWebView = true;
-        // private const bool UseEmbeddedWebView = false;
+        // private const bool UseEmbeddedWebView = true;
+        private const bool UseEmbeddedWebView = false;
 #else
         private const bool UseEmbeddedWebView = false;
 #endif
@@ -78,7 +78,7 @@ namespace Balancy
             else
             {
                 // Use game view size for popup mode to match embedded mode behavior
-                success = _webView.OpenWebView(urlToLoad, ownerJson, Screen.width / 2, Screen.height / 2);
+                success = _webView.OpenWebView(urlToLoad, ownerJson);
             }
             
             if (success)

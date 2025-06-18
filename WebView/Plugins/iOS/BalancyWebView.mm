@@ -818,6 +818,46 @@ bool _balancyOpenWebView(const char* url) {
     }
 }
 
+// Open a WebView with the specified URL and custom size
+bool _balancyOpenWebViewWithSize(const char* url, int width, int height) {
+    @autoreleasepool {
+        // Get the top-most view controller
+        UIViewController* rootViewController = [UIApplication sharedApplication].keyWindow.rootViewController;
+        if (!rootViewController) {
+            NSLog(@"[BalancyWebView] Failed to get root view controller");
+            return false;
+        }
+        
+        // Convert from Unity pixels to iOS points by dividing by screen scale
+        CGFloat scale = [UIScreen mainScreen].scale;
+        CGFloat pointWidth = width / scale;
+        CGFloat pointHeight = height / scale;
+        
+        NSLog(@"[BalancyWebView] Scale factor: %.1fx, Converting %dx%d pixels to %.1fx%.1f points", 
+              scale, width, height, pointWidth, pointHeight);
+        
+        // Create a WebView controller
+        BalancyWebViewController* webViewController = [[BalancyWebViewController alloc] initWithMessageCallback:_messageCallback
+                                                                                           loadCompletedCallback:_loadCompletedCallback
+                                                                                          cacheCompletedCallback:_cacheCompletedCallback];
+        
+        // Add as a child view controller
+        [rootViewController addChildViewController:webViewController];
+        [rootViewController.view addSubview:webViewController.view];
+        
+        // Set custom size using points - center the view in the parent
+        CGFloat x = (rootViewController.view.bounds.size.width - pointWidth) / 2.0;
+        CGFloat y = (rootViewController.view.bounds.size.height - pointHeight) / 2.0;
+        webViewController.view.frame = CGRectMake(x, y, pointWidth, pointHeight);
+        
+        [webViewController didMoveToParentViewController:rootViewController];
+        
+        // Load the URL
+        NSString* nsUrl = [NSString stringWithUTF8String:url];
+        return [webViewController loadURL:nsUrl];
+    }
+}
+
 // Close the WebView
 void _balancyCloseWebView() {
     @autoreleasepool {

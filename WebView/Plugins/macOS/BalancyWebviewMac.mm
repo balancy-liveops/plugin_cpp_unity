@@ -1192,12 +1192,18 @@ bool _balancyOpenWebView(const char* url) {
 
 bool _balancyOpenWebViewWithSize(const char* url, int width, int height) {
     @autoreleasepool {
-        NSString *logMsg = [NSString stringWithFormat:@"_balancyOpenWebViewWithSize called with size: %dx%d", width, height];
+        // Get the main screen's backing scale factor for proper pixel to point conversion
+        CGFloat backingScaleFactor = [[NSScreen mainScreen] backingScaleFactor];
+        CGFloat pointWidth = width / backingScaleFactor;
+        CGFloat pointHeight = height / backingScaleFactor;
+        
+        NSString *logMsg = [NSString stringWithFormat:@"_balancyOpenWebViewWithSize called with size: %dx%d pixels (%.1fx scale = %.1fx%.1f points)", 
+                           width, height, backingScaleFactor, pointWidth, pointHeight];
         LogToUnity([logMsg UTF8String]);
         
         if (_sharedController == nil) {
             LogToUnity("Creating new WebView controller with custom size");
-            NSSize windowSize = NSMakeSize(width, height);
+            NSSize windowSize = NSMakeSize(pointWidth, pointHeight);
             _sharedController = [[BalancyWebViewController alloc] initWithSize:windowSize];
         }
         
@@ -1330,10 +1336,17 @@ bool _balancyOpenWebViewEmbedded(const char* url, int width, int height) {
             _embeddedController = nil;
         }
         
-        NSString *logMsg = [NSString stringWithFormat:@"OPTIMIZED embedded WebView controller initialized with size: %dx%d", width, height];
+        // Get the main screen's backing scale factor for proper pixel to point conversion
+        CGFloat backingScaleFactor = [[NSScreen mainScreen] backingScaleFactor];
+        CGFloat pointWidth = width / backingScaleFactor;
+        CGFloat pointHeight = height / backingScaleFactor;
+        
+        NSString *logMsg = [NSString stringWithFormat:@"OPTIMIZED embedded WebView controller initialized with size: %dx%d pixels (%.1fx scale = %.1fx%.1f points)", 
+                           width, height, backingScaleFactor, pointWidth, pointHeight];
         LogToUnity([logMsg UTF8String]);
         
-        _embeddedController = [[BalancyEmbeddedWebViewController alloc] initWithWidth:width height:height];
+        // Use the converted point values for the embedded controller
+        _embeddedController = [[BalancyEmbeddedWebViewController alloc] initWithWidth:(int)pointWidth height:(int)pointHeight];
         
         NSString* nsUrl = [NSString stringWithUTF8String:url];
         NSString *logMsg2 = [NSString stringWithFormat:@"Attempting to load URL in embedded mode: %@", nsUrl];
@@ -1361,7 +1374,16 @@ void _balancyCloseWebViewEmbedded() {
 void _balancyUpdateEmbeddedTexture(int width, int height) {
     @autoreleasepool {
         if (_embeddedController != nil) {
-            [_embeddedController updateTexture:width height:height];
+            // Get the main screen's backing scale factor for proper pixel to point conversion
+            CGFloat backingScaleFactor = [[NSScreen mainScreen] backingScaleFactor];
+            CGFloat pointWidth = width / backingScaleFactor;
+            CGFloat pointHeight = height / backingScaleFactor;
+            
+            NSString *logMsg = [NSString stringWithFormat:@"Updating embedded texture: %dx%d pixels (%.1fx scale = %.1fx%.1f points)", 
+                               width, height, backingScaleFactor, pointWidth, pointHeight];
+            LogToUnity([logMsg UTF8String]);
+            
+            [_embeddedController updateTexture:(int)pointWidth height:(int)pointHeight];
         }
     }
 }

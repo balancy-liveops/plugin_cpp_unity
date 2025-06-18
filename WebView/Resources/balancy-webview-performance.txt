@@ -1,0 +1,335 @@
+// Balancy WebView Performance Monitor
+// Inject this script to monitor WebView performance on real devices
+
+(function() {
+    'use strict';
+    
+    // Performance tracking variables
+    let frameCount = 0;
+    let lastTime = performance.now();
+    let fps = 0;
+    let minFps = Infinity;
+    let maxFps = 0;
+    let avgFps = 0;
+    let fpsHistory = [];
+    let memoryUsage = 0;
+    let frameDrops = 0;
+    let lastFrameTime = 0;
+    let renderTime = 0;
+    let domNodes = 0;
+    let networkRequests = 0;
+    let failedRequests = 0;
+    let totalLoadTime = 0;
+    
+    // DOM elements
+    let performanceOverlay = null;
+    let isOverlayVisible = true;
+    
+    // Configuration
+    const PERFORMANCE_CONFIG = {
+        maxHistorySize: 60, // Keep last 60 FPS measurements
+        updateInterval: 100, // Update display every 100ms
+        frameDropThreshold: 16.67 // Consider frame dropped if > 16.67ms (60fps)
+    };
+    
+    // Create performance overlay
+    function createPerformanceOverlay() {
+        if (performanceOverlay) return;
+        
+        performanceOverlay = document.createElement('div');
+        performanceOverlay.id = 'balancy-performance-overlay';
+        performanceOverlay.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            background: rgba(0, 0, 0, 0.8);
+            color: #00ff00;
+            font-family: 'Courier New', monospace;
+            font-size: 24px;
+            padding: 16px;
+            z-index: 999999;
+            border-radius: 0 0 16px 0;
+            line-height: 1.2;
+            pointer-events: none;
+            user-select: none;
+            -webkit-user-select: none;
+            white-space: pre;
+            min-width: 400px;
+            transition: opacity 0.3s ease;
+        `;
+        
+        document.body.appendChild(performanceOverlay);
+        
+        // Toggle visibility on double-tap (top-left corner)
+        const toggleArea = document.createElement('div');
+        toggleArea.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 120px;
+            height: 120px;
+            z-index: 999998;
+            pointer-events: auto;
+        `;
+        
+        let tapCount = 0;
+        toggleArea.addEventListener('touchstart', function() {
+            tapCount++;
+            setTimeout(() => { tapCount = 0; }, 300);
+            if (tapCount === 2) {
+                isOverlayVisible = !isOverlayVisible;
+                performanceOverlay.style.opacity = isOverlayVisible ? '1' : '0.1';
+            }
+        });
+        
+        document.body.appendChild(toggleArea);
+    }
+    
+    // Update performance overlay
+    function updatePerformanceDisplay() {
+        if (!performanceOverlay) return;
+        
+        const memInfo = performance.memory || {};
+        const timing = performance.timing || {};
+        
+        const displayText = `FPS: ${fps.toFixed(1)} (${minFps.toFixed(1)}-${maxFps.toFixed(1)})
+Avg: ${avgFps.toFixed(1)} | Drops: ${frameDrops}
+Render: ${renderTime.toFixed(1)}ms
+Memory: ${(memInfo.usedJSHeapSize / 1024 / 1024).toFixed(1)}MB
+DOM: ${domNodes} nodes
+Net: ${networkRequests}/${failedRequests} (ok/fail)
+Load: ${totalLoadTime}ms
+${getPerformanceStatus()}`;
+        
+        performanceOverlay.textContent = displayText;
+        
+        // Color coding based on performance
+        if (fps < 30) {
+            performanceOverlay.style.color = '#ff4444'; // Red for poor performance
+        } else if (fps < 50) {
+            performanceOverlay.style.color = '#ffaa00'; // Orange for moderate performance
+        } else {
+            performanceOverlay.style.color = '#00ff00'; // Green for good performance
+        }
+    }
+    
+    // Get performance status
+    function getPerformanceStatus() {
+        if (fps < 20) return '❌ POOR';
+        if (fps < 40) return '⚠️ FAIR';
+        if (fps < 55) return '✅ GOOD';
+        return '🚀 EXCELLENT';
+    }
+    
+    // Calculate FPS
+    function calculateFPS() {
+        frameCount++;
+        const currentTime = performance.now();
+        const deltaTime = currentTime - lastFrameTime;
+        
+        // Track frame drops
+        if (deltaTime > PERFORMANCE_CONFIG.frameDropThreshold) {
+            frameDrops++;
+        }
+        
+        lastFrameTime = currentTime;
+        
+        // Calculate FPS every second
+        if (currentTime - lastTime >= 1000) {
+            fps = (frameCount * 1000) / (currentTime - lastTime);
+            
+            // Update min/max FPS
+            if (fps < minFps) minFps = fps;
+            if (fps > maxFps) maxFps = fps;
+            
+            // Update FPS history
+            fpsHistory.push(fps);
+            if (fpsHistory.length > PERFORMANCE_CONFIG.maxHistorySize) {
+                fpsHistory.shift();
+            }
+            
+            // Calculate average FPS
+            avgFps = fpsHistory.reduce((sum, f) => sum + f, 0) / fpsHistory.length;
+            
+            // Reset counters
+            frameCount = 0;
+            lastTime = currentTime;
+        }
+        
+        requestAnimationFrame(calculateFPS);
+    }
+    
+    // Monitor render time
+    function measureRenderTime() {
+        const startTime = performance.now();
+        
+        // Use setTimeout to measure actual render completion
+        setTimeout(() => {
+            renderTime = performance.now() - startTime;
+        }, 0);
+    }
+    
+    // Count DOM nodes
+    function countDOMNodes() {
+        domNodes = document.getElementsByTagName('*').length;
+    }
+    
+    // Monitor network requests
+    function monitorNetworkRequests() {
+        const originalFetch = window.fetch;
+        const originalXHROpen = XMLHttpRequest.prototype.open;
+        
+        // Monitor fetch requests
+        window.fetch = function(...args) {
+            networkRequests++;
+            return originalFetch.apply(this, args)
+                .catch(error => {
+                    failedRequests++;
+                    throw error;
+                });
+        };
+        
+        // Monitor XMLHttpRequest
+        XMLHttpRequest.prototype.open = function() {
+            networkRequests++;
+            const xhr = this;
+            const originalOnError = xhr.onerror;
+            xhr.onerror = function() {
+                failedRequests++;
+                if (originalOnError) originalOnError.apply(this, arguments);
+            };
+            return originalXHROpen.apply(this, arguments);
+        };
+    }
+    
+    // Calculate page load time
+    function calculateLoadTime() {
+        if (document.readyState === 'complete') {
+            const timing = performance.timing;
+            if (timing && timing.loadEventEnd && timing.navigationStart) {
+                totalLoadTime = timing.loadEventEnd - timing.navigationStart;
+            }
+        } else {
+            window.addEventListener('load', () => {
+                setTimeout(calculateLoadTime, 100);
+            });
+        }
+    }
+    
+    // Monitor memory leaks
+    function monitorMemoryLeaks() {
+        if (!performance.memory) return;
+        
+        setInterval(() => {
+            const memInfo = performance.memory;
+            const currentUsage = memInfo.usedJSHeapSize;
+            
+            // Simple memory leak detection - if memory grows continuously
+            if (currentUsage > memoryUsage * 1.5 && fpsHistory.length > 30) {
+                console.warn('Potential memory leak detected:', {
+                    current: (currentUsage / 1024 / 1024).toFixed(1) + 'MB',
+                    previous: (memoryUsage / 1024 / 1024).toFixed(1) + 'MB'
+                });
+            }
+            
+            memoryUsage = currentUsage;
+        }, 5000);
+    }
+    
+    // Monitor scroll performance
+    function monitorScrollPerformance() {
+        let scrollStartTime = 0;
+        let isScrolling = false;
+        
+        window.addEventListener('scroll', () => {
+            if (!isScrolling) {
+                scrollStartTime = performance.now();
+                isScrolling = true;
+            }
+            
+            clearTimeout(window.scrollEndTimer);
+            window.scrollEndTimer = setTimeout(() => {
+                const scrollDuration = performance.now() - scrollStartTime;
+                if (scrollDuration > 100) {
+                    console.warn('Slow scroll detected:', scrollDuration + 'ms');
+                }
+                isScrolling = false;
+            }, 150);
+        }, { passive: true });
+    }
+    
+    // Log performance data for debugging
+    function logPerformanceData() {
+        const perfData = {
+            fps: fps,
+            minFps: minFps,
+            maxFps: maxFps,
+            avgFps: avgFps,
+            frameDrops: frameDrops,
+            renderTime: renderTime,
+            memoryUsage: performance.memory ? (performance.memory.usedJSHeapSize / 1024 / 1024).toFixed(1) : 'N/A',
+            domNodes: domNodes,
+            networkRequests: networkRequests,
+            failedRequests: failedRequests,
+            loadTime: totalLoadTime,
+            userAgent: navigator.userAgent
+        };
+        
+        // Send to native app if available
+        if (window.balancy && window.balancy.postMessage) {
+            window.balancy.postMessage('//performance_data:' + JSON.stringify(perfData));
+        }
+        
+        console.log('Balancy WebView Performance Data:', perfData);
+        return perfData;
+    }
+    
+    // Initialize performance monitoring
+    function initPerformanceMonitoring() {
+        console.log('Balancy WebView Performance Monitor initialized');
+        
+        createPerformanceOverlay();
+        calculateLoadTime();
+        monitorNetworkRequests();
+        monitorMemoryLeaks();
+        monitorScrollPerformance();
+        
+        // Start FPS calculation
+        requestAnimationFrame(calculateFPS);
+        
+        // Update display periodically
+        setInterval(() => {
+            measureRenderTime();
+            countDOMNodes();
+            updatePerformanceDisplay();
+        }, PERFORMANCE_CONFIG.updateInterval);
+        
+        // Log performance data every 10 seconds
+        setInterval(logPerformanceData, 10000);
+        
+        // Expose performance data to global scope
+        window.balancyPerformance = {
+            getPerformanceData: logPerformanceData,
+            toggleOverlay: () => {
+                isOverlayVisible = !isOverlayVisible;
+                performanceOverlay.style.opacity = isOverlayVisible ? '1' : '0.1';
+            },
+            resetStats: () => {
+                frameDrops = 0;
+                minFps = Infinity;
+                maxFps = 0;
+                fpsHistory = [];
+                networkRequests = 0;
+                failedRequests = 0;
+            }
+        };
+    }
+    
+    // Initialize when DOM is ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initPerformanceMonitoring);
+    } else {
+        initPerformanceMonitoring();
+    }
+    
+})();

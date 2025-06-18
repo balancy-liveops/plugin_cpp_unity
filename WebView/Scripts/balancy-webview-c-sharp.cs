@@ -1042,12 +1042,11 @@ namespace Balancy.WebView
         {
             Debug.Log($"[BalancyWebView] Load completed: {success}");
 
-            var bridge = Resources.Load<TextAsset>("balancy-webview-bridge");
-            if (bridge)
-            {
-                _balancyInjectJSCode(bridge.text);
-            }
-
+            InjectFileFromResources("balancy-webview-bridge");
+            InjectFileFromResources("balancy-webview-performance");
+            InjectFileFromResources("balancy-webview-css-animations");
+            InjectFileFromResources("balancy-webview-js-animations");
+            
             if (!string.IsNullOrEmpty(_instance._ownerJson))
             {
                 var injectedCode = "try {\n                " +
@@ -1061,6 +1060,13 @@ namespace Balancy.WebView
             }
             
             _instance.OnLoadCompleted?.Invoke(success);
+        }
+
+        private static void InjectFileFromResources(string fileName)
+        {
+            var fileContent = Resources.Load<TextAsset>(fileName);
+            if (fileContent)
+                _balancyInjectJSCode(fileContent.text);
         }
         
         /// <summary>
