@@ -25,7 +25,6 @@ namespace Balancy.UI
         private void Awake()
         {
             _button.onClick.AddListener(OnButtonClicked);
-            Hide();
         }
 
         private void OnButtonClicked()

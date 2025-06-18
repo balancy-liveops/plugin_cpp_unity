@@ -69,8 +69,10 @@ namespace Balancy
             bool success = false;
             if (UseEmbeddedWebView)
             {
-#if UNITY_EDITOR
+#if UNITY_EDITOR_OSX
                 success = BalancyWebViewEmbedded.Instance.InitializeEmbeddedWebView(urlToLoad, ownerJson);
+#elif UNITY_EDITOR
+                CreateErrorMessage();
 #endif
             }
             else
@@ -84,6 +86,22 @@ namespace Balancy
             else
                 Debug.Log("Failed to open View");
         }
+
+#if UNITY_EDITOR
+        private static void CreateErrorMessage()
+        {
+            var path = "UI/NoViewMessage.prefab";
+            GameObject prefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Packages/co.balancy.unity/" + path);
+
+            if (prefab == null)
+                prefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Balancy/" + path);
+
+            if (prefab != null)
+                GameObject.Instantiate(prefab);
+            else
+                Debug.LogError("Failed to load View prefab!");
+        }
+#endif
 
         private static string OnMessageReceived(string msg)
         {
