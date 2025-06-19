@@ -1,0 +1,353 @@
+(function() {
+    // Предотвращаем повторную инъекцию
+    if (window.balancyPerformanceInjected) return;
+    window.balancyPerformanceInjected = true;
+    
+    console.log('[BalancyWebView] Injecting universal performance optimizations for game-like WebView');
+    
+    // Универсальные CSS стили для игрового WebView
+    function injectGameUIStyles() {
+        if (document.getElementById('balancy-game-ui-styles')) return;
+        
+        const style = document.createElement('style');
+        style.id = 'balancy-game-ui-styles';
+        style.textContent = `
+            /* === УНИВЕРСАЛЬНЫЕ СТИЛИ ДЛЯ ВСЕХ ПЛАТФОРМ === */
+            
+            /* Отключение выделения текста */
+            * {
+                -webkit-user-select: none !important;
+                -moz-user-select: none !important;
+                -ms-user-select: none !important;
+                user-select: none !important;
+                -webkit-touch-callout: none !important;
+                -webkit-context-menu: none !important;
+                outline: none !important;
+                -webkit-user-drag: none !important;
+                user-drag: none !important;
+            }
+            
+            /* Курсор по умолчанию для всех текстовых элементов */
+            body, div, span, p, h1, h2, h3, h4, h5, h6, a, button {
+                cursor: default !important;
+            }
+            
+            /* Отключение drag and drop для изображений */
+            img {
+                -webkit-user-drag: none !important;
+                user-drag: none !important;
+                pointer-events: none !important;
+                -webkit-touch-callout: none !important;
+            }
+            
+            /* Отключение автокоррекции и автозаполнения для input полей */
+            input, textarea {
+                -webkit-autocorrect: off !important;
+                -webkit-autocapitalize: off !important;
+                autocomplete: off !important;
+                spellcheck: false !important;
+                /* Предотвращаем zoom при фокусе на мобильных */
+                font-size: 16px !important;
+                -webkit-appearance: none !important;
+                -moz-appearance: none !important;
+                appearance: none !important;
+            }
+            
+            /* Основные настройки body */
+            body {
+                -webkit-tap-highlight-color: transparent !important;
+                overscroll-behavior: none !important;
+                overscroll-behavior-x: none !important;
+                overscroll-behavior-y: none !important;
+                -webkit-text-size-adjust: 100% !important;
+                -ms-text-size-adjust: 100% !important;
+                text-size-adjust: 100% !important;
+                touch-action: manipulation !important;
+                -webkit-overflow-scrolling: auto !important;
+                -webkit-user-drag: none !important;
+                -ms-content-zooming: none !important;
+                -ms-touch-action: manipulation !important;
+            }
+            
+            /* Скрытие всех скроллбаров */
+            ::-webkit-scrollbar {
+                width: 0px !important;
+                height: 0px !important;
+                display: none !important;
+                background: transparent !important;
+            }
+            
+            ::-webkit-scrollbar-track {
+                display: none !important;
+            }
+            
+            ::-webkit-scrollbar-thumb {
+                display: none !important;
+            }
+            
+            /* Firefox */
+            html {
+                scrollbar-width: none !important;
+                -ms-overflow-style: none !important;
+            }
+            
+            /* === iOS СПЕЦИФИЧНЫЕ СТИЛИ === */
+            @supports (-webkit-touch-callout: none) {
+                body {
+                    -webkit-overflow-scrolling: touch !important;
+                    -webkit-touch-callout: none !important;
+                    -webkit-user-select: none !important;
+                }
+                
+                /* Предотвращаем zoom при фокусе на input */
+                input, textarea, select {
+                    font-size: 16px !important;
+                    transform: translateZ(0) !important;
+                }
+                
+                /* iOS Safari specific */
+                html {
+                    -webkit-text-size-adjust: 100% !important;
+                }
+            }
+            
+            /* === ANDROID СПЕЦИФИЧНЫЕ СТИЛИ === */
+            @media screen and (-webkit-device-pixel-ratio: 1), 
+                   screen and (-webkit-device-pixel-ratio: 1.5), 
+                   screen and (-webkit-device-pixel-ratio: 2), 
+                   screen and (-webkit-device-pixel-ratio: 3) {
+                body {
+                    overscroll-behavior-y: none !important;
+                    -webkit-overflow-scrolling: auto !important;
+                }
+                
+                input, textarea {
+                    font-size: 16px !important;
+                    -webkit-appearance: none !important;
+                }
+            }
+            
+            /* === DESKTOP СПЕЦИФИЧНЫЕ СТИЛИ === */
+            @media (hover: hover) and (pointer: fine) {
+                body {
+                    overflow-x: hidden !important;
+                    -ms-overflow-style: none !important;
+                }
+                
+                /* Отключение контекстного меню для desktop */
+                * {
+                    -webkit-context-menu: none !important;
+                    context-menu: none !important;
+                }
+            }
+            
+            /* === WEBGL СПЕЦИФИЧНЫЕ СТИЛИ === */
+            .unity-webgl-canvas {
+                body {
+                    margin: 0 !important;
+                    padding: 0 !important;
+                    overflow: hidden !important;
+                }
+            }
+            
+            /* === ОТКЛЮЧЕНИЕ АНИМАЦИЙ БРАУЗЕРА === */
+            *, *::before, *::after {
+                -webkit-animation-duration: 0s !important;
+                animation-duration: 0s !important;
+                -webkit-transition-duration: 0s !important;
+                transition-duration: 0s !important;
+                -webkit-animation-delay: 0s !important;
+                animation-delay: 0s !important;
+                -webkit-transition-delay: 0s !important;
+                transition-delay: 0s !important;
+            }
+            
+            /* === ДОПОЛНИТЕЛЬНЫЕ ОПТИМИЗАЦИИ === */
+            
+            /* Отключение focus outline */
+            *:focus {
+                outline: none !important;
+                -webkit-tap-highlight-color: transparent !important;
+            }
+            
+            /* Отключение selection highlight */
+            ::selection {
+                background: transparent !important;
+            }
+            
+            ::-moz-selection {
+                background: transparent !important;
+            }
+            
+            /* Предотвращение случайного масштабирования */
+            html {
+                -ms-touch-action: manipulation !important;
+                touch-action: manipulation !important;
+            }
+            
+            /* Отключение автозаполнения форм */
+            input:-webkit-autofill,
+            input:-webkit-autofill:hover,
+            input:-webkit-autofill:focus {
+                -webkit-box-shadow: 0 0 0 1000px transparent inset !important;
+                -webkit-text-fill-color: inherit !important;
+            }
+        `;
+        
+        (document.head || document.documentElement).appendChild(style);
+        console.log('[BalancyWebView] Game UI styles injected successfully');
+    }
+    
+    // Универсальные JavaScript оптимизации
+    function applyGameUIBehavior() {
+        // Отключение контекстного меню
+        document.addEventListener('contextmenu', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            return false;
+        }, { passive: false, capture: true });
+        
+        // Отключение выделения текста
+        document.addEventListener('selectstart', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            return false;
+        }, { passive: false, capture: true });
+        
+        // Отключение drag and drop
+        document.addEventListener('dragstart', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            return false;
+        }, { passive: false, capture: true });
+        
+        // iOS специфичные оптимизации
+        if (/iPad|iPhone|iPod/.test(navigator.userAgent)) {
+            console.log('[BalancyWebView] Applying iOS-specific optimizations');
+            
+            // Отключение bounce эффекта
+            document.addEventListener('touchmove', function(e) {
+                if (!['INPUT', 'TEXTAREA'].includes(e.target.tagName)) {
+                    e.preventDefault();
+                }
+            }, { passive: false });
+            
+            // Предотвращение zoom при double tap
+            let lastTouchEnd = 0;
+            document.addEventListener('touchend', function(event) {
+                const now = Date.now();
+                if (now - lastTouchEnd <= 300) {
+                    event.preventDefault();
+                }
+                lastTouchEnd = now;
+            }, { passive: false });
+            
+            // Отключение callout
+            document.addEventListener('touchstart', function(e) {
+                e.target.style.webkitTouchCallout = 'none';
+            }, { passive: true });
+        }
+        
+        // Android специфичные оптимизации
+        if (/Android/.test(navigator.userAgent)) {
+            console.log('[BalancyWebView] Applying Android-specific optimizations');
+            
+            // Предотвращение системных жестов по краям экрана
+            document.addEventListener('touchstart', function(e) {
+                if (e.touches[0].clientX < 20 || 
+                    e.touches[0].clientX > window.innerWidth - 20 ||
+                    e.touches[0].clientY < 20 ||
+                    e.touches[0].clientY > window.innerHeight - 20) {
+                    e.preventDefault();
+                }
+            }, { passive: false });
+            
+            // Отключение pull-to-refresh
+            let startY = 0;
+            document.addEventListener('touchstart', function(e) {
+                startY = e.touches[0].pageY;
+            }, { passive: true });
+            
+            document.addEventListener('touchmove', function(e) {
+                if (e.touches[0].pageY > startY && window.pageYOffset === 0) {
+                    e.preventDefault();
+                }
+            }, { passive: false });
+        }
+        
+        // Desktop специфичные оптимизации
+        if (!/Mobi|Android/i.test(navigator.userAgent)) {
+            console.log('[BalancyWebView] Applying Desktop-specific optimizations');
+            
+            // Отключение клавиатурных сочетаний
+            document.addEventListener('keydown', function(e) {
+                // Отключаем Ctrl+A, Ctrl+C, Ctrl+V, Ctrl+S, Ctrl+P и т.д.
+                if (e.ctrlKey || e.metaKey) {
+                    const blockedKeys = ['a', 'c', 'v', 'x', 's', 'p', 'f', 'h', 'r', 'n', 'w', 't'];
+                    if (blockedKeys.includes(e.key.toLowerCase())) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        return false;
+                    }
+                }
+                
+                // Отключаем функциональные клавиши
+                const blockedKeyCodes = [
+                    112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, // F1-F12
+                    116, // F5 (Refresh)
+                    123  // F12 (Dev Tools)
+                ];
+                
+                if (blockedKeyCodes.includes(e.keyCode)) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return false;
+                }
+            }, { passive: false, capture: true });
+            
+            // Отключение middle click scroll
+            document.addEventListener('mousedown', function(e) {
+                if (e.button === 1) { // Middle mouse button
+                    e.preventDefault();
+                    return false;
+                }
+            }, { passive: false });
+        }
+        
+        console.log('[BalancyWebView] Game UI behavior applied successfully');
+    }
+    
+    // Функция инициализации
+    function initializeGameUI() {
+        injectGameUIStyles();
+        applyGameUIBehavior();
+        
+        // Добавляем meta viewport если его нет
+        if (!document.querySelector('meta[name="viewport"]')) {
+            const viewport = document.createElement('meta');
+            viewport.name = 'viewport';
+            viewport.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover';
+            document.head.appendChild(viewport);
+            console.log('[BalancyWebView] Viewport meta tag added');
+        }
+        
+        console.log('[BalancyWebView] Game UI initialization completed');
+        
+        // Уведомляем о завершении инициализации
+        document.dispatchEvent(new CustomEvent('balancyGameUIReady', {
+            detail: {
+                platform: /iPad|iPhone|iPod/.test(navigator.userAgent) ? 'iOS' : 
+                         /Android/.test(navigator.userAgent) ? 'Android' : 'Desktop',
+                timestamp: Date.now()
+            }
+        }));
+    }
+    
+    // Инициализируем когда DOM готов
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initializeGameUI);
+    } else {
+        initializeGameUI();
+    }
+    
+})();

@@ -54,6 +54,9 @@ extern "C" {
     // Create a WKWebViewConfiguration object
     WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
     
+    // === AGGRESSIVE MAGNIFYING GLASS PREVENTION ===
+    // Try to disable text interaction and magnification at the configuration level
+    
     // Disable various WebView features to make it feel more like a game UI
     // Note: Some of these preferences are only available in newer iOS versions,
     // so we're using availability checks
@@ -108,6 +111,16 @@ extern "C" {
                 /* Disable default touch behaviors */\
                 * {\
                     -webkit-tap-highlight-color: transparent !important;\
+                    -webkit-text-size-adjust: none !important;\
+                    touch-action: manipulation !important;\
+                }\
+                \
+                /* Completely disable interaction on images */\
+                img {\
+                    pointer-events: none !important;\
+                    -webkit-user-drag: none !important;\
+                    user-drag: none !important;\
+                    -webkit-touch-callout: none !important;\
                 }\
                 \
                 /* Hide scrollbars but allow programmatic scrolling if needed */\
@@ -134,16 +147,81 @@ extern "C" {
             `;\
             document.head.appendChild(style);\
             \
+            // === AGGRESSIVE EVENT BLOCKING FOR MAGNIFYING GLASS ===\
+            \
+            // Block all gesture-related events\
+            ['gesturestart', 'gesturechange', 'gestureend'].forEach(function(eventType) {\
+                document.addEventListener(eventType, function(e) {\
+                    e.preventDefault();\
+                    e.stopImmediatePropagation();\
+                    return false;\
+                }, { passive: false, capture: true });\
+                \
+                window.addEventListener(eventType, function(e) {\
+                    e.preventDefault();\
+                    e.stopImmediatePropagation();\
+                    return false;\
+                }, { passive: false, capture: true });\
+            });\
+            \
+            // Block touch events that could trigger magnification\
+            var touchStartTime = 0;\
+            var touchCount = 0;\
+            var lastTouchEnd = 0;\
+            \
+            document.addEventListener('touchstart', function(e) {\
+                touchStartTime = Date.now();\
+                \
+                // Block touch on images completely\
+                if (e.target.tagName === 'IMG') {\
+                    e.preventDefault();\
+                    e.stopImmediatePropagation();\
+                    return false;\
+                }\
+                \
+                // Track touch count for double-tap detection\
+                var now = Date.now();\
+                if (now - lastTouchEnd <= 300) {\
+                    touchCount++;\
+                    if (touchCount >= 2) {\
+                        // Block double tap\
+                        e.preventDefault();\
+                        e.stopImmediatePropagation();\
+                        touchCount = 0;\
+                        return false;\
+                    }\
+                } else {\
+                    touchCount = 1;\
+                }\
+            }, { passive: false, capture: true });\
+            \
+            document.addEventListener('touchend', function(e) {\
+                var touchDuration = Date.now() - touchStartTime;\
+                lastTouchEnd = Date.now();\
+                \
+                // Block long touches that could trigger text selection\
+                if (touchDuration > 500) {\
+                    e.preventDefault();\
+                    e.stopImmediatePropagation();\
+                    return false;\
+                }\
+            }, { passive: false, capture: true });\
+            \
             // Disable context menu (right click)\
             document.addEventListener('contextmenu', function(e) {\
                 e.preventDefault();\
+                e.stopImmediatePropagation();\
                 return false;\
-            }, false);\
+            }, { passive: false, capture: true });\
             \
             // Disable user scaling (pinch to zoom)\
-            document.addEventListener('gesturestart', function(e) {\
-                e.preventDefault();\
-            }, false);\
+            document.addEventListener('wheel', function(e) {\
+                if (e.ctrlKey) {\
+                    e.preventDefault();\
+                    e.stopImmediatePropagation();\
+                    return false;\
+                }\
+            }, { passive: false, capture: true });\
         });\
     })();\
     ";
@@ -167,14 +245,60 @@ extern "C" {
     _webView.backgroundColor = [UIColor clearColor];
     _webView.opaque = NO;
     
-    // Disable scrolling bounce effect to make it feel more like a game UI
+    // === GAME UI MODE NATIVE SETTINGS ===
+    // These settings make the WebView feel more like a native game UI
+    
+    // Disable all native bounce effects
     _webView.scrollView.bounces = NO;
     _webView.scrollView.alwaysBounceVertical = NO;
     _webView.scrollView.alwaysBounceHorizontal = NO;
+    _webView.scrollView.bouncesZoom = NO;
     
-    // Optional: Disable scrolling entirely if your content doesn't need to scroll
-    // Comment this out if you need scrolling in your web content
+    // Disable zoom functionality completely
+    _webView.scrollView.minimumZoomScale = 1.0;
+    _webView.scrollView.maximumZoomScale = 1.0;
+    
+    // Hide scroll indicators
+    _webView.scrollView.showsVerticalScrollIndicator = NO;
+    _webView.scrollView.showsHorizontalScrollIndicator = NO;
+    
+    // Disable native navigation gestures
+    _webView.allowsBackForwardNavigationGestures = NO;
+    
+    // Disable link preview on force touch
+    _webView.allowsLinkPreview = NO;
+    
+    // Disable scrolling by default (can be re-enabled if needed)
     _webView.scrollView.scrollEnabled = NO;
+    
+    // === DISABLE MAGNIFYING GLASS AND TEXT INTERACTION ===
+    // This prevents the magnifying glass from appearing on double-tap
+    
+    // Disable all existing gesture recognizers
+    NSArray *allGestureRecognizers = [_webView.gestureRecognizers copy];
+    for (UIGestureRecognizer *recognizer in allGestureRecognizers) {
+        [_webView removeGestureRecognizer:recognizer];
+    }
+    
+    NSArray *scrollGestureRecognizers = [_webView.scrollView.gestureRecognizers copy];
+    for (UIGestureRecognizer *recognizer in scrollGestureRecognizers) {
+        [_webView.scrollView removeGestureRecognizer:recognizer];
+    }
+    
+    // Add only our controlled tap gesture
+    UITapGestureRecognizer *singleTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(handleSingleTap:)];
+    singleTap.numberOfTapsRequired = 1;
+    singleTap.numberOfTouchesRequired = 1;
+    [_webView addGestureRecognizer:singleTap];
+    
+    // Add a gesture recognizer to capture and block double taps
+    UITapGestureRecognizer *doubleTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(handleDoubleTap:)];
+    doubleTap.numberOfTapsRequired = 2;
+    doubleTap.numberOfTouchesRequired = 1;
+    [_webView addGestureRecognizer:doubleTap];
+    
+    // Make sure single tap waits for double tap to fail
+    [singleTap requireGestureRecognizerToFail:doubleTap];
     
     // Adjust content inset behavior if available
     if (@available(iOS 11.0, *)) {
@@ -187,6 +311,48 @@ extern "C" {
     
     // Add the activity indicator to the view
     [_activityIndicator startAnimating];
+}
+
+#pragma mark - Gesture Handlers
+
+- (void)handleSingleTap:(UITapGestureRecognizer *)recognizer {
+    // Get the tap location
+    CGPoint location = [recognizer locationInView:_webView];
+    
+    // Forward the tap to the WebView's JavaScript
+    NSString *script = [NSString stringWithFormat:@"\
+        (function() {\
+            var element = document.elementFromPoint(%f, %f);\
+            if (element) {\
+                var event = new MouseEvent('click', {\
+                    view: window,\
+                    bubbles: true,\
+                    cancelable: true,\
+                    clientX: %f,\
+                    clientY: %f\
+                });\
+                element.dispatchEvent(event);\
+            }\
+        })();\
+    ", location.x, location.y, location.x, location.y];
+    
+    [_webView evaluateJavaScript:script completionHandler:nil];
+    
+    if (_debugLogging) {
+        NSLog(@"[BalancyWebView] Single tap at location: %.1f, %.1f", location.x, location.y);
+    }
+}
+
+- (void)handleDoubleTap:(UITapGestureRecognizer *)recognizer {
+    // Intercept and block double taps to prevent magnifying glass
+    if (_debugLogging) {
+        CGPoint location = [recognizer locationInView:_webView];
+        NSLog(@"[BalancyWebView] Double tap blocked at location: %.1f, %.1f", location.x, location.y);
+    }
+    
+    // Do nothing - this effectively blocks the double tap
+    // You could optionally forward it as a single click if needed:
+    // [self handleSingleTap:recognizer];
 }
 
 #pragma mark - View Lifecycle
@@ -454,13 +620,48 @@ extern "C" {
     
     // Apply game UI settings
     if (enabled) {
-        // Disable scrolling bounce effect
+        // === COMPREHENSIVE GAME UI MODE SETTINGS ===
+        
+        // Disable all bounce effects
         _webView.scrollView.bounces = NO;
         _webView.scrollView.alwaysBounceVertical = NO;
         _webView.scrollView.alwaysBounceHorizontal = NO;
+        _webView.scrollView.bouncesZoom = NO;
         
-        // Disable scrolling entirely unless content needs it
+        // Disable zoom completely
+        _webView.scrollView.minimumZoomScale = 1.0;
+        _webView.scrollView.maximumZoomScale = 1.0;
+        
+        // Hide scroll indicators
+        _webView.scrollView.showsVerticalScrollIndicator = NO;
+        _webView.scrollView.showsHorizontalScrollIndicator = NO;
+        
+        // Disable native gestures
+        _webView.allowsBackForwardNavigationGestures = NO;
+        _webView.allowsLinkPreview = NO;
+        
+        // Disable scrolling
         _webView.scrollView.scrollEnabled = NO;
+        
+        // === DISABLE MAGNIFYING GLASS ===
+        // Disable all gesture recognizers that could trigger magnification
+        for (UIGestureRecognizer *recognizer in _webView.gestureRecognizers) {
+            if (![recognizer isKindOfClass:[UITapGestureRecognizer class]] || 
+                [(UITapGestureRecognizer *)recognizer numberOfTapsRequired] == 1) {
+                // Keep our single tap gesture, disable everything else
+                continue;
+            }
+            recognizer.enabled = NO;
+        }
+        
+        for (UIGestureRecognizer *recognizer in _webView.scrollView.gestureRecognizers) {
+            if ([recognizer isKindOfClass:[UITapGestureRecognizer class]]) {
+                UITapGestureRecognizer *tapRecognizer = (UITapGestureRecognizer *)recognizer;
+                if (tapRecognizer.numberOfTapsRequired > 1) {
+                    recognizer.enabled = NO;
+                }
+            }
+        }
         
         // Inject UI customizations for game-like feel
         NSString *gameUIModeScript = @"\
@@ -475,16 +676,47 @@ extern "C" {
             // Disable text selection on tap\
             document.documentElement.style.webkitTouchCallout = 'none';\
             \
+            // Disable zoom gestures and magnifying glass\
+            document.documentElement.style.webkitTextSizeAdjust = 'none';\
+            document.documentElement.style.touchAction = 'manipulation';\
+            \
             // Remove any focus outlines\
             var styleElement = document.createElement('style');\
-            styleElement.textContent = '*:focus { outline: none !important; }';\
+            styleElement.textContent = '*:focus { outline: none !important; } img { pointer-events: none !important; -webkit-user-drag: none !important; }';\
             document.head.appendChild(styleElement);\
             \
-            // Prevent default touch behavior\
+            // Prevent all gesture events that could trigger magnification\
+            document.addEventListener('gesturestart', function(e) {\
+                e.preventDefault();\
+                e.stopPropagation();\
+                return false;\
+            }, { passive: false, capture: true });\
+            \
+            document.addEventListener('gesturechange', function(e) {\
+                e.preventDefault();\
+                e.stopPropagation();\
+                return false;\
+            }, { passive: false, capture: true });\
+            \
+            document.addEventListener('gestureend', function(e) {\
+                e.preventDefault();\
+                e.stopPropagation();\
+                return false;\
+            }, { passive: false, capture: true });\
+            \
+            // Prevent default touch behavior that could trigger magnification\
+            var lastTouchEnd = 0;\
+            document.addEventListener('touchend', function(e) {\
+                var now = Date.now();\
+                if (now - lastTouchEnd <= 300) {\
+                    e.preventDefault();\
+                }\
+                lastTouchEnd = now;\
+            }, { passive: false });\
+            \
+            // Prevent touchstart behavior on images that could trigger magnification\
             document.addEventListener('touchstart', function(e) {\
-                // Allow clicking on links and buttons, but prevent other behaviors\
-                if (e.target.tagName !== 'A' && e.target.tagName !== 'BUTTON' && \
-                    e.target.tagName !== 'INPUT') {\
+                if (e.target.tagName === 'IMG') {\
                     e.preventDefault();\
                 }\
             }, { passive: false });\
@@ -495,7 +727,25 @@ extern "C" {
     } else {
         // Enable standard web browsing features
         _webView.scrollView.bounces = YES;
+        _webView.scrollView.alwaysBounceVertical = YES;
+        _webView.scrollView.alwaysBounceHorizontal = YES;
+        _webView.scrollView.bouncesZoom = YES;
+        _webView.scrollView.minimumZoomScale = 0.5;
+        _webView.scrollView.maximumZoomScale = 3.0;
+        _webView.scrollView.showsVerticalScrollIndicator = YES;
+        _webView.scrollView.showsHorizontalScrollIndicator = YES;
+        _webView.allowsBackForwardNavigationGestures = YES;
+        _webView.allowsLinkPreview = YES;
         _webView.scrollView.scrollEnabled = YES;
+        
+        // Re-enable gesture recognizers for standard web experience
+        for (UIGestureRecognizer *recognizer in _webView.gestureRecognizers) {
+            recognizer.enabled = YES;
+        }
+        
+        for (UIGestureRecognizer *recognizer in _webView.scrollView.gestureRecognizers) {
+            recognizer.enabled = YES;
+        }
         
         // Re-enable standard web behaviors
         NSString *standardWebScript = @"\

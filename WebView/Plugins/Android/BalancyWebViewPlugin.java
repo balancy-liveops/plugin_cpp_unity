@@ -172,13 +172,52 @@ public class BalancyWebViewPlugin {
             settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         }
         
-        // Disable zoom controls for game UI mode
+        // === GAME UI MODE NATIVE SETTINGS ===
+        // These settings make the WebView feel more like a native game UI
+        
+        // Disable all zoom functionality
         settings.setBuiltInZoomControls(false);
         settings.setDisplayZoomControls(false);
         settings.setSupportZoom(false);
         
+        // Disable text zoom (helps maintain consistent UI)
+        settings.setTextZoom(100);
+        
+        // Disable overscroll (bounce effect)
+        webView.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        
+        // Hide scroll bars
+        webView.setVerticalScrollBarEnabled(false);
+        webView.setHorizontalScrollBarEnabled(false);
+        webView.setScrollBarStyle(View.SCROLLBARS_INSIDE_OVERLAY);
+        
         // User agent
         settings.setUserAgentString(settings.getUserAgentString() + " BalancyWebView/1.0");
+        
+        // === ADDITIONAL GAME UI MODE SETTINGS ===
+        
+        // Disable long click context menu
+        webView.setOnLongClickListener(new View.OnLongClickListener() {
+            @Override
+            public boolean onLongClick(View v) {
+                return true; // Prevent context menu
+            }
+        });
+        
+        // Disable text selection on touch
+        webView.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View v, android.view.MotionEvent event) {
+                // Allow normal touch events but prevent text selection
+                if (event.getAction() == android.view.MotionEvent.ACTION_DOWN || 
+                    event.getAction() == android.view.MotionEvent.ACTION_UP) {
+                    if (!v.hasFocus()) {
+                        v.requestFocus();
+                    }
+                }
+                return false; // Don't consume the event
+            }
+        });
         
         // JavaScript interface for Unity communication
         webView.addJavascriptInterface(new WebViewJavaScriptInterface(), "BalancyWebView");
@@ -264,6 +303,35 @@ public class BalancyWebViewPlugin {
                          " of " + consoleMessage.sourceId());
                 }
                 return true;
+            }
+            
+            // Disable JavaScript alerts/confirms/prompts in game UI mode
+            @Override
+            public boolean onJsAlert(WebView view, String url, String message, android.webkit.JsResult result) {
+                if (gameUIMode) {
+                    result.confirm(); // Auto-dismiss alerts in game mode
+                    return true;
+                }
+                return super.onJsAlert(view, url, message, result);
+            }
+            
+            @Override
+            public boolean onJsConfirm(WebView view, String url, String message, android.webkit.JsResult result) {
+                if (gameUIMode) {
+                    result.confirm(); // Auto-confirm in game mode
+                    return true;
+                }
+                return super.onJsConfirm(view, url, message, result);
+            }
+            
+            @Override
+            public boolean onJsPrompt(WebView view, String url, String message, 
+                                    String defaultValue, android.webkit.JsPromptResult result) {
+                if (gameUIMode) {
+                    result.confirm(""); // Auto-dismiss prompts in game mode
+                    return true;
+                }
+                return super.onJsPrompt(view, url, message, defaultValue, result);
             }
         });
         
@@ -603,11 +671,40 @@ public class BalancyWebViewPlugin {
         if (isWebViewOpen && webView != null) {
             currentActivity.runOnUiThread(() -> {
                 if (enabled) {
+                    // === COMPREHENSIVE GAME UI MODE SETTINGS ===
+                    
+                    // Disable all scroll behavior
+                    webView.setOverScrollMode(View.OVER_SCROLL_NEVER);
+                    webView.setVerticalScrollBarEnabled(false);
+                    webView.setHorizontalScrollBarEnabled(false);
+                    webView.setScrollBarStyle(View.SCROLLBARS_INSIDE_OVERLAY);
+                    
+                    // Disable zoom
+                    WebSettings settings = webView.getSettings();
+                    settings.setBuiltInZoomControls(false);
+                    settings.setDisplayZoomControls(false);
+                    settings.setSupportZoom(false);
+                    settings.setTextZoom(100); // Fixed text size
+                    
+                    // Inject CSS for game UI feel
                     injectGameUIModeCSS();
+                } else {
+                    // Re-enable standard web features
+                    webView.setOverScrollMode(View.OVER_SCROLL_IF_CONTENT_SCROLLS);
+                    webView.setVerticalScrollBarEnabled(true);
+                    webView.setHorizontalScrollBarEnabled(true);
+                    
+                    WebSettings settings = webView.getSettings();
+                    settings.setBuiltInZoomControls(true);
+                    settings.setDisplayZoomControls(false); // Keep controls hidden
+                    settings.setSupportZoom(true);
+                    
+                    // Note: To fully disable game UI mode CSS, page would need to be reloaded
                 }
-                // Note: Disabling game UI mode would require reloading the page
             });
         }
+        
+        logDebug("Game UI mode " + (enabled ? "enabled" : "disabled"));
     }
     
     public void setOfflineCacheEnabled(boolean enabled) {
