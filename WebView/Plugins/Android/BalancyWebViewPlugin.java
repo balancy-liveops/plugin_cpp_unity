@@ -151,21 +151,53 @@ public class BalancyWebViewPlugin {
     }
     
     /**
-     * Create and configure the WebView
+     * Create and configure the WebView with performance optimizations
      */
     private void createWebView() {
         webView = new WebView(currentActivity);
         
-        // WebView settings
+        // === ПРИНУДИТЕЛЬНОЕ АППАРАТНОЕ УСКОРЕНИЕ ===
+        // Это критично для производительности на всех Android устройствах
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) {
+            webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+            logDebug("Hardware acceleration enabled for WebView");
+        } else {
+            // Fallback для старых устройств
+            webView.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+            logDebug("Software rendering enabled for older Android");
+        }
+        
+        // WebView settings с оптимизациями производительности
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
-        // Note: setAppCacheEnabled is deprecated and removed in newer Android versions
-        // settings.setAppCacheEnabled(true); // REMOVED - deprecated
         settings.setAllowFileAccess(true);
         settings.setAllowContentAccess(true);
         settings.setMediaPlaybackRequiresUserGesture(false);
+        
+        // === АППАРАТНОЕ УСКОРЕНИЕ НАСТРОЙКИ ===
+        // Принудительное включение GPU ускорения для рендеринга
+        settings.setRenderPriority(WebSettings.RenderPriority.HIGH);
+        
+        // Оптимизация кэширования для производительности
+        settings.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
+        // Note: setAppCacheMaxSize() removed in newer Android versions
+        // settings.setAppCacheMaxSize(1024 * 1024 * 8); // REMOVED - deprecated and unavailable
+        
+        // Отключение ненужных функций для производительности
+        settings.setGeolocationEnabled(false);
+        settings.setAllowFileAccessFromFileURLs(false);
+        settings.setAllowUniversalAccessFromFileURLs(false);
+        
+        // === ОПТИМИЗАЦИЯ РЕНДЕРИНГА ИЗОБРАЖЕНИЙ ===
+        settings.setLoadsImagesAutomatically(true);
+        settings.setBlockNetworkImage(false);
+        
+        // Отключение плагинов (Flash, etc.)
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.JELLY_BEAN_MR2) {
+            settings.setPluginState(WebSettings.PluginState.OFF);
+        }
         
         // Enable modern web features
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
@@ -183,13 +215,19 @@ public class BalancyWebViewPlugin {
         // Disable text zoom (helps maintain consistent UI)
         settings.setTextZoom(100);
         
-        // Disable overscroll (bounce effect)
+        // === ПРИНУДИТЕЛЬНОЕ АППАРАТНОЕ УСКОРЕНИЕ ДЛЯ SCROLLING ===
+        // Disable overscroll (bounce effect) + hardware acceleration
         webView.setOverScrollMode(View.OVER_SCROLL_NEVER);
         
-        // Hide scroll bars
+        // Hide scroll bars + optimize scrolling
         webView.setVerticalScrollBarEnabled(false);
         webView.setHorizontalScrollBarEnabled(false);
         webView.setScrollBarStyle(View.SCROLLBARS_INSIDE_OVERLAY);
+        
+        // === ДОПОЛНИТЕЛЬНЫЕ ОПТИМИЗАЦИИ АППАРАТНОГО УСКОРЕНИЯ ===
+        // Принудительное использование GPU для всех операций
+        webView.setDrawingCacheEnabled(true);
+        webView.setDrawingCacheQuality(View.DRAWING_CACHE_QUALITY_HIGH);
         
         // User agent
         settings.setUserAgentString(settings.getUserAgentString() + " BalancyWebView/1.0");
@@ -204,7 +242,7 @@ public class BalancyWebViewPlugin {
             }
         });
         
-        // Disable text selection on touch
+        // Disable text selection on touch with hardware acceleration optimization
         webView.setOnTouchListener(new View.OnTouchListener() {
             @Override
             public boolean onTouch(View v, android.view.MotionEvent event) {
@@ -234,6 +272,11 @@ public class BalancyWebViewPlugin {
             public void onPageFinished(WebView view, String url) {
                 logDebug("Page finished loading: " + url);
                 
+                // === УПРОЩЕНИЕ РЕНДЕРИНГА ===
+                // Сразу после загрузки страницы применяем оптимизации рендеринга
+                logDebug("Applying rendering optimizations for all Android devices");
+                injectRenderingOptimizations();
+                
                 // Inject transparency CSS if needed
                 if (transparentBackground) {
                     logDebug("Injecting transparency CSS");
@@ -256,7 +299,7 @@ public class BalancyWebViewPlugin {
                     injectOwnerJson();
                 }
                 
-                logDebug("WebView page loading completed successfully");
+                logDebug("WebView page loading completed successfully with performance optimizations");
                 
                 // FIXED: Use Unity messaging instead of JNI callback
                 sendUnityMessage("OnAndroidLoadCompleted", "true");
@@ -335,7 +378,7 @@ public class BalancyWebViewPlugin {
             }
         });
         
-        // Set layout parameters
+        // Set layout parameters with hardware acceleration
         FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.MATCH_PARENT
@@ -344,6 +387,8 @@ public class BalancyWebViewPlugin {
         
         // Add to container
         webViewContainer.addView(webView);
+        
+        logDebug("WebView created with hardware acceleration and rendering optimizations");
     }
     
     /**
@@ -383,6 +428,12 @@ public class BalancyWebViewPlugin {
     private void applySettings() {
         if (webView == null) return;
         
+        // === ПРИНУДИТЕЛЬНОЕ ПЕРЕПРИМЕНЕНИЕ АППАРАТНОГО УСКОРЕНИЯ ===
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) {
+            webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+            logDebug("Hardware acceleration re-applied in applySettings");
+        }
+        
         // Apply transparency
         if (transparentBackground) {
             webView.setBackgroundColor(Color.TRANSPARENT);
@@ -394,6 +445,12 @@ public class BalancyWebViewPlugin {
         
         // Apply viewport settings
         applyViewportSettings();
+        
+        // Переприменяем оптимизации рендеринга если WebView уже загружен
+        if (isWebViewOpen) {
+            injectRenderingOptimizations();
+            logDebug("Re-applied rendering optimizations");
+        }
     }
     
     /**
@@ -632,6 +689,111 @@ public class BalancyWebViewPlugin {
                        "}";
         
         webView.evaluateJavascript(script, null);
+    }
+    
+    /**
+     * === НОВЫЙ МЕТОД: УПРОЩЕНИЕ РЕНДЕРИНГА ===
+     * Инжектирует CSS оптимизации для улучшения производительности рендеринга
+     * на всех Android устройствах
+     */
+    private void injectRenderingOptimizations() {
+        String renderingOptimizationsCSS = "var style = document.createElement('style');" +
+                "style.innerHTML = `" +
+                "/* === BALANCY WEBVIEW RENDERING OPTIMIZATIONS === */" +
+                "/* Применяется ко всем Android устройствам для улучшения производительности */" +
+                
+                "/* Принудительное аппаратное ускорение для основных элементов */" +
+                "body, html, .main-container, .game-container, .ui-container { " +
+                "  transform: translateZ(0) !important; " +
+                "  backface-visibility: hidden !important; " +
+                "  perspective: 1000px !important; " +
+                "} " +
+                
+                "/* Оптимизация рендеринга изображений */" +
+                "img, canvas, video { " +
+                "  transform: translateZ(0) !important; " +
+                "  image-rendering: auto !important; " +
+                "  image-rendering: crisp-edges !important; " +
+                "} " +
+                
+                "/* Упрощение сложных CSS эффектов */" +
+                "* { " +
+                "  text-shadow: none !important; " +
+                "  filter: none !important; " +
+                "  backdrop-filter: none !important; " +
+                "} " +
+                
+                "/* Оптимизация анимаций - упрощаем только тяжелые */" +
+                "* { " +
+                "  animation-fill-mode: both !important; " +
+                "  animation-timing-function: linear !important; " +
+                "} " +
+                
+                "/* Убираем псевдоэлементы которые тяжело рендерятся */" +
+                "*:before, *:after { " +
+                "  content: none !important; " +
+                "  display: none !important; " +
+                "} " +
+                
+                "/* Оптимизация градиентов - упрощаем сложные градиенты */" +
+                "* { " +
+                "  background-attachment: scroll !important; " +
+                "} " +
+                
+                "/* Принудительное использование GPU для трансформаций */" +
+                "*[style*='transform'], .animated, .transition { " +
+                "  transform: translateZ(0) !important; " +
+                "  will-change: transform !important; " +
+                "} " +
+                
+                "/* Оптимизация для кнопок и интерактивных элементов */" +
+                "button, .button, .btn, input, select, textarea { " +
+                "  transform: translateZ(0) !important; " +
+                "  backface-visibility: hidden !important; " +
+                "} " +
+                
+                "/* Отключение сложных box-shadow эффектов */" +
+                "* { " +
+                "  box-shadow: none !important; " +
+                "} " +
+                
+                "/* Простые box-shadow только для UI элементов если нужно */" +
+                ".shadow-light { " +
+                "  box-shadow: 0 1px 3px rgba(0,0,0,0.1) !important; " +
+                "} " +
+                ".shadow-medium { " +
+                "  box-shadow: 0 2px 6px rgba(0,0,0,0.15) !important; " +
+                "} " +
+                
+                "/* Оптимизация для overflow и scrolling */" +
+                "* { " +
+                "  -webkit-overflow-scrolling: touch !important; " +
+                "} " +
+                
+                "/* Отключение outline для лучшей производительности */" +
+                "* { " +
+                "  outline: none !important; " +
+                "} " +
+                "`;"+
+                "document.head.appendChild(style);" +
+                
+                "/* Добавляем мета-тег для указания браузеру использовать аппаратное ускорение */" +
+                "var viewportMeta = document.querySelector('meta[name=viewport]');" +
+                "if (!viewportMeta) {" +
+                "  viewportMeta = document.createElement('meta');" +
+                "  viewportMeta.name = 'viewport';" +
+                "  viewportMeta.content = 'width=device-width, initial-scale=1.0, user-scalable=no';" +
+                "  document.head.appendChild(viewportMeta);" +
+                "}" +
+                
+                "/* Принудительное включение аппаратного ускорения через JavaScript */" +
+                "document.documentElement.style.setProperty('transform', 'translateZ(0)', 'important');" +
+                "document.body.style.setProperty('transform', 'translateZ(0)', 'important');" +
+                
+                "console.log('Balancy WebView: Rendering optimizations applied for Android');";
+        
+        webView.evaluateJavascript(renderingOptimizationsCSS, null);
+        logDebug("Rendering optimizations CSS injected for performance improvement");
     }
     
     /**

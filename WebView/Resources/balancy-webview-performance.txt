@@ -20,6 +20,7 @@
     let networkRequests = 0;
     let failedRequests = 0;
     let totalLoadTime = 0;
+    let lastDomCount = performance.now();
     
     // DOM elements
     let performanceOverlay = null;
@@ -28,7 +29,8 @@
     // Configuration
     const PERFORMANCE_CONFIG = {
         maxHistorySize: 60, // Keep last 60 FPS measurements
-        updateInterval: 100, // Update display every 100ms
+        updateInterval: 250, // Update display every 250ms (optimized from 100ms)
+        domCountInterval: 1000, // Count DOM nodes every 1000ms (optimized)
         frameDropThreshold: 16.67 // Consider frame dropped if > 16.67ms (60fps)
     };
     
@@ -45,16 +47,16 @@
             background: rgba(0, 0, 0, 0.8);
             color: #00ff00;
             font-family: 'Courier New', monospace;
-            font-size: 24px;
-            padding: 16px;
+            font-size: 12px;
+            padding: 8px;
             z-index: 999999;
-            border-radius: 0 0 16px 0;
+            border-radius: 0 0 8px 0;
             line-height: 1.2;
             pointer-events: none;
             user-select: none;
             -webkit-user-select: none;
             white-space: pre;
-            min-width: 400px;
+            min-width: 200px;
             transition: opacity 0.3s ease;
         `;
         
@@ -66,50 +68,68 @@
             position: fixed;
             top: 0;
             left: 0;
-            width: 120px;
-            height: 120px;
+            width: 60px;
+            height: 60px;
             z-index: 999998;
             pointer-events: auto;
         `;
         
         let tapCount = 0;
-        toggleArea.addEventListener('touchstart', function() {
+        let tapTimeout = null;
+        toggleArea.addEventListener('touchstart', function(e) {
+            e.preventDefault();
             tapCount++;
-            setTimeout(() => { tapCount = 0; }, 300);
+            
+            if (tapTimeout) clearTimeout(tapTimeout);
+            tapTimeout = setTimeout(() => { 
+                tapCount = 0; 
+                tapTimeout = null;
+            }, 300);
+            
             if (tapCount === 2) {
                 isOverlayVisible = !isOverlayVisible;
                 performanceOverlay.style.opacity = isOverlayVisible ? '1' : '0.1';
+                tapCount = 0;
+                if (tapTimeout) {
+                    clearTimeout(tapTimeout);
+                    tapTimeout = null;
+                }
             }
-        });
+        }, { passive: false });
         
         document.body.appendChild(toggleArea);
     }
     
-    // Update performance overlay
+    // Update performance overlay (optimized)
     function updatePerformanceDisplay() {
-        if (!performanceOverlay) return;
+        if (!performanceOverlay || !isOverlayVisible) return;
         
         const memInfo = performance.memory || {};
-        const timing = performance.timing || {};
+        const memUsageMB = memInfo.usedJSHeapSize ? (memInfo.usedJSHeapSize / 1048576).toFixed(1) : 'N/A';
+        const status = getPerformanceStatus();
         
-        const displayText = `FPS: ${fps.toFixed(1)} (${minFps.toFixed(1)}-${maxFps.toFixed(1)})
-Avg: ${avgFps.toFixed(1)} | Drops: ${frameDrops}
-Render: ${renderTime.toFixed(1)}ms
-Memory: ${(memInfo.usedJSHeapSize / 1024 / 1024).toFixed(1)}MB
+        // Pre-calculate values to avoid repeated operations
+        const fpsDisplay = fps.toFixed(1);
+        const minFpsDisplay = minFps === Infinity ? '0.0' : minFps.toFixed(1);
+        const maxFpsDisplay = maxFps.toFixed(1);
+        const avgFpsDisplay = avgFps.toFixed(1);
+        const renderTimeDisplay = renderTime.toFixed(1);
+        
+        const displayText = `FPS: ${fpsDisplay} (${minFpsDisplay}-${maxFpsDisplay})
+Avg: ${avgFpsDisplay} | Drops: ${frameDrops}
+Render: ${renderTimeDisplay}ms
+Memory: ${memUsageMB}MB
 DOM: ${domNodes} nodes
 Net: ${networkRequests}/${failedRequests} (ok/fail)
 Load: ${totalLoadTime}ms
-${getPerformanceStatus()}`;
+${status}`;
         
         performanceOverlay.textContent = displayText;
         
         // Color coding based on performance
-        if (fps < 30) {
-            performanceOverlay.style.color = '#ff4444'; // Red for poor performance
-        } else if (fps < 50) {
-            performanceOverlay.style.color = '#ffaa00'; // Orange for moderate performance
-        } else {
-            performanceOverlay.style.color = '#00ff00'; // Green for good performance
+        const color = fps < 30 ? '#ff4444' : fps < 50 ? '#ffaa00' : '#00ff00';
+        if (performanceOverlay.style.color !== color) {
+            performanceOverlay.style.color = color;
         }
     }
     
@@ -128,7 +148,7 @@ ${getPerformanceStatus()}`;
         const deltaTime = currentTime - lastFrameTime;
         
         // Track frame drops
-        if (deltaTime > PERFORMANCE_CONFIG.frameDropThreshold) {
+        if (lastFrameTime > 0 && deltaTime > PERFORMANCE_CONFIG.frameDropThreshold) {
             frameDrops++;
         }
         
@@ -159,47 +179,62 @@ ${getPerformanceStatus()}`;
         requestAnimationFrame(calculateFPS);
     }
     
-    // Monitor render time
+    // Monitor render time (optimized)
     function measureRenderTime() {
         const startTime = performance.now();
         
-        // Use setTimeout to measure actual render completion
-        setTimeout(() => {
+        // Use requestAnimationFrame to measure actual render completion
+        requestAnimationFrame(() => {
             renderTime = performance.now() - startTime;
-        }, 0);
+        });
     }
     
-    // Count DOM nodes
+    // Count DOM nodes (optimized - called less frequently)
     function countDOMNodes() {
-        domNodes = document.getElementsByTagName('*').length;
+        const currentTime = performance.now();
+        if (currentTime - lastDomCount >= PERFORMANCE_CONFIG.domCountInterval) {
+            domNodes = document.getElementsByTagName('*').length;
+            lastDomCount = currentTime;
+        }
     }
     
-    // Monitor network requests
+    // Monitor network requests (optimized)
     function monitorNetworkRequests() {
-        const originalFetch = window.fetch;
-        const originalXHROpen = XMLHttpRequest.prototype.open;
-        
         // Monitor fetch requests
-        window.fetch = function(...args) {
-            networkRequests++;
-            return originalFetch.apply(this, args)
-                .catch(error => {
-                    failedRequests++;
-                    throw error;
-                });
-        };
+        if (window.fetch && !window.fetch._balancyMonitored) {
+            const originalFetch = window.fetch;
+            window.fetch = function(...args) {
+                networkRequests++;
+                return originalFetch.apply(this, args)
+                    .catch(error => {
+                        failedRequests++;
+                        throw error;
+                    });
+            };
+            window.fetch._balancyMonitored = true;
+        }
         
         // Monitor XMLHttpRequest
-        XMLHttpRequest.prototype.open = function() {
-            networkRequests++;
-            const xhr = this;
-            const originalOnError = xhr.onerror;
-            xhr.onerror = function() {
-                failedRequests++;
-                if (originalOnError) originalOnError.apply(this, arguments);
+        if (window.XMLHttpRequest && !XMLHttpRequest.prototype._balancyMonitored) {
+            const originalXHROpen = XMLHttpRequest.prototype.open;
+            XMLHttpRequest.prototype.open = function() {
+                networkRequests++;
+                const xhr = this;
+                
+                // Add error handler only once
+                if (!xhr._balancyErrorHandlerAdded) {
+                    const originalOnError = xhr.onerror;
+                    xhr.onerror = function() {
+                        failedRequests++;
+                        if (originalOnError) originalOnError.apply(this, arguments);
+                    };
+                    xhr._balancyErrorHandlerAdded = true;
+                }
+                
+                return originalXHROpen.apply(this, arguments);
             };
-            return originalXHROpen.apply(this, arguments);
-        };
+            XMLHttpRequest.prototype._balancyMonitored = true;
+        }
     }
     
     // Calculate page load time
@@ -210,74 +245,96 @@ ${getPerformanceStatus()}`;
                 totalLoadTime = timing.loadEventEnd - timing.navigationStart;
             }
         } else {
-            window.addEventListener('load', () => {
+            const handleLoad = () => {
                 setTimeout(calculateLoadTime, 100);
-            });
+                window.removeEventListener('load', handleLoad);
+            };
+            window.addEventListener('load', handleLoad);
         }
     }
     
-    // Monitor memory leaks
+    // Monitor memory leaks (optimized)
     function monitorMemoryLeaks() {
         if (!performance.memory) return;
         
-        setInterval(() => {
+        const memoryCheckInterval = setInterval(() => {
             const memInfo = performance.memory;
             const currentUsage = memInfo.usedJSHeapSize;
             
             // Simple memory leak detection - if memory grows continuously
-            if (currentUsage > memoryUsage * 1.5 && fpsHistory.length > 30) {
-                console.warn('Potential memory leak detected:', {
-                    current: (currentUsage / 1024 / 1024).toFixed(1) + 'MB',
-                    previous: (memoryUsage / 1024 / 1024).toFixed(1) + 'MB'
+            if (memoryUsage > 0 && currentUsage > memoryUsage * 1.5 && fpsHistory.length > 30) {
+                console.warn('Balancy: Potential memory leak detected:', {
+                    current: (currentUsage / 1048576).toFixed(1) + 'MB',
+                    previous: (memoryUsage / 1048576).toFixed(1) + 'MB'
                 });
             }
             
             memoryUsage = currentUsage;
         }, 5000);
+        
+        // Clear interval on page unload
+        window.addEventListener('beforeunload', () => {
+            clearInterval(memoryCheckInterval);
+        });
     }
     
-    // Monitor scroll performance
+    // Monitor scroll performance (optimized)
     function monitorScrollPerformance() {
         let scrollStartTime = 0;
         let isScrolling = false;
+        let scrollEndTimer = null;
         
-        window.addEventListener('scroll', () => {
+        const handleScroll = () => {
             if (!isScrolling) {
                 scrollStartTime = performance.now();
                 isScrolling = true;
             }
             
-            clearTimeout(window.scrollEndTimer);
-            window.scrollEndTimer = setTimeout(() => {
+            if (scrollEndTimer) clearTimeout(scrollEndTimer);
+            scrollEndTimer = setTimeout(() => {
                 const scrollDuration = performance.now() - scrollStartTime;
                 if (scrollDuration > 100) {
-                    console.warn('Slow scroll detected:', scrollDuration + 'ms');
+                    console.warn('Balancy: Slow scroll detected:', scrollDuration + 'ms');
                 }
                 isScrolling = false;
+                scrollEndTimer = null;
             }, 150);
-        }, { passive: true });
+        };
+        
+        window.addEventListener('scroll', handleScroll, { passive: true });
+        
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            window.removeEventListener('scroll', handleScroll);
+            if (scrollEndTimer) clearTimeout(scrollEndTimer);
+        });
     }
     
     // Log performance data for debugging
     function logPerformanceData() {
         const perfData = {
-            fps: fps,
-            minFps: minFps,
-            maxFps: maxFps,
-            avgFps: avgFps,
+            fps: parseFloat(fps.toFixed(1)),
+            minFps: minFps === Infinity ? 0 : parseFloat(minFps.toFixed(1)),
+            maxFps: parseFloat(maxFps.toFixed(1)),
+            avgFps: parseFloat(avgFps.toFixed(1)),
             frameDrops: frameDrops,
-            renderTime: renderTime,
-            memoryUsage: performance.memory ? (performance.memory.usedJSHeapSize / 1024 / 1024).toFixed(1) : 'N/A',
+            renderTime: parseFloat(renderTime.toFixed(1)),
+            memoryUsage: performance.memory ? parseFloat((performance.memory.usedJSHeapSize / 1048576).toFixed(1)) : null,
             domNodes: domNodes,
             networkRequests: networkRequests,
             failedRequests: failedRequests,
             loadTime: totalLoadTime,
+            timestamp: Date.now(),
             userAgent: navigator.userAgent
         };
         
         // Send to native app if available
-        if (window.balancy && window.balancy.postMessage) {
-            window.balancy.postMessage('//performance_data:' + JSON.stringify(perfData));
+        if (window.balancy && typeof window.balancy.postMessage === 'function') {
+            try {
+                window.balancy.postMessage('//performance_data:' + JSON.stringify(perfData));
+            } catch (e) {
+                console.warn('Balancy: Failed to send performance data to native:', e);
+            }
         }
         
         console.log('Balancy WebView Performance Data:', perfData);
@@ -297,22 +354,32 @@ ${getPerformanceStatus()}`;
         // Start FPS calculation
         requestAnimationFrame(calculateFPS);
         
-        // Update display periodically
-        setInterval(() => {
-            measureRenderTime();
-            countDOMNodes();
-            updatePerformanceDisplay();
+        // Update display periodically (optimized intervals)
+        const displayUpdateInterval = setInterval(() => {
+            if (isOverlayVisible) {
+                measureRenderTime();
+                countDOMNodes();
+                updatePerformanceDisplay();
+            }
         }, PERFORMANCE_CONFIG.updateInterval);
         
         // Log performance data every 10 seconds
-        setInterval(logPerformanceData, 10000);
+        const logInterval = setInterval(logPerformanceData, 10000);
+        
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            clearInterval(displayUpdateInterval);
+            clearInterval(logInterval);
+        });
         
         // Expose performance data to global scope
         window.balancyPerformance = {
             getPerformanceData: logPerformanceData,
             toggleOverlay: () => {
                 isOverlayVisible = !isOverlayVisible;
-                performanceOverlay.style.opacity = isOverlayVisible ? '1' : '0.1';
+                if (performanceOverlay) {
+                    performanceOverlay.style.opacity = isOverlayVisible ? '1' : '0.1';
+                }
             },
             resetStats: () => {
                 frameDrops = 0;
@@ -321,7 +388,10 @@ ${getPerformanceStatus()}`;
                 fpsHistory = [];
                 networkRequests = 0;
                 failedRequests = 0;
-            }
+                console.log('Balancy: Performance stats reset');
+            },
+            isVisible: () => isOverlayVisible,
+            getConfig: () => ({ ...PERFORMANCE_CONFIG })
         };
     }
     
@@ -329,7 +399,8 @@ ${getPerformanceStatus()}`;
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', initPerformanceMonitoring);
     } else {
-        initPerformanceMonitoring();
+        // Use setTimeout to ensure all other scripts have loaded
+        setTimeout(initPerformanceMonitoring, 0);
     }
     
 })();
