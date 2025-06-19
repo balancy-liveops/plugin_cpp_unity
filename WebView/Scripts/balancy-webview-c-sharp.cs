@@ -78,14 +78,8 @@ namespace Balancy.WebView
             
             // Always log this important event
             Debug.Log($"[BalancyWebView] Android Load completed: {success}");
-            
-            if (success)
-            {
-                // Inject Balancy bridge and owner JSON when page loads successfully
-                InjectBalancyBridgeAndOwnerData();
-            }
-            
-            OnLoadCompleted?.Invoke(success);
+
+            OnLoadCompletedReceived(success);
         }
         
         /// <summary>
@@ -99,56 +93,6 @@ namespace Balancy.WebView
             OnCacheCompleted?.Invoke(success);
         }
         
-        /// <summary>
-        /// Inject Balancy bridge and owner data (for Android)
-        /// This replicates the functionality that was in OnLoadCompletedReceived
-        /// </summary>
-        private void InjectBalancyBridgeAndOwnerData()
-        {
-            #if UNITY_ANDROID && !UNITY_EDITOR
-            try
-            {
-                Debug.Log("[BalancyWebView] Starting bridge and owner data injection...");
-                
-                // Inject bridge script
-                var bridge = Resources.Load<TextAsset>("balancy-webview-bridge");
-                if (bridge)
-                {
-                    bool injected = _balancyInjectJSCode(bridge.text);
-                    Debug.Log($"[BalancyWebView] Balancy bridge script injected: {injected}");
-                }
-                else
-                {
-                    Debug.LogWarning("[BalancyWebView] Bridge script not found in Resources/balancy-webview-bridge");
-                }
-                
-                // Inject owner JSON if available
-                if (!string.IsNullOrEmpty(_ownerJson))
-                {
-                    var injectedCode = "try {\n" +
-                                      $"balancy.owner = JSON.parse('{_ownerJson}');\n" +
-                                     "} catch (error) {\n" +
-                                     "    console.error('Error parsing owner JSON:', error);\n" +
-                                     "    balancy.owner = null;\n" +
-                                     "}";
-                    
-                    bool ownerInjected = _balancyInjectJSCode(injectedCode);
-                    Debug.Log($"[BalancyWebView] Owner JSON injected: {ownerInjected}, Length: {_ownerJson.Length} -> {injectedCode}");
-                }
-                else
-                {
-                    Debug.Log("[BalancyWebView] No owner JSON to inject");
-                }
-                
-                Debug.Log("[BalancyWebView] Bridge and owner data injection completed");
-            }
-            catch (System.Exception e)
-            {
-                Debug.LogError($"[BalancyWebView] Failed to inject Balancy bridge/owner data: {e.Message}");
-            }
-            #endif
-        }
-
         #endregion
 
         #region Native Logging Method
@@ -1040,25 +984,28 @@ namespace Balancy.WebView
         [AOT.MonoPInvokeCallback(typeof(LoadCompletedDelegate))]
         private static void OnLoadCompletedReceived(bool success)
         {
-            Debug.Log($"[BalancyWebView] Load completed: {success}");
-
-            InjectFileFromResources("balancy-webview-bridge");
-            InjectFileFromResources("balancy-webview-performance");
-            InjectFileFromResources("balancy-webview-css-animations");
-            InjectFileFromResources("balancy-webview-js-animations");
-            
-            if (!string.IsNullOrEmpty(_instance._ownerJson))
+            if (success)
             {
-                var injectedCode = "try {\n                " +
-                                   $"balancy.owner = JSON.parse('{_instance._ownerJson}');\n" +
-                                   "           } catch (error) {\n " +
-                                   "               console.error('Error parsing button params JSON:', error);\n" +
-                                   "               balancy.owner = null;\n" +
-                                   "            }";
+                Debug.Log($"[BalancyWebView] Load completed: {success}");
 
-                _balancyInjectJSCode(injectedCode);
+                InjectFileFromResources("balancy-webview-bridge");
+                InjectFileFromResources("balancy-webview-performance");
+                // InjectFileFromResources("balancy-webview-css-animations");
+                // InjectFileFromResources("balancy-webview-js-animations");
+
+                if (!string.IsNullOrEmpty(_instance._ownerJson))
+                {
+                    var injectedCode = "try {\n                " +
+                                       $"balancy.owner = JSON.parse('{_instance._ownerJson}');\n" +
+                                       "           } catch (error) {\n " +
+                                       "               console.error('Error parsing button params JSON:', error);\n" +
+                                       "               balancy.owner = null;\n" +
+                                       "            }";
+
+                    _balancyInjectJSCode(injectedCode);
+                }
             }
-            
+
             _instance.OnLoadCompleted?.Invoke(success);
         }
 
