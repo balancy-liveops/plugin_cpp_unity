@@ -288,7 +288,7 @@ const balancy = {};
                 custom,
             }).then(result => {
                 const formatStr = element.getAttribute("data-text-format");
-                const formatFn = eval(formatStr);
+                const formatFn = eval("info=>" + formatStr);
                 const value = formatFn(result);
                 element.textContent = value;
             });
