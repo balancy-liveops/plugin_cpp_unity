@@ -76,7 +76,8 @@ namespace Balancy
         public static OnHardPurchasedOfferDelegate OnHardPurchasedOffer = null;
         public static OnHardPurchasedOfferGroupDelegate OnHardPurchasedOfferGroup = null;
         
-        public static OnProfileResetDelegate OnProfileReset = null;
+        public static OnProfileResetDelegate OnProfileResetStart = null;
+        public static OnProfileResetDelegate OnProfileResetFinish = null;
         
         public struct NetworkDownloadInfo
         {
@@ -152,7 +153,8 @@ namespace Balancy
             // OnNetworkDownloadStarted += info => Debug.Log($" => Balancy.OnNetworkDownloadStarted: {info.Url}, Type: {(info.IsCDNRequest ? "CDN" : "API")}");
             // OnNetworkDownloadFinished += info => Debug.Log($" => Balancy.OnNetworkDownloadFinished: {info.Url}, Time: {info.TimeMs}ms, Size: {info.DownloadedBytes}B, Speed: {info.SpeedKBps:F1}KB/s, Success: {info.Success}");
             
-            OnProfileReset += () => Debug.Log(" => Balancy.OnProfileReset: Profile has been reset.");
+            OnProfileResetStart += () => Debug.Log(" => Balancy.OnProfileResetStart");
+            OnProfileResetFinish += () => Debug.Log(" => Balancy.OnProfileResetFinish");
         }
         
         public static void ClearAll()
@@ -183,7 +185,8 @@ namespace Balancy
             OnNetworkDownloadStarted = null;
             OnNetworkDownloadFinished = null;
 
-            OnProfileReset = null;
+            OnProfileResetStart = null;
+            OnProfileResetFinish = null;
         }
     }
 }

@@ -37,8 +37,9 @@ namespace Balancy
 
         public static void Reset()
         {
+            Balancy.Callbacks.OnProfileResetStart?.Invoke();
             LibraryMethods.Data.balancyResetAllProfiles();
-            Balancy.Callbacks.OnProfileReset?.Invoke();
+            Balancy.Callbacks.OnProfileResetFinish?.Invoke();
         }
 
         internal static void Init()

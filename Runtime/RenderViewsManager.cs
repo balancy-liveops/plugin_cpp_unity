@@ -221,8 +221,15 @@ namespace Balancy
                         Debug.LogError("Store item index is invalid or not set for group offer: " + commandInfo.instanceId);
                         break;
                     }
-                    
+
                     var storeItem = offerInfo?.GameOfferGroup?.StoreItems[commandInfo.index];
+
+                    if (storeItem == null || !offerInfo.CanPurchase(storeItem))
+                    {
+                        Debug.LogError("StoreItem is not available for purchase: " + commandInfo.instanceId);
+                        break;
+                    }
+                    
                     Balancy.API.InitPurchaseOffer(offerInfo, storeItem, (success, error) =>
                     {
                         if (success)

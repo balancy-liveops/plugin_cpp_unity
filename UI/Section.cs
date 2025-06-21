@@ -29,7 +29,8 @@ namespace Balancy.UI
             Balancy.Callbacks.OnOfferDeactivated += OnOfferDeactivated;
             Balancy.Callbacks.OnOfferGroupDeactivated += OnOfferGroupDeactivated;
             Balancy.Callbacks.OnDataUpdated += OnDataUpdated;
-            Balancy.Callbacks.OnProfileReset += RefreshAll;
+            Balancy.Callbacks.OnProfileResetStart += CleanUp;
+            // Balancy.Callbacks.OnProfileResetFinish += RefreshAll;
             
             if (Main.IsReadyToUse)
                 RefreshAll();
@@ -44,7 +45,8 @@ namespace Balancy.UI
             Balancy.Callbacks.OnOfferDeactivated -= OnOfferDeactivated;
             Balancy.Callbacks.OnOfferGroupDeactivated -= OnOfferGroupDeactivated;
             Balancy.Callbacks.OnDataUpdated -= OnDataUpdated;
-            Balancy.Callbacks.OnProfileReset -= RefreshAll;
+            Balancy.Callbacks.OnProfileResetStart -= CleanUp;
+            // Balancy.Callbacks.OnProfileResetFinish -= RefreshAll;
         }
         
         private void OnEventDeactivated(EventInfo eventInfo)
@@ -77,18 +79,27 @@ namespace Balancy.UI
             }
         }
 
-        private void RefreshAll()
+        private void CleanUp()
         {
             RemoveChildren();
             _activeElements.Clear();
+        }
+
+        private void RefreshAll()
+        {
+            CleanUp();
             
             var allEvents = Profiles.System.SmartInfo.GameEvents;
             var allOffers = Profiles.System.SmartInfo.GameOffers;
+            var allOfferGroups = Profiles.System.SmartInfo.GameOfferGroups;
 
             foreach (var eventInfo in allEvents)
                 TryToAddEvent(eventInfo);
             
             foreach (var offerInfo in allOffers)
+                TryToAddOffer(offerInfo);
+            
+            foreach (var offerInfo in allOfferGroups)
                 TryToAddOffer(offerInfo);
         }
 
@@ -134,6 +145,27 @@ namespace Balancy.UI
             else
                 info.GameOffer?.Icon?.LoadSprite(OnIconLoaded);
         }
+        
+        private void TryToAddOffer(OfferGroupInfo info)
+        {
+            if (info.GameOfferGroup?.UnnyPlacement != placement)
+                return;
+            
+            _activeElements.Add(info.InstanceId, new ElementInfo
+            {
+                Priority = info.GameOfferGroup?.UnnyPriority ?? 0
+            });
+            
+            void OnIconLoaded(Sprite sprite)
+            {
+                AddIconDisplay(info.InstanceId, info.GameOfferGroup, info, info.GetSecondsLeftBeforeDeactivation, sprite);
+            }
+
+            if (info.GameOfferGroup?.Icon == null)
+                OnIconLoaded(null);
+            else
+                info.GameOfferGroup?.Icon?.LoadSprite(OnIconLoaded);
+        }
 
         private void AddIconDisplay(string id, IViewModel info, JsonBasedObject owner, Func<int> getSecondsLeft, Sprite sprite)
         {
@@ -165,7 +197,7 @@ namespace Balancy.UI
         
         private void OnNewOfferGroupActivated(OfferGroupInfo offerGroupInfo)
         {
-            // Refresh();
+            TryToAddOffer(offerGroupInfo);
         }
 
         private void OnNewOfferActivated(OfferInfo offerInfo)
