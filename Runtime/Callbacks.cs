@@ -157,7 +157,7 @@ namespace Balancy
             OnProfileResetFinish += () => Debug.Log(" => Balancy.OnProfileResetFinish");
         }
         
-        public static void ClearAll()
+        internal static void ClearAll()
         {
             OnDataUpdated = null;
             OnAuthFailed = null;

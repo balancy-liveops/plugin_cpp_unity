@@ -1,3 +1,5 @@
+using System;
+using Balancy.Data.SmartObjects;
 using Balancy.Models;
 using Balancy.WebView;
 using UnityEngine;
@@ -18,7 +20,8 @@ namespace Balancy
         internal static void Init()
         {
             LibraryMethods.General.balancySetDataRequestedCallback(DataRequested);
-
+            PrepareCallbacks();
+            
             BalancyWebView.Instance.OnMessage = OnMessageReceived;
             _webView = BalancyWebView.Instance;
             _webView.OnLoadCompleted += HandleLoadCompleted;
@@ -30,9 +33,44 @@ namespace Balancy
             //_webView.SetDebugLogging(true);
         }
 
+        private static IntPtr m_LastOpenedOwnerPtr = IntPtr.Zero;
+
+        private static void PrepareCallbacks()
+        {
+            Balancy.Callbacks.OnOfferDeactivated -= HandleOfferDeactivated;
+            Balancy.Callbacks.OnOfferDeactivated += HandleOfferDeactivated;
+            
+            Balancy.Callbacks.OnOfferGroupDeactivated -= HandleOfferGroupDeactivated;
+            Balancy.Callbacks.OnOfferGroupDeactivated += HandleOfferGroupDeactivated;
+            
+            Balancy.Callbacks.OnEventDeactivated -= HandleEventDeactivated;
+            Balancy.Callbacks.OnEventDeactivated += HandleEventDeactivated;
+        }
+
+        private static void HandleEventDeactivated(EventInfo eventInfo)
+        {
+            CheckForClosing(eventInfo);
+        }
+
+        private static void HandleOfferGroupDeactivated(OfferGroupInfo offerGroupInfo)
+        {
+            CheckForClosing(offerGroupInfo);
+        }
+
+        private static void HandleOfferDeactivated(OfferInfo offerInfo, bool wasPurchased)
+        {
+            CheckForClosing(offerInfo);
+        }
+
+        private static void CheckForClosing(JsonBasedObject deactivatedOwner)
+        {
+            if (m_LastOpenedOwnerPtr == deactivatedOwner.GetRawPointer())
+                CloseView();
+        }
+
         private static void HandleWebViewClosed()
         {
-            
+            m_LastOpenedOwnerPtr = IntPtr.Zero;
         }
 
         private static void HandleLoadCompleted(bool obj)
@@ -67,6 +105,7 @@ namespace Balancy
 
             var urlToLoad = url;// + "?timestamp=" + Guid.NewGuid().ToString();
 
+            m_LastOpenedOwnerPtr = owner?.GetRawPointer() ?? IntPtr.Zero;
             string ownerJson = owner?.ToJsonString(false);
             bool success = false;
             if (UseEmbeddedWebView)
@@ -304,20 +343,24 @@ namespace Balancy
 
                 case RequestAction.ICloseWindow:
                 {
-                    if (UseEmbeddedWebView)
-                    {
-#if UNITY_EDITOR
-                        BalancyWebViewEmbedded.Instance.CloseEmbeddedWebView();
-#endif
-                    }
-                    else
-                        _webView.CloseWebView();
-
+                    CloseView();
                     return DEFAULT_ANSWER;
                 }
             }
 
             return null;
+        }
+
+        public static void CloseView()
+        {
+            if (UseEmbeddedWebView)
+            {
+#if UNITY_EDITOR
+                BalancyWebViewEmbedded.Instance.CloseEmbeddedWebView();
+#endif
+            }
+            else
+                _webView.CloseWebView();
         }
 
         private static string RunRequestInTheCorePlugin(string requestData)
