@@ -986,25 +986,24 @@ namespace Balancy.WebView
         {
             if (success)
             {
-                Debug.Log($"[BalancyWebView] Load completed: {success}");
+                Debug.Log($"[BalancyWebView] Load completed: {success}: ");
 
+                if (!string.IsNullOrEmpty(_instance._ownerJson))
+                {
+                    var injectedCode = "try {\n                " +
+                                       $"window.balancyViewOwner = JSON.parse('{_instance._ownerJson}');\n" +
+                                       "           } catch (error) {\n " +
+                                       "               console.error('Error parsing button params JSON:', error);\n" +
+                                       "               window.balancyViewOwner = null;\n" +
+                                       "            }";
+                    _balancyInjectJSCode(injectedCode);
+                }
+                
                 InjectFileFromResources("balancy-webview-bridge");
                 InjectFileFromResources("balancy-webview-performance");
                 InjectFileFromResources("balancy-webview-styles");
                 // InjectFileFromResources("balancy-webview-css-animations");
                 // InjectFileFromResources("balancy-webview-js-animations");
-
-                if (!string.IsNullOrEmpty(_instance._ownerJson))
-                {
-                    var injectedCode = "try {\n                " +
-                                       $"balancy.owner = JSON.parse('{_instance._ownerJson}');\n" +
-                                       "           } catch (error) {\n " +
-                                       "               console.error('Error parsing button params JSON:', error);\n" +
-                                       "               balancy.owner = null;\n" +
-                                       "            }";
-
-                    _balancyInjectJSCode(injectedCode);
-                }
             }
 
             _instance.OnLoadCompleted?.Invoke(success);

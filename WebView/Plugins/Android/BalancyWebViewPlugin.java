@@ -415,7 +415,7 @@ public class BalancyWebViewPlugin {
         emergencyExitButton.setOnClickListener(v -> {
             logDebug("Emergency exit button tapped");
             // FIXED: Use Unity messaging instead of JNI callback
-            sendUnityMessage("OnAndroidMessageReceived", "//:balancy_close_view");
+            sendUnityMessage("OnAndroidMessageReceived", "{\"action\":200, \"params\":{}}");
         });
         
         // Add to container

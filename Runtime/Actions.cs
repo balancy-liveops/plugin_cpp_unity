@@ -193,6 +193,35 @@ namespace Balancy
             {
                 return _restorePurchasesCallback;
             }
+            
+            
+            [Serializable]
+            public class HardProductInfo
+            {
+                public string LocalizedTitle;
+                public string LocalizedDescription;
+                public string LocalizedPriceString;
+                public float LocalizedPrice;
+                public string IsoCurrencyCode;
+            }
+            
+            private static readonly Func<string, HardProductInfo> DefaultGetHardPurchaseInfo = (string productId) =>
+            {
+                UnityEngine.Debug.LogWarning("You need to implement Balancy.Actions.Purchasing.SetGetHardPurchaseInfoCallback or install the Balancy Purchasing package.");
+                return new HardProductInfo();
+            };
+
+            private static Func<string, HardProductInfo> _getHardPurchaseInfo = DefaultGetHardPurchaseInfo;
+
+            public static void SetGetHardPurchaseInfoCallback(Func<string, HardProductInfo> callback)
+            {
+                _getHardPurchaseInfo = callback ?? DefaultGetHardPurchaseInfo;
+            }
+
+            internal static Func<string, HardProductInfo> GetHardPurchaseInfoCallback()
+            {
+                return _getHardPurchaseInfo;
+            }
         }
     }
 }

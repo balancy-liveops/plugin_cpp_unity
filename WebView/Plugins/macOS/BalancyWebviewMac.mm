@@ -434,7 +434,7 @@ void LogToUnity(const char* message) {
     
     // Send message to Unity
     if (_messageCallback) {
-        _messageCallback("//:balancy_close_view");
+        _messageCallback("{\"action\":200, \"params\":{}}");
     }
 }
 
@@ -856,22 +856,60 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
         [_userContentController addScriptMessageHandler:self name:@"BalancyWebView"];
         configuration.userContentController = _userContentController;
         
-        //debugging
-        // Enable developer extras for debugging
-        if (@available(macOS 10.11, *)) {
-            [configuration.preferences setValue:@YES forKey:@"developerExtrasEnabled"];
-        }
+        // ✅ ИСПРАВЛЕНИЕ: Упрощенные настройки для инспектора
+        // Основная настройка для inspector
+        [configuration.preferences setValue:@YES forKey:@"developerExtrasEnabled"];
         
-        // You might also want to enable these for better debugging
-        [configuration.preferences setValue:@YES forKey:@"fullScreenEnabled"];
-        [configuration.preferences setValue:@YES forKey:@"javaScriptCanAccessClipboard"];
-        [configuration.preferences setValue:@YES forKey:@"shouldAllowUserInstalledFonts"];
-        //debugging...
+        // ✅ ДОБАВЛЯЕМ: Настройки для контекстного меню и инспектора
+        // Убираем устаревшие API - они не обязательны для inspector
+        
+        // Только базовые настройки для совместимости
+        if (@available(macOS 10.13, *)) {
+            [configuration.preferences setValue:@YES forKey:@"javaScriptCanAccessClipboard"];
+        }
         
         // Create WebView
         _webView = [[WKWebView alloc] initWithFrame:[[window contentView] bounds] configuration:configuration];
         _webView.navigationDelegate = self;
         _webView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+        
+        // ✅ ДОБАВЬТЕ принудительное включение инспектора:
+        if (@available(macOS 10.11, *)) {
+            [_webView setValue:@YES forKey:@"drawsBackground"];
+            // Это должно гарантировать доступность инспектора
+            [_webView.configuration.preferences setValue:@YES forKey:@"developerExtrasEnabled"];
+            
+            // ✅ КЛЮЧЕВОЕ: Включаем контекстное меню для inspector
+            // Проверяем что WebView не блокирует правый клик
+            @try {
+                [_webView setValue:@YES forKey:@"allowsLinkPreview"];
+            } @catch (NSException *exception) {
+                // Игнорируем если ключ не поддерживается
+            }
+            
+            // ✅ НОВОЕ: Принудительно включаем Web Inspector через приватные API
+            @try {
+                // Пытаемся получить доступ к Web Inspector
+                id inspector = [_webView performSelector:@selector(_inspector)];
+                if (inspector) {
+                    LogToUnity("🔍 Web Inspector object found - enabling...");
+                    [inspector performSelector:@selector(show)];
+                }
+            } @catch (NSException *exception) {
+                LogToUnity("ℹ️ Private inspector API not available, using standard approach");
+            }
+            
+            // ✅ Альтернативный способ через WebKit приватные методы
+            @try {
+                if ([_webView respondsToSelector:@selector(_setDeveloperExtrasEnabled:)]) {
+                    [_webView performSelector:@selector(_setDeveloperExtrasEnabled:) withObject:@YES];
+                    LogToUnity("🔧 Used private _setDeveloperExtrasEnabled method");
+                }
+            } @catch (NSException *exception) {
+                LogToUnity("ℹ️ Private _setDeveloperExtrasEnabled not available");
+            }
+        }
+        
         [[window contentView] addSubview:_webView];
         
         // Setup emergency exit button after WebView is created
@@ -974,7 +1012,7 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
     
     // Send message to Unity
     if (_messageCallback) {
-        _messageCallback("//:balancy_close_view");
+        _messageCallback("{\"action\":200, \"params\":{}}");
     }
 }
 
@@ -1125,6 +1163,39 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
 
 - (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
     LogToUnity("WebView navigation finished successfully");
+    
+    // ✅ ДОБАВЬТЕ: Проверка доступности inspector
+    BOOL developerExtrasEnabled = [[_webView.configuration.preferences valueForKey:@"developerExtrasEnabled"] boolValue];
+    NSString *inspectorMsg = [NSString stringWithFormat:@"🔍 Developer extras (inspector) enabled: %@", 
+                             developerExtrasEnabled ? @"YES" : @"NO"];
+    LogToUnity([inspectorMsg UTF8String]);
+    
+    // Принудительное включение если выключено
+    if (!developerExtrasEnabled) {
+        LogToUnity("🔧 Force enabling developer extras");
+        [_webView.configuration.preferences setValue:@YES forKey:@"developerExtrasEnabled"];
+    }
+    
+    // ✅ НОВОЕ: Попытка программно открыть inspector после загрузки
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        @try {
+            // Пытаемся открыть inspector программно
+            id inspector = [self->_webView performSelector:@selector(_inspector)];
+            if (inspector && [inspector respondsToSelector:@selector(show)]) {
+                [inspector performSelector:@selector(show)];
+                LogToUnity("🎉 Inspector opened programmatically!");
+            } else {
+                LogToUnity("ℹ️ Inspector object not accessible, try manual methods");
+            }
+        } @catch (NSException *exception) {
+            LogToUnity("ℹ️ Could not open inspector programmatically");
+        }
+    });
+    
+    // ✅ Проверяем что контекстное меню доступно
+    LogToUnity("🖱️ TIP: Right-click on webpage should show 'Inspect Element' option");
+    LogToUnity("⌨️ TIP: Or press Cmd+Option+I to open inspector");
+    LogToUnity("🔬 TIP: If nothing works, inspector may open automatically in 1 second...");
     
     if (_transparentBackground) {
         [self setTransparentBackground:YES];

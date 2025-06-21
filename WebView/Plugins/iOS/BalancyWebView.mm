@@ -834,7 +834,7 @@ extern "C" {
     
     // Send message to Unity
     if (_messageCallback != NULL) {
-        _messageCallback("//:balancy_close_view");
+        _messageCallback("{\"action\":200, \"params\":{}}");
     }
 }
 

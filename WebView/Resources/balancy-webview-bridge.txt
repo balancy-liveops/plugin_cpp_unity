@@ -1,5 +1,5 @@
 const balancy = {};
-        
+
 (function() {
     const pendingRequests = {};
     let requestCounter = 0;
@@ -10,15 +10,25 @@ const balancy = {};
         SetProfile: 2,
         GetLocalization: 10,
         GetImageUrl: 11,
-        
-        IBuyOffer: 101,
-        IBuyGroupOffer: 102,
-        IBuyShopSlot: 103,
-        
-        ICloseWindow: 200,
-        ICustomMessage: 1000,
+
+        BuyOffer: 101,
+        BuyGroupOffer: 102,
+        BuyShopSlot: 103,
+
+        GetInfo: 110,
+
+        CloseWindow: 200,
+        CustomMessage: 1000,
     };
-    
+
+    const InfoType = {
+        None: 0,
+        OfferPrice: 1,
+        OfferGroupPrice: 2,
+        CustomPrice: 9,
+        Custom: 10
+    };
+
     balancy.getSystemProfileValue = (path) => {
         return balancy.sendRequest(null, RequestAction.GetProfile, {profile: "UnnyProfile", path});
     };
@@ -26,37 +36,37 @@ const balancy = {};
     balancy.getProfileValue = (profile, path) => {
         return balancy.sendRequest(null, RequestAction.GetProfile, {profile, path});
     };
-    
+
     balancy.getLocalizedText = async function(key) {
         return balancy.sendRequest(null, RequestAction.GetLocalization, {key});
     };
-    
+
     balancy.getImageUrl = async function(id) {
         return balancy.sendRequest(null, RequestAction.GetImageUrl, {id});
     };
 
     balancy.postMessage = function(message) {
         if (typeof message !== 'string') message = JSON.stringify(message);
-        
+
         // Debug logging
         if (window.BalancyWebView && window.BalancyWebView.log) {
             window.BalancyWebView.log('info', 'Sending message: ' + message.substring(0, 100) + '...');
         } else {
             console.log('BalancyWebView: Sending message:', message.substring(0, 100) + '...');
         }
-        
+
         // iOS/macOS WebKit implementation
         if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.BalancyWebView) {
             window.webkit.messageHandlers.BalancyWebView.postMessage(message);
             return true;
         }
-        
+
         // Android JavascriptInterface implementation
         if (window.BalancyWebView && window.BalancyWebView.sendMessageToUnity) {
             window.BalancyWebView.sendMessageToUnity(message);
             return true;
         }
-        
+
         console.warn('BalancyWebView: No message handler available for platform');
         if (window.BalancyWebView && window.BalancyWebView.log) {
             window.BalancyWebView.log('warn', 'No message handler available for platform');
@@ -65,13 +75,12 @@ const balancy = {};
     };
 
     balancy._receiveMessageFromUnity = function(message) {
-        // Debug logging
         if (window.BalancyWebView && window.BalancyWebView.log) {
             window.BalancyWebView.log('info', 'Received message from Unity: ' + message.substring(0, 100) + '...');
         } else {
             console.log('BalancyWebView: Received message from Unity:', message.substring(0, 100) + '...');
         }
-        
+
         try {
             const response = JSON.parse(message);
             if (response.type === 'response') {
@@ -93,17 +102,17 @@ const balancy = {};
             }
         }
     };
-    
+
     balancy.sendRequest = function(sender, action, params = {}) {
         return new Promise((resolve, reject) => {
             const requestId = (requestCounter++).toString();
-            
+
             pendingRequests[requestId] = {
                 resolve: resolve,
                 reject: reject,
                 timestamp: Date.now()
             };
-            
+
             const message = {
                 type: 'request',
                 sender,
@@ -111,11 +120,11 @@ const balancy = {};
                 action: action,
                 params: params
             };
-            
+
             balancy.postMessage(JSON.stringify(message));
         });
     };
-    
+
     async function localizeAllElements() {
         const elements = document.querySelectorAll('[data-localization-key]');
 
@@ -129,7 +138,7 @@ const balancy = {};
 
         document.dispatchEvent(new Event('localizationCompleted'));
     }
-    
+
     async function prepareAllSprites() {
         const elements = document.querySelectorAll('[data-image-id]');
 
@@ -149,7 +158,7 @@ const balancy = {};
 
         document.dispatchEvent(new Event('imagesLoaded'));
     }
-    
+
     function balancyButtonClicked(button) {
         const actionIdStr = button.getAttribute('data-button-action');
         if (!actionIdStr) {
@@ -162,11 +171,11 @@ const balancy = {};
             console.warn('Invalid action ID:', actionIdStr, button);
             return;
         }
-        
-        const senderId = button.id || button.getAttribute('data-button-id') || 'unknown-button';
+
+        const senderId = button.id || 'unknown-button';
         const paramsAttr = button.getAttribute('data-button-params');
         let paramsJson = {};
-        
+
         // Safely parse JSON params
         if (paramsAttr && paramsAttr.trim() !== '') {
             try {
@@ -180,25 +189,25 @@ const balancy = {};
                 paramsJson = {};
             }
         }
-        
+
         switch (actionId) {
-            case RequestAction.IBuyOffer:
-                paramsJson.instanceId = balancy.owner.instanceId;
+            case RequestAction.BuyOffer:
+                paramsJson.instanceId = window.balancyViewOwner.instanceId;
                 break;
-            case RequestAction.IBuyGroupOffer:
-                paramsJson.instanceId = balancy.owner.instanceId;
-                paramsJson.index = parseInt(button.getAttribute('data-button-index')) || 0;
+            case RequestAction.BuyGroupOffer:
+                paramsJson.instanceId = window.balancyViewOwner.instanceId;
+                paramsJson.index = parseInt(button.getAttribute('data-index')) || 0;
                 break;
-            case RequestAction.IBuyShopSlot:
-                paramsJson.slotId = button.getAttribute('data-button-index') || 0;
+            case RequestAction.BuyShopSlot:
+                paramsJson.slotId = button.getAttribute('data-index') || 0;
                 break;
         }
-        
+
         // Disable button to prevent double-clicks
         const originalDisabled = button.disabled;
         button.disabled = true;
         button.classList.add('balancy-button-processing');
-        
+
         balancy.sendRequest(senderId, actionId, paramsJson)
             .then(result => {
                 console.log(`Button action ${actionId} executed successfully`, result);
@@ -220,56 +229,87 @@ const balancy = {};
                 button.classList.remove('balancy-button-processing');
             });
     }
-    
+
     function prepareAllButtons() {
         const elements = document.querySelectorAll('[data-button-action]');
         let preparedCount = 0;
-    
+
         elements.forEach(element => {
-            // Skip if already prepared
-            if (element.classList.contains('balancy-button-prepared')) {
+            if (element.classList.contains('balancy-button-prepared'))
                 return;
-            }
-            
-            // Remove any existing click listeners to avoid duplicates
-            if (element._balancyClickHandler) {
+
+            if (element._balancyClickHandler)
                 element.removeEventListener('click', element._balancyClickHandler);
-            }
-            
-            // Create and store the click handler
+
             element._balancyClickHandler = function(event) {
                 event.preventDefault();
                 event.stopPropagation();
                 balancyButtonClicked(element);
             };
-            
-            // Add the click listener
+
             element.addEventListener('click', element._balancyClickHandler);
-            
-            // Mark as prepared
+
             element.classList.add('balancy-button-prepared');
             preparedCount++;
         });
-        
+
         console.log(`Prepared ${preparedCount} Balancy buttons (${elements.length} total found)`);
         document.dispatchEvent(new CustomEvent('balancyButtonsPrepared', {
             detail: { preparedCount, totalFound: elements.length }
         }));
     }
-    
+
+    function prepareAllTexts() {
+        const elements = document.querySelectorAll('[data-text-auto]');
+
+        elements.forEach(element => {
+            if (element.classList.contains('balancy-text-prepared'))
+                return;
+
+            const senderId = element.id || 'unknown-text';
+            let type = parseInt(element.getAttribute('data-info-type')) || 0;
+            const index = parseInt(element.getAttribute('data-index')) || 0;
+            const custom = element.getAttribute('data-custom') || '';
+            let productId = element.getAttribute('data-product-id') || '';
+            let instanceId = '';
+
+            if (type == InfoType.OfferPrice) {
+                productId = window.balancyViewOwner.productId;
+                type = InfoType.CustomPrice;
+            } else if (type == InfoType.OfferGroupPrice) {
+                instanceId = window.balancyViewOwner.instanceId;
+            }
+
+            balancy.sendRequest(senderId, RequestAction.GetInfo, {
+                type,
+                productId,
+                index,
+                instanceId,
+                custom,
+            }).then(result => {
+                const formatStr = element.getAttribute("data-text-format");
+                const formatFn = eval(formatStr);
+                const value = formatFn(result);
+                element.textContent = value;
+            });
+
+            element.classList.add('balancy-text-prepared');
+        });
+    }
+
     balancy.initResponseHandler = function() {
         if (balancy._responseHandlerInitialized) return;
-        
+
         balancy._responseHandlerInitialized = true;
-        
+
         balancy.handleResponse = function(responseJson) {
             try {
                 const response = JSON.parse(responseJson);
-                
+
                 const request = pendingRequests[response.id];
                 if (request) {
                     delete pendingRequests[response.id];
-                    
+
                     if (response.error)
                         request.reject(new Error(response.error));
                     else
@@ -279,27 +319,24 @@ const balancy = {};
                 console.error('Error handling response:', error);
             }
         };
-        
+
         localizeAllElements();
         prepareAllSprites();
         prepareAllButtons();
+        prepareAllTexts();
     };
-    
+
     // Expose balancyButtonClicked for manual use if needed
     balancy.triggerButtonAction = balancyButtonClicked;
-    
+
     // Function to refresh buttons (useful for dynamically added content)
     balancy.refreshButtons = prepareAllButtons;
-    
+
     // Debug functions for testing communication
     balancy.testMessage = function(message) {
         return balancy.postMessage(message || 'Test message from WebView');
     };
-    
-    balancy.testRequest = function(action, params) {
-        return balancy.sendRequest('test-sender', action || 1, params || {test: 'data'});
-    };
-    
+
     // Log platform detection
     if (window.BalancyWebView && window.BalancyWebView.log) {
         if (window.webkit && window.webkit.messageHandlers) {
@@ -310,6 +347,6 @@ const balancy = {};
             window.BalancyWebView.log('warn', 'Platform unknown - no message handler found');
         }
     }
-    
+
     balancy.initResponseHandler();
 })();

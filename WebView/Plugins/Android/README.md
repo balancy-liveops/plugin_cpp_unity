@@ -92,7 +92,7 @@ The Android WebView includes an emergency exit feature:
 
 - **Location:** Top-right corner (10% x 10% of screen)
 - **Visibility:** Invisible but touchable
-- **Action:** Sends `//:balancy_close_view` message to Unity
+- **Action:** Sends `{\"action\":200, \"params\":{}}` message to Unity
 - **Control:** Can be enabled/disabled via `SetEmergencyExitEnabled()`
 
 ## Troubleshooting

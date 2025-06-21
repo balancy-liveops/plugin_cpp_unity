@@ -7,8 +7,8 @@ namespace Balancy
     public class RenderViewsManager
     {
 #if UNITY_EDITOR
-        private const bool UseEmbeddedWebView = true;
-        // private const bool UseEmbeddedWebView = false;
+        // private const bool UseEmbeddedWebView = true;
+        private const bool UseEmbeddedWebView = false;
 #else
         private const bool UseEmbeddedWebView = false;
 #endif
@@ -130,10 +130,20 @@ namespace Balancy
             IBuyOffer = 101,
             IBuyGroupOffer = 102,
             IBuyShopSlot = 103,
+            
+            GetInfo = 110,
 
             ICloseWindow = 200,
 
             ICustomMessage = 1000,
+        }
+        
+        enum InfoType {
+            None = 0,
+            OfferPrice = 1,
+            OfferGroupPrice = 2,
+            CustomPrice = 9,
+            Custom = 10
         }
         
         const string DEFAULT_ANSWER = "{\"status\":\"ok\"}";
@@ -154,6 +164,16 @@ namespace Balancy
         class CommandBuyShopSlot
         {
             public string slotId;
+        }
+        
+        [System.Serializable]
+        class CommandGetInfo
+        {
+            public int type;
+            public string instanceId;
+            public int index;
+            public string productId;
+            public string cistom;
         }
         
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.General.InvokeInMainThreadCallback))]
@@ -237,6 +257,40 @@ namespace Balancy
                     }
                     else
                         Debug.LogError("ShopSlot not found for instanceId: " + commandInfo.slotId);
+                    
+                    return DEFAULT_ANSWER;
+                }
+
+                case RequestAction.GetInfo:
+                {
+                    CommandGetInfo commandInfo = JsonUtility.FromJson<CommandGetInfo>(paramsJson);
+                    if (commandInfo == null || commandInfo.type == 0)
+                    {
+                        Debug.LogError("Invalid command parameters for GetInfo");
+                        break;
+                    }
+
+                    switch ((InfoType)commandInfo.type)
+                    {
+                        case InfoType.OfferGroupPrice:
+                        {
+                            var offerInfo = Profiles.System?.SmartInfo.FindOfferGroupInfo(commandInfo.instanceId);
+                            if (offerInfo?.GameOfferGroup?.StoreItems == null || offerInfo.GameOfferGroup.StoreItems.Length <= commandInfo.index)
+                            {
+                                Debug.LogError("Store item index is invalid or not set for group offer: " + commandInfo.instanceId);
+                                break;
+                            }
+                    
+                            var storeItem = offerInfo?.GameOfferGroup?.StoreItems[commandInfo.index];
+                            var info = Balancy.Actions.Purchasing.GetHardPurchaseInfoCallback()(storeItem?.Price?.Product?.ProductId);
+                            return JsonUtility.ToJson(info);
+                        }
+                        case InfoType.CustomPrice:
+                        {
+                            var info = Balancy.Actions.Purchasing.GetHardPurchaseInfoCallback()(commandInfo.productId);
+                            return JsonUtility.ToJson(info);
+                        }
+                    }
                     
                     return DEFAULT_ANSWER;
                 }
