@@ -17,6 +17,8 @@ namespace Balancy
         
         internal static void Init()
         {
+            LibraryMethods.General.balancySetDataRequestedCallback(DataRequested);
+
             BalancyWebView.Instance.OnMessage = OnMessageReceived;
             _webView = BalancyWebView.Instance;
             _webView.OnLoadCompleted += HandleLoadCompleted;
@@ -106,126 +108,155 @@ namespace Balancy
         private static string OnMessageReceived(string msg)
         {
             Debug.Log("Incomming = " + msg);
-            var handled = TryToHandleMessage(msg);
-            if (handled)
-                return string.Empty;
+            
+            //hardcode. rewrite the way how native plugins send me the message
+            if (msg == "//:balancy_close_view")
+            {
+                msg= "{\"action\":200, \"params\":{}}";
+            }
             
             var output = RunRequestInTheCorePlugin(msg);
             Debug.Log("output = " + output);
             return output;
         }
+        
+        enum RequestAction {
+            None = 0,
+            GetProfile = 1,
+            SetProfile = 2,
+            GetLocalization = 10,
+            GetImageUrl = 11,
 
-        private static bool TryToHandleMessage(string msg)
+            IBuyOffer = 101,
+            IBuyGroupOffer = 102,
+            IBuyShopSlot = 103,
+
+            ICloseWindow = 200,
+
+            ICustomMessage = 1000,
+        }
+        
+        const string DEFAULT_ANSWER = "{\"status\":\"ok\"}";
+        
+        [System.Serializable]
+        class CommandBuyOffer
         {
-            void BadCommand()
+            public string instanceId;
+        }
+        
+        [System.Serializable]
+        class CommandBuyOfferGroup : CommandBuyOffer
+        {
+            public int index;
+        }
+        
+        [System.Serializable]
+        class CommandBuyShopSlot
+        {
+            public string slotId;
+        }
+        
+        [AOT.MonoPInvokeCallback(typeof(LibraryMethods.General.InvokeInMainThreadCallback))]
+        private static string DataRequested(string sender, int command, string paramsJson)
+        {
+            switch ((RequestAction)command)
             {
-                Debug.LogError("Balancy View Bad Command: " + msg);
-            }
-            
-            if (msg.StartsWith("//:"))
-            {
-                var prms = msg.Split(":");
-                if (prms.Length >= 2)
+                case RequestAction.IBuyOffer:
                 {
-                    var command = prms[1];
-                    switch (command)
+                    CommandBuyOffer commandInfo = JsonUtility.FromJson<CommandBuyOffer>(paramsJson);
+                    if (commandInfo == null || string.IsNullOrEmpty(commandInfo.instanceId))
                     {
-                        case "balancy_close_view":
-                            if (UseEmbeddedWebView)
-                            {
-#if UNITY_EDITOR
-                                BalancyWebViewEmbedded.Instance.CloseEmbeddedWebView();
-#endif
-                            }
-                            else
-                                _webView.CloseWebView();
-                            break;
-                        case "balancy_buy_offer":
-                        {
-                            if (prms.Length >= 3)
-                            {
-                                var instanceId = prms[2];
-                                var offerInfo = Profiles.System?.SmartInfo.FindOfferInfo(instanceId);
-                                if (offerInfo != null)
-                                {
-                                    Balancy.API.InitPurchaseOffer(offerInfo, (success, error) =>
-                                    {
-                                        if (success)
-                                            Debug.Log("Offer purchased successfully: " + instanceId);
-                                        else
-                                            Debug.LogError("Failed to purchase offer: " + instanceId + ", Error: " + error);
-                                    });
-                                }
-                                else
-                                    Debug.LogError("OfferInfo not found for instanceId: " + instanceId);
-                            } else
-                                BadCommand();
-                            break;
-                        }
-                        case "balancy_buy_group_offer":
-                        {
-                            if (prms.Length >= 4)
-                            {
-                                var groupId = prms[2];
-                                var storeItemIndexStr = prms[3];
-                                if (!int.TryParse(storeItemIndexStr, out int storeItemIndex))
-                                {
-                                    Debug.LogError("Invalid store item index: " + storeItemIndexStr);
-                                    return false;
-                                }
-                                var offerInfo = Profiles.System?.SmartInfo.FindOfferGroupInfo(groupId);
-                                if (offerInfo?.GameOfferGroup?.StoreItems == null || offerInfo.GameOfferGroup.StoreItems.Length <= storeItemIndex)
-                                {
-                                    Debug.LogError("Store item index is invalid or not set for group offer: " + groupId);
-                                    return false;
-                                }
-                                else
-                                {
-                                    var storeItem = offerInfo?.GameOfferGroup?.StoreItems[storeItemIndex];
-                                    Balancy.API.InitPurchaseOffer(offerInfo, storeItem, (success, error) =>
-                                    {
-                                        if (success)
-                                            Debug.Log("Group offer purchased successfully: " + groupId);
-                                        else
-                                            Debug.LogError("Failed to purchase group offer: " + groupId +
-                                                           ", Error: " + error);
-                                    });
-                                }
-                            } else
-                                BadCommand();
-                            break;
-                        }
-                        case "balancy_buy_shop_slot":
-                        {
-                            if (prms.Length >= 2)
-                            {
-                                var slotId = prms[2];
-                                var shopSlot = Profiles.System?.ShopsInfo.FindShopSlot(slotId);
-                                if (shopSlot != null)
-                                {
-                                    Balancy.API.InitPurchaseShop(shopSlot, (success, error) =>
-                                    {
-                                        if (success)
-                                            Debug.Log("Shop slot purchased successfully: " + slotId);
-                                        else
-                                            Debug.LogError("Failed to purchase shop slot: " + slotId + ", Error: " + error);
-                                    });
-                                }
-                                else
-                                    Debug.LogError("ShopSlot not found for instanceId: " + slotId);
-                            } else
-                                BadCommand();
-                            break;
-                        }
+                        Debug.LogError("Invalid command parameters for IBuyOffer");
+                        break;
                     }
+                    
+                    var offerInfo = Profiles.System?.SmartInfo.FindOfferInfo(commandInfo.instanceId);
+                    if (offerInfo != null)
+                    {
+                        Balancy.API.InitPurchaseOffer(offerInfo, (success, error) =>
+                        {
+                            if (success)
+                                Debug.Log("Offer purchased successfully: " + commandInfo.instanceId);
+                            else
+                                Debug.LogError("Failed to purchase offer: " + commandInfo.instanceId + ", Error: " + error);
+                        });
+                    }
+                    else
+                        Debug.LogError("OfferInfo not found for instanceId: " + commandInfo.instanceId);
+                    return DEFAULT_ANSWER;
                 }
-                else
-                    BadCommand();
 
-                return true;
+                case RequestAction.IBuyGroupOffer:
+                {
+                    CommandBuyOfferGroup commandInfo = JsonUtility.FromJson<CommandBuyOfferGroup>(paramsJson);
+                    if (commandInfo == null || string.IsNullOrEmpty(commandInfo.instanceId))
+                    {
+                        Debug.LogError("Invalid command parameters for IBuyGroupOffer");
+                        break;
+                    }
+                    
+                    var offerInfo = Profiles.System?.SmartInfo.FindOfferGroupInfo(commandInfo.instanceId);
+                    if (offerInfo?.GameOfferGroup?.StoreItems == null || offerInfo.GameOfferGroup.StoreItems.Length <= commandInfo.index)
+                    {
+                        Debug.LogError("Store item index is invalid or not set for group offer: " + commandInfo.instanceId);
+                        break;
+                    }
+                    
+                    var storeItem = offerInfo?.GameOfferGroup?.StoreItems[commandInfo.index];
+                    Balancy.API.InitPurchaseOffer(offerInfo, storeItem, (success, error) =>
+                    {
+                        if (success)
+                            Debug.Log("Group offer purchased successfully: " + commandInfo.instanceId);
+                        else
+                            Debug.LogError("Failed to purchase group offer: " + commandInfo.instanceId +
+                                           ", Error: " + error);
+                    });
+                    
+                    return DEFAULT_ANSWER;
+                }
+
+                case RequestAction.IBuyShopSlot:
+                {
+                    CommandBuyShopSlot commandInfo = JsonUtility.FromJson<CommandBuyShopSlot>(paramsJson);
+                    if (commandInfo == null || string.IsNullOrEmpty(commandInfo.slotId))
+                    {
+                        Debug.LogError("Invalid command parameters for IBuyShopSlot");
+                        break;
+                    }
+                    
+                    var shopSlot = Profiles.System?.ShopsInfo.FindShopSlot(commandInfo.slotId);
+                    if (shopSlot != null)
+                    {
+                        Balancy.API.InitPurchaseShop(shopSlot, (success, error) =>
+                        {
+                            if (success)
+                                Debug.Log("Shop slot purchased successfully: " + commandInfo.slotId);
+                            else
+                                Debug.LogError("Failed to purchase shop slot: " + commandInfo.slotId + ", Error: " + error);
+                        });
+                    }
+                    else
+                        Debug.LogError("ShopSlot not found for instanceId: " + commandInfo.slotId);
+                    
+                    return DEFAULT_ANSWER;
+                }
+
+                case RequestAction.ICloseWindow:
+                {
+                    if (UseEmbeddedWebView)
+                    {
+#if UNITY_EDITOR
+                        BalancyWebViewEmbedded.Instance.CloseEmbeddedWebView();
+#endif
+                    }
+                    else
+                        _webView.CloseWebView();
+
+                    return DEFAULT_ANSWER;
+                }
             }
 
-            return false;
+            return null;
         }
 
         private static string RunRequestInTheCorePlugin(string requestData)

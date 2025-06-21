@@ -624,7 +624,7 @@ namespace Balancy.WebView
         {
             if (!_isWebViewOpen)
             {
-                Debug.LogWarning("Cannot send message: WebView is not open.");
+                // Debug.LogWarning("Cannot send message: WebView is not open.");
                 return false;
             }
 

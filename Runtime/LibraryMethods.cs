@@ -40,6 +40,11 @@ namespace Balancy
             [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
             public delegate bool IsFileExistsCallback(string path);
             
+            
+            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+            public delegate string DataRequestedCallback(string sender, int command, string paramsJson);
+            
+            
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancySetLogCallback(LogCallback callback);
             
@@ -73,6 +78,9 @@ namespace Balancy
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern IntPtr balancyGetParsedObject(IntPtr instance, bool pretty);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancySetDataRequestedCallback(DataRequestedCallback callback);
         }
 
         public static class Models

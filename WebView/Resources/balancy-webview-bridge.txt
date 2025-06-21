@@ -16,30 +16,9 @@ const balancy = {};
         IBuyShopSlot: 103,
         
         ICloseWindow: 200,
+        ICustomMessage: 1000,
     };
     
-    balancy.closeView = () => {
-        balancy.postMessage("//:balancy_close_view");
-    };
-    
-    balancy.buyOffer = () => {
-        if (balancy.owner) {
-            balancy.postMessage("//:balancy_buy_offer:" + balancy.owner.instanceId);
-        }
-    };
-    
-    balancy.buyGroupOffer = (index) => {
-        if (balancy.owner) {
-            balancy.postMessage("//:balancy_buy_group_offer:" + balancy.owner.instanceId + ":" + index);
-        }
-    };
-    
-    balancy.buyShopSlot = (slotId) => {
-        if (balancy.owner) {
-            balancy.postMessage("//:balancy_buy_shop_slot:" + slotId);
-        }
-    };
-
     balancy.getSystemProfileValue = (path) => {
         return balancy.sendRequest(null, RequestAction.GetProfile, {profile: "UnnyProfile", path});
     };
@@ -184,24 +163,6 @@ const balancy = {};
             return;
         }
         
-        switch (actionId) {
-            case RequestAction.IBuyOffer:
-                balancy.buyOffer();
-                return;
-            case RequestAction.IBuyGroupOffer:
-                balancy.buyGroupOffer(button.getAttribute('data-button-index') || 0);
-                return;
-            case RequestAction.IBuyShopSlot:
-                balancy.buyShopSlot(button.getAttribute('data-button-index') || 0);
-                return;
-            case RequestAction.ICloseWindow:
-                balancy.closeView();
-                return;
-            default:
-                // Other actions can proceed without owner
-                break;
-        }
-
         const senderId = button.id || button.getAttribute('data-button-id') || 'unknown-button';
         const paramsAttr = button.getAttribute('data-button-params');
         let paramsJson = {};
@@ -218,6 +179,19 @@ const balancy = {};
                 }));
                 paramsJson = {};
             }
+        }
+        
+        switch (actionId) {
+            case RequestAction.IBuyOffer:
+                paramsJson.instanceId = balancy.owner.instanceId;
+                break;
+            case RequestAction.IBuyGroupOffer:
+                paramsJson.instanceId = balancy.owner.instanceId;
+                paramsJson.index = parseInt(button.getAttribute('data-button-index')) || 0;
+                break;
+            case RequestAction.IBuyShopSlot:
+                paramsJson.slotId = button.getAttribute('data-button-index') || 0;
+                break;
         }
         
         // Disable button to prevent double-clicks
