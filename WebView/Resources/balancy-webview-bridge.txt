@@ -149,7 +149,7 @@ const balancy = {};
                 if (element.tagName === 'IMG')
                     element.src = imageUri;
                 else
-                    element.style.backgroundImage = `url('${imageUri}')`;
+                    element.style.borderImageSource = `url('${imageUri}')`;
                 element.classList.add('image-loaded');
             }
         });

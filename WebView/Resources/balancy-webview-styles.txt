@@ -162,6 +162,80 @@
                 transition-delay: 0s !important;
             }
             
+            /* === АНИМАЦИИ КНОПОК === */
+            /* Переопределяем отключение анимаций для кнопок */
+            button, input[type="button"], input[type="submit"], input[type="reset"], .btn, [role="button"] {
+                -webkit-transition-duration: 0.1s !important;
+                transition-duration: 0.1s !important;
+                -webkit-transition-property: transform, -webkit-transform !important;
+                transition-property: transform, -webkit-transform !important;
+                -webkit-transition-timing-function: ease-out !important;
+                transition-timing-function: ease-out !important;
+                transform: scale(1) !important;
+                -webkit-transform: scale(1) !important;
+                transform-origin: center center !important;
+                -webkit-transform-origin: center center !important;
+                will-change: transform !important;
+            }
+            
+            /* Анимация нажатия - Mouse/Touch Down */
+            button:active, 
+            input[type="button"]:active, 
+            input[type="submit"]:active, 
+            input[type="reset"]:active, 
+            .btn:active, 
+            [role="button"]:active {
+                transform: scale(0.95) !important;
+                -webkit-transform: scale(0.95) !important;
+                -webkit-transition-duration: 0.05s !important;
+                transition-duration: 0.05s !important;
+            }
+            
+            /* Анимация отпускания - Mouse/Touch Up */
+            button:not(:active), 
+            input[type="button"]:not(:active), 
+            input[type="submit"]:not(:active), 
+            input[type="reset"]:not(:active), 
+            .btn:not(:active), 
+            [role="button"]:not(:active) {
+                transform: scale(1) !important;
+                -webkit-transform: scale(1) !important;
+                -webkit-transition-duration: 0.1s !important;
+                transition-duration: 0.1s !important;
+            }
+            
+            /* Дополнительные селекторы для различных типов кнопок */
+            a[role="button"], 
+            div[role="button"], 
+            span[role="button"],
+            .button,
+            .ui-button,
+            .clickable {
+                -webkit-transition-duration: 0.1s !important;
+                transition-duration: 0.1s !important;
+                -webkit-transition-property: transform, -webkit-transform !important;
+                transition-property: transform, -webkit-transform !important;
+                -webkit-transition-timing-function: ease-out !important;
+                transition-timing-function: ease-out !important;
+                transform: scale(1) !important;
+                -webkit-transform: scale(1) !important;
+                transform-origin: center center !important;
+                -webkit-transform-origin: center center !important;
+                will-change: transform !important;
+            }
+            
+            a[role="button"]:active, 
+            div[role="button"]:active, 
+            span[role="button"]:active,
+            .button:active,
+            .ui-button:active,
+            .clickable:active {
+                transform: scale(0.95) !important;
+                -webkit-transform: scale(0.95) !important;
+                -webkit-transition-duration: 0.05s !important;
+                transition-duration: 0.05s !important;
+            }
+            
             /* === ДОПОЛНИТЕЛЬНЫЕ ОПТИМИЗАЦИИ === */
             
             /* Отключение focus outline */
