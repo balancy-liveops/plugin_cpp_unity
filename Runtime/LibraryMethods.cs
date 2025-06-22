@@ -81,6 +81,9 @@ namespace Balancy
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern IntPtr balancySetDataRequestedCallback(DataRequestedCallback callback);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyViewAllowOptimization(bool allow);
         }
 
         public static class Models

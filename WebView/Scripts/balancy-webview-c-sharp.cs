@@ -622,9 +622,9 @@ namespace Balancy.WebView
         /// <returns>True if the message was sent successfully, false otherwise</returns>
         public bool SendMessageToWebView(string message)
         {
-            if (!_isWebViewOpen)
+            if (!_isWebViewOpen && !_isWebViewEmbedded)
             {
-                // Debug.LogWarning("Cannot send message: WebView is not open.");
+                Debug.Log("Cannot send message: WebView is not open.");
                 return false;
             }
 

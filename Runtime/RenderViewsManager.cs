@@ -9,8 +9,8 @@ namespace Balancy
     public class RenderViewsManager
     {
 #if UNITY_EDITOR
-        // private const bool UseEmbeddedWebView = true;
-        private const bool UseEmbeddedWebView = false;
+        private const bool UseEmbeddedWebView = true;
+        // private const bool UseEmbeddedWebView = false;
 #else
         private const bool UseEmbeddedWebView = false;
 #endif
@@ -20,6 +20,7 @@ namespace Balancy
         internal static void Init()
         {
             LibraryMethods.General.balancySetDataRequestedCallback(DataRequested);
+            LibraryMethods.General.balancyViewAllowOptimization(true);
             PrepareCallbacks();
             
             BalancyWebView.Instance.OnMessage = OnMessageReceived;
