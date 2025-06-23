@@ -88,32 +88,40 @@ namespace Balancy.Core
         }
         
         [StructLayout(LayoutKind.Sequential)]
-        public class LiveOpsNotification_OnNewOfferActivated : LiveOpsNotificationBase
+        public class LiveOpsNotification_OnNewOffer : LiveOpsNotificationBase
         {
+            public int wasPurchased;
             public IntPtr OfferInfo;
         }
         
         [StructLayout(LayoutKind.Sequential)]
-        public class LiveOpsNotification_OnOfferDeactivated : LiveOpsNotificationBase
+        public class LiveOpsNotification_OnNewOfferActivated : LiveOpsNotification_OnNewOffer
         {
-            public IntPtr OfferInfo;
-            private int wasPurchased;
-
+            
+        }
+        
+        [StructLayout(LayoutKind.Sequential)]
+        public class LiveOpsNotification_OnOfferDeactivated : LiveOpsNotification_OnNewOffer
+        {
             public bool WasPurchased => wasPurchased == 1;
         }
         
         [StructLayout(LayoutKind.Sequential)]
-        public class LiveOpsNotification_OnNewOfferGroupActivated : LiveOpsNotificationBase
+        public class LiveOpsNotification_OnNewOfferGroup : LiveOpsNotificationBase
         {
+            protected int wasPurchased;
             public IntPtr OfferInfo;
         }
         
         [StructLayout(LayoutKind.Sequential)]
-        public class LiveOpsNotification_OnOfferGroupDeactivated : LiveOpsNotificationBase
+        public class LiveOpsNotification_OnNewOfferGroupActivated : LiveOpsNotification_OnNewOfferGroup
         {
-            public IntPtr OfferInfo;
-            private int wasPurchased;
-
+            
+        }
+        
+        [StructLayout(LayoutKind.Sequential)]
+        public class LiveOpsNotification_OnOfferGroupDeactivated : LiveOpsNotification_OnNewOfferGroup
+        {
             public bool WasPurchased => wasPurchased == 1;
         }
         
