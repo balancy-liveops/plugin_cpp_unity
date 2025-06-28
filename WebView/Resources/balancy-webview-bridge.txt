@@ -46,24 +46,28 @@ const balancy = {};
     };
 
     balancy.postMessage = function(message) {
-        if (typeof message !== 'string') message = JSON.stringify(message);
-
-        // Debug logging
-        if (window.BalancyWebView && window.BalancyWebView.log) {
-            window.BalancyWebView.log('info', 'Sending message: ' + message.substring(0, 100) + '...');
-        } else {
-            console.log('BalancyWebView: Sending message:', message.substring(0, 100) + '...');
-        }
-
         // iOS/macOS WebKit implementation
         if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.BalancyWebView) {
+            if (typeof message !== 'string') message = JSON.stringify(message);
             window.webkit.messageHandlers.BalancyWebView.postMessage(message);
             return true;
         }
 
         // Android JavascriptInterface implementation
         if (window.BalancyWebView && window.BalancyWebView.sendMessageToUnity) {
+            if (typeof message !== 'string') message = JSON.stringify(message);
             window.BalancyWebView.sendMessageToUnity(message);
+            return true;
+        }
+        
+        // Fallback to postMessage for web views that support it
+        if (window.parent && window.parent !== window && window.parent.postMessage) {
+            window.parent.postMessage({
+                source: 'balancy-view',
+                type: 'message',
+                payload: message,
+                timestamp: Date.now()
+            }, '*');
             return true;
         }
 
@@ -71,6 +75,7 @@ const balancy = {};
         if (window.BalancyWebView && window.BalancyWebView.log) {
             window.BalancyWebView.log('warn', 'No message handler available for platform');
         }
+        
         return false;
     };
 
@@ -176,7 +181,6 @@ const balancy = {};
         const paramsAttr = button.getAttribute('data-button-params');
         let paramsJson = {};
 
-        // Safely parse JSON params
         if (paramsAttr && paramsAttr.trim() !== '') {
             try {
                 paramsJson = JSON.parse(paramsAttr);
@@ -203,7 +207,6 @@ const balancy = {};
                 break;
         }
 
-        // Disable button to prevent double-clicks
         const originalDisabled = button.disabled;
         button.disabled = true;
         button.classList.add('balancy-button-processing');
@@ -326,27 +329,24 @@ const balancy = {};
         prepareAllTexts();
     };
 
-    // Expose balancyButtonClicked for manual use if needed
     balancy.triggerButtonAction = balancyButtonClicked;
-
-    // Function to refresh buttons (useful for dynamically added content)
     balancy.refreshButtons = prepareAllButtons;
-
-    // Debug functions for testing communication
-    balancy.testMessage = function(message) {
-        return balancy.postMessage(message || 'Test message from WebView');
-    };
-
-    // Log platform detection
-    if (window.BalancyWebView && window.BalancyWebView.log) {
-        if (window.webkit && window.webkit.messageHandlers) {
-            window.BalancyWebView.log('info', 'Platform detected: iOS/macOS WebKit');
-        } else if (window.BalancyWebView.sendMessageToUnity) {
-            window.BalancyWebView.log('info', 'Platform detected: Android JavascriptInterface');
-        } else {
-            window.BalancyWebView.log('warn', 'Platform unknown - no message handler found');
-        }
-    }
-
     balancy.initResponseHandler();
+    
+    balancy.injectFontFace = function(fontName, localFontPath) {
+        const style = document.createElement('style');
+        style.type = 'text/css';
+    
+        style.textContent = `
+            @font-face {
+                font-family: '${fontName}';
+                src: url('${localFontPath}') format('truetype');
+            }
+        `;
+    
+        document.head.appendChild(style);
+    }
+    
+    //TEMP - don't commit
+    balancy.injectFontFace('LilitaOne-Regular', '../801_1750523096269.ttf');
 })();
