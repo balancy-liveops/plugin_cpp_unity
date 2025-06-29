@@ -1000,7 +1000,7 @@ namespace Balancy.WebView
                 }
                 
                 InjectFileFromResources("balancy-webview-bridge");
-                InjectFileFromResources("balancy-webview-performance");
+                // InjectFileFromResources("balancy-webview-performance");
                 InjectFileFromResources("balancy-webview-styles");
                 // InjectFileFromResources("balancy-webview-css-animations");
                 // InjectFileFromResources("balancy-webview-js-animations");
