@@ -30,6 +30,8 @@ namespace Balancy
             LibraryMethods.General.balancySetLogCallback(LogMessage);
             _mainThreadInstance = UnityMainThreadDispatcher.Instance();
             Balancy.Network.UnityWebRequestBridge.Initialize();
+            Balancy.Network.UnityWebSocketBridge.Initialize();
+
             LibraryMethods.General.balancySetInvokeInMainThreadCallback(InvokeInMainThread);
             UnityFileManager.Init();
             LibraryMethods.Models.balancySetModelOnRefresh(ModelRefreshed);

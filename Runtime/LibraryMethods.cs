@@ -85,6 +85,54 @@ namespace Balancy
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyViewAllowOptimization(bool allow);
         }
+        
+        public static class WebSocket
+        {
+            // Delegate types for WebSocket callbacks
+            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+            public delegate void ConnectRequestDelegate(int connectionId, string url, string authDataJson);
+            
+            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+            public delegate void DisconnectRequestDelegate(int connectionId);
+            
+            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+            public delegate void SubscribeEventDelegate(int connectionId, string eventName);
+            
+            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+            public delegate void SendAckDelegate(int connectionId, int ackId, string responseData);
+            
+            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+            public delegate void SendMessageDelegate(int connectionId, string eventName, string data);
+            
+            // WebSocket registration callbacks (FROM C++ TO Unity)
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyRegisterWSConnectRequestCallback(ConnectRequestDelegate callback);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyRegisterWSDisconnectRequestCallback(DisconnectRequestDelegate callback);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyRegisterWSSubscribeEventCallback(SubscribeEventDelegate callback);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyRegisterWSSendAckCallback(SendAckDelegate callback);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyRegisterWSSendMessageCallback(SendMessageDelegate callback);
+
+            // WebSocket event callbacks (FROM Unity TO C++)
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyHandleWSConnectionStatusChanged(int connectionId, bool connected, string errorMessage);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyHandleWSSocketIOEvent(int connectionId, string eventName, string eventData, bool needsAck, int ackId);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyHandleWSAckResponse(int connectionId, int ackId, string responseData);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyHandleWSSocketIOError(int connectionId, int errorCode, string errorMessage);
+        }
 
         public static class Models
         {
