@@ -300,9 +300,9 @@ namespace Balancy.Models
             return storeItems;
         }
         
-        public string ToJsonString(bool pretty)
+        public string ToJsonString(int depth, bool pretty)
         {
-            return GetStringFromIntPtr(LibraryMethods.General.balancyGetParsedObject(GetRawPointer(), pretty));
+            return GetStringFromIntPtr(LibraryMethods.General.balancyGetParsedObject(GetRawPointer(), depth, pretty));
         }
     }
 }

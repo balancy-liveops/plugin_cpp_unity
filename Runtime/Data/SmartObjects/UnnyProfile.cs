@@ -14,6 +14,7 @@ namespace Balancy.Data.SmartObjects
 		private Balancy.Data.SmartObjects.LiveOpsInfo _liveOpsInfo;
 		private Balancy.Data.SmartObjects.InventoryInfo _inventories;
 		private Balancy.Data.SmartObjects.ShopsInfo _shopsInfo;
+		private Balancy.Data.SmartObjects.BattlePassesInfo _battlePassesInfo;
         
         
 		public Balancy.Data.SmartObjects.Payments Payments => _payments;
@@ -26,6 +27,7 @@ namespace Balancy.Data.SmartObjects
 		public Balancy.Data.SmartObjects.LiveOpsInfo LiveOpsInfo => _liveOpsInfo;
 		public Balancy.Data.SmartObjects.InventoryInfo Inventories => _inventories;
 		public Balancy.Data.SmartObjects.ShopsInfo ShopsInfo => _shopsInfo;
+		public Balancy.Data.SmartObjects.BattlePassesInfo BattlePassesInfo => _battlePassesInfo;
         
         public override void InitData()
         {
@@ -41,6 +43,7 @@ namespace Balancy.Data.SmartObjects
 			_liveOpsInfo = GetBaseDataParam<Balancy.Data.SmartObjects.LiveOpsInfo>("liveOpsInfo");
 			_inventories = GetBaseDataParam<Balancy.Data.SmartObjects.InventoryInfo>("inventories");
 			_shopsInfo = GetBaseDataParam<Balancy.Data.SmartObjects.ShopsInfo>("shopsInfo");
+			_battlePassesInfo = GetBaseDataParam<Balancy.Data.SmartObjects.BattlePassesInfo>("battlePassesInfo");
         }
         
     }

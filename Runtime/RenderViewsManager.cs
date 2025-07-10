@@ -107,7 +107,7 @@ namespace Balancy
             var urlToLoad = url;// + "?timestamp=" + Guid.NewGuid().ToString();
 
             m_LastOpenedOwnerPtr = owner?.GetRawPointer() ?? IntPtr.Zero;
-            string ownerJson = owner?.ToJsonString(false);
+            string ownerJson = owner?.ToJsonString(0, false);
             bool success = false;
             if (UseEmbeddedWebView)
             {

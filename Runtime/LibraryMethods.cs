@@ -77,7 +77,7 @@ namespace Balancy
             public static extern IntPtr balancyGetProductsIdAndType(out int size);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-            public static extern IntPtr balancyGetParsedObject(IntPtr instance, bool pretty);
+            public static extern IntPtr balancyGetParsedObject(IntPtr instance, int depth, bool pretty);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern IntPtr balancySetDataRequestedCallback(DataRequestedCallback callback);
@@ -422,6 +422,12 @@ namespace Balancy
             public static extern bool balancyDailyBonus_canClaimNextReward(IntPtr dailyBonusInfo);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern int balancyDailyBonus_getSecondsTillTheNextReward(IntPtr dailyBonusInfo);
+            
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern bool balancyBattlePass_claimReward(IntPtr bpLinePointer, int index);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancyBattlePass_getRewardStatus(IntPtr bpLinePointer, int index);
         }
     }
 }

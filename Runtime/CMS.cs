@@ -130,6 +130,9 @@ namespace Balancy
 				case "SmartObjects.StoreItem": return new Balancy.Models.SmartObjects.StoreItem();
                 case "LiveOps.Store.Page": return new Balancy.Models.LiveOps.Store.Page();
                 case "LiveOps.Store.Slot": return new Balancy.Models.LiveOps.Store.Slot();
+                case "LiveOps.BattlePass.RewardLine": return new Balancy.Models.LiveOps.BattlePass.RewardLine();
+                case "LiveOps.BattlePass.BattlePassConfig": return new Balancy.Models.LiveOps.BattlePass.BattlePassConfig();
+                case "LiveOps.BattlePass.GameEvent": return new Balancy.Models.LiveOps.BattlePass.GameEvent();
 				default:
                 {
                     var model = OnTypeRequested?.Invoke(templateName);
