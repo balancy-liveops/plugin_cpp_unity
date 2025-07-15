@@ -146,6 +146,7 @@ namespace Balancy.WebView
         private float _viewportHeight = 1f;
         private bool _debugLogging = false;
         private string _ownerJson = string.Empty;
+        private string _lastUrl = string.Empty;
         #if UNITY_EDITOR_OSX
         private RenderTexture _embeddedTexture = null;
         #endif
@@ -574,6 +575,7 @@ namespace Balancy.WebView
                 return false;
             }
 
+            _lastUrl = url;
             _ownerJson = ownerJson;
             
             LogDebug($"Opening WebView with URL: {url}");
@@ -796,7 +798,8 @@ namespace Balancy.WebView
                 Debug.LogError("RenderTexture cannot be null for embedded WebView");
                 return false;
             }
-            
+
+            _lastUrl = url;
             _ownerJson = ownerJson;
             _embeddedTexture = renderTexture;
             
@@ -999,9 +1002,10 @@ namespace Balancy.WebView
                     _balancyInjectJSCode(injectedCode);
                 }
                 
-                InjectFileFromResources("balancy-webview-bridge");
                 InjectFileFromResources("balancy-webview-performance");
                 InjectFileFromResources("balancy-webview-styles");
+                InjectFileFromResources("balancy-webview-bridge");
+                
                 // InjectFileFromResources("balancy-webview-css-animations");
                 // InjectFileFromResources("balancy-webview-js-animations");
             }

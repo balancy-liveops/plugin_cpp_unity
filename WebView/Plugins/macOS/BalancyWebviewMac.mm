@@ -360,6 +360,7 @@ void LogToUnity(const char* message) {
     if (!_webView) return NO;
     
     NSString *escapedMessage = [message stringByReplacingOccurrencesOfString:@"'" withString:@"\\'"];
+    escapedMessage = [escapedMessage stringByReplacingOccurrencesOfString:@"\"" withString:@"\\\""];
     NSString *script = [NSString stringWithFormat:@"if (balancy) { balancy._receiveMessageFromUnity('%@'); }", escapedMessage];
     
     [_webView evaluateJavaScript:script completionHandler:nil];
@@ -1053,6 +1054,7 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
     if (!_webView) return NO;
     
     NSString *escapedMessage = [message stringByReplacingOccurrencesOfString:@"'" withString:@"\\'"];
+    escapedMessage = [escapedMessage stringByReplacingOccurrencesOfString:@"\"" withString:@"\\\""];
     NSString *script = [NSString stringWithFormat:@"if (balancy) { balancy._receiveMessageFromUnity('%@'); }", escapedMessage];
     
     [_webView evaluateJavaScript:script completionHandler:nil];

@@ -6,6 +6,7 @@ namespace Balancy.Data.SmartObjects
         private string _unnyIdConfig;
         private SmartList<Balancy.Data.SmartObjects.BPProgressInfo> _progressInfo;
         private int _scores;
+        private int _level;
         private bool _finished;
         private int _finishedTime;
         
@@ -21,6 +22,12 @@ namespace Balancy.Data.SmartObjects
         {
             get => _scores;
             // set => SetIntValue("scores", value);
+        }
+        
+        public int Level
+        {
+            get => _level;
+            // set => SetIntValue("level", value);
         }
         
         public bool Finished
@@ -42,6 +49,7 @@ namespace Balancy.Data.SmartObjects
             InitAndSubscribeForParamChange("unnyIdGameEvent", Update_unnyIdGameEvent);
             InitAndSubscribeForParamChange("unnyIdConfig", Update_unnyIdConfig);
             InitAndSubscribeForParamChange("scores", Update_scores);
+            InitAndSubscribeForParamChange("level", Update_level);
             InitAndSubscribeForParamChange("finished", Update_finished);
             InitAndSubscribeForParamChange("finishedTime", Update_finishedTime);
             
@@ -51,6 +59,7 @@ namespace Balancy.Data.SmartObjects
         private void Update_unnyIdGameEvent() { _unnyIdGameEvent = GetStringParam("unnyIdGameEvent"); }
         private void Update_unnyIdConfig() { _unnyIdConfig = GetStringParam("unnyIdConfig"); }
         private void Update_scores() { _scores = GetIntParam("scores"); }
+        private void Update_level() { _level = GetIntParam("level"); }
         private void Update_finished() { _finished = GetBoolParam("finished"); }
         private void Update_finishedTime() { _finishedTime = GetIntParam("finishedTime"); }
         

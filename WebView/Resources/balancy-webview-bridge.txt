@@ -8,8 +8,11 @@ const balancy = {};
         None: 0,
         GetProfile: 1,
         SetProfile: 2,
+        GetDocument: 3,
         GetLocalization: 10,
         GetImageUrl: 11,
+
+        GetBattlePassProgress: 20,
 
         BuyOffer: 101,
         BuyGroupOffer: 102,
@@ -18,6 +21,7 @@ const balancy = {};
         GetInfo: 110,
 
         CloseWindow: 200,
+        BalancyIsReady: 201,
         CustomMessage: 1000,
     };
 
@@ -29,12 +33,29 @@ const balancy = {};
         Custom: 10
     };
 
+    balancy.findDomElement = (dataId, parentElement) => {
+        const element = (parentElement ?? document).querySelector(`[data-id=${dataId}]`);
+        return element instanceof HTMLElement ? element : null;
+    }
+
     balancy.getSystemProfileValue = (path) => {
         return balancy.sendRequest(null, RequestAction.GetProfile, {profile: "UnnyProfile", path});
     };
 
     balancy.getProfileValue = (profile, path) => {
         return balancy.sendRequest(null, RequestAction.GetProfile, {profile, path});
+    };
+
+    balancy.getDocumentValue = (id, depth) => {
+        return balancy.sendRequest(null, RequestAction.GetDocument, {id, depth}).then(result => {
+            return JSON.parse(result);
+        });
+    };
+
+    balancy.getBattlePassProgress = () => {
+        return balancy.sendRequest(null, RequestAction.GetBattlePassProgress, {id: window.balancyViewOwner.unnyIdGameEvent}).then(result => {
+            return JSON.parse(result);
+        });
     };
 
     balancy.getLocalizedText = async function(key) {
@@ -44,6 +65,31 @@ const balancy = {};
     balancy.getImageUrl = async function(id) {
         return balancy.sendRequest(null, RequestAction.GetImageUrl, {id});
     };
+
+    balancy.sendIsReady = () => {
+        return balancy.sendRequest(null, RequestAction.BalancyIsReady, {id: 'none'});
+    };
+
+    balancy.delayIsReady = () => {
+        balancy.delayedIsReady = true;
+    };
+
+    async function prepareSprite(element, id) {
+        const imageUri = await balancy.getImageUrl(id);
+        if (imageUri) {
+            if (element.tagName === 'IMG')
+                element.src = imageUri;
+            else
+                element.style.borderImageSource = `url('${imageUri}')`;
+            element.classList.add('balancy-image-prepared');
+        }
+    }
+
+    balancy.setImage = function(element, sprite) {
+        element.setAttribute('data-image-id', sprite.id);
+        element.classList.remove('balancy-image-prepared');
+        prepareSprite(element, sprite.id);
+    }
 
     balancy.postMessage = function(message) {
         // iOS/macOS WebKit implementation
@@ -59,7 +105,7 @@ const balancy = {};
             window.BalancyWebView.sendMessageToUnity(message);
             return true;
         }
-        
+
         // Fallback to postMessage for web views that support it
         if (window.parent && window.parent !== window && window.parent.postMessage) {
             window.parent.postMessage({
@@ -75,7 +121,7 @@ const balancy = {};
         if (window.BalancyWebView && window.BalancyWebView.log) {
             window.BalancyWebView.log('warn', 'No message handler available for platform');
         }
-        
+
         return false;
     };
 
@@ -131,37 +177,37 @@ const balancy = {};
     };
 
     async function localizeAllElements() {
-        const elements = document.querySelectorAll('[data-localization-key]');
+        const elements = document.querySelectorAll('[data-text-type="localized"]');
 
         const localizationPromises = Array.from(elements).map(async (element) => {
+            if (element.classList.contains('balancy-text-prepared'))
+                return;
+
             const key = element.getAttribute('data-localization-key');
             const localizedText = await balancy.getLocalizedText(key);
             element.textContent = localizedText;
+
+            element.classList.add('balancy-text-prepared');
         });
 
         await Promise.all(localizationPromises);
 
-        document.dispatchEvent(new Event('localizationCompleted'));
+        document.dispatchEvent(new CustomEvent('balancy-localization-complete'));
     }
 
     async function prepareAllSprites() {
         const elements = document.querySelectorAll('[data-image-id]');
-
         const imagesPromises = Array.from(elements).map(async (element) => {
+            if (element.classList.contains('balancy-image-prepared'))
+                return;
+
             const id = element.getAttribute('data-image-id');
-            const imageUri = await balancy.getImageUrl(id);
-            if (imageUri) {
-                if (element.tagName === 'IMG')
-                    element.src = imageUri;
-                else
-                    element.style.borderImageSource = `url('${imageUri}')`;
-                element.classList.add('image-loaded');
-            }
+            await prepareSprite(element, id);
         });
 
         await Promise.all(imagesPromises);
 
-        document.dispatchEvent(new Event('imagesLoaded'));
+        document.dispatchEvent(new CustomEvent('balancy-images-complete'));
     }
 
     function balancyButtonClicked(button) {
@@ -256,14 +302,15 @@ const balancy = {};
             preparedCount++;
         });
 
-        console.log(`Prepared ${preparedCount} Balancy buttons (${elements.length} total found)`);
-        document.dispatchEvent(new CustomEvent('balancyButtonsPrepared', {
+        document.dispatchEvent(new CustomEvent('balancy-buttons-complete', {
             detail: { preparedCount, totalFound: elements.length }
         }));
     }
 
     function prepareAllTexts() {
-        const elements = document.querySelectorAll('[data-text-auto]');
+        const elements = document.querySelectorAll('[data-text-type="dynamic"]');
+
+        const promises = [];
 
         elements.forEach(element => {
             if (element.classList.contains('balancy-text-prepared'))
@@ -283,7 +330,7 @@ const balancy = {};
                 instanceId = window.balancyViewOwner.instanceId;
             }
 
-            balancy.sendRequest(senderId, RequestAction.GetInfo, {
+            const promise = balancy.sendRequest(senderId, RequestAction.GetInfo, {
                 type,
                 productId,
                 index,
@@ -296,7 +343,13 @@ const balancy = {};
                 element.textContent = value;
             });
 
+            promises.push(promise);
             element.classList.add('balancy-text-prepared');
+        });
+
+        // Дождаться всех асинхронных операций и потом кинуть ивент
+        Promise.all(promises).then(() => {
+            document.dispatchEvent(new CustomEvent('balancy-text-complete'));
         });
     }
 
@@ -323,30 +376,68 @@ const balancy = {};
             }
         };
 
+        window.addEventListener('message', function(event) {
+            if (event.source !== window.parent)
+                return;
+
+            if (event.source === window)
+                return;
+
+            const data = event.data;
+            if (data && typeof data === 'object') {
+                if (data.payload)
+                    balancy.handleResponse(data.payload);
+            }
+        });
+
+        (function waitForAllBalancyEvents() {
+            const requiredEvents = new Set([
+                'balancy-buttons-complete',
+                'balancy-localization-complete',
+                'balancy-text-complete',
+                'balancy-images-complete'
+            ]);
+
+            const receivedEvents = new Set();
+
+            function checkAllReceived(event) {
+                receivedEvents.add(event.type);
+
+                if ([...requiredEvents].every(e => receivedEvents.has(e))) {
+                    console.log("ALL IS READY 1");
+                    window.dispatchEvent(new CustomEvent("balancy-ready"));
+
+                    if (!balancy.delayedIsReady)
+                        balancy.sendIsReady();
+                }
+            }
+
+            requiredEvents.forEach(eventName => {
+                document.addEventListener(eventName, checkAllReceived, { once: true });
+            });
+        })();
+
         localizeAllElements();
         prepareAllSprites();
         prepareAllButtons();
         prepareAllTexts();
     };
 
-    balancy.triggerButtonAction = balancyButtonClicked;
-    balancy.refreshButtons = prepareAllButtons;
     balancy.initResponseHandler();
-    
+
     balancy.injectFontFace = function(fontName, localFontPath) {
         const style = document.createElement('style');
         style.type = 'text/css';
-    
+
         style.textContent = `
             @font-face {
                 font-family: '${fontName}';
                 src: url('${localFontPath}') format('truetype');
             }
         `;
-    
         document.head.appendChild(style);
+        console.log("FONT INJECTED " + fontName + " from " + localFontPath + "");
     }
-    
-    //TEMP - don't commit
-    balancy.injectFontFace('LilitaOne-Regular', '../801_1750523096269.ttf');
 })();
+
+window.balancy = balancy;

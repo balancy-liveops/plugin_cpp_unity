@@ -329,13 +329,13 @@ ${status}`;
         };
         
         // Send to native app if available
-        if (window.balancy && typeof window.balancy.postMessage === 'function') {
-            try {
-                window.balancy.postMessage('//performance_data:' + JSON.stringify(perfData));
-            } catch (e) {
-                console.warn('Balancy: Failed to send performance data to native:', e);
-            }
-        }
+        //if (window.balancy && typeof window.balancy.postMessage === 'function') {
+        //    try {
+        //        window.balancy.postMessage('//performance_data:' + JSON.stringify(perfData));
+        //    } catch (e) {
+        //        console.warn('Balancy: Failed to send performance data to native:', e);
+        //    }
+        //}
         
         console.log('Balancy WebView Performance Data:', perfData);
         return perfData;

@@ -167,15 +167,15 @@ namespace Balancy
             GetLocalization = 10,
             GetImageUrl = 11,
 
-            IBuyOffer = 101,
-            IBuyGroupOffer = 102,
-            IBuyShopSlot = 103,
+            BuyOffer = 101,
+            BuyGroupOffer = 102,
+            BuyShopSlot = 103,
             
             GetInfo = 110,
 
-            ICloseWindow = 200,
+            CloseWindow = 200,
 
-            ICustomMessage = 1000,
+            CustomMessage = 1000,
         }
         
         enum InfoType {
@@ -221,7 +221,7 @@ namespace Balancy
         {
             switch ((RequestAction)command)
             {
-                case RequestAction.IBuyOffer:
+                case RequestAction.BuyOffer:
                 {
                     CommandBuyOffer commandInfo = JsonUtility.FromJson<CommandBuyOffer>(paramsJson);
                     if (commandInfo == null || string.IsNullOrEmpty(commandInfo.instanceId))
@@ -246,7 +246,7 @@ namespace Balancy
                     return DEFAULT_ANSWER;
                 }
 
-                case RequestAction.IBuyGroupOffer:
+                case RequestAction.BuyGroupOffer:
                 {
                     CommandBuyOfferGroup commandInfo = JsonUtility.FromJson<CommandBuyOfferGroup>(paramsJson);
                     if (commandInfo == null || string.IsNullOrEmpty(commandInfo.instanceId))
@@ -282,7 +282,7 @@ namespace Balancy
                     return DEFAULT_ANSWER;
                 }
 
-                case RequestAction.IBuyShopSlot:
+                case RequestAction.BuyShopSlot:
                 {
                     CommandBuyShopSlot commandInfo = JsonUtility.FromJson<CommandBuyShopSlot>(paramsJson);
                     if (commandInfo == null || string.IsNullOrEmpty(commandInfo.slotId))
@@ -342,14 +342,14 @@ namespace Balancy
                     return DEFAULT_ANSWER;
                 }
 
-                case RequestAction.ICloseWindow:
+                case RequestAction.CloseWindow:
                 {
                     CloseView();
                     return DEFAULT_ANSWER;
                 }
             }
 
-            return null;
+            return DEFAULT_ANSWER;
         }
 
         public static void CloseView()
