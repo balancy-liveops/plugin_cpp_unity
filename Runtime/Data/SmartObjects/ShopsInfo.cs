@@ -1,4 +1,6 @@
 
+using System;
+
 namespace Balancy.Data.SmartObjects
 {
     public class ShopsInfo : Balancy.Data.BaseData 
@@ -33,6 +35,18 @@ namespace Balancy.Data.SmartObjects
         
         private void Update_unnyIdActiveShop() { _unnyIdActiveShop = GetStringParam("unnyIdActiveShop"); }
 
+        public Data.SmartObjects.ShopSlot FindShopSlot(IntPtr pointer) 
+        {
+            foreach (var shop in GameShops)
+            {
+                var shopSlot = shop.FindShopSlot(pointer);
+                if (shopSlot != null)
+                    return shopSlot;
+            }
+
+            return null;
+        }
+        
         public Data.SmartObjects.ShopSlot FindShopSlot(string slotId)
         {
             foreach (var shop in GameShops)

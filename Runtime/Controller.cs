@@ -291,6 +291,39 @@ namespace Balancy
                             notificationTyped.Attempts));
                         break;
                     }
+                    case Notifications.NotificationType.OnShopSlotWasPurchased: {
+                        var notificationTyped = Marshal.PtrToStructure<Notifications.PurchaseNotification_ShopSlotWasPurchased>(notificationPtr);
+                        var offerInfo = Profiles.System.ShopsInfo.FindShopSlot(notificationTyped.ShopSlot);
+                        if (offerInfo == null)
+                            offerInfo = JsonBasedObject.CreateObject<Balancy.Data.SmartObjects.ShopSlot>(notificationTyped.ShopSlot);
+                        Balancy.Callbacks.OnShopSlotWasPurchased?.Invoke(offerInfo);
+                        break;
+                    }
+                    case Notifications.NotificationType.OnOfferWasPurchased: {
+                        var notificationTyped = Marshal.PtrToStructure<Notifications.PurchaseNotification_OfferWasPurchased>(notificationPtr);
+                        var offerInfo = Profiles.System.SmartInfo.FindOfferInfo(notificationTyped.OfferInfo);
+                        if (offerInfo == null)
+                            offerInfo = JsonBasedObject.CreateObject<OfferInfo>(notificationTyped.OfferInfo);
+                        Balancy.Callbacks.OnOfferWasPurchased?.Invoke(offerInfo);
+                        break;
+                    }
+                    case Notifications.NotificationType.OnOfferGroupWasPurchased: {
+                        var notificationTyped = Marshal.PtrToStructure<Notifications.PurchaseNotification_OfferGroupWasPurchased>(notificationPtr);
+                        var offerGroupInfo = Profiles.System.SmartInfo.FindOfferGroupInfo(notificationTyped.OfferGroupInfo);
+                        if (offerGroupInfo == null)
+                            offerGroupInfo = JsonBasedObject.CreateObject<OfferGroupInfo>(notificationTyped.OfferGroupInfo);
+                        
+                        Balancy.Models.SmartObjects.StoreItem storeItem = null;
+                        if (offerGroupInfo?.GameOfferGroup?.StoreItems != null && 
+                            notificationTyped.StoreItemIndexInGroupOffer >= 0 && 
+                            notificationTyped.StoreItemIndexInGroupOffer < offerGroupInfo.GameOfferGroup.StoreItems.Length)
+                        {
+                            storeItem = offerGroupInfo.GameOfferGroup.StoreItems[notificationTyped.StoreItemIndexInGroupOffer];
+                        }
+                        
+                        Balancy.Callbacks.OnOfferGroupWasPurchased?.Invoke(offerGroupInfo, storeItem);
+                        break;
+                    }
                     default:
                         Debug.LogError("**==> Unknown notification type. " + baseNotification.Type);
                         break;

@@ -49,6 +49,10 @@ namespace Balancy
         public delegate void OnHardPurchasedOfferDelegate(PaymentInfo paymentInfo, GameOffer gameOffer);
         public delegate void OnHardPurchasedOfferGroupDelegate(PaymentInfo paymentInfo, GameOfferGroup gameOffer, StoreItem storeItem);
         
+        public delegate void OnShopSlotWasPurchasedDelegate(Balancy.Data.SmartObjects.ShopSlot shopSlot);
+        public delegate void OnOfferWasPurchasedDelegate(OfferInfo offerInfo);
+        public delegate void OnOfferGroupWasPurchasedDelegate(OfferGroupInfo offerGroupInfo, StoreItem storeItem);
+        
         public delegate void OnProfileResetDelegate();
         
         public delegate void OnPaymentIsReadyDelegate();
@@ -75,6 +79,10 @@ namespace Balancy
         public static OnHardPurchasedShopSlotDelegate OnHardPurchasedShopSlot = null;
         public static OnHardPurchasedOfferDelegate OnHardPurchasedOffer = null;
         public static OnHardPurchasedOfferGroupDelegate OnHardPurchasedOfferGroup = null;
+        
+        public static OnShopSlotWasPurchasedDelegate OnShopSlotWasPurchased = null;
+        public static OnOfferWasPurchasedDelegate OnOfferWasPurchased = null;
+        public static OnOfferGroupWasPurchasedDelegate OnOfferGroupWasPurchased = null;
         
         public static OnProfileResetDelegate OnProfileResetStart = null;
         public static OnProfileResetDelegate OnProfileResetFinish = null;
@@ -150,6 +158,10 @@ namespace Balancy
             OnHardPurchasedOffer += (paymentInfo, gameOffer) => Debug.Log(" => Balancy.OnHardPurchasedOffer: " + gameOffer?.Name + " UnnyId = " + gameOffer?.UnnyId);
             OnHardPurchasedOfferGroup += (paymentInfo, gameOfferGroup, storeItem) => Debug.Log(" => Balancy.OnHardPurchasedOfferGroup: " + gameOfferGroup?.Name + " UnnyId = " + gameOfferGroup?.UnnyId);
             
+            OnShopSlotWasPurchased += shopSlot => Debug.Log(" => Balancy.OnShopSlotWasPurchased: " + shopSlot?.Slot?.UnnyId);
+            OnOfferWasPurchased += offerInfo => Debug.Log(" => Balancy.OnOfferWasPurchased: " + offerInfo?.GameOffer?.Name + " UnnyId = " + offerInfo?.GameOffer?.UnnyId);
+            OnOfferGroupWasPurchased += (offerGroupInfo, storeItem) => Debug.Log(" => Balancy.OnOfferGroupWasPurchased: " + offerGroupInfo?.GameOfferGroup?.Name + " Store Item = " + storeItem?.Name);
+            
             // OnNetworkDownloadStarted += info => Debug.Log($" => Balancy.OnNetworkDownloadStarted: {info.Url}, Type: {(info.IsCDNRequest ? "CDN" : "API")}");
             // OnNetworkDownloadFinished += info => Debug.Log($" => Balancy.OnNetworkDownloadFinished: {info.Url}, Time: {info.TimeMs}ms, Size: {info.DownloadedBytes}B, Speed: {info.SpeedKBps:F1}KB/s, Success: {info.Success}");
             
@@ -181,6 +193,10 @@ namespace Balancy
             OnHardPurchasedShopSlot = null;
             OnHardPurchasedOffer = null;
             OnHardPurchasedOfferGroup = null;
+            
+            OnShopSlotWasPurchased = null;
+            OnOfferWasPurchased = null;
+            OnOfferGroupWasPurchased = null;
             
             OnNetworkDownloadStarted = null;
             OnNetworkDownloadFinished = null;

@@ -29,6 +29,11 @@ namespace Balancy.Core
             // Network events
         OnNetworkDownloadStarted = 111,
         OnNetworkDownloadFinished = 112,
+        
+        OnShopSlotWasPurchased = 120,
+        OnOfferWasPurchased = 121,
+        OnOfferGroupWasPurchased = 122,
+        
         Unknown
     }
 
@@ -187,6 +192,26 @@ namespace Balancy.Core
             
             public bool IsCDNRequest => isCDNRequest == 1;
             public bool Success => success == 1;
+        }
+        
+        [StructLayout(LayoutKind.Sequential)]
+        public class PurchaseNotification_ShopSlotWasPurchased : LiveOpsNotificationBase
+        {
+            public IntPtr ShopSlot;
+        }
+        
+        [StructLayout(LayoutKind.Sequential)]
+        public class PurchaseNotification_OfferWasPurchased : LiveOpsNotificationBase
+        {
+            public int wasPurchased;
+            public IntPtr OfferInfo;
+        }
+        
+        [StructLayout(LayoutKind.Sequential)]
+        public class PurchaseNotification_OfferGroupWasPurchased : LiveOpsNotificationBase
+        {
+            public int StoreItemIndexInGroupOffer;
+            public IntPtr OfferGroupInfo;
         }
     }
 }
