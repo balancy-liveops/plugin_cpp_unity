@@ -114,7 +114,7 @@ namespace Balancy.WebView
         /// <summary>
         /// Event triggered when a message is received from the WebView
         /// </summary>
-        public Func<string, string> OnMessage;
+        public Action<string, Action<string>> OnMessage;
 
         /// <summary>
         /// Event triggered when the WebView finishes loading a page
@@ -146,6 +146,7 @@ namespace Balancy.WebView
         private float _viewportHeight = 1f;
         private bool _debugLogging = false;
         private string _ownerJson = string.Empty;
+        private string _additionalInfo = string.Empty;
         private string _lastUrl = string.Empty;
         #if UNITY_EDITOR_OSX
         private RenderTexture _embeddedTexture = null;
@@ -480,10 +481,10 @@ namespace Balancy.WebView
         /// </summary>
         /// <param name="url">The URL to open in the WebView</param>
         /// <returns>True if the WebView was opened successfully, false otherwise</returns>
-        public bool OpenWebView(string url, string ownerJson)
+        public bool OpenWebView(string url, string ownerJson, string additionalInfo)
         {
             // Use Screen dimensions to match game view size
-            return OpenWebView(url, ownerJson, Screen.width, Screen.height);
+            return OpenWebView(url, ownerJson, additionalInfo, Screen.width, Screen.height);
         }
         
         /// <summary>
@@ -560,7 +561,7 @@ namespace Balancy.WebView
         /// <param name="width">Width of the WebView window</param>
         /// <param name="height">Height of the WebView window</param>
         /// <returns>True if the WebView was opened successfully, false otherwise</returns>
-        public bool OpenWebView(string url, string ownerJson, int width, int height)
+        public bool OpenWebView(string url, string ownerJson, string additionalInfo, int width, int height)
         {
             if (_isWebViewOpen)
             {
@@ -577,6 +578,7 @@ namespace Balancy.WebView
 
             _lastUrl = url;
             _ownerJson = ownerJson;
+            _additionalInfo = additionalInfo;
             
             LogDebug($"Opening WebView with URL: {url}");
             LogDebug($"Screen dimensions: {width}x{height}");
@@ -784,7 +786,7 @@ namespace Balancy.WebView
         /// <param name="renderTexture">The RenderTexture to render into</param>
         /// <param name="ownerJson">Owner JSON data</param>
         /// <returns>True if opened successfully</returns>
-        public bool LoadEmbedded(string url, RenderTexture renderTexture, string ownerJson)
+        public bool LoadEmbedded(string url, RenderTexture renderTexture, string ownerJson, string additionalInfo)
         {
             #if UNITY_EDITOR_OSX
             if (_isWebViewOpen || _isWebViewEmbedded)
@@ -801,6 +803,7 @@ namespace Balancy.WebView
 
             _lastUrl = url;
             _ownerJson = ownerJson;
+            _additionalInfo = additionalInfo;
             _embeddedTexture = renderTexture;
             
             // Apply current settings
@@ -964,14 +967,11 @@ namespace Balancy.WebView
             {
                 try
                 {
-                    string response = OnMessage.Invoke(message);
-                    
-                    // If a response is returned, send it back to the WebView
-                    if (!string.IsNullOrEmpty(response))
+                    OnMessage.Invoke(message, (response) =>
                     {
-                        SendMessageToWebView(response);
-                    }
-                    return;
+                        if (!string.IsNullOrEmpty(response))
+                            SendMessageToWebView(response);
+                    });
                 }
                 catch (Exception ex)
                 {
@@ -993,7 +993,10 @@ namespace Balancy.WebView
 
                 if (!string.IsNullOrEmpty(_instance._ownerJson))
                 {
-                    var injectedCode = "try {\n                " +
+                    var injectedCode = "try {\n" +
+                                       (!string.IsNullOrEmpty(_instance._additionalInfo)
+                                           ? $"window.balancySettings = JSON.parse('{_instance._additionalInfo}');\n"
+                                           : "") +
                                        $"window.balancyViewOwner = JSON.parse('{_instance._ownerJson}');\n" +
                                        "           } catch (error) {\n " +
                                        "               console.error('Error parsing button params JSON:', error);\n" +
@@ -1001,7 +1004,7 @@ namespace Balancy.WebView
                                        "            }";
                     _balancyInjectJSCode(injectedCode);
                 }
-                
+
                 InjectFileFromResources("balancy-webview-performance");
                 InjectFileFromResources("balancy-webview-styles");
                 InjectFileFromResources("balancy-webview-bridge");

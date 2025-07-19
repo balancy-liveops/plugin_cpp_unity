@@ -29,8 +29,18 @@ const balancy = {};
         None: 0,
         OfferPrice: 1,
         OfferGroupPrice: 2,
+        TimeLeft: 3,
         CustomPrice: 9,
         Custom: 10
+    };
+
+    const NotificationType = {
+        OnNewEventActivated: 100,
+        OnEventDeactivated: 101,
+        OnNewOfferActivated: 102,
+        OnOfferDeactivated: 103,
+        OnNewOfferGroupActivated: 104,
+        OnOfferGroupDeactivated: 105
     };
 
     balancy.findDomElement = (dataId, parentElement) => {
@@ -45,6 +55,11 @@ const balancy = {};
     balancy.getProfileValue = (profile, path) => {
         return balancy.sendRequest(null, RequestAction.GetProfile, {profile, path});
     };
+
+    balancy.closeView = (source) => {
+        return balancy.sendRequest(null, RequestAction.CloseWindow, {id: source});
+    };
+
 
     balancy.getDocumentValue = (id, depth) => {
         return balancy.sendRequest(null, RequestAction.GetDocument, {id, depth}).then(result => {
@@ -132,26 +147,7 @@ const balancy = {};
             console.log('BalancyWebView: Received message from Unity:', message.substring(0, 100) + '...');
         }
 
-        try {
-            const response = JSON.parse(message);
-            if (response.type === 'response') {
-                const request = pendingRequests[response.id];
-                if (request) {
-                    delete pendingRequests[response.id];
-                    if (response.error) {
-                        request.reject(new Error(response.error));
-                    } else {
-                        request.resolve(response.result);
-                    }
-                }
-            }
-        }  catch (error) {
-            if (window.BalancyWebView && window.BalancyWebView.log) {
-                window.BalancyWebView.log('error', 'Error handling response: ' + error.message);
-            } else {
-                console.error('Error handling response:', error);
-            }
-        }
+        balancy.handleResponse(message);
     };
 
     balancy.sendRequest = function(sender, action, params = {}) {
@@ -193,6 +189,23 @@ const balancy = {};
         await Promise.all(localizationPromises);
 
         document.dispatchEvent(new CustomEvent('balancy-localization-complete'));
+    }
+
+    async function prepareAllFonts() {
+        const elements = document.querySelectorAll('[data-font-id]');
+        const fontsPromises = Array.from(elements).map(async (element) => {
+            if (element.classList.contains('balancy-font-prepared'))
+                return;
+
+            const name = element.getAttribute('data-font-name');
+            const id = element.getAttribute('data-font-id');
+            const fontUri = await balancy.getImageUrl(id);
+            balancy.injectFontFace(name, fontUri);
+        });
+
+        await Promise.all(fontsPromises);
+
+        document.dispatchEvent(new CustomEvent('balancy-fonts-complete'));
     }
 
     async function prepareAllSprites() {
@@ -260,20 +273,17 @@ const balancy = {};
         balancy.sendRequest(senderId, actionId, paramsJson)
             .then(result => {
                 console.log(`Button action ${actionId} executed successfully`, result);
-                // Dispatch success event
                 button.dispatchEvent(new CustomEvent('balancyButtonResponse', {
                     detail: { actionId, result, success: true, senderId }
                 }));
             })
             .catch(error => {
                 console.error(`Error executing button action ${actionId}:`, error);
-                // Dispatch error event
                 button.dispatchEvent(new CustomEvent('balancyButtonResponse', {
                     detail: { actionId, error: error.message, success: false, senderId }
                 }));
             })
             .finally(() => {
-                // Re-enable button and remove processing class
                 button.disabled = originalDisabled;
                 button.classList.remove('balancy-button-processing');
             });
@@ -316,6 +326,8 @@ const balancy = {};
             if (element.classList.contains('balancy-text-prepared'))
                 return;
 
+            element.classList.add('balancy-text-prepared');
+
             const senderId = element.id || 'unknown-text';
             let type = parseInt(element.getAttribute('data-info-type')) || 0;
             const index = parseInt(element.getAttribute('data-index')) || 0;
@@ -323,11 +335,21 @@ const balancy = {};
             let productId = element.getAttribute('data-product-id') || '';
             let instanceId = '';
 
-            if (type == InfoType.OfferPrice) {
+            if (type === InfoType.OfferPrice) {
                 productId = window.balancyViewOwner.productId;
                 type = InfoType.CustomPrice;
-            } else if (type == InfoType.OfferGroupPrice) {
+            } else if (type === InfoType.OfferGroupPrice) {
                 instanceId = window.balancyViewOwner.instanceId;
+            }
+
+            if (type === InfoType.TimeLeft) {
+                const timerElement = element;
+                function setTimeValue() {
+                    timerElement.textContent = balancy.formatTime(balancy.getTimeLeft(), timerElement.getAttribute('data-text-format') || '{hh}:{mm}:{ss}');
+                }
+                setInterval(setTimeValue, 1000);
+                setTimeValue();
+                return;
             }
 
             const promise = balancy.sendRequest(senderId, RequestAction.GetInfo, {
@@ -337,20 +359,31 @@ const balancy = {};
                 instanceId,
                 custom,
             }).then(result => {
-                const formatStr = element.getAttribute("data-text-format");
-                const formatFn = eval("info=>" + formatStr);
-                const value = formatFn(result);
-                element.textContent = value;
+                try {
+                    const formatStr = element.getAttribute("data-text-format");
+                    element.textContent = balancy.formatDataTemplate(formatStr, result);
+                } catch (error) {
+                    console.error('Error formatting text:', error, 'Result:', result);
+                }
             });
 
             promises.push(promise);
-            element.classList.add('balancy-text-prepared');
         });
 
-        // Дождаться всех асинхронных операций и потом кинуть ивент
+
         Promise.all(promises).then(() => {
             document.dispatchEvent(new CustomEvent('balancy-text-complete'));
         });
+    }
+
+    balancy.notificationReceived = function(data) {
+        if (!data || typeof data !== 'object')
+            return;
+
+        if (data.type === NotificationType.OnOfferDeactivated || data.type === NotificationType.OnOfferGroupDeactivated) {
+            if (window.balancyViewOwner.instanceId === data.id)
+                balancy.closeView('Offer deactivated');
+        }
     }
 
     balancy.initResponseHandler = function() {
@@ -362,14 +395,20 @@ const balancy = {};
             try {
                 const response = JSON.parse(responseJson);
 
-                const request = pendingRequests[response.id];
-                if (request) {
-                    delete pendingRequests[response.id];
-
-                    if (response.error)
-                        request.reject(new Error(response.error));
-                    else
-                        request.resolve(response.result);
+                if (response.type === 'response') {
+                    const request = pendingRequests[response.id];
+                    if (request) {
+                        delete pendingRequests[response.id];
+                        if (response.error)
+                            request.reject(new Error(response.error));
+                        else
+                            request.resolve(response.result);
+                    }
+                } else {
+                    if (response.type === 'notification') {
+                        const data = response.data ? JSON.parse(response.data) : null;
+                        balancy.notificationReceived(data);
+                    }
                 }
             } catch (error) {
                 console.error('Error handling response:', error);
@@ -395,14 +434,15 @@ const balancy = {};
                 'balancy-buttons-complete',
                 'balancy-localization-complete',
                 'balancy-text-complete',
-                'balancy-images-complete'
+                'balancy-images-complete',
+                'balancy-fonts-complete',
             ]);
 
             const receivedEvents = new Set();
 
             function checkAllReceived(event) {
                 receivedEvents.add(event.type);
-
+                console.log(':: STATUS :: ' + event.type);
                 if ([...requiredEvents].every(e => receivedEvents.has(e))) {
                     console.log("ALL IS READY 1");
                     window.dispatchEvent(new CustomEvent("balancy-ready"));
@@ -418,12 +458,68 @@ const balancy = {};
         })();
 
         localizeAllElements();
+        prepareAllFonts();
         prepareAllSprites();
         prepareAllButtons();
         prepareAllTexts();
     };
 
-    balancy.initResponseHandler();
+    balancy.getTimeLeft = function() {
+        const timeNow = Math.floor(Date.now() / 1000);
+        const timeSpend = timeNow - window.balancySettings.launchTime;
+        return window.balancySettings.secondsLeft - timeSpend;
+    }
+
+    balancy.formatTime = function (seconds, format) {
+        if (seconds > 3600 * 24 * 365) // 1 year
+            return 'oo';
+
+        const hasDays = format.includes('{d}');
+        const hasHours = format.includes('{h}') || format.includes('{hh}');
+        const hasMinutes = format.includes('{m}') || format.includes('{mm}');
+
+        let days = 0, hours = 0, minutes = 0, secs = 0;
+
+        if (hasDays) {
+            days = Math.floor(seconds / 86400);
+            hours = Math.floor((seconds % 86400) / 3600);
+            minutes = Math.floor((seconds % 3600) / 60);
+            secs = seconds % 60;
+        } else if (hasHours) {
+            hours = Math.floor(seconds / 3600);
+            minutes = Math.floor((seconds % 3600) / 60);
+            secs = seconds % 60;
+        } else if (hasMinutes) {
+            minutes = Math.floor(seconds / 60);
+            secs = seconds % 60;
+        } else {
+            secs = seconds;
+        }
+
+        return format
+            .replace('{d}', days.toString())
+            .replace('{hh}', hours.toString().padStart(2, '0'))
+            .replace('{h}', hours.toString())
+            .replace('{mm}', minutes.toString().padStart(2, '0'))
+            .replace('{m}', minutes.toString())
+            .replace('{ss}', secs.toString().padStart(2, '0'))
+            .replace('{s}', secs.toString());
+    }
+
+    balancy.formatDataTemplate = function(formatStr, data) {
+        function getNestedValue(obj, path) {
+            return path.split('.').reduce((current, key) => {
+                return current && current[key] !== undefined ? current[key] : undefined;
+            }, obj);
+        }
+
+        if (formatStr.includes('{') && formatStr.includes('}')) {
+            return formatStr.replace(/\{([^}]+)\}/g, (match, path) => {
+                const value = getNestedValue(data, path.trim());
+                return value !== undefined ? String(value) : match;
+            });
+        }
+    }
 
     balancy.injectFontFace = function(fontName, localFontPath) {
         const style = document.createElement('style');
@@ -436,8 +532,9 @@ const balancy = {};
             }
         `;
         document.head.appendChild(style);
-        console.log("FONT INJECTED " + fontName + " from " + localFontPath + "");
     }
+
+    balancy.initResponseHandler();
 })();
 
 window.balancy = balancy;

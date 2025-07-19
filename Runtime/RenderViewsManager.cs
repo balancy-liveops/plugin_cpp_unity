@@ -1,6 +1,7 @@
 using System;
 using Balancy.Data.SmartObjects;
 using Balancy.Models;
+using Balancy.Models.SmartObjects;
 using Balancy.WebView;
 using UnityEngine;
 
@@ -21,6 +22,7 @@ namespace Balancy
         {
             LibraryMethods.General.balancySetDataRequestedCallback(DataRequested);
             LibraryMethods.General.balancyViewAllowOptimization(true);
+            LibraryMethods.General.balancySetViewNotificationsCallback(OnNotificationReceived);
             PrepareCallbacks();
             
             BalancyWebView.Instance.OnMessage = OnMessageReceived;
@@ -78,6 +80,11 @@ namespace Balancy
         {
             
         }
+        
+        private static void OnNotificationReceived(string notification)
+        {
+            _webView.SendMessageToWebView(notification);
+        }
 
         public static void OpenLocalView(string filePath, JsonBasedObject owner = null)
         {
@@ -108,11 +115,22 @@ namespace Balancy
 
             m_LastOpenedOwnerPtr = owner?.GetRawPointer() ?? IntPtr.Zero;
             string ownerJson = owner?.ToJsonString(0, false);
+
+            long launchTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            string additionalInfo = $"{{\"launchTime\":{launchTime}}}";
+
+            if (owner is IOwnerWithTimer ownerWithTimer)
+            {
+                int secondsLeft = ownerWithTimer.GetSecondsLeftBeforeDeactivation();
+                if (secondsLeft > 0)
+                    additionalInfo = $"{{\"launchTime\":{launchTime},\"secondsLeft\":{secondsLeft}}}";
+            }
+            
             bool success = false;
             if (UseEmbeddedWebView)
             {
 #if UNITY_EDITOR_OSX
-                success = BalancyWebViewEmbedded.Instance.InitializeEmbeddedWebView(urlToLoad, ownerJson);
+                success = BalancyWebViewEmbedded.Instance.InitializeEmbeddedWebView(urlToLoad, ownerJson, additionalInfo);
 #elif UNITY_EDITOR
                 CreateErrorMessage();
 #endif
@@ -120,7 +138,7 @@ namespace Balancy
             else
             {
                 // Use game view size for popup mode to match embedded mode behavior
-                success = _webView.OpenWebView(urlToLoad, ownerJson);
+                success = _webView.OpenWebView(urlToLoad, ownerJson, additionalInfo);
             }
             
             if (success)
@@ -145,7 +163,7 @@ namespace Balancy
         }
 #endif
 
-        private static string OnMessageReceived(string msg)
+        private static void OnMessageReceived(string msg, Action<string> callback)
         {
             Debug.Log("Incomming = " + msg);
             
@@ -155,9 +173,11 @@ namespace Balancy
                 msg= "{\"action\":200, \"params\":{}}";
             }
             
-            var output = RunRequestInTheCorePlugin(msg);
-            Debug.Log("output = " + output);
-            return output;
+            RunRequestInTheCorePlugin(msg, (response) =>
+            {
+                Debug.Log("output = " + response);
+                callback(response);
+            });
         }
         
         enum RequestAction {
@@ -364,9 +384,9 @@ namespace Balancy
                 _webView.CloseWebView();
         }
 
-        private static string RunRequestInTheCorePlugin(string requestData)
+        private static void RunRequestInTheCorePlugin(string requestData, LibraryMethods.General.WebviewRequestCallback callback)
         {
-            return JsonBasedObject.GetStringFromIntPtr(LibraryMethods.General.balancyWebViewRequest(requestData));
+            LibraryMethods.General.balancyWebViewRequest(m_LastOpenedOwnerPtr, requestData, callback);
         }
     }
 }

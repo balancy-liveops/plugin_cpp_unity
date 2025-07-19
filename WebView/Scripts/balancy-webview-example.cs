@@ -164,7 +164,7 @@ namespace Balancy.WebView.Examples
 
             urlToLoad += "?timestamp=" + Guid.NewGuid().ToString();
             // Open the WebView
-            bool success = _webView.OpenWebView(urlToLoad, null);
+            bool success = _webView.OpenWebView(urlToLoad, null, null);
             
             if (success)
             {

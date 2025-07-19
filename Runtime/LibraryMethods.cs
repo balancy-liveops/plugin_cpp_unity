@@ -44,6 +44,9 @@ namespace Balancy
             [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
             public delegate string DataRequestedCallback(string sender, int command, string paramsJson);
             
+            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+            public delegate void WebviewRequestCallback(string message);
+            
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancySetLogCallback(LogCallback callback);
@@ -71,7 +74,7 @@ namespace Balancy
             public static extern IntPtr balancyGetStatus();
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-            public static extern IntPtr balancyWebViewRequest(string paramName);
+            public static extern void balancyWebViewRequest(IntPtr owner, string request, WebviewRequestCallback callback);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern IntPtr balancyGetProductsIdAndType(out int size);
@@ -84,6 +87,9 @@ namespace Balancy
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyViewAllowOptimization(bool allow);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancySetViewNotificationsCallback(WebviewRequestCallback callback);
         }
         
         public static class WebSocket

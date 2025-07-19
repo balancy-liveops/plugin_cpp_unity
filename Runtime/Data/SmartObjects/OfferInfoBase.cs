@@ -1,7 +1,9 @@
 
+using Balancy.Models.SmartObjects;
+
 namespace Balancy.Data.SmartObjects
 {
-    public class OfferInfoBase : Balancy.Data.BaseData 
+    public class OfferInfoBase : Balancy.Data.BaseData, IOwnerWithTimer
     {
 	    private string _unnyIdGameEvent;
 		private string _instanceId;

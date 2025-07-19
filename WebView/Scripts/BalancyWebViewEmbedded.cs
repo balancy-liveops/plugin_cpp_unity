@@ -142,7 +142,7 @@ namespace Balancy.WebView
         /// Initialize the embedded WebView with the specified URL
         /// </summary>
         /// <param name="url">URL to load in the WebView</param>
-        public bool InitializeEmbeddedWebView(string url, string ownerJson)
+        public bool InitializeEmbeddedWebView(string url, string ownerJson, string additionalInfo)
         {
             if (_isInitialized)
             {
@@ -157,7 +157,7 @@ namespace Balancy.WebView
                 
                 // Start loading the WebView in embedded mode
                 _isLoading = true;
-                bool success = _webView.LoadEmbedded(url, _renderTexture, ownerJson);
+                bool success = _webView.LoadEmbedded(url, _renderTexture, ownerJson, additionalInfo);
                 
                 if (success)
                     _parentGameObject.SetActive(true);

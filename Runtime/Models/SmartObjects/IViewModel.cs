@@ -7,4 +7,9 @@ namespace Balancy.Models.SmartObjects
         UnnyObject UnnyView { get; }
         Balancy.Models.SmartObjects.ViewPlacement UnnyPlacement { get; }
     }
+
+    public interface IOwnerWithTimer
+    {
+        int GetSecondsLeftBeforeDeactivation();
+    }
 }
