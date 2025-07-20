@@ -2,29 +2,48 @@
 //  BalancyWebviewMac.mm
 //  Native macOS WebView implementation for Unity
 //
-
+#include "IUnityInterface.h"
+#include "IUnityGraphics.h"
+#include "IUnityGraphicsMetal.h"
 #import "BalancyWebviewMac.h"
 #import <Metal/Metal.h>
 #import <QuartzCore/QuartzCore.h>
+#import <CoreVideo/CVMetalTextureCache.h>
 
 // Function pointers for callbacks
 typedef void (*MessageCallback)(const char* message);
 typedef void (*LoadCompletedCallback)(bool success);
 typedef void (*CacheCompletedCallback)(bool success);
 
+// These are now initialized by UnityPluginLoad, not from C#
+static IUnityInterfaces* s_UnityInterfaces = NULL;
+static IUnityGraphics* s_UnityGraphics = NULL;
+static id<MTLDevice> _metalDevice = nil;
+static id<MTLCommandQueue> _commandQueue = nil;
+static CVMetalTextureCacheRef _textureCache = nil;
+static id<MTLTexture> _unityDestinationTexture = nil;
+static int g_IsGraphicsInitialized = 0;
+
 // Global callback function pointers
 static MessageCallback _messageCallback = NULL;
 static LoadCompletedCallback _loadCompletedCallback = NULL;
 static CacheCompletedCallback _cacheCompletedCallback = NULL;
 
-// Unity logging function - sends logs to Unity console
+// Unity logging function - sends logs to Unity console 
 // Note: UnitySendMessage is provided by Unity at runtime, not during library build
 extern "C" void UnitySendMessage(const char* obj, const char* method, const char* msg) __attribute__((weak));
+
+extern "C" int _balancyIsGraphicsInitialized()
+{
+    return g_IsGraphicsInitialized;
+}
 
 void LogToUnity(const char* message) {
     // Send log message to Unity console if available
     if (UnitySendMessage != NULL) {
+//         UnitySendMessage("BalancyEmbeddedView", "LogFromNative", message);
         UnitySendMessage("BalancyWebView", "LogFromNative", message);
+//         UnitySendMessage("MetalWebViewRenderer", "LogFromNative", message);
     }
     // Always log to system console for debugging
     NSLog(@"[BalancyWebView] %s", message);
@@ -59,11 +78,9 @@ void LogToUnity(const char* message) {
 @property (nonatomic, assign) int textureWidth;
 @property (nonatomic, assign) int textureHeight;
 @property (nonatomic, strong) NSTimer *renderTimer;
-@property (nonatomic, assign) unsigned char* pixelBuffer;
-@property (nonatomic, assign) BOOL pixelDataReady;
 @property (nonatomic, strong) NSWindow *offscreenWindow;
-@property (nonatomic, assign) CGContextRef persistentContext;  // OPTIMIZATION #2: Reusable context
-@property (nonatomic, assign) BOOL hasNewFrame;                // OPTIMIZATION #3: Smart sync flag
+@property (atomic, assign) BOOL hasNewFrame;                // OPTIMIZATION #3: Smart sync flag
+@property (atomic, strong) id<MTLTexture> latestFrameTexture; // Holds the most recent snapshot as a texture
 
 - (instancetype)initWithWidth:(int)width height:(int)height;
 - (BOOL)loadURL:(NSString *)url;
@@ -84,16 +101,7 @@ void LogToUnity(const char* message) {
         _debugLogging = YES;
         _textureWidth = width;
         _textureHeight = height;
-        _pixelDataReady = NO;
         _hasNewFrame = NO;  // OPTIMIZATION #3: Initialize sync flag
-        
-        // Allocate pixel buffer
-        size_t bufferSize = width * height * 4; // RGBA
-        _pixelBuffer = (unsigned char*)malloc(bufferSize);
-        memset(_pixelBuffer, 0, bufferSize);
-        
-        // OPTIMIZATION #2: Create persistent CGContext once
-        [self createPersistentContext];
         
         // ✅ ИСПРАВЛЕНИЕ 1: НЕВИДИМОЕ окно (убираем popup)
         NSRect windowFrame = NSMakeRect(-100, -100, width, height); // ← За пределами экрана
@@ -140,12 +148,19 @@ void LogToUnity(const char* message) {
         
         [containerView addSubview:_webView];
         
-        // ✅ ИСПРАВЛЕНИЕ 2: Снижаем частоту до 15 FPS
-        _renderTimer = [NSTimer scheduledTimerWithTimeInterval:1.0/15.0  // ← 15 FPS вместо 60
-                                                        target:self
-                                                      selector:@selector(renderToTexture)
-                                                      userInfo:nil
-                                                       repeats:YES];
+        // ✅ ИСПРАВЛЕНИЕ 2: Снижаем частоту до 30 FPS
+//         _renderTimer = [NSTimer scheduledTimerWithTimeInterval:1.0/30.0  // ← 15 FPS вместо 60
+//                                                         target:self
+//                                                       selector:@selector(renderToTexture)
+//                                                       userInfo:nil
+//                                                        repeats:YES];OnRenderEvent
+       
+        _renderTimer = [NSTimer timerWithTimeInterval:1.0/15.0
+                                              target:self
+                                            selector:@selector(renderToTexture)
+                                            userInfo:nil
+                                             repeats:YES];
+        [[NSRunLoop mainRunLoop] addTimer:_renderTimer forMode:NSRunLoopCommonModes];
         
         // ✅ ИСПРАВЛЕНИЕ 3: Минимальное окно - только для работы браузера
         [_offscreenWindow makeKeyAndOrderFront:nil];
@@ -185,32 +200,6 @@ void LogToUnity(const char* message) {
             LogToUnity("✅ Transparency script injected successfully");
         }
     }];
-}
-
-// OPTIMIZATION #2: Create persistent CGContext method
-- (void)createPersistentContext {
-    if (_persistentContext) {
-        CGContextRelease(_persistentContext);
-    }
-    
-    CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
-    size_t bytesPerRow = _textureWidth * 4;
-    
-    _persistentContext = CGBitmapContextCreate(
-        _pixelBuffer,
-        _textureWidth,
-        _textureHeight,
-        8,
-        bytesPerRow,
-        colorSpace,
-        kCGImageAlphaPremultipliedLast | kCGBitmapByteOrder32Big
-    );
-    
-    CGColorSpaceRelease(colorSpace);
-    
-    if (_debugLogging) {
-        LogToUnity("✅ OPTIMIZATION #2: Persistent CGContext created");
-    }
 }
 
 // 2. ADD THIS NEW METHOD to inject animation boost scripts after page loads:
@@ -330,20 +319,7 @@ void LogToUnity(const char* message) {
         _userContentController = nil;
     }
     
-    // OPTIMIZATION #2: Clean up persistent context
-    if (_persistentContext) {
-        CGContextRelease(_persistentContext);
-        _persistentContext = nil;
-        if (_debugLogging) {
-            LogToUnity("✅ OPTIMIZATION #2: Persistent CGContext released");
-        }
-    }
-    
-    // Free pixel buffer
-    if (_pixelBuffer) {
-        free(_pixelBuffer);
-        _pixelBuffer = nil;
-    }
+    self.latestFrameTexture = nil;
     
     // Close and clean up window
     if (_offscreenWindow) {
@@ -380,16 +356,8 @@ void LogToUnity(const char* message) {
     
     // Reallocate pixel buffer if size changed
     size_t newBufferSize = width * height * 4; // RGBA
-    if (_pixelBuffer) {
-        free(_pixelBuffer);
-    }
-    _pixelBuffer = (unsigned char*)malloc(newBufferSize);
-    memset(_pixelBuffer, 0, newBufferSize); // Initialize to transparent
-    _pixelDataReady = NO;
-    _hasNewFrame = NO;  // OPTIMIZATION #3: Reset frame flag
     
-    // OPTIMIZATION #2: Recreate persistent context for new size
-    [self createPersistentContext];
+    _hasNewFrame = NO;  // OPTIMIZATION #3: Reset frame flag
     
     // Update WebView frame and window
     _webView.frame = NSMakeRect(0, 0, width, height);
@@ -426,6 +394,7 @@ void LogToUnity(const char* message) {
     
     return inZone;
 }
+
 
 // Handle emergency exit activation
 - (void)triggerEmergencyExit {
@@ -532,60 +501,167 @@ void LogToUnity(const char* message) {
     }
 }
 
-// OPTIMIZATION #2 & #3: Optimized renderToTexture with persistent context and smart sync
+// -----------------------------------------------------------------------------
+// THIS IS THE FINAL, CORRECTED renderToTexture METHOD.
+// -----------------------------------------------------------------------------
 - (void)renderToTexture {
-    if (!_webView || !_pixelBuffer || !_persistentContext) {
+    if (!_webView || !_textureCache) {
         return;
     }
-    
+
     @try {
-        // Простое принуждение к обновлению
-        [_webView.layer setNeedsDisplay];
-        [_webView.layer displayIfNeeded];
-        
-        // Используем snapshot API (основной метод)
         if (@available(macOS 10.13, *)) {
             WKSnapshotConfiguration *config = [[WKSnapshotConfiguration alloc] init];
             config.rect = CGRectMake(0, 0, _textureWidth, _textureHeight);
-            config.afterScreenUpdates = YES;
-            
+            config.afterScreenUpdates = YES; // Important
+
             [_webView takeSnapshotWithConfiguration:config completionHandler:^(NSImage * _Nullable snapshotImage, NSError * _Nullable error) {
                 if (error || !snapshotImage) {
-                    return; // Просто игнорируем ошибки
+                    if (error) NSLog(@"[BalancyWebView] Snapshot error: %@", error);
+                    return;
                 }
                 
-                // Конвертируем в pixel buffer
+//                 NSString *logMsg1 = [NSString stringWithFormat:@"renderToTexture: %d", status];
+//                 LogToUnity([logMsg1 UTF8String]);
+
                 CGImageRef cgImage = [snapshotImage CGImageForProposedRect:nil context:nil hints:nil];
-                if (cgImage) {
+                if (!cgImage) return;
+
+                // --- THE FIX: Create a CVPixelBuffer and draw the CGImage into it ---
+                CVPixelBufferRef pixelBuffer = NULL;
                 
-//                     NSString *pavelLog = [NSString stringWithFormat:@">>>Snapshot done!!"];
-//                     LogToUnity([pavelLog UTF8String]);
-                    
-                    // OPTIMIZATION #2: Use persistent context instead of creating new one
-                    if (self->_persistentContext) {
-                        CGContextClearRect(self->_persistentContext, CGRectMake(0, 0, self->_textureWidth, self->_textureHeight));
-                        CGContextSetBlendMode(self->_persistentContext, kCGBlendModeCopy);
-                        CGContextDrawImage(self->_persistentContext, CGRectMake(0, 0, self->_textureWidth, self->_textureHeight), cgImage);
-                        
-                        self->_pixelDataReady = YES;
-                        self->_hasNewFrame = YES;  // OPTIMIZATION #3: Mark new frame available
-                    }
+                // 1. Create attributes for the pixel buffer.
+                // It's crucial to specify Metal compatibility.
+                NSDictionary *attributes = @{
+                    (id)kCVPixelBufferMetalCompatibilityKey: @(YES),
+                    (id)kCVPixelBufferCGImageCompatibilityKey: @(YES), // Good for drawing
+                };
+                
+                // 2. Create the CVPixelBuffer.
+                CVReturn status = CVPixelBufferCreate(
+                    kCFAllocatorDefault,
+                    self->_textureWidth,
+                    self->_textureHeight,
+                    kCVPixelFormatType_32BGRA,
+                    (__bridge CFDictionaryRef)attributes,
+                    &pixelBuffer
+                );
+                
+                if (status != kCVReturnSuccess || pixelBuffer == NULL) {
+                    NSLog(@"[BalancyWebView] Error: Could not create CVPixelBuffer, status: %d", status);
+                    return;
                 }
+                
+                // 3. Draw the CGImage into the CVPixelBuffer.
+                CVPixelBufferLockBaseAddress(pixelBuffer, 0);
+                void *pxdata = CVPixelBufferGetBaseAddress(pixelBuffer);
+                
+                CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
+                size_t bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer);
+                
+                CGContextRef context = CGBitmapContextCreate(
+                    pxdata,
+                    self->_textureWidth,
+                    self->_textureHeight,
+                    8,
+                    bytesPerRow,
+                    colorSpace,
+                    kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Little
+                );
+                
+                if (context) {
+//                     CGContextDrawImage(context, CGRectMake(0, 0, self->_textureWidth, self->_textureHeight), cgImage);
+                    CGContextSetRGBFillColor(context, 1.0, 0.0, 0.0, 1.0); // Red color
+                        CGContextFillRect(context, CGRectMake(0, 0, self->_textureWidth, self->_textureHeight));
+                    CGContextRelease(context);
+                }
+                
+                CGColorSpaceRelease(colorSpace);
+                CVPixelBufferUnlockBaseAddress(pixelBuffer, 0);
+                // --- Now, use the valid CVPixelBuffer to create the Metal texture ---
+                CVMetalTextureRef metalTextureRef = NULL;
+                
+                // 4. Create a CVMetalTexture from the CVPixelBuffer.
+                status = CVMetalTextureCacheCreateTextureFromImage(
+                    kCFAllocatorDefault,
+                    _textureCache,
+                    pixelBuffer, // USE THE NEWLY CREATED PIXEL BUFFER HERE
+                    NULL,
+                    MTLPixelFormatBGRA8Unorm, // Must match the CVPixelBuffer format
+                    self->_textureWidth,
+                    self->_textureHeight,
+                    0,
+                    &metalTextureRef
+                );
+                
+                
+
+                if (status == kCVReturnSuccess && metalTextureRef) {
+                    // Get the underlying MTLTexture from the CoreVideo texture
+                    id<MTLTexture> sourceTexture = CVMetalTextureGetTexture(metalTextureRef);
+                    if (sourceTexture) {
+                        // Atomically store the new texture. The render thread will pick it up.
+                        self.latestFrameTexture = sourceTexture;
+                        self.hasNewFrame = YES;
+                        
+                        NSLog(@"[BalancyWebView] YES YES YES");
+                    }
+                    else {
+                    NSLog(@"[BalancyWebView] no texture");
+                    }
+                    // IMPORTANT: Release the Core Video texture reference
+                    CFRelease(metalTextureRef);
+                } else {
+                    NSLog(@"[BalancyWebView] Failed to create texture from image, status: %d", status);
+                }
+                
+                // Release the CVPixelBuffer we created. The texture cache will retain it if needed.
+                CFRelease(pixelBuffer);
             }];
-            return;
         }
-        
-        // Fallback для старых версий macOS
-        [self fallbackLayerRendering];
-        
     } @catch (NSException *exception) {
-        // Игнорируем ошибки
+        // ignore
     }
 }
+// 
+// // This script tricks the browser into thinking it's always visible and active.
+// - (void)injectActivityBoostScript {
+//     if (!_webView) return;
+//     
+//     NSString *activityScript = @"\
+//         (function() { \
+//             console.log('🚀 Injecting Activity Boost Script'); \
+//             \
+//             /* Override visibility API to always report as visible */ \
+//             Object.defineProperty(document, 'hidden', { value: false, configurable: true }); \
+//             Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true }); \
+//             \
+//             /* Force CSS animations and transitions to run */ \
+//             const style = document.createElement('style'); \
+//             style.textContent = '*, *::before, *::after { animation-play-state: running !important; }'; \
+//             document.head.appendChild(style); \
+//             \
+//             /* Periodically trigger a micro-task to keep the browser's renderer active */ \
+//             setInterval(() => { \
+//                 /* A lightweight operation that forces a style recalculation */ \
+//                 document.body.style.transform = document.body.style.transform ? '' : 'translateZ(0)'; \
+//             }, 200); /* every 200ms */ \
+//             \
+//             console.log('✅ Activity Boost Script Applied'); \
+//         })();";
+//     
+//     [_webView evaluateJavaScript:activityScript completionHandler:^(id result, NSError *error) {
+//         if (error) {
+//             LogToUnity([[NSString stringWithFormat:@"Activity script error: %@", error.localizedDescription] UTF8String]);
+//         } else {
+//             LogToUnity("Activity boost script injected successfully.");
+//         }
+//     }];
+// }
 
 // OPTIMIZATION #2 & #3: Optimized fallback layer rendering
 - (void)fallbackLayerRendering {
-    if (!_webView.superview || !_webView.layer || !_pixelBuffer || !_persistentContext) {
+    if (!_webView.superview || !_webView.layer) {
         return;
     }
     
@@ -595,36 +671,6 @@ void LogToUnity(const char* message) {
     
     NSString *pavelLog = [NSString stringWithFormat:@">>>Fallback Snapshot done!!"];
     LogToUnity([pavelLog UTF8String]);
-    
-    // OPTIMIZATION #2: Use persistent context instead of creating new one
-    if (_persistentContext) {
-        // Fill with transparent background
-        CGContextClearRect(_persistentContext, CGRectMake(0, 0, _textureWidth, _textureHeight));
-        
-        // Save context state
-        CGContextSaveGState(_persistentContext);
-        
-        // Better scaling and rendering quality
-        CGFloat scaleX = (CGFloat)_textureWidth / _webView.frame.size.width;
-        CGFloat scaleY = (CGFloat)_textureHeight / _webView.frame.size.height;
-        CGContextScaleCTM(_persistentContext, scaleX, scaleY);
-        CGContextSetInterpolationQuality(_persistentContext, kCGInterpolationHigh);
-        CGContextSetBlendMode(_persistentContext, kCGBlendModeCopy);
-        
-        // Render the WebView layer with all sublayers
-        [_webView.layer renderInContext:_persistentContext];
-        
-        // Restore context state
-        CGContextRestoreGState(_persistentContext);
-        
-        _pixelDataReady = YES;
-        _hasNewFrame = YES;  // OPTIMIZATION #3: Mark new frame available
-        
-        // DEBUG: Log successful fallback rendering occasionally
-//         if (_debugLogging && (rand() % 200 == 0)) { // Log every ~3 seconds at 60fps
-//             LogToUnity("OPTIMIZED: Fallback layer rendering completed successfully");
-//         }    
-    }
 }
 
 #pragma mark - WKScriptMessageHandler
@@ -653,6 +699,7 @@ void LogToUnity(const char* message) {
     }
     
     [self injectTransparencyScript];
+//     [self injectActivityBoostScript];
     
     // Простая проверка контента
     [_webView evaluateJavaScript:@"document.body ? document.body.innerHTML.length : -1" completionHandler:^(id result, NSError *error) {
@@ -1241,6 +1288,197 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
 // C interface for Unity
 extern "C" {
 
+void _balancyTriggerRender() {
+    @autoreleasepool {
+        if (_embeddedController != nil) {
+            // This simply calls the same method the timer was supposed to call.
+            [_embeddedController renderToTexture];
+        }
+    }
+}
+
+// Add this helper function inside your extern "C" block
+void LogTextureInfo(const char* name, id<MTLTexture> texture) {
+    if (texture == nil) {
+        NSString* logMsg = [NSString stringWithFormat:@"[Texture Info] %s: Is NIL", name];
+        LogToUnity([logMsg UTF8String]);
+        return;
+    }
+    NSString* logMsg = [NSString stringWithFormat:@"[Texture Info] %s: Ptr<%p> WxH(%lu x %lu) Format:%lu",
+                        name,
+                        texture,
+                        (unsigned long)texture.width,
+                        (unsigned long)texture.height,
+                        (unsigned long)texture.pixelFormat];
+    LogToUnity([logMsg UTF8String]);
+}
+
+// -------------------------------------------------------------------
+// MARK: - Unity Plugin Load/Unload
+// -------------------------------------------------------------------
+
+// The event callback is now ONLY responsible for cleanup.
+static void OnGraphicsDeviceEvent(UnityGfxDeviceEventType eventType)
+{
+    switch (eventType)
+    {
+        // We no longer handle Initialization here.
+        case kUnityGfxDeviceEventInitialize:
+            break;
+            
+        case kUnityGfxDeviceEventShutdown:
+        {
+            LogToUnity("Graphics Event: Shutdown");
+            g_IsGraphicsInitialized = 0; // Important for restarts
+            
+            if (_textureCache) {
+                CVMetalTextureCacheFlush(_textureCache, 0);
+                CFRelease(_textureCache);
+                _textureCache = nil;
+            }
+            _commandQueue = nil;
+            _metalDevice = nil;
+            _unityDestinationTexture = nil;
+            break;
+        }
+        case kUnityGfxDeviceEventBeforeReset: { break; }
+        case kUnityGfxDeviceEventAfterReset: { break; }
+    }
+}
+
+// This is the new, more direct initialization function.
+// It no longer relies on the event callback for initialization.
+void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API
+UnityPluginLoad(IUnityInterfaces* unityInterfaces)
+{
+    LogToUnity("UnityPluginLoad: Attempting DIRECT initialization...");
+    
+    // --- DIRECT INITIALIZATION ---
+    // We will not wait for the event. We will try to initialize now.
+    _metalDevice = MTLCreateSystemDefaultDevice();
+
+    if (_metalDevice == nil) {
+        LogToUnity("FATAL ERROR: MTLCreateSystemDefaultDevice() failed in UnityPluginLoad.");
+        g_IsGraphicsInitialized = 0;
+        return;
+    }
+
+    _commandQueue = [_metalDevice newCommandQueue];
+    CVReturn err = CVMetalTextureCacheCreate(kCFAllocatorDefault, NULL, _metalDevice, NULL, &_textureCache);
+    
+    if (err != kCVReturnSuccess) {
+        LogToUnity("FATAL ERROR: Failed to create CVMetalTextureCache in UnityPluginLoad.");
+        g_IsGraphicsInitialized = 0;
+        return;
+    }
+    
+    // If we reached here, everything succeeded.
+    LogToUnity("✅ SUCCESS: Direct graphics initialization complete.");
+    g_IsGraphicsInitialized = 1; // Set the flag for C# to read
+    
+    // We can still register the shutdown callback for good hygiene.
+    s_UnityInterfaces = unityInterfaces;
+    s_UnityGraphics = s_UnityInterfaces->Get<IUnityGraphics>();
+    if (s_UnityGraphics) {
+        s_UnityGraphics->RegisterDeviceEventCallback(OnGraphicsDeviceEvent);
+    }
+}
+
+void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginUnload()
+{
+    // Unregister the callback when the plugin is unloaded.
+    if (s_UnityGraphics) {
+        s_UnityGraphics->UnregisterDeviceEventCallback(OnGraphicsDeviceEvent);
+    }
+    LogToUnity("UnityPluginUnload: Cleaned up Balancy WebView Plugin.");
+}
+
+// -------------------------------------------------------------------
+// MARK: - Functions Called from C#
+// -------------------------------------------------------------------
+
+// This function is still needed to tell the plugin which texture to draw into.
+void _balancySetDestinationTexture(void* texturePtr, int width, int height) {
+        LogToUnity("_balancySetDestinationTexture");
+
+    if (_metalDevice == nil) {
+         LogToUnity("ERROR: _balancySetDestinationTexture called but Metal device is not initialized!");
+        return;
+    }
+    if (!texturePtr) {
+        LogToUnity("ERROR: Received null destination texture from Unity.");
+        return;
+    }
+    _unityDestinationTexture = (__bridge id<MTLTexture>)texturePtr;
+    
+    LogTextureInfo("Unity Dest Texture", _unityDestinationTexture);
+    
+    if (_embeddedController) {
+        [_embeddedController updateTexture:width height:height];
+    }
+
+    NSString* logMsg = [NSString stringWithFormat:@"✅ Set destination texture: %dx%d", width, height];
+    LogToUnity([logMsg UTF8String]);
+}
+
+static int frameCount = 0;
+
+// This render event function remains IDENTICAL.
+// It will use the _commandQueue and _unityDestinationTexture set by the functions above.
+static void OnRenderEvent(int eventID) {
+    frameCount++;
+    if(frameCount % 180 == 0) {
+        
+    }
+    
+    if (_embeddedController == nil || !_embeddedController.hasNewFrame || _unityDestinationTexture == nil) {
+        NSString *logMsg = [NSString stringWithFormat:@"----333--------------------------%@", _embeddedController.hasNewFrame ? @"YES" : @"NO"];
+        LogToUnity([logMsg UTF8String]);
+    }
+    else {
+        NSString *logMsg = [NSString stringWithFormat:@"----444--------------------------%@", _embeddedController.hasNewFrame ? @"YES" : @"NO"];
+        LogToUnity([logMsg UTF8String]);
+    }
+    
+    if (_embeddedController == nil || !_embeddedController.hasNewFrame || _unityDestinationTexture == nil) {
+        return;
+    }
+
+    id<MTLTexture> sourceTexture = _embeddedController.latestFrameTexture;
+    if (sourceTexture == nil) {
+        LogToUnity("--- No texture ---");
+    
+        return;
+    }
+    
+    LogToUnity("--- Blit Command Frame Check ---");
+    LogTextureInfo("Source (Our Plugin)", sourceTexture);
+    LogTextureInfo("Destination (Unity)", _unityDestinationTexture);
+    LogToUnity("------------------------------");
+
+    id<MTLCommandBuffer> commandBuffer = [_commandQueue commandBuffer];
+    id<MTLBlitCommandEncoder> blitEncoder = [commandBuffer blitCommandEncoder];
+
+    [blitEncoder copyFromTexture:sourceTexture
+                     sourceSlice:0
+                     sourceLevel:0
+                    sourceOrigin:(MTLOrigin){0, 0, 0}
+                      sourceSize:(MTLSize){sourceTexture.width, sourceTexture.height, 1}
+                       toTexture:_unityDestinationTexture
+                destinationSlice:0
+                destinationLevel:0
+               destinationOrigin:(MTLOrigin){0, 0, 0}];
+
+    [blitEncoder endEncoding];
+    [commandBuffer commit];
+
+    _embeddedController.hasNewFrame = NO;
+}
+
+UnityRenderingEvent GetRenderEventFunc() {
+    return OnRenderEvent;
+}
+
 bool _balancyOpenWebView(const char* url) {
     @autoreleasepool {
         LogToUnity("_balancyOpenWebView called");
@@ -1457,48 +1695,6 @@ bool _balancySendScrollEvent(int x, int y, float deltaX, float deltaY) {
             return true;
         }
         return false;
-    }
-}
-
-// OPTIMIZATION #3: Smart sync - only copy data when new frame is available
-bool _balancyGetEmbeddedPixelData(unsigned char* buffer, int bufferSize) {
-    @autoreleasepool {
-        if (_embeddedController == nil) {
-            LogToUnity("_balancyGetEmbeddedPixelData: _embeddedController is nil");
-            return false;
-        }
-        
-        // OPTIMIZATION #3: Check if new frame is available
-        if (!_embeddedController.hasNewFrame) {
-            // No new frame - avoid unnecessary copying
-            return false;
-        }
-        
-        if (!_embeddedController.pixelDataReady) {
-            LogToUnity("_balancyGetEmbeddedPixelData: pixel data not ready");
-            return false;
-        }
-        
-        if (!_embeddedController.pixelBuffer) {
-            LogToUnity("_balancyGetEmbeddedPixelData: pixel buffer is null");
-            return false;
-        }
-        
-        size_t expectedSize = _embeddedController.textureWidth * _embeddedController.textureHeight * 4;
-        if (bufferSize < expectedSize) {
-            NSString *logMsg = [NSString stringWithFormat:@"_balancyGetEmbeddedPixelData: buffer too small. Expected: %zu, got: %d", expectedSize, bufferSize];
-            LogToUnity([logMsg UTF8String]);
-            return false;
-        }
-        
-        memcpy(buffer, _embeddedController.pixelBuffer, expectedSize);
-        
-        // OPTIMIZATION #3: Mark frame as consumed
-        _embeddedController.hasNewFrame = NO;
-        
-//         NSString *logMsg = [NSString stringWithFormat:@"*balancyGetEmbeddedPixelData: copied %zu bytes successfully", expectedSize];
-//         LogToUnity([logMsg UTF8String]);
-        return true;
     }
 }
 

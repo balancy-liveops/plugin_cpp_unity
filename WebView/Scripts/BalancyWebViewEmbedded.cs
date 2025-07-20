@@ -86,7 +86,10 @@ namespace Balancy.WebView
             go.AddComponent<RawImage>();
             var instance = go.AddComponent<BalancyWebViewEmbedded>();
 
-            goCanvas.hideFlags = HideFlags.HideInHierarchy;
+            var nn = go.AddComponent<MetalWebViewRenderer>();
+            // goCanvas.AddComponent<Renderer>();
+
+            // goCanvas.hideFlags = HideFlags.HideInHierarchy;
             DontDestroyOnLoad(goCanvas);
 
             instance._parentGameObject = goCanvas;
@@ -98,6 +101,7 @@ namespace Balancy.WebView
         {
             _instance = this;
             _renderer = GetComponent<RawImage>();
+            _renderer.material = Resources.Load("WebViewUnkitMat", typeof(Material)) as Material;
             _rectTransform = GetComponent<RectTransform>();
             
             _webView = BalancyWebView.Instance;
@@ -129,7 +133,7 @@ namespace Balancy.WebView
             #if UNITY_EDITOR_OSX
             if (_isInitialized && _webView != null && _webView.IsWebViewEmbedded())
             {
-                UpdateTextureFromNative();
+                // UpdateTextureFromNative();
             }
             #endif
         }
@@ -308,7 +312,7 @@ namespace Balancy.WebView
             if (_renderer != null)
             {
                 _renderer.texture = _textureBuffer;
-                _renderer.enabled = false; // Hide until first texture update
+                // _renderer.enabled = false; // Hide until first texture update
             }
             
             // Reset first texture update flag
@@ -460,6 +464,16 @@ namespace Balancy.WebView
         #if UNITY_EDITOR_OSX
         [System.Runtime.InteropServices.DllImport("libBalancyWebViewMac")]
         private static extern bool _balancyGetEmbeddedPixelData(System.IntPtr buffer, int bufferSize);
+        
+        /// <summary>
+        /// Called from native code to log messages to Unity console
+        /// This method is called via UnitySendMessage from the native plugin
+        /// </summary>
+        /// <param name="message">The log message from native code</param>
+        public void LogFromNative(string message)
+        {
+            Debug.Log($"[BalancyWebView Native] {message}");
+        }
         
         private void UpdateTextureFromNative()
         {
