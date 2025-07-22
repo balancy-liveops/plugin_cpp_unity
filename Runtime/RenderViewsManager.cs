@@ -1,4 +1,5 @@
 using System;
+using AOT;
 using Balancy.Data.SmartObjects;
 using Balancy.Models;
 using Balancy.Models.SmartObjects;
@@ -81,6 +82,7 @@ namespace Balancy
             
         }
         
+        [MonoPInvokeCallback(typeof(LibraryMethods.General.WebviewRequestCallback))]
         private static void OnNotificationReceived(string notification)
         {
             _webView.SendMessageToWebView(notification);
