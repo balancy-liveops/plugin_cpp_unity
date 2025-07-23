@@ -431,9 +431,10 @@ namespace Balancy.WebView
 
             _instance = this;
             DontDestroyOnLoad(gameObject);
-            
+
             // Initialize platform-specific plugin
-            #if UNITY_ANDROID && !UNITY_EDITOR
+#if !UNITY_EDITOR
+#if UNITY_ANDROID
             // For Android, initialize via AndroidJavaObject
             try 
             {
@@ -448,15 +449,16 @@ namespace Balancy.WebView
             {
                 Debug.LogError($"Failed to initialize Android WebView plugin: {e.Message}");
             }
-            #else
-            // For iOS/macOS, register callbacks normally (they work fine there)
+#endif
+#if UNITY_IOS
+            _balancyRegisterCacheCompletedCallback(OnCacheCompletedReceived);
+#endif
+#endif
+            
+#if UNITY_IOS || UNITY_STANDALONE_OSX
             _balancyRegisterMessageCallback(OnMessageReceived);
             _balancyRegisterLoadCompletedCallback(OnLoadCompletedReceived);
-            
-            #if UNITY_IOS && !UNITY_EDITOR
-            _balancyRegisterCacheCompletedCallback(OnCacheCompletedReceived);
-            #endif
-            #endif
+#endif
         }
 
         private void OnDestroy()
@@ -483,8 +485,13 @@ namespace Balancy.WebView
         /// <returns>True if the WebView was opened successfully, false otherwise</returns>
         public bool OpenWebView(string url, string ownerJson, string additionalInfo)
         {
+#if UNITY_EDITOR_OSX
             // Use Screen dimensions to match game view size
             return OpenWebView(url, ownerJson, additionalInfo, Screen.width, Screen.height);
+#endif
+            Debug.LogWarning("Embedded WebView is only supported in Unity Editor on macOS");
+
+            return false;
         }
         
         /// <summary>
