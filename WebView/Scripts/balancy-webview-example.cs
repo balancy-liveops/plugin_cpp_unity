@@ -232,38 +232,6 @@ namespace Balancy.WebView.Examples
         }
         
         /// <summary>
-        /// Sends example JSON data to the WebView
-        /// </summary>
-        public void SendJsonData()
-        {
-            if (!_webView.IsWebViewOpen())
-            {
-                LogStatus("WebView is not open");
-                return;
-            }
-            
-            // Example JSON data
-            string jsonData = JsonUtility.ToJson(new PlayerData {
-                playerId = "player123",
-                playerName = "JohnDoe",
-                score = 1500,
-                level = 5,
-                items = new string[] { "sword", "shield", "potion" }
-            });
-            
-            bool success = _webView.SendMessageToWebView(jsonData);
-            
-            if (success)
-            {
-                LogStatus("JSON data sent");
-            }
-            else
-            {
-                LogStatus("Failed to send JSON data");
-            }
-        }
-        
-        /// <summary>
         /// Sets the WebView background transparency
         /// </summary>
         public void SetTransparentBackground(bool transparent)
@@ -308,8 +276,6 @@ namespace Balancy.WebView.Examples
             {
                 LogStatus("WebView loaded successfully");
                 
-                // You can send initial data to the WebView here
-                SendPlayerInfo();
             }
             else
             {
@@ -325,38 +291,7 @@ namespace Balancy.WebView.Examples
             LogStatus("WebView was closed");
             UpdateUIState();
         }
-        
-        /// <summary>
-        /// Send player information to the WebView
-        /// </summary>
-        private void SendPlayerInfo()
-        {
-            string playerInfo = JsonUtility.ToJson(new PlayerData {
-                playerId = "player123",
-                playerName = "JohnDoe",
-                score = 1500,
-                level = 5,
-                items = new string[] { "sword", "shield", "potion" }
-            });
-            
-            _webView.SendMessageToWebView("{\"action\":\"playerInfo\",\"data\":" + playerInfo + "}");
-        }
-        
-        /// <summary>
-        /// Send game state to the WebView
-        /// </summary>
-        private void SendGameState()
-        {
-            string gameState = JsonUtility.ToJson(new GameState {
-                currentLevel = 5,
-                score = 12500,
-                timeRemaining = 120,
-                lives = 3
-            });
-            
-            _webView.SendMessageToWebView("{\"action\":\"gameState\",\"data\":" + gameState + "}");
-        }
-        
+    
         /// <summary>
         /// Log a status message to the UI
         /// </summary>

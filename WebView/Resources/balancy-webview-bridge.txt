@@ -11,14 +11,15 @@ const balancy = {};
         GetDocument: 3,
         GetLocalization: 10,
         GetImageUrl: 11,
+        GetInfo: 12,
+        CanBuyGroupOffer: 13,
 
         GetBattlePassProgress: 20,
 
         BuyOffer: 101,
         BuyGroupOffer: 102,
         BuyShopSlot: 103,
-
-        GetInfo: 110,
+        BattlePassClaim: 104,
 
         CloseWindow: 200,
         BalancyIsReady: 201,
@@ -40,7 +41,11 @@ const balancy = {};
         OnNewOfferActivated: 102,
         OnOfferDeactivated: 103,
         OnNewOfferGroupActivated: 104,
-        OnOfferGroupDeactivated: 105
+        OnOfferGroupDeactivated: 105,
+
+        OnShopSlotWasPurchased: 120,
+        OnOfferWasPurchased: 121,
+        OnOfferGroupWasPurchased: 122,
     };
 
     balancy.findDomElement = (dataId, parentElement) => {
@@ -60,7 +65,6 @@ const balancy = {};
         return balancy.sendRequest(null, RequestAction.CloseWindow, {id: source});
     };
 
-
     balancy.getDocumentValue = (id, depth) => {
         return balancy.sendRequest(null, RequestAction.GetDocument, {id, depth}).then(result => {
             return JSON.parse(result);
@@ -70,6 +74,12 @@ const balancy = {};
     balancy.getBattlePassProgress = () => {
         return balancy.sendRequest(null, RequestAction.GetBattlePassProgress, {id: window.balancyViewOwner.unnyIdGameEvent}).then(result => {
             return JSON.parse(result);
+        });
+    };
+
+    balancy.claimBattlePassReward = (lineId, index) => {
+        return balancy.sendRequest(null, RequestAction.BattlePassClaim, {id: window.balancyViewOwner.unnyIdGameEvent, lineId, index}).then(response => {
+            return response && response === 'ok';
         });
     };
 
@@ -87,6 +97,10 @@ const balancy = {};
 
     balancy.delayIsReady = () => {
         balancy.delayedIsReady = true;
+    };
+
+    balancy.canBuyGroupOffer = (index) => {
+        return balancy.sendRequest(null, RequestAction.CanBuyGroupOffer, {instanceId: window.balancyViewOwner.instanceId, index});
     };
 
     async function prepareSprite(element, id) {
@@ -180,8 +194,10 @@ const balancy = {};
                 return;
 
             const key = element.getAttribute('data-localization-key');
-            const localizedText = await balancy.getLocalizedText(key);
-            element.textContent = localizedText;
+            if (key) {
+                const localizedText = await balancy.getLocalizedText(key);
+                element.textContent = localizedText;
+            }
 
             element.classList.add('balancy-text-prepared');
         });
@@ -221,6 +237,23 @@ const balancy = {};
         await Promise.all(imagesPromises);
 
         document.dispatchEvent(new CustomEvent('balancy-images-complete'));
+    }
+
+    function refreshButtonAvailability(button) {
+        const actionIdStr = button.getAttribute('data-button-action');
+        if (!actionIdStr)
+            return;
+        const actionId = parseInt(actionIdStr, 10);
+
+        switch (actionId) {
+            case RequestAction.BuyGroupOffer:
+                const index = parseInt(button.getAttribute('data-index')) || 0;
+                balancy.canBuyGroupOffer(index).then(result => {
+                    console.log(">>>>balancy.canBuyGroupOffer ", result);
+                    button.disabled = !result;
+                });
+                break;
+        }
     }
 
     function balancyButtonClicked(button) {
@@ -306,6 +339,8 @@ const balancy = {};
                 balancyButtonClicked(element);
             };
 
+            refreshButtonAvailability(element);
+
             element.addEventListener('click', element._balancyClickHandler);
 
             element.classList.add('balancy-button-prepared');
@@ -345,7 +380,7 @@ const balancy = {};
             if (type === InfoType.TimeLeft) {
                 const timerElement = element;
                 function setTimeValue() {
-                    timerElement.textContent = balancy.formatTime(balancy.getTimeLeft(), timerElement.getAttribute('data-text-format') || '{hh}:{mm}:{ss}');
+                    timerElement.textContent = balancy.formatTime(balancy.getTimeLeft());
                 }
                 setInterval(setTimeValue, 1000);
                 setTimeValue();
@@ -380,9 +415,17 @@ const balancy = {};
         if (!data || typeof data !== 'object')
             return;
 
-        if (data.type === NotificationType.OnOfferDeactivated || data.type === NotificationType.OnOfferGroupDeactivated) {
-            if (window.balancyViewOwner.instanceId === data.id)
-                balancy.closeView('Offer deactivated');
+        console.log(">>>notificationReceived ", data);
+        switch (data.type) {
+            case NotificationType.OnOfferDeactivated:
+            case NotificationType.OnOfferGroupDeactivated:
+                if (window.balancyViewOwner.instanceId === data.id)
+                    balancy.closeView('Offer deactivated');
+                break;
+            case NotificationType.OnOfferGroupWasPurchased:
+                const elements = document.querySelectorAll(`[data-button-action="${RequestAction.BuyGroupOffer}"]`);
+                elements.forEach(refreshButtonAvailability);
+                break;
         }
     }
 
@@ -470,40 +513,24 @@ const balancy = {};
         return window.balancySettings.secondsLeft - timeSpend;
     }
 
-    balancy.formatTime = function (seconds, format) {
+    balancy.formatTime = function (seconds) {
         if (seconds > 3600 * 24 * 365) // 1 year
             return 'oo';
 
-        const hasDays = format.includes('{d}');
-        const hasHours = format.includes('{h}') || format.includes('{hh}');
-        const hasMinutes = format.includes('{m}') || format.includes('{mm}');
+        if (window.customFormatTime)
+            return window.customFormatTime(seconds);
 
-        let days = 0, hours = 0, minutes = 0, secs = 0;
+        const days = Math.floor(seconds / 86400);
+        const hours = Math.floor((seconds % 86400) / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        const secs = seconds % 60;
 
-        if (hasDays) {
-            days = Math.floor(seconds / 86400);
-            hours = Math.floor((seconds % 86400) / 3600);
-            minutes = Math.floor((seconds % 3600) / 60);
-            secs = seconds % 60;
-        } else if (hasHours) {
-            hours = Math.floor(seconds / 3600);
-            minutes = Math.floor((seconds % 3600) / 60);
-            secs = seconds % 60;
-        } else if (hasMinutes) {
-            minutes = Math.floor(seconds / 60);
-            secs = seconds % 60;
-        } else {
-            secs = seconds;
-        }
-
-        return format
-            .replace('{d}', days.toString())
-            .replace('{hh}', hours.toString().padStart(2, '0'))
-            .replace('{h}', hours.toString())
-            .replace('{mm}', minutes.toString().padStart(2, '0'))
-            .replace('{m}', minutes.toString())
-            .replace('{ss}', secs.toString().padStart(2, '0'))
-            .replace('{s}', secs.toString());
+        if (days > 0) {
+            if (hours > 0)
+                return `${days}d ${hours}h`;
+            return `${days}d`;
+        } else
+            return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     }
 
     balancy.formatDataTemplate = function(formatStr, data) {

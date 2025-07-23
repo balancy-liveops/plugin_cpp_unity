@@ -10,8 +10,8 @@ namespace Balancy
     public class RenderViewsManager
     {
 #if UNITY_EDITOR
-        private const bool UseEmbeddedWebView = true;
-        // private const bool UseEmbeddedWebView = false;
+        // private const bool UseEmbeddedWebView = true;
+        private const bool UseEmbeddedWebView = false;
 #else
         private const bool UseEmbeddedWebView = false;
 #endif
@@ -81,6 +81,7 @@ namespace Balancy
             
         }
         
+        [AOT.MonoPInvokeCallback(typeof(LibraryMethods.General.WebviewRequestCallback))]
         private static void OnNotificationReceived(string notification)
         {
             _webView.SendMessageToWebView(notification);
@@ -163,7 +164,7 @@ namespace Balancy
         }
 #endif
 
-        private static void OnMessageReceived(string msg, Action<string> callback)
+        private static void OnMessageReceived(string msg)
         {
             Debug.Log("Incomming = " + msg);
             
@@ -173,11 +174,13 @@ namespace Balancy
                 msg= "{\"action\":200, \"params\":{}}";
             }
             
-            RunRequestInTheCorePlugin(msg, (response) =>
-            {
-                Debug.Log("output = " + response);
-                callback(response);
-            });
+            RunRequestInTheCorePlugin(msg, OnMessageResponseReceived);
+        }
+
+        [AOT.MonoPInvokeCallback(typeof(LibraryMethods.General.WebviewRequestCallback))]
+        private static void OnMessageResponseReceived(string response)
+        {
+            _webView.SendMessageToWebView(response);
         }
         
         enum RequestAction {
@@ -186,12 +189,13 @@ namespace Balancy
             SetProfile = 2,
             GetLocalization = 10,
             GetImageUrl = 11,
+            GetInfo = 12,
+            CanBuyGroupOffer = 13,
 
             BuyOffer = 101,
             BuyGroupOffer = 102,
             BuyShopSlot = 103,
-            
-            GetInfo = 110,
+            BattlePassClaim = 104,
 
             CloseWindow = 200,
 

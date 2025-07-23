@@ -2,13 +2,13 @@
     // Предотвращаем повторную инъекцию
     if (window.balancyPerformanceInjected) return;
     window.balancyPerformanceInjected = true;
-    
+
     console.log('[BalancyWebView] Injecting universal performance optimizations for game-like WebView');
-    
+
     // Универсальные CSS стили для игрового WebView
     function injectGameUIStyles() {
         if (document.getElementById('balancy-game-ui-styles')) return;
-        
+
         const style = document.createElement('style');
         style.id = 'balancy-game-ui-styles';
         style.textContent = `
@@ -150,17 +150,17 @@
                 }
             }
             
-            /* === ОТКЛЮЧЕНИЕ АНИМАЦИЙ БРАУЗЕРА === */
-            *, *::before, *::after {
-                -webkit-animation-duration: 0s !important;
-                animation-duration: 0s !important;
-                -webkit-transition-duration: 0s !important;
-                transition-duration: 0s !important;
-                -webkit-animation-delay: 0s !important;
-                animation-delay: 0s !important;
-                -webkit-transition-delay: 0s !important;
-                transition-delay: 0s !important;
-            }
+            // /* === ОТКЛЮЧЕНИЕ АНИМАЦИЙ БРАУЗЕРА === */
+            // *, *::before, *::after {
+            //     -webkit-animation-duration: 0s !important;
+            //     animation-duration: 0s !important;
+            //     -webkit-transition-duration: 0s !important;
+            //     transition-duration: 0s !important;
+            //     -webkit-animation-delay: 0s !important;
+            //     animation-delay: 0s !important;
+            //     -webkit-transition-delay: 0s !important;
+            //     transition-delay: 0s !important;
+            // }
             
             /* === АНИМАЦИИ КНОПОК === */
             /* Переопределяем отключение анимаций для кнопок */
@@ -236,6 +236,112 @@
                 transition-duration: 0.05s !important;
             }
             
+            /* === СТИЛИ ДЛЯ DISABLED/ЗАБЛОКИРОВАННЫХ КНОПОК === */
+            
+            /* Disabled кнопки - отключение всех анимаций и взаимодействий */
+            button:disabled,
+            input[type="button"]:disabled,
+            input[type="submit"]:disabled,
+            input[type="reset"]:disabled,
+            .btn:disabled,
+            .btn.disabled,
+            [role="button"][disabled],
+            [role="button"].disabled,
+            [role="button"][aria-disabled="true"],
+            a[role="button"].disabled,
+            a[aria-disabled="true"],
+            div[role="button"].disabled,
+            div[aria-disabled="true"],
+            span[role="button"].disabled,
+            span[aria-disabled="true"],
+            .button:disabled,
+            .button.disabled,
+            .ui-button:disabled,
+            .ui-button.disabled,
+            .clickable:disabled,
+            .clickable.disabled,
+            .balancy-button-processing {
+                /* Визуальное состояние */
+                opacity: 0.5 !important;
+                filter: grayscale(0.7) !important;
+                cursor: not-allowed !important;
+                
+                /* Отключение всех взаимодействий */
+                pointer-events: none !important;
+                
+                /* Отключение анимаций */
+                transform: scale(1) !important;
+                -webkit-transform: scale(1) !important;
+                -webkit-transition: none !important;
+                transition: none !important;
+                
+                /* Отключение hover эффектов */
+                box-shadow: none !important;
+                -webkit-box-shadow: none !important;
+            }
+            
+            /* Отключение :active состояния для disabled кнопок */
+            button:disabled:active,
+            input[type="button"]:disabled:active,
+            input[type="submit"]:disabled:active,
+            input[type="reset"]:disabled:active,
+            .btn:disabled:active,
+            .btn.disabled:active,
+            [role="button"][disabled]:active,
+            [role="button"].disabled:active,
+            [role="button"][aria-disabled="true"]:active,
+            a[role="button"].disabled:active,
+            a[aria-disabled="true"]:active,
+            div[role="button"].disabled:active,
+            div[aria-disabled="true"]:active,
+            span[role="button"].disabled:active,
+            span[aria-disabled="true"]:active,
+            .button:disabled:active,
+            .button.disabled:active,
+            .ui-button:disabled:active,
+            .ui-button.disabled:active,
+            .clickable:disabled:active,
+            .clickable.disabled:active,
+            .balancy-button-processing:active {
+                transform: scale(1) !important;
+                -webkit-transform: scale(1) !important;
+                -webkit-transition: none !important;
+                transition: none !important;
+                opacity: 0.5 !important;
+                pointer-events: none !important;
+            }
+            
+            /* Специальные стили для кнопок в процессе обработки */
+            .balancy-button-processing {
+                position: relative !important;
+            }
+            
+            /* Опциональный loading индикатор для processing кнопок */
+            .balancy-button-processing::after {
+                content: '' !important;
+                position: absolute !important;
+                top: 50% !important;
+                left: 50% !important;
+                width: 16px !important;
+                height: 16px !important;
+                margin: -8px 0 0 -8px !important;
+                border: 2px solid transparent !important;
+                border-top: 2px solid currentColor !important;
+                border-radius: 50% !important;
+                animation: balancy-spin 1s linear infinite !important;
+                -webkit-animation: balancy-spin 1s linear infinite !important;
+            }
+            
+            @keyframes balancy-spin {
+                0% { transform: rotate(0deg); }
+                100% { transform: rotate(360deg); }
+            }
+            
+            @-webkit-keyframes balancy-spin {
+                0% { -webkit-transform: rotate(0deg); }
+                100% { -webkit-transform: rotate(360deg); }
+            }
+            
             /* === ДОПОЛНИТЕЛЬНЫЕ ОПТИМИЗАЦИИ === */
             
             /* Отключение focus outline */
@@ -267,11 +373,11 @@
                 -webkit-text-fill-color: inherit !important;
             }
         `;
-        
+
         (document.head || document.documentElement).appendChild(style);
         console.log('[BalancyWebView] Game UI styles injected successfully');
     }
-    
+
     // Универсальные JavaScript оптимизации
     function applyGameUIBehavior() {
         // Отключение контекстного меню
@@ -280,32 +386,32 @@
             e.stopPropagation();
             return false;
         }, { passive: false, capture: true });
-        
+
         // Отключение выделения текста
         document.addEventListener('selectstart', function(e) {
             e.preventDefault();
             e.stopPropagation();
             return false;
         }, { passive: false, capture: true });
-        
+
         // Отключение drag and drop
         document.addEventListener('dragstart', function(e) {
             e.preventDefault();
             e.stopPropagation();
             return false;
         }, { passive: false, capture: true });
-        
+
         // iOS специфичные оптимизации
         if (/iPad|iPhone|iPod/.test(navigator.userAgent)) {
             console.log('[BalancyWebView] Applying iOS-specific optimizations');
-            
+
             // Отключение bounce эффекта
             document.addEventListener('touchmove', function(e) {
                 if (!['INPUT', 'TEXTAREA'].includes(e.target.tagName)) {
                     e.preventDefault();
                 }
             }, { passive: false });
-            
+
             // Предотвращение zoom при double tap
             let lastTouchEnd = 0;
             document.addEventListener('touchend', function(event) {
@@ -315,44 +421,44 @@
                 }
                 lastTouchEnd = now;
             }, { passive: false });
-            
+
             // Отключение callout
             document.addEventListener('touchstart', function(e) {
                 e.target.style.webkitTouchCallout = 'none';
             }, { passive: true });
         }
-        
+
         // Android специфичные оптимизации
         if (/Android/.test(navigator.userAgent)) {
             console.log('[BalancyWebView] Applying Android-specific optimizations');
-            
+
             // Предотвращение системных жестов по краям экрана
             document.addEventListener('touchstart', function(e) {
-                if (e.touches[0].clientX < 20 || 
+                if (e.touches[0].clientX < 20 ||
                     e.touches[0].clientX > window.innerWidth - 20 ||
                     e.touches[0].clientY < 20 ||
                     e.touches[0].clientY > window.innerHeight - 20) {
                     e.preventDefault();
                 }
             }, { passive: false });
-            
+
             // Отключение pull-to-refresh
             let startY = 0;
             document.addEventListener('touchstart', function(e) {
                 startY = e.touches[0].pageY;
             }, { passive: true });
-            
+
             document.addEventListener('touchmove', function(e) {
                 if (e.touches[0].pageY > startY && window.pageYOffset === 0) {
                     e.preventDefault();
                 }
             }, { passive: false });
         }
-        
+
         // Desktop специфичные оптимизации
         if (!/Mobi|Android/i.test(navigator.userAgent)) {
             console.log('[BalancyWebView] Applying Desktop-specific optimizations');
-            
+
             // Отключение клавиатурных сочетаний
             document.addEventListener('keydown', function(e) {
                 // Отключаем Ctrl+A, Ctrl+C, Ctrl+V, Ctrl+S, Ctrl+P и т.д.
@@ -364,21 +470,21 @@
                         return false;
                     }
                 }
-                
+
                 // Отключаем функциональные клавиши
                 const blockedKeyCodes = [
                     112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, // F1-F12
                     116, // F5 (Refresh)
                     123  // F12 (Dev Tools)
                 ];
-                
+
                 if (blockedKeyCodes.includes(e.keyCode)) {
                     e.preventDefault();
                     e.stopPropagation();
                     return false;
                 }
             }, { passive: false, capture: true });
-            
+
             // Отключение middle click scroll
             document.addEventListener('mousedown', function(e) {
                 if (e.button === 1) { // Middle mouse button
@@ -387,15 +493,15 @@
                 }
             }, { passive: false });
         }
-        
+
         console.log('[BalancyWebView] Game UI behavior applied successfully');
     }
-    
+
     // Функция инициализации
     function initializeGameUI() {
         injectGameUIStyles();
         applyGameUIBehavior();
-        
+
         // Добавляем meta viewport если его нет
         if (!document.querySelector('meta[name="viewport"]')) {
             const viewport = document.createElement('meta');
@@ -404,24 +510,24 @@
             document.head.appendChild(viewport);
             console.log('[BalancyWebView] Viewport meta tag added');
         }
-        
+
         console.log('[BalancyWebView] Game UI initialization completed');
-        
+
         // Уведомляем о завершении инициализации
         document.dispatchEvent(new CustomEvent('balancyGameUIReady', {
             detail: {
-                platform: /iPad|iPhone|iPod/.test(navigator.userAgent) ? 'iOS' : 
+                platform: /iPad|iPhone|iPod/.test(navigator.userAgent) ? 'iOS' :
                          /Android/.test(navigator.userAgent) ? 'Android' : 'Desktop',
                 timestamp: Date.now()
             }
         }));
     }
-    
+
     // Инициализируем когда DOM готов
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', initializeGameUI);
     } else {
         initializeGameUI();
     }
-    
+
 })();

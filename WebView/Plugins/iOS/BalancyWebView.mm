@@ -484,6 +484,7 @@ extern "C" {
     
     // Escape single quotes for JavaScript
     NSString *escapedMessage = [message stringByReplacingOccurrencesOfString:@"'" withString:@"\\'"];
+    escapedMessage = [escapedMessage stringByReplacingOccurrencesOfString:@"\"" withString:@"\\\""];
     
     // JavaScript to send the message to the web page
     NSString *script = [NSString stringWithFormat:@"if (balancy) { balancy._receiveMessageFromUnity('%@'); }", escapedMessage];

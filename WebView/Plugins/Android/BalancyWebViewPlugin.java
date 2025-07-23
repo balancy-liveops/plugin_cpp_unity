@@ -563,7 +563,7 @@ public class BalancyWebViewPlugin {
         // For Android, we need to call the JavaScript function directly
         // This matches the iOS implementation where Unity calls JS functions
         String script = "if (balancy && balancy._receiveMessageFromUnity) { " +
-                       "balancy._receiveMessageFromUnity('" + message.replace("'", "\\'") + "'); }";
+                       "balancy._receiveMessageFromUnity('" + message.replace("'", "\\'").replace("\"", "\\\"") + "'); }";
         
         currentActivity.runOnUiThread(() -> {
             webView.evaluateJavascript(script, result -> {

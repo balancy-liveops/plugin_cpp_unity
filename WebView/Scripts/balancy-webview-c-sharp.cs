@@ -114,7 +114,7 @@ namespace Balancy.WebView
         /// <summary>
         /// Event triggered when a message is received from the WebView
         /// </summary>
-        public Action<string, Action<string>> OnMessage;
+        public Action<string> OnMessage;
 
         /// <summary>
         /// Event triggered when the WebView finishes loading a page
@@ -626,6 +626,9 @@ namespace Balancy.WebView
         /// <returns>True if the message was sent successfully, false otherwise</returns>
         public bool SendMessageToWebView(string message)
         {
+            if (string.IsNullOrEmpty(message))
+                return false;
+            
             if (!_isWebViewOpen && !_isWebViewEmbedded)
             {
                 Debug.Log("Cannot send message: WebView is not open.");
@@ -967,11 +970,7 @@ namespace Balancy.WebView
             {
                 try
                 {
-                    OnMessage.Invoke(message, (response) =>
-                    {
-                        if (!string.IsNullOrEmpty(response))
-                            SendMessageToWebView(response);
-                    });
+                    OnMessage.Invoke(message);
                 }
                 catch (Exception ex)
                 {
