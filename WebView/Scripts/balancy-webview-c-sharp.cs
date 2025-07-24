@@ -485,7 +485,7 @@ namespace Balancy.WebView
         /// <returns>True if the WebView was opened successfully, false otherwise</returns>
         public bool OpenWebView(string url, string ownerJson, string additionalInfo)
         {
-#if UNITY_EDITOR_OSX
+#if UNITY_EDITOR_OSX || (!UNITY_EDITOR && (UNITY_IOS || UNITY_ANDROID))
             // Use Screen dimensions to match game view size
             return OpenWebView(url, ownerJson, additionalInfo, Screen.width, Screen.height);
 #endif
@@ -831,7 +831,7 @@ namespace Balancy.WebView
             
             return success;
             #else
-            Debug.LogWarning("Embedded WebView is only supported in Unity Editor on macOS");
+            Debug.LogWarning("Embedded WebView is only supported in Unity Editor on macOS r on device");
             return false;
             #endif
         }
