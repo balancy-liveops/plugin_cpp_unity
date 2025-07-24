@@ -30,6 +30,7 @@ namespace Balancy.UI
             Balancy.Callbacks.OnOfferGroupDeactivated += OnOfferGroupDeactivated;
             Balancy.Callbacks.OnDataUpdated += OnDataUpdated;
             Balancy.Callbacks.OnProfileResetStart += CleanUp;
+            Balancy.Callbacks.OnGameRefreshed += OnGameRefreshed;
             // Balancy.Callbacks.OnProfileResetFinish += RefreshAll;
             
             if (Main.IsReadyToUse)
@@ -46,6 +47,7 @@ namespace Balancy.UI
             Balancy.Callbacks.OnOfferGroupDeactivated -= OnOfferGroupDeactivated;
             Balancy.Callbacks.OnDataUpdated -= OnDataUpdated;
             Balancy.Callbacks.OnProfileResetStart -= CleanUp;
+            Balancy.Callbacks.OnGameRefreshed -= OnGameRefreshed;
             // Balancy.Callbacks.OnProfileResetFinish -= RefreshAll;
         }
         
@@ -190,7 +192,13 @@ namespace Balancy.UI
             SortElements();
         }
 
+        
         private void OnDataUpdated(Callbacks.DataUpdatedStatus status)
+        {
+            RefreshAll();
+        }
+        
+        private void OnGameRefreshed()
         {
             RefreshAll();
         }

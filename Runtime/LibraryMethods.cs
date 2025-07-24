@@ -91,7 +91,7 @@ namespace Balancy
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancySetViewNotificationsCallback(WebviewRequestCallback callback);
         }
-        
+
         public static class WebSocket
         {
             // Delegate types for WebSocket callbacks
@@ -434,6 +434,9 @@ namespace Balancy
             public static extern bool balancyBattlePass_claimReward(IntPtr bpLinePointer, int index);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern int balancyBattlePass_getRewardStatus(IntPtr bpLinePointer, int index);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyAuth_NameAndPassword(string name, string password, ResponseCallback callback);
         }
     }
 }

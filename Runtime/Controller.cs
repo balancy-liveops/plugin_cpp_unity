@@ -199,6 +199,9 @@ namespace Balancy
                         var profileNotification = Marshal.PtrToStructure<Notifications.InitNotificationCloudProfileFailed>(notificationPtr);
                         Balancy.Callbacks.OnCloudProfileFailedToLoad?.Invoke(new Balancy.Callbacks.ErrorStatus(profileNotification.Message));
                         break;
+                    case Notifications.NotificationType.UserRefreshed:
+                        Balancy.Callbacks.OnGameRefreshed?.Invoke();
+                        break;
                     case Notifications.NotificationType.OnNewEventActivated: {
                         var liveOpsNewEvent = Marshal.PtrToStructure<Notifications.LiveOpsNotification_OnNewEventActivated>(notificationPtr);
                         var eventInfo = Profiles.System.SmartInfo.FindEventInfo(liveOpsNewEvent.EventInfo);

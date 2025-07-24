@@ -98,6 +98,13 @@ namespace Balancy
                 return JsonBasedObject.ReadStringArrayValues(ptr, size);
             }
         }
+
+        public static class Auth
+        {
+            public static void WithNameAndPassword(string name, string password, Balancy.Core.ResponseCallback<Balancy.Core.Responses.AuthResponseData> callback) {
+                Balancy.LibraryMethods.API.balancyAuth_NameAndPassword(name, password, ProtectedFromGCCallback(callback));
+            }
+        }
         
         //This method doesn't work in production
         public static void SetTimeCheatingOffset(int seconds) => LibraryMethods.Extra.balancySetTimeOffset(seconds);

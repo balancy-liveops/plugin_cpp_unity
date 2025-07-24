@@ -11,6 +11,7 @@ namespace Balancy.Core
         DataIsReady = 1,
         AuthFailed = 2,
         CloudProfileFailed = 3,
+        UserRefreshed = 4,
         
         OnNewEventActivated = 100,
         OnEventDeactivated = 101,
@@ -71,6 +72,11 @@ namespace Balancy.Core
 
         [StructLayout(LayoutKind.Sequential)]
         public class InitNotificationCloudProfileFailed : InitNotificationError
+        {
+        }
+        
+        [StructLayout(LayoutKind.Sequential)]
+        public class NotificationUserRefreshed : StatusNotificationBase
         {
         }
         

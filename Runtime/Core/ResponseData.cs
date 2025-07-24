@@ -24,5 +24,11 @@ namespace Balancy.Core
             private int removeFromPending;
             public bool RemoveFromPending => removeFromPending == 1;
         }
+        
+        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        public class AuthResponseData : ResponseData
+        {
+            [MarshalAs(UnmanagedType.LPStr)] public string UserId;
+        }
     }
 }

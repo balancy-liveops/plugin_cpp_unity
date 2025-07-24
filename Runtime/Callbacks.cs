@@ -87,6 +87,8 @@ namespace Balancy
         public static OnProfileResetDelegate OnProfileResetStart = null;
         public static OnProfileResetDelegate OnProfileResetFinish = null;
         
+        public static OnProfileResetDelegate OnGameRefreshed = null;
+        
         public struct NetworkDownloadInfo
         {
             public readonly string Url;
@@ -167,6 +169,8 @@ namespace Balancy
             
             OnProfileResetStart += () => Debug.Log(" => Balancy.OnProfileResetStart");
             OnProfileResetFinish += () => Debug.Log(" => Balancy.OnProfileResetFinish");
+            
+            OnGameRefreshed += () => Debug.Log(" => Balancy.OnGameRefreshed");
         }
         
         internal static void ClearAll()
@@ -203,6 +207,7 @@ namespace Balancy
 
             OnProfileResetStart = null;
             OnProfileResetFinish = null;
+            OnGameRefreshed = null;
         }
     }
 }
