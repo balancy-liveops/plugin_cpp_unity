@@ -437,6 +437,8 @@ namespace Balancy
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyAuth_NameAndPassword(string name, string password, ResponseCallback callback);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyLink_NameAndPassword(string name, string password, bool forceLink, ResponseCallback callback);
         }
     }
 }

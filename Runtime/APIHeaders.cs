@@ -106,6 +106,13 @@ namespace Balancy
             }
         }
         
+        public static class Link
+        {
+            public static void WithNameAndPassword(string name, string password, bool forceLink, Balancy.Core.ResponseCallback<Balancy.Core.Responses.LinkResponseData> callback) {
+                Balancy.LibraryMethods.API.balancyLink_NameAndPassword(name, password, forceLink, ProtectedFromGCCallback(callback));
+            }
+        }
+        
         //This method doesn't work in production
         public static void SetTimeCheatingOffset(int seconds) => LibraryMethods.Extra.balancySetTimeOffset(seconds);
         public static int GetTimeCheatingOffset() => LibraryMethods.Extra.balancyGetTimeOffset();

@@ -30,5 +30,11 @@ namespace Balancy.Core
         {
             [MarshalAs(UnmanagedType.LPStr)] public string UserId;
         }
+        
+        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        public class LinkResponseData : ResponseData
+        {
+            [MarshalAs(UnmanagedType.LPStr)] public string UserId;
+        }
     }
 }
