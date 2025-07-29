@@ -60,9 +60,7 @@ namespace Balancy.WebView
             // The native plugin initializes itself on load.
             // CreateTextureAndCommandBuffer();
 
-            StartCoroutine(Waait());
-            // Open the webview
-            // _balancyOpenWebViewEmbedded(initialUrl, textureWidth, textureHeight);
+            // StartCoroutine(Waait());
         }
 
         private IEnumerator Waait()
@@ -72,6 +70,10 @@ namespace Balancy.WebView
                 yield return null; // Wait for the next frame
             }
             CreateTextureAndCommandBuffer();
+            
+            
+            // Open the webview
+            // _balancyOpenWebViewEmbedded("https://balancy.co", textureWidth, textureHeight);
         }
 
         private void CreateTextureAndCommandBuffer()

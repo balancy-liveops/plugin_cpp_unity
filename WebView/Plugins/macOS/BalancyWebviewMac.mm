@@ -9,6 +9,7 @@
 #import <Metal/Metal.h>
 #import <QuartzCore/QuartzCore.h>
 #import <CoreVideo/CVMetalTextureCache.h>
+#import <IOSurface/IOSurface.h>
 
 // Function pointers for callbacks
 typedef void (*MessageCallback)(const char* message);
@@ -81,6 +82,9 @@ void LogToUnity(const char* message) {
 @property (nonatomic, strong) NSWindow *offscreenWindow;
 @property (atomic, assign) BOOL hasNewFrame;                // OPTIMIZATION #3: Smart sync flag
 @property (atomic, strong) id<MTLTexture> latestFrameTexture; // Holds the most recent snapshot as a texture
+@property (nonatomic, assign) IOSurfaceRef ioSurface; 
+@property (nonatomic, strong) id<MTLTexture> metalTextureFromSurface;
+@property (nonatomic, strong) NSTimer *renderTickTimer;
 
 - (instancetype)initWithWidth:(int)width height:(int)height;
 - (BOOL)loadURL:(NSString *)url;
@@ -104,75 +108,174 @@ void LogToUnity(const char* message) {
         _hasNewFrame = NO;  // OPTIMIZATION #3: Initialize sync flag
         
         // ✅ ИСПРАВЛЕНИЕ 1: НЕВИДИМОЕ окно (убираем popup)
-        NSRect windowFrame = NSMakeRect(-100, -100, width, height); // ← За пределами экрана
-        _offscreenWindow = [[NSWindow alloc] initWithContentRect:windowFrame
-                                                      styleMask:NSWindowStyleMaskBorderless  // ← Без границ
-                                                        backing:NSBackingStoreBuffered
-                                                          defer:NO];
-        [_offscreenWindow setTitle:@"Balancy Embedded (Hidden)"];
-        
-        // ✅ УБИРАЕМ видимость - только минимально необходимое для работы браузера
-        [_offscreenWindow setAlphaValue:0.01]; // Почти невидимое
-//         [_offscreenWindow setLevel:NSNormalWindowLevel]; // Обычный уровень
-//         [_offscreenWindow setCollectionBehavior:NSWindowCollectionBehaviorDefault];
-        [_offscreenWindow setBackgroundColor:[NSColor clearColor]];
-        [_offscreenWindow setOpaque:NO];
-        [_offscreenWindow setHasShadow:NO];
+//         NSRect windowFrame = NSMakeRect(-100, -100, width, height); // ← За пределами экрана
+//         _offscreenWindow = [[NSWindow alloc] initWithContentRect:windowFrame
+//                                                       styleMask:NSWindowStyleMaskBorderless  // ← Без границ
+//                                                         backing:NSBackingStoreBuffered
+//                                                           defer:NO];
+//         [_offscreenWindow setTitle:@"Balancy Embedded (Hidden)"];
+//         
+//         // ✅ УБИРАЕМ видимость - только минимально необходимое для работы браузера
+//         [_offscreenWindow setAlphaValue:0.01]; // Почти невидимое
+// //         [_offscreenWindow setLevel:NSNormalWindowLevel]; // Обычный уровень
+// //         [_offscreenWindow setCollectionBehavior:NSWindowCollectionBehaviorDefault];
+//         [_offscreenWindow setBackgroundColor:[NSColor clearColor]];
+//         [_offscreenWindow setOpaque:NO];
+//         [_offscreenWindow setHasShadow:NO];
         
         // Простая конфигурация WebView
+//         WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
+//         _userContentController = [[WKUserContentController alloc] init];
+//         [_userContentController addScriptMessageHandler:self name:@"BalancyWebView"];
+//         configuration.userContentController = _userContentController;
+//         
+//         // Только базовые настройки
+//         // Enable debugging and transparency-related settings
+//         [configuration.preferences setValue:@YES forKey:@"developerExtrasEnabled"];
+//         
+//         // Простой контейнер
+//         NSView *containerView = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, width, height)];
+//         containerView.wantsLayer = YES;
+//         containerView.layer.backgroundColor = [[NSColor clearColor] CGColor];
+//         containerView.layer.opaque = NO;
+//         
+//         self.view = containerView;
+//         [_offscreenWindow setContentView:containerView];
+//         
+//         // Простой WebView
+//         _webView = [[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, width, height) configuration:configuration];
+//         _webView.navigationDelegate = self;
+//         _webView.wantsLayer = YES;
+//         _webView.layer.backgroundColor = [[NSColor clearColor] CGColor];
+//         _webView.layer.opaque = NO;
+//         [_webView setValue:@NO forKey:@"drawsBackground"];
+//         
+//         [containerView addSubview:_webView];
+            
+            
+        // 1. Define IOSurface properties (without the deprecated 'isGlobal' key)
+        NSDictionary *surfaceProperties = @{
+            (NSString *)kIOSurfaceWidth: @(width),
+            (NSString *)kIOSurfaceHeight: @(height),
+            (NSString *)kIOSurfaceBytesPerElement: @(4), // 32-bit, e.g., BGRA
+            (NSString *)kIOSurfacePixelFormat: @(kCVPixelFormatType_32BGRA)
+        };
+
+        // 2. Create the IOSurface and assign it to our property
+        self.ioSurface = IOSurfaceCreate((__bridge CFDictionaryRef)surfaceProperties);
+        if (!self.ioSurface) {
+            LogToUnity("FATAL: IOSurfaceCreate failed.");
+            return nil;
+        }
+
+        // 3. Create a Metal texture that wraps this IOSurface
+        // This is the crucial zero-copy step
+        MTLTextureDescriptor *textureDescriptor = [MTLTextureDescriptor
+            texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
+            width:width
+            height:height
+            mipmapped:NO];
+        
+        // This tells Metal to treat the texture as a potential render target, which may be needed.
+        textureDescriptor.usage = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead;
+
+        // 4. Call the CORRECTLY named method: 'iosurface' not 'ioSurface'
+        self.metalTextureFromSurface = [_metalDevice newTextureWithDescriptor:textureDescriptor
+                                                                    iosurface:self.ioSurface
+                                                                        plane:0];
+
+        if(!self.metalTextureFromSurface) {
+            LogToUnity("FATAL: Failed to create Metal texture from IOSurface.");
+            CFRelease(self.ioSurface); // Clean up on failure
+            self.ioSurface = NULL;
+            return nil;
+        }
+        
+        // Create the WKWebView as before
         WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
         _userContentController = [[WKUserContentController alloc] init];
-        [_userContentController addScriptMessageHandler:self name:@"BalancyWebView"];
+        [configuration.preferences setValue:@YES forKey:@"developerExtrasEnabled"];
         configuration.userContentController = _userContentController;
         
-        // Только базовые настройки
-        // Enable debugging and transparency-related settings
-        [configuration.preferences setValue:@YES forKey:@"developerExtrasEnabled"];
-        
-        // Простой контейнер
-        NSView *containerView = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, width, height)];
-        containerView.wantsLayer = YES;
-        containerView.layer.backgroundColor = [[NSColor clearColor] CGColor];
-        containerView.layer.opaque = NO;
-        
-        self.view = containerView;
-        [_offscreenWindow setContentView:containerView];
-        
-        // Простой WebView
         _webView = [[WKWebView alloc] initWithFrame:NSMakeRect(0, 0, width, height) configuration:configuration];
+        [_webView setValue:@NO forKey:@"drawsBackground"]; 
         _webView.navigationDelegate = self;
+        
+        // 5. Force WKWebView's layer to use the IOSurface as its backing store
         _webView.wantsLayer = YES;
-        _webView.layer.backgroundColor = [[NSColor clearColor] CGColor];
-        _webView.layer.opaque = NO;
-        [_webView setValue:@NO forKey:@"drawsBackground"];
+        [_webView.layer setContents:(__bridge id)self.ioSurface];
         
-        [containerView addSubview:_webView];
+        // This helps ensure rendering continues even when the window is not "visible"
+        // in the traditional sense.
+        _webView.layer.drawsAsynchronously = YES;
         
-        // ✅ ИСПРАВЛЕНИЕ 2: Снижаем частоту до 30 FPS
-//         _renderTimer = [NSTimer scheduledTimerWithTimeInterval:1.0/30.0  // ← 15 FPS вместо 60
-//                                                         target:self
-//                                                       selector:@selector(renderToTexture)
-//                                                       userInfo:nil
-//                                                        repeats:YES];OnRenderEvent
-       
-        _renderTimer = [NSTimer timerWithTimeInterval:1.0/15.0
-                                              target:self
-                                            selector:@selector(renderToTexture)
-                                            userInfo:nil
-                                             repeats:YES];
-        [[NSRunLoop mainRunLoop] addTimer:_renderTimer forMode:NSRunLoopCommonModes];
+        // We no longer need the snapshot-based render timer, so ensure it's not created.
+        if (_renderTimer) {
+            [_renderTimer invalidate];
+            _renderTimer = nil;
+        }
+
+        // The rest of your setup... (offscreen window, etc.)
+        // Note: The offscreen window is still important as it provides the
+        // context (event loop, etc.) for the WKWebView to operate.
+         NSRect windowFrame = NSMakeRect(0, 0, 400, 600); // A reasonable, visible size
+         _offscreenWindow = [[NSWindow alloc] initWithContentRect:windowFrame
+                                                       styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable
+                                                         backing:NSBackingStoreBuffered
+                                                           defer:NO];
+         [_offscreenWindow setTitle:@"Balancy WebView Debug"];
+         [_offscreenWindow setContentView:_webView];
+         [_offscreenWindow center]; // Center it on the screen
+         
+         // Make it float above other windows so we can see it easily
+         [_offscreenWindow setLevel:NSFloatingWindowLevel];
+         
+         // This is important for spaces/mission control behavior
+         [_offscreenWindow setCollectionBehavior:NSWindowCollectionBehaviorCanJoinAllSpaces | NSWindowCollectionBehaviorFullScreenAuxiliary];
+         
+         // Ensure it's fully opaque and has a shadow.
+         [_offscreenWindow setOpaque:YES];
+         [_offscreenWindow setHasShadow:YES];
+         [_offscreenWindow setAlphaValue:1.0];
+ 
+         // This is the most forceful way to make a window visible and active.
+         [_offscreenWindow makeKeyAndOrderFront:nil];
+         [NSApp activateIgnoringOtherApps:YES];
         
-        // ✅ ИСПРАВЛЕНИЕ 3: Минимальное окно - только для работы браузера
-        [_offscreenWindow makeKeyAndOrderFront:nil];
+         _renderTickTimer = [NSTimer scheduledTimerWithTimeInterval:1.0/30.0 // 30 FPS
+                                                                    target:self
+                                                                  selector:@selector(ensureWebViewIsRendering)
+                                                                  userInfo:nil
+                                                                   repeats:YES];
+        // Add it to the main run loop to ensure it fires correctly.
+        [[NSRunLoop mainRunLoop] addTimer:_renderTickTimer forMode:NSRunLoopCommonModes];
         
-        // ✅ УБИРАЕМ все агрессивные методы принуждения видимости
-        // Больше никаких orderFrontRegardless, makeKeyWindow и т.д.
+        LogToUnity("✅ SUCCESS: Initialized with high-performance IOSurface.");
+        
         
         if (_debugLogging) {
             LogToUnity("OPTIMIZED embedded View initialized (NO popup window)");
         }
     }
     return self;
+}
+
+- (void)ensureWebViewIsRendering {
+    if (!_webView) return;
+
+    // We need to ensure these calls happen on the main thread
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (self.webView) {
+            LogToUnity("Forcing WebView layer to redraw...");
+            // Force the view to re-evaluate its layout
+            [self.webView setNeedsLayout:YES];
+            
+            // Force the underlying CALayer to redraw its contents into the IOSurface
+            [self.webView.layer setNeedsDisplay];
+            [self.webView.layer displayIfNeeded];
+            LogToUnity("✅ WebView layer redraw command issued.");
+        }
+    });
 }
 
 - (void)injectTransparencyScript {
@@ -300,6 +403,10 @@ void LogToUnity(const char* message) {
 
 - (void)close {
     // Stop render timer first
+    if (_renderTickTimer) {
+        [_renderTickTimer invalidate];
+        _renderTickTimer = nil;
+    }
     if (_renderTimer) {
         [_renderTimer invalidate];
         _renderTimer = nil;
@@ -317,6 +424,15 @@ void LogToUnity(const char* message) {
     if (_userContentController) {
         [_userContentController removeScriptMessageHandlerForName:@"BalancyWebView"];
         _userContentController = nil;
+    }
+    
+    // Release the metal texture
+    self.metalTextureFromSurface = nil;
+
+    // IMPORTANT: Manually release the Core Foundation object
+    if (self.ioSurface) {
+        CFRelease(self.ioSurface);
+        self.ioSurface = NULL;
     }
     
     self.latestFrameTexture = nil;
@@ -463,6 +579,35 @@ void LogToUnity(const char* message) {
                                                clickCount:0
                                                pressure:1.0];
         [_webView mouseDragged:mouseDrag];
+    }
+}
+
+
+- (void)runColorTestOnSurface {
+    if (!self.metalTextureFromSurface) {
+        LogToUnity("Color Test Failed: Metal texture is nil.");
+        return;
+    }
+
+    // Create a render pass descriptor to clear our texture
+    MTLRenderPassDescriptor *renderPassDescriptor = [MTLRenderPassDescriptor renderPassDescriptor];
+    if (renderPassDescriptor != nil)
+    {
+        renderPassDescriptor.colorAttachments[0].texture = self.metalTextureFromSurface;
+        renderPassDescriptor.colorAttachments[0].loadAction = MTLLoadActionClear;
+        renderPassDescriptor.colorAttachments[0].storeAction = MTLStoreActionStore;
+        // Set the clear color to bright red
+        renderPassDescriptor.colorAttachments[0].clearColor = MTLClearColorMake(1.0, 0.0, 0.0, 1.0);
+
+        // Create a command buffer and a render command encoder
+        id<MTLCommandBuffer> commandBuffer = [_commandQueue commandBuffer];
+        id<MTLRenderCommandEncoder> renderEncoder = [commandBuffer renderCommandEncoderWithDescriptor:renderPassDescriptor];
+
+        // End encoding and commit the command buffer to the GPU
+        [renderEncoder endEncoding];
+        [commandBuffer commit];
+        
+        LogToUnity("✅ Ran color test. The texture should now be solid red.");
     }
 }
 
@@ -710,7 +855,12 @@ void LogToUnity(const char* message) {
     
     [self injectTransparencyScript];
 //     [self injectActivityBoostScript];
+
+    [self injectSuperOptimizationPreventionScript];
     
+    [self ensureWebViewIsRendering];
+
+   
     // Простая проверка контента
     [_webView evaluateJavaScript:@"document.body ? document.body.innerHTML.length : -1" completionHandler:^(id result, NSError *error) {
         if (error) {
@@ -722,12 +872,53 @@ void LogToUnity(const char* message) {
         }
     }];
     
-    // ✅ УБИРАЕМ все сложные скрипты инъекции
-    // Пусть браузер работает как хочет
     
     if (_loadCompletedCallback) {
         _loadCompletedCallback(true);
     }
+}
+
+- (void)injectSuperOptimizationPreventionScript {
+    if (!_webView) return;
+
+    NSString *superOptimizationScript = @"\
+        (function() { \
+            console.log('🚀 Injecting Super Optimization Prevention Script'); \
+            \
+            /* 1. Override visibility API to always report as visible */ \
+            try { \
+                Object.defineProperty(document, 'hidden', { value: false, configurable: true }); \
+                Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true }); \
+                document.hasFocus = function() { return true; }; \
+            } catch (e) { \
+                console.warn('Could not override visibility properties:', e); \
+            } \
+            \
+            /* 2. Force all CSS animations and transitions to run */ \
+            const style = document.createElement('style'); \
+            style.textContent = '*, *::before, *::after { animation-play-state: running !important; -webkit-animation-play-state: running !important; }'; \
+            document.head.appendChild(style); \
+            \
+            /* 3. Periodically trigger a micro-task to keep the browser's renderer active */ \
+            setInterval(() => { \
+                /* A lightweight operation that forces a style recalculation and repaint */ \
+                document.body.style.transform = 'translateZ(0)'; \
+                /* Force a reflow */ \
+                document.body.offsetHeight; \
+                document.body.style.transform = ''; \
+            }, 100); /* every 100ms is aggressive enough */ \
+            \
+            console.log('✅ Super Optimization Prevention Script Applied'); \
+        })();";
+    
+    [_webView evaluateJavaScript:superOptimizationScript completionHandler:^(id result, NSError *error) {
+        if (error) {
+            NSString *logMsg = [NSString stringWithFormat:@"Super optimization script error: %@", error.localizedDescription];
+            LogToUnity([logMsg UTF8String]);
+        } else {
+            LogToUnity("✅ Super optimization prevention script injected successfully");
+        }
+    }];
 }
 
 - (void)injectSuperOptimizationPrevention {
@@ -1269,6 +1460,7 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
     }
 }
 
+
 - (void)webView:(WKWebView *)webView didFailNavigation:(WKNavigation *)navigation withError:(NSError *)error {
     NSString *errorMsg = [NSString stringWithFormat:@"Navigation failed with error: %@", error.localizedDescription];
     LogToUnity([errorMsg UTF8String]);
@@ -1298,6 +1490,16 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
 // C interface for Unity
 extern "C" {
 
+    void* _balancyGetRenderTexturePtr() {
+        if (_embeddedController != nil && _embeddedController.metalTextureFromSurface != nil) {
+            // Return a pointer to the native Metal texture object.
+            // Unity's CreateExternalTexture knows how to handle this.
+            return (__bridge void*)_embeddedController.metalTextureFromSurface;
+        }
+        LogToUnity("ERROR: _balancyGetRenderTexturePtr called but IOSurface texture is not available.");
+        return NULL;
+    }
+    
 void _balancyTriggerRender() {
     @autoreleasepool {
         if (_embeddedController != nil) {
@@ -1407,29 +1609,6 @@ void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginUnload()
 // MARK: - Functions Called from C#
 // -------------------------------------------------------------------
 
-// This function is still needed to tell the plugin which texture to draw into.
-void _balancySetDestinationTexture(void* texturePtr, int width, int height) {
-        LogToUnity("_balancySetDestinationTexture");
-
-    if (_metalDevice == nil) {
-         LogToUnity("ERROR: _balancySetDestinationTexture called but Metal device is not initialized!");
-        return;
-    }
-    if (!texturePtr) {
-        LogToUnity("ERROR: Received null destination texture from Unity.");
-        return;
-    }
-    _unityDestinationTexture = (__bridge id<MTLTexture>)texturePtr;
-    
-    LogTextureInfo("Unity Dest Texture", _unityDestinationTexture);
-    
-    if (_embeddedController) {
-        [_embeddedController updateTexture:width height:height];
-    }
-
-    NSString* logMsg = [NSString stringWithFormat:@"✅ Set destination texture: %dx%d", width, height];
-    LogToUnity([logMsg UTF8String]);
-}
 
 static int frameCount = 0;
 
@@ -1640,11 +1819,8 @@ void _balancyRegisterCacheCompletedCallback(CacheCompletedCallback callback) {
     _cacheCompletedCallback = callback;
 }
 
-// OPTIMIZATION #2 & #3: Optimized embedded functionality with smart sync
-bool _balancyOpenWebViewEmbedded(const char* url, int width, int height) {
+bool _balancyInitWebViewEmbedded(int width, int height) {
     @autoreleasepool {
-        LogToUnity("_balancyOpenWebViewEmbedded called (OPTIMIZED)");
-        
         if (_embeddedController != nil) {
             LogToUnity("Closing existing embedded WebView");
             [_embeddedController close];
@@ -1655,6 +1831,26 @@ bool _balancyOpenWebViewEmbedded(const char* url, int width, int height) {
         LogToUnity([logMsg UTF8String]);
         
         _embeddedController = [[BalancyEmbeddedWebViewController alloc] initWithWidth:width height:height];
+        
+        // was for test
+//         [_embeddedController runColorTestOnSurface]; 
+    }
+    
+    return _embeddedController != nil;
+}
+
+
+// OPTIMIZATION #2 & #3: Optimized embedded functionality with smart sync
+bool _balancyOpenWebViewEmbedded(const char* url, int width, int height) {
+    @autoreleasepool {
+        LogToUnity("_balancyOpenWebViewEmbedded called (OPTIMIZED)");
+        
+//         _balancyInitWebViewEmbedded(width, height);
+
+        if (_embeddedController == nil) {
+            LogToUnity("ERROR: _balancyOpenWebViewEmbedded called but the controller was not initialized first. Call InitEmbedded first.");
+            return false;
+        }
         
         NSString* nsUrl = [NSString stringWithUTF8String:url];
         NSString *logMsg2 = [NSString stringWithFormat:@"Attempting to load URL in embedded mode: %@", nsUrl];

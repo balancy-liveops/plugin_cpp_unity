@@ -401,6 +401,8 @@ namespace Balancy.WebView
         [DllImport("libBalancyWebViewMac")]
         private static extern bool _balancyOpenWebViewEmbedded(string url, int width, int height);
         [DllImport("libBalancyWebViewMac")]
+        private static extern bool _balancyInitWebViewEmbedded(int width, int height);
+        [DllImport("libBalancyWebViewMac")]
         private static extern void _balancyCloseWebViewEmbedded();
         [DllImport("libBalancyWebViewMac")]
         private static extern void _balancyUpdateEmbeddedTexture(int width, int height);
@@ -774,6 +776,21 @@ namespace Balancy.WebView
         public bool IsWebViewOpen()
         {
             return _isWebViewOpen;
+        }
+
+        public bool InitEmbedded(int width, int height)
+        {
+#if UNITY_EDITOR_OSX
+            if (_isWebViewOpen || _isWebViewEmbedded)
+            {
+                Debug.LogWarning("WebView is already open. Close it first before opening a new one.");
+                return false;
+            }
+
+            _balancyInitWebViewEmbedded(width, height);
+
+            return true;
+#endif
         }
         
         /// <summary>

@@ -17,12 +17,11 @@ namespace Balancy.WebView
         private const bool _debugLogging = false;
         
         private Texture2D _renderTexture;
-        private CommandBuffer _renderCommandBuffer;
         private RawImage _renderer;
         private RectTransform _rectTransform;
         private bool _isInitialized = false;
         private bool _isLoading = false;
-        private Texture2D _textureBuffer;
+        private IntPtr _nativeTexturePtr; 
         
         private int _currentTextureWidth;
         private int _currentTextureHeight;
@@ -124,6 +123,10 @@ namespace Balancy.WebView
             
             if (_isInitialized)
             {
+                if (_nativeTexturePtr != IntPtr.Zero)
+                {
+                    _renderTexture.UpdateExternalTexture(_nativeTexturePtr);
+                }
                 HandleMouseInput();
                 HandleScrollInput();
             }
@@ -155,6 +158,7 @@ namespace Balancy.WebView
 
             try
             {
+                _webView.InitEmbedded(_currentTextureWidth, _currentTextureHeight);
                 CreateRenderTexture();
                 SetupWebViewEvents();
                 
@@ -171,7 +175,7 @@ namespace Balancy.WebView
             }
             catch (Exception ex)
             {
-                Debug.LogError($"Failed to initialize embedded WebView: {ex.Message}");
+                Debug.LogError($"Failed to initialize embedded WebView: {ex.Message} " + ex.StackTrace);
             }
 
             return false;
@@ -287,19 +291,30 @@ namespace Balancy.WebView
                 DestroyImmediate(_renderTexture);
             }
             
-            if (_textureBuffer != null)
-            {
-                DestroyImmediate(_textureBuffer);
-            }
-            
-            
             Debug.LogWarning("CreateTextureAndCommandBuffer");
-            // 1. Create the destination texture
-            bool useLinearColorSpace = QualitySettings.activeColorSpace == ColorSpace.Linear;
-            _renderTexture = new Texture2D(_currentTextureWidth, _currentTextureHeight, TextureFormat.BGRA32, false, useLinearColorSpace);
+            
+            // The native plugin now creates the texture from the IOSurface.
+            // We just need to get a pointer to it.
+            _nativeTexturePtr = _balancyGetRenderTexturePtr();
+            if (_nativeTexturePtr == System.IntPtr.Zero)
+            {
+                Debug.LogError("Failed to get native texture pointer from plugin.");
+                return;
+            }
 
+            // Create a Unity Texture2D that WRAPS the native Metal texture
+            _renderTexture = Texture2D.CreateExternalTexture(
+                _currentTextureWidth,
+                _currentTextureHeight,
+                TextureFormat.BGRA32,
+                false, // No mipmaps
+                true,  // Linear color space
+                _nativeTexturePtr
+            );
+            
             // Apply this texture to a material on a Quad
             var renderer = gameObject.GetComponent<RawImage>();
+            // _renderer.material = Resources.Load<Material>("WebViewUnkitMat");
             if (renderer != null && renderer.material != null)
             {
                 renderer.material.mainTexture = _renderTexture;
@@ -307,35 +322,9 @@ namespace Balancy.WebView
             else
             {
                 Debug.LogWarning("MetalWebViewRenderer: No Renderer or Material found on this GameObject.");
-            }
+            } 
 
-            // 2. Pass the native texture pointer to the plugin. This is still necessary.
-            _balancySetDestinationTexture(_renderTexture.GetNativeTexturePtr(), _currentTextureWidth, _currentTextureHeight);
-            
-            Debug.LogWarning("_balancySetDestinationTexture: " + _currentTextureWidth + " => " + _currentTextureHeight);
-
-            // 3. Setup the command buffer to call our native render function. This is unchanged.
-            _renderCommandBuffer = new CommandBuffer();
-            _renderCommandBuffer.name = "WebViewRender";
-            _renderCommandBuffer.IssuePluginEvent(GetRenderEventFunc(), 1);
-
-            if (Camera.main != null)
-            {
-                Camera.main.AddCommandBuffer(CameraEvent.AfterForwardOpaque, _renderCommandBuffer);
-            }
-            else
-            {
-                Debug.LogError("MetalWebViewRenderer: No main camera found. Cannot add CommandBuffer.");
-            }
-            
-            // Apply to renderer and initially hide it until first texture update
-            if (_renderer != null)
-            {
-                _renderer.texture = _textureBuffer;
-                // _renderer.enabled = false; // Hide until first texture update
-            }
-
-            LogDebug($"Created RenderTexture: {_currentTextureWidth}x{_currentTextureHeight}");
+            Debug.LogWarning($"Created RenderTexture: {_currentTextureWidth}x{_currentTextureHeight}");
         }
 
         private void CleanupRenderTexture()
@@ -480,7 +469,7 @@ namespace Balancy.WebView
         #if UNITY_EDITOR_OSX
         private const string PLUGIN_NAME = "libBalancyWebViewMac";
         [System.Runtime.InteropServices.DllImport(PLUGIN_NAME)]
-        private static extern bool _balancyGetEmbeddedPixelData(System.IntPtr buffer, int bufferSize);
+        private static extern System.IntPtr _balancyGetRenderTexturePtr(); 
         
         [System.Runtime.InteropServices.DllImport(PLUGIN_NAME)]
         private static extern void _balancySetDestinationTexture(IntPtr texturePtr, int width, int height);
