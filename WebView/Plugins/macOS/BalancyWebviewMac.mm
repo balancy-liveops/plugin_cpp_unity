@@ -571,8 +571,18 @@ void LogToUnity(const char* message) {
                 
                 if (context) {
 //                     CGContextDrawImage(context, CGRectMake(0, 0, self->_textureWidth, self->_textureHeight), cgImage);
-                    CGContextSetRGBFillColor(context, 1.0, 0.0, 0.0, 1.0); // Red color
-                        CGContextFillRect(context, CGRectMake(0, 0, self->_textureWidth, self->_textureHeight));
+
+                    // *** START OF THE FIX ***
+                    // Flip the coordinate system vertically to match Unity's texture coordinates.
+                    CGContextTranslateCTM(context, 0, self->_textureHeight);
+                    CGContextScaleCTM(context, 1.0, -1.0);
+                    
+                    // Draw the captured image. It will now be drawn correctly for Unity.
+                    CGContextDrawImage(context, CGRectMake(0, 0, self->_textureWidth, self->_textureHeight), cgImage);
+                    // *** END OF THE FIX ***
+
+//                     CGContextSetRGBFillColor(context, 1.0, 0.0, 0.0, 1.0); // Red color
+//                     CGContextFillRect(context, CGRectMake(0, 0, self->_textureWidth, self->_textureHeight));
                     CGContextRelease(context);
                 }
                 

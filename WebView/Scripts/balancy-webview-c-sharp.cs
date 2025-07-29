@@ -148,7 +148,7 @@ namespace Balancy.WebView
         private string _ownerJson = string.Empty;
         private string _lastUrl = string.Empty;
         #if UNITY_EDITOR_OSX
-        private RenderTexture _embeddedTexture = null;
+        private Texture2D _embeddedTexture = null;
         #endif
         
         #endregion
@@ -784,7 +784,7 @@ namespace Balancy.WebView
         /// <param name="renderTexture">The RenderTexture to render into</param>
         /// <param name="ownerJson">Owner JSON data</param>
         /// <returns>True if opened successfully</returns>
-        public bool LoadEmbedded(string url, RenderTexture renderTexture, string ownerJson)
+        public bool LoadEmbedded(string url, Texture2D renderTexture, string ownerJson)
         {
             #if UNITY_EDITOR_OSX
             if (_isWebViewOpen || _isWebViewEmbedded)
@@ -845,7 +845,7 @@ namespace Balancy.WebView
         /// Updates the texture used for embedded rendering - OPTIMIZED VERSION
         /// </summary>
         /// <param name="renderTexture">New RenderTexture to use</param>
-        public void UpdateEmbeddedTexture(RenderTexture renderTexture)
+        public void UpdateEmbeddedTexture(Texture2D renderTexture)
         {
             #if UNITY_EDITOR_OSX
             if (!_isWebViewEmbedded || renderTexture == null)

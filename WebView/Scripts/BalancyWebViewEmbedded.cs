@@ -1,6 +1,7 @@
 #if UNITY_EDITOR
 using System;
 using UnityEngine;
+using UnityEngine.Rendering;
 using UnityEngine.UI;
 
 namespace Balancy.WebView
@@ -15,19 +16,17 @@ namespace Balancy.WebView
         private const int _maxTextureSize = 1000;
         private const bool _debugLogging = false;
         
-        private RenderTexture _renderTexture;
+        private Texture2D _renderTexture;
+        private CommandBuffer _renderCommandBuffer;
         private RawImage _renderer;
         private RectTransform _rectTransform;
         private bool _isInitialized = false;
         private bool _isLoading = false;
         private Texture2D _textureBuffer;
-        private byte[] _pixelBuffer;
-        private byte[] _flippedPixelBuffer; // Buffer for vertically flipped pixels
         
         private int _currentTextureWidth;
         private int _currentTextureHeight;
         private Vector2 _lastRectSize; // Track RectTransform size changes
-        private bool _hasFirstTextureUpdate = false; // Track if we've had the first texture update
         
         private BalancyWebView _webView;
 
@@ -86,7 +85,7 @@ namespace Balancy.WebView
             go.AddComponent<RawImage>();
             var instance = go.AddComponent<BalancyWebViewEmbedded>();
 
-            var nn = go.AddComponent<MetalWebViewRenderer>();
+            // var nn = go.AddComponent<MetalWebViewRenderer>();
             // goCanvas.AddComponent<Renderer>();
 
             // goCanvas.hideFlags = HideFlags.HideInHierarchy;
@@ -167,7 +166,7 @@ namespace Balancy.WebView
                     _parentGameObject.SetActive(true);
                 
                 _isInitialized = true;
-                LogDebug("Embedded View initialized successfully");
+                Debug.LogWarning("Embedded View initialized successfully");
                 return success;
             }
             catch (Exception ex)
@@ -198,7 +197,6 @@ namespace Balancy.WebView
             
             _isInitialized = false;
             _isLoading = false;
-            _hasFirstTextureUpdate = false;
             
             _parentGameObject.SetActive(false);
         }
@@ -286,7 +284,6 @@ namespace Balancy.WebView
             // Clean up existing texture
             if (_renderTexture != null)
             {
-                _renderTexture.Release();
                 DestroyImmediate(_renderTexture);
             }
             
@@ -294,29 +291,49 @@ namespace Balancy.WebView
             {
                 DestroyImmediate(_textureBuffer);
             }
-
-            // Create new render texture using calculated dimensions
-            _renderTexture = new RenderTexture(_currentTextureWidth, _currentTextureHeight, 24, RenderTextureFormat.ARGB32);
-            _renderTexture.name = "WebView_RenderTexture";
-            _renderTexture.Create();
             
-            // Create texture buffer for pixel data transfer
-            _textureBuffer = new Texture2D(_currentTextureWidth, _currentTextureHeight, TextureFormat.RGBA32, false);
-            _textureBuffer.name = "WebView_TextureBuffer";
             
-            // Allocate pixel buffers
-            _pixelBuffer = new byte[_currentTextureWidth * _currentTextureHeight * 4]; // RGBA
-            _flippedPixelBuffer = new byte[_currentTextureWidth * _currentTextureHeight * 4]; // RGBA for flipped data
+            Debug.LogWarning("CreateTextureAndCommandBuffer");
+            // 1. Create the destination texture
+            bool useLinearColorSpace = QualitySettings.activeColorSpace == ColorSpace.Linear;
+            _renderTexture = new Texture2D(_currentTextureWidth, _currentTextureHeight, TextureFormat.BGRA32, false, useLinearColorSpace);
 
+            // Apply this texture to a material on a Quad
+            var renderer = gameObject.GetComponent<RawImage>();
+            if (renderer != null && renderer.material != null)
+            {
+                renderer.material.mainTexture = _renderTexture;
+            }
+            else
+            {
+                Debug.LogWarning("MetalWebViewRenderer: No Renderer or Material found on this GameObject.");
+            }
+
+            // 2. Pass the native texture pointer to the plugin. This is still necessary.
+            _balancySetDestinationTexture(_renderTexture.GetNativeTexturePtr(), _currentTextureWidth, _currentTextureHeight);
+            
+            Debug.LogWarning("_balancySetDestinationTexture: " + _currentTextureWidth + " => " + _currentTextureHeight);
+
+            // 3. Setup the command buffer to call our native render function. This is unchanged.
+            _renderCommandBuffer = new CommandBuffer();
+            _renderCommandBuffer.name = "WebViewRender";
+            _renderCommandBuffer.IssuePluginEvent(GetRenderEventFunc(), 1);
+
+            if (Camera.main != null)
+            {
+                Camera.main.AddCommandBuffer(CameraEvent.AfterForwardOpaque, _renderCommandBuffer);
+            }
+            else
+            {
+                Debug.LogError("MetalWebViewRenderer: No main camera found. Cannot add CommandBuffer.");
+            }
+            
             // Apply to renderer and initially hide it until first texture update
             if (_renderer != null)
             {
                 _renderer.texture = _textureBuffer;
                 // _renderer.enabled = false; // Hide until first texture update
             }
-            
-            // Reset first texture update flag
-            _hasFirstTextureUpdate = false;
 
             LogDebug($"Created RenderTexture: {_currentTextureWidth}x{_currentTextureHeight}");
         }
@@ -325,7 +342,6 @@ namespace Balancy.WebView
         {
             if (_renderTexture != null)
             {
-                _renderTexture.Release();
                 DestroyImmediate(_renderTexture);
                 _renderTexture = null;
             }
@@ -462,8 +478,15 @@ namespace Balancy.WebView
         }
         
         #if UNITY_EDITOR_OSX
-        [System.Runtime.InteropServices.DllImport("libBalancyWebViewMac")]
+        private const string PLUGIN_NAME = "libBalancyWebViewMac";
+        [System.Runtime.InteropServices.DllImport(PLUGIN_NAME)]
         private static extern bool _balancyGetEmbeddedPixelData(System.IntPtr buffer, int bufferSize);
+        
+        [System.Runtime.InteropServices.DllImport(PLUGIN_NAME)]
+        private static extern void _balancySetDestinationTexture(IntPtr texturePtr, int width, int height);
+        
+        [System.Runtime.InteropServices.DllImport(PLUGIN_NAME)]
+        private static extern IntPtr GetRenderEventFunc();
         
         /// <summary>
         /// Called from native code to log messages to Unity console
@@ -473,41 +496,6 @@ namespace Balancy.WebView
         public void LogFromNative(string message)
         {
             Debug.Log($"[BalancyWebView Native] {message}");
-        }
-        
-        private void UpdateTextureFromNative()
-        {
-            if (_pixelBuffer == null || _flippedPixelBuffer == null || _textureBuffer == null) 
-            {
-                LogDebug("UpdateTextureFromNative: pixel buffer or texture buffer is null");
-                return;
-            }
-            
-            // Get pixel data from native code
-            unsafe
-            {
-                fixed (byte* ptr = _pixelBuffer)
-                {
-                    System.IntPtr bufferPtr = new System.IntPtr(ptr);
-                    bool success = _balancyGetEmbeddedPixelData(bufferPtr, _pixelBuffer.Length);
-                    
-                    if (success)
-                    {
-                        FlipPixelDataVertically(_pixelBuffer, _flippedPixelBuffer, _currentTextureWidth, _currentTextureHeight);
-                        
-                        _textureBuffer.LoadRawTextureData(_flippedPixelBuffer);
-                        _textureBuffer.Apply();
-                        
-                        // Show the RawImage after first successful texture update
-                        if (!_hasFirstTextureUpdate && _renderer != null)
-                        {
-                            _renderer.enabled = true;
-                            _hasFirstTextureUpdate = true;
-                            LogDebug("First texture update completed, showing RawImage");
-                        }
-                    }
-                }
-            }
         }
         
         /// <summary>
