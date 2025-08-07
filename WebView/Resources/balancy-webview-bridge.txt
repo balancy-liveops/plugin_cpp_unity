@@ -71,6 +71,12 @@ const balancy = {};
         });
     };
 
+    balancy.getBattlePassConfig = () => {
+        return balancy.getDocumentValue(window.balancyViewOwner.unnyIdGameEvent, 3).then(result => {
+            return result.config;
+        });
+    };
+
     balancy.getBattlePassProgress = () => {
         return balancy.sendRequest(null, RequestAction.GetBattlePassProgress, {id: window.balancyViewOwner.unnyIdGameEvent}).then(result => {
             return JSON.parse(result);

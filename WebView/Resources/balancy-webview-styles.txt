@@ -67,6 +67,26 @@
                 -webkit-user-drag: none !important;
                 -ms-content-zooming: none !important;
                 -ms-touch-action: manipulation !important;
+                position: fixed !important;
+                top: 0 !important;
+                left: 0 !important;
+                width: 100% !important;
+                height: 100% !important;
+                overflow: hidden !important;
+            }
+            
+            /* html настройки для предотвращения скролла страницы */
+            html {
+                position: fixed !important;
+                top: 0 !important;
+                left: 0 !important;
+                width: 100% !important;
+                height: 100% !important;
+                overflow: hidden !important;
+                -ms-touch-action: manipulation !important;
+                touch-action: manipulation !important;
+                scrollbar-width: none !important;
+                -ms-overflow-style: none !important;
             }
             
             /* Скрытие всех скроллбаров */
@@ -85,16 +105,26 @@
                 display: none !important;
             }
             
-            /* Firefox */
-            html {
-                scrollbar-width: none !important;
-                -ms-overflow-style: none !important;
+            /* Разрешаем скролл для элементов с определенными CSS свойствами */
+            [style*="overflow: auto"], 
+            [style*="overflow: scroll"], 
+            [style*="overflow-y: auto"], 
+            [style*="overflow-y: scroll"],
+            [style*="overflow-x: auto"], 
+            [style*="overflow-x: scroll"],
+            .scrollable, 
+            .scroll-container, 
+            .overflow-auto, 
+            .overflow-scroll {
+                -webkit-overflow-scrolling: touch !important;
+                touch-action: pan-y !important;
+                overscroll-behavior: contain !important;
             }
             
             /* === iOS СПЕЦИФИЧНЫЕ СТИЛИ === */
             @supports (-webkit-touch-callout: none) {
                 body {
-                    -webkit-overflow-scrolling: touch !important;
+                    -webkit-overflow-scrolling: auto !important;
                     -webkit-touch-callout: none !important;
                     -webkit-user-select: none !important;
                 }
@@ -108,6 +138,20 @@
                 /* iOS Safari specific */
                 html {
                     -webkit-text-size-adjust: 100% !important;
+                }
+                
+                /* Разрешаем скролл для скроллируемых элементов на iOS */
+                [style*="overflow: auto"], 
+                [style*="overflow: scroll"], 
+                [style*="overflow-y: auto"], 
+                [style*="overflow-y: scroll"],
+                .scrollable, 
+                .scroll-container, 
+                .overflow-auto, 
+                .overflow-scroll {
+                    -webkit-overflow-scrolling: touch !important;
+                    touch-action: pan-y !important;
+                    overscroll-behavior: contain !important;
                 }
             }
             
@@ -378,6 +422,37 @@
         console.log('[BalancyWebView] Game UI styles injected successfully');
     }
 
+    // Функция для проверки, является ли элемент скроллируемым
+    function isScrollableElement(element) {
+        if (!element || element === document.body || element === document.documentElement) {
+            return false;
+        }
+        
+        const style = window.getComputedStyle(element);
+        const overflow = style.overflow || style.overflowY || style.overflowX;
+        
+        return overflow === 'auto' || 
+               overflow === 'scroll' || 
+               element.classList.contains('scrollable') ||
+               element.classList.contains('scroll-container') ||
+               element.classList.contains('overflow-auto') ||
+               element.classList.contains('overflow-scroll') ||
+               element.scrollHeight > element.clientHeight ||
+               element.scrollWidth > element.clientWidth;
+    }
+
+    // Функция для поиска ближайшего скроллируемого родителя
+    function findScrollableParent(element) {
+        let current = element;
+        while (current && current !== document.body && current !== document.documentElement) {
+            if (isScrollableElement(current)) {
+                return current;
+            }
+            current = current.parentElement;
+        }
+        return null;
+    }
+
     // Универсальные JavaScript оптимизации
     function applyGameUIBehavior() {
         // Отключение контекстного меню
@@ -405,9 +480,21 @@
         if (/iPad|iPhone|iPod/.test(navigator.userAgent)) {
             console.log('[BalancyWebView] Applying iOS-specific optimizations');
 
-            // Отключение bounce эффекта
+            // Умная обработка touchmove для iOS
             document.addEventListener('touchmove', function(e) {
-                if (!['INPUT', 'TEXTAREA'].includes(e.target.tagName)) {
+                // Разрешаем touchmove для полей ввода
+                if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) {
+                    return;
+                }
+                
+                // Ищем ближайший скроллируемый родительский элемент
+                const scrollableParent = findScrollableParent(e.target);
+                
+                if (scrollableParent) {
+                    // Если найден скроллируемый родитель, разрешаем скролл
+                    return;
+                } else {
+                    // Если скроллируемый родитель не найден, предотвращаем bounce эффект страницы
                     e.preventDefault();
                 }
             }, { passive: false });
@@ -442,14 +529,17 @@
                 }
             }, { passive: false });
 
-            // Отключение pull-to-refresh
+            // Отключение pull-to-refresh только для основной страницы
             let startY = 0;
             document.addEventListener('touchstart', function(e) {
                 startY = e.touches[0].pageY;
             }, { passive: true });
 
             document.addEventListener('touchmove', function(e) {
-                if (e.touches[0].pageY > startY && window.pageYOffset === 0) {
+                // Проверяем, находимся ли мы внутри скроллируемого элемента
+                const scrollableParent = findScrollableParent(e.target);
+                
+                if (!scrollableParent && e.touches[0].pageY > startY && window.pageYOffset === 0) {
                     e.preventDefault();
                 }
             }, { passive: false });
@@ -530,4 +620,4 @@
         initializeGameUI();
     }
 
-})();
+})()

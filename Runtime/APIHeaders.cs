@@ -113,6 +113,21 @@ namespace Balancy
             }
         }
         
+        public static class Inventory
+        {
+            public static int AddItems(Balancy.Models.SmartObjects.Item item, int count) {
+                return Balancy.LibraryMethods.General.balancyInventory_AddItems(item?.GetRawPointer() ?? IntPtr.Zero, count);
+            }
+            
+            public static int RemoveItems(Balancy.Models.SmartObjects.Item item, int count) {
+                return Balancy.LibraryMethods.General.balancyInventory_RemoveItems(item?.GetRawPointer() ?? IntPtr.Zero, count);
+            }
+            
+            public static int getTotalItemsCount(Balancy.Models.SmartObjects.Item item) {
+                return Balancy.LibraryMethods.General.balancyInventory_GetTotalItemsCount(item?.GetRawPointer() ?? IntPtr.Zero);
+            }
+        }
+        
         //This method doesn't work in production
         public static void SetTimeCheatingOffset(int seconds) => LibraryMethods.Extra.balancySetTimeOffset(seconds);
         public static int GetTimeCheatingOffset() => LibraryMethods.Extra.balancyGetTimeOffset();

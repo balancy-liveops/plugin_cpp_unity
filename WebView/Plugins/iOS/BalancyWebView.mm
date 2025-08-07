@@ -164,47 +164,28 @@ extern "C" {
                 }, { passive: false, capture: true });\
             });\
             \
-            // Block touch events that could trigger magnification\
-            var touchStartTime = 0;\
-            var touchCount = 0;\
+            // Minimal touch event blocking - only for images and double-tap prevention\
             var lastTouchEnd = 0;\
             \
             document.addEventListener('touchstart', function(e) {\
-                touchStartTime = Date.now();\
-                \
-                // Block touch on images completely\
+                // Only block touch on images to prevent magnification\
                 if (e.target.tagName === 'IMG') {\
                     e.preventDefault();\
                     e.stopImmediatePropagation();\
                     return false;\
                 }\
-                \
-                // Track touch count for double-tap detection\
-                var now = Date.now();\
-                if (now - lastTouchEnd <= 300) {\
-                    touchCount++;\
-                    if (touchCount >= 2) {\
-                        // Block double tap\
-                        e.preventDefault();\
-                        e.stopImmediatePropagation();\
-                        touchCount = 0;\
-                        return false;\
-                    }\
-                } else {\
-                    touchCount = 1;\
-                }\
             }, { passive: false, capture: true });\
             \
             document.addEventListener('touchend', function(e) {\
-                var touchDuration = Date.now() - touchStartTime;\
-                lastTouchEnd = Date.now();\
+                var now = Date.now();\
                 \
-                // Block long touches that could trigger text selection\
-                if (touchDuration > 500) {\
+                // Only prevent fast double taps that could trigger zoom\
+                if (now - lastTouchEnd <= 200) {\
                     e.preventDefault();\
                     e.stopImmediatePropagation();\
-                    return false;\
                 }\
+                \
+                lastTouchEnd = now;\
             }, { passive: false, capture: true });\
             \
             // Disable context menu (right click)\
@@ -271,34 +252,42 @@ extern "C" {
     // Disable scrolling by default (can be re-enabled if needed)
     _webView.scrollView.scrollEnabled = NO;
     
-    // === DISABLE MAGNIFYING GLASS AND TEXT INTERACTION ===
-    // This prevents the magnifying glass from appearing on double-tap
+    // === SELECTIVE DISABLE OF PROBLEMATIC GESTURES ===
+    // Only disable gestures that cause magnifying glass, keep others for animations
     
-    // Disable all existing gesture recognizers
+    // Find and disable only double-tap gesture recognizers that cause magnifying glass
     NSArray *allGestureRecognizers = [_webView.gestureRecognizers copy];
     for (UIGestureRecognizer *recognizer in allGestureRecognizers) {
-        [_webView removeGestureRecognizer:recognizer];
+        if ([recognizer isKindOfClass:[UITapGestureRecognizer class]]) {
+            UITapGestureRecognizer *tapRecognizer = (UITapGestureRecognizer *)recognizer;
+            if (tapRecognizer.numberOfTapsRequired == 2) {
+                recognizer.enabled = NO; // Disable double tap to prevent magnifying glass
+            }
+        }
+        if ([recognizer isKindOfClass:[UILongPressGestureRecognizer class]]) {
+            recognizer.enabled = NO; // Disable long press that can trigger text selection
+        }
     }
     
+    // Do the same for scroll view gesture recognizers
     NSArray *scrollGestureRecognizers = [_webView.scrollView.gestureRecognizers copy];
     for (UIGestureRecognizer *recognizer in scrollGestureRecognizers) {
-        [_webView.scrollView removeGestureRecognizer:recognizer];
+        if ([recognizer isKindOfClass:[UITapGestureRecognizer class]]) {
+            UITapGestureRecognizer *tapRecognizer = (UITapGestureRecognizer *)recognizer;
+            if (tapRecognizer.numberOfTapsRequired == 2) {
+                recognizer.enabled = NO; // Disable double tap to prevent zoom
+            }
+        }
+        if ([recognizer isKindOfClass:[UILongPressGestureRecognizer class]]) {
+            recognizer.enabled = NO; // Disable long press
+        }
     }
     
-    // Add only our controlled tap gesture
-    UITapGestureRecognizer *singleTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(handleSingleTap:)];
-    singleTap.numberOfTapsRequired = 1;
-    singleTap.numberOfTouchesRequired = 1;
-    [_webView addGestureRecognizer:singleTap];
-    
-    // Add a gesture recognizer to capture and block double taps
+    // Add a blocking double-tap gesture with higher priority
     UITapGestureRecognizer *doubleTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(handleDoubleTap:)];
     doubleTap.numberOfTapsRequired = 2;
     doubleTap.numberOfTouchesRequired = 1;
     [_webView addGestureRecognizer:doubleTap];
-    
-    // Make sure single tap waits for double tap to fail
-    [singleTap requireGestureRecognizerToFail:doubleTap];
     
     // Adjust content inset behavior if available
     if (@available(iOS 11.0, *)) {
@@ -316,30 +305,11 @@ extern "C" {
 #pragma mark - Gesture Handlers
 
 - (void)handleSingleTap:(UITapGestureRecognizer *)recognizer {
-    // Get the tap location
-    CGPoint location = [recognizer locationInView:_webView];
-    
-    // Forward the tap to the WebView's JavaScript
-    NSString *script = [NSString stringWithFormat:@"\
-        (function() {\
-            var element = document.elementFromPoint(%f, %f);\
-            if (element) {\
-                var event = new MouseEvent('click', {\
-                    view: window,\
-                    bubbles: true,\
-                    cancelable: true,\
-                    clientX: %f,\
-                    clientY: %f\
-                });\
-                element.dispatchEvent(event);\
-            }\
-        })();\
-    ", location.x, location.y, location.x, location.y];
-    
-    [_webView evaluateJavaScript:script completionHandler:nil];
-    
+    // This method is now unused - we let native touch handling work
+    // Only here for compatibility, does nothing
     if (_debugLogging) {
-        NSLog(@"[BalancyWebView] Single tap at location: %.1f, %.1f", location.x, location.y);
+        CGPoint location = [recognizer locationInView:_webView];
+        NSLog(@"[BalancyWebView] Custom single tap handler (unused): %.1f, %.1f", location.x, location.y);
     }
 }
 
@@ -644,82 +614,65 @@ extern "C" {
         // Disable scrolling
         _webView.scrollView.scrollEnabled = NO;
         
-        // === DISABLE MAGNIFYING GLASS ===
-        // Disable all gesture recognizers that could trigger magnification
+        // === SELECTIVE MAGNIFYING GLASS PREVENTION ===
+        // Only disable double-tap and long-press gestures, keep other gestures for animations
         for (UIGestureRecognizer *recognizer in _webView.gestureRecognizers) {
-            if (![recognizer isKindOfClass:[UITapGestureRecognizer class]] || 
-                [(UITapGestureRecognizer *)recognizer numberOfTapsRequired] == 1) {
-                // Keep our single tap gesture, disable everything else
-                continue;
+            if ([recognizer isKindOfClass:[UITapGestureRecognizer class]]) {
+                UITapGestureRecognizer *tapRecognizer = (UITapGestureRecognizer *)recognizer;
+                if (tapRecognizer.numberOfTapsRequired == 2) {
+                    recognizer.enabled = NO; // Disable double tap
+                }
             }
-            recognizer.enabled = NO;
+            if ([recognizer isKindOfClass:[UILongPressGestureRecognizer class]]) {
+                recognizer.enabled = NO; // Disable long press
+            }
         }
         
         for (UIGestureRecognizer *recognizer in _webView.scrollView.gestureRecognizers) {
             if ([recognizer isKindOfClass:[UITapGestureRecognizer class]]) {
                 UITapGestureRecognizer *tapRecognizer = (UITapGestureRecognizer *)recognizer;
-                if (tapRecognizer.numberOfTapsRequired > 1) {
-                    recognizer.enabled = NO;
+                if (tapRecognizer.numberOfTapsRequired == 2) {
+                    recognizer.enabled = NO; // Disable double tap zoom
                 }
+            }
+            if ([recognizer isKindOfClass:[UILongPressGestureRecognizer class]]) {
+                recognizer.enabled = NO; // Disable long press
             }
         }
         
-        // Inject UI customizations for game-like feel
+        // Inject minimal UI customizations for game-like feel
         NSString *gameUIModeScript = @"\
         (function() {\
-            // Disable text selection\
+            // Basic game UI setup\
             document.documentElement.style.webkitUserSelect = 'none';\
             document.documentElement.style.userSelect = 'none';\
-            \
-            // Disable context menu\
             document.documentElement.oncontextmenu = function() { return false; };\
-            \
-            // Disable text selection on tap\
             document.documentElement.style.webkitTouchCallout = 'none';\
-            \
-            // Disable zoom gestures and magnifying glass\
             document.documentElement.style.webkitTextSizeAdjust = 'none';\
             document.documentElement.style.touchAction = 'manipulation';\
             \
-            // Remove any focus outlines\
+            // Basic styling\
             var styleElement = document.createElement('style');\
             styleElement.textContent = '*:focus { outline: none !important; } img { pointer-events: none !important; -webkit-user-drag: none !important; }';\
             document.head.appendChild(styleElement);\
             \
-            // Prevent all gesture events that could trigger magnification\
-            document.addEventListener('gesturestart', function(e) {\
-                e.preventDefault();\
-                e.stopPropagation();\
-                return false;\
-            }, { passive: false, capture: true });\
+            // Only prevent gesture events that cause magnifying glass\
+            ['gesturestart', 'gesturechange', 'gestureend'].forEach(function(eventType) {\
+                document.addEventListener(eventType, function(e) {\
+                    e.preventDefault();\
+                    e.stopPropagation();\
+                    return false;\
+                }, { passive: false, capture: true });\
+            });\
             \
-            document.addEventListener('gesturechange', function(e) {\
-                e.preventDefault();\
-                e.stopPropagation();\
-                return false;\
-            }, { passive: false, capture: true });\
-            \
-            document.addEventListener('gestureend', function(e) {\
-                e.preventDefault();\
-                e.stopPropagation();\
-                return false;\
-            }, { passive: false, capture: true });\
-            \
-            // Prevent default touch behavior that could trigger magnification\
+            // Minimal double-tap prevention only\
             var lastTouchEnd = 0;\
             document.addEventListener('touchend', function(e) {\
                 var now = Date.now();\
-                if (now - lastTouchEnd <= 300) {\
+                if (now - lastTouchEnd <= 200 && e.target.tagName !== 'BUTTON' && !e.target.onclick) {\
                     e.preventDefault();\
                 }\
                 lastTouchEnd = now;\
-            }, { passive: false });\
-            \
-            // Prevent touchstart behavior on images that could trigger magnification\
-            document.addEventListener('touchstart', function(e) {\
-                if (e.target.tagName === 'IMG') {\
-                    e.preventDefault();\
-                }\
             }, { passive: false });\
         })();\
         ";
@@ -739,13 +692,29 @@ extern "C" {
         _webView.allowsLinkPreview = YES;
         _webView.scrollView.scrollEnabled = YES;
         
-        // Re-enable gesture recognizers for standard web experience
+        // Re-enable only the gestures we disabled (double-tap and long-press)
         for (UIGestureRecognizer *recognizer in _webView.gestureRecognizers) {
-            recognizer.enabled = YES;
+            if ([recognizer isKindOfClass:[UITapGestureRecognizer class]]) {
+                UITapGestureRecognizer *tapRecognizer = (UITapGestureRecognizer *)recognizer;
+                if (tapRecognizer.numberOfTapsRequired == 2) {
+                    recognizer.enabled = YES; // Re-enable double tap
+                }
+            }
+            if ([recognizer isKindOfClass:[UILongPressGestureRecognizer class]]) {
+                recognizer.enabled = YES; // Re-enable long press
+            }
         }
         
         for (UIGestureRecognizer *recognizer in _webView.scrollView.gestureRecognizers) {
-            recognizer.enabled = YES;
+            if ([recognizer isKindOfClass:[UITapGestureRecognizer class]]) {
+                UITapGestureRecognizer *tapRecognizer = (UITapGestureRecognizer *)recognizer;
+                if (tapRecognizer.numberOfTapsRequired == 2) {
+                    recognizer.enabled = YES; // Re-enable double tap zoom
+                }
+            }
+            if ([recognizer isKindOfClass:[UILongPressGestureRecognizer class]]) {
+                recognizer.enabled = YES; // Re-enable long press
+            }
         }
         
         // Re-enable standard web behaviors

@@ -90,6 +90,14 @@ namespace Balancy
 
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancySetViewNotificationsCallback(WebviewRequestCallback callback);
+            
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancyInventory_AddItems(IntPtr itemRef, int count);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancyInventory_RemoveItems(IntPtr itemRef, int count);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancyInventory_GetTotalItemsCount(IntPtr itemRef);
         }
 
         public static class WebSocket
