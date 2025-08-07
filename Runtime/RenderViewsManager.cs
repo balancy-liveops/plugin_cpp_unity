@@ -142,6 +142,14 @@ namespace Balancy
                 success = _webView.OpenWebView(urlToLoad, ownerJson, additionalInfo);
             }
             
+#if UNITY_EDITOR
+#if UNITY_EDITOR_OSX
+            BalancyEditorViewHint.ShowUIMessage("The view was opened as a popup window. On a mobile device it will be opened as an embedded web view.", "OK", CloseView);
+#else
+            BalancyEditorViewHint.ShowUIMessage("The view isn't supported on this OS. On a mobile device it will be opened as an embedded web view.", "OK", CloseView);
+#endif
+#endif
+            
             if (success)
                 Debug.Log("Opening View: " + urlToLoad);
             else
