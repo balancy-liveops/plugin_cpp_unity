@@ -327,6 +327,17 @@ namespace Balancy
                         Balancy.Callbacks.OnOfferGroupWasPurchased?.Invoke(offerGroupInfo, storeItem);
                         break;
                     }
+                    case Notifications.NotificationType.OnInventoryUpdated: {
+                        var notificationTyped = Marshal.PtrToStructure<Notifications.LiveOpsNotification_InventoryUpdated>(notificationPtr);
+                        var inventory = Profiles.System.Inventories.FindInventory(notificationTyped.Inventory);
+                        if (inventory != null)
+                        {
+                            string itemId = notificationTyped.Item;
+                            var item = !string.IsNullOrEmpty(itemId) ? CMS.GetModelByUnnyId<Balancy.Models.SmartObjects.Item>(itemId) : null;
+                            Balancy.Callbacks.OnInventoryUpdated?.Invoke(inventory, item, notificationTyped.Count, notificationTyped.SlotIndex, notificationTyped.CurrentAmount);
+                        }
+                        break;
+                    }
                     default:
                         Debug.LogError("**==> Unknown notification type. " + baseNotification.Type);
                         break;

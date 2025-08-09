@@ -7,36 +7,38 @@ namespace Balancy.Core
     {
         public enum NotificationType
         {
-        Base = 0,
-        DataIsReady = 1,
-        AuthFailed = 2,
-        CloudProfileFailed = 3,
-        UserRefreshed = 4,
-        
-        OnNewEventActivated = 100,
-        OnEventDeactivated = 101,
-        OnNewOfferActivated = 102,
-        OnOfferDeactivated = 103,
-        OnNewOfferGroupActivated = 104,
-        OnOfferGroupDeactivated = 105,
-        
-        OnABTestStarted = 106,
-        OnABTestEnded = 107,
+            Base = 0,
+            DataIsReady = 1,
+            AuthFailed = 2,
+            CloudProfileFailed = 3,
+            UserRefreshed = 4,
+            
+            OnNewEventActivated = 100,
+            OnEventDeactivated = 101,
+            OnNewOfferActivated = 102,
+            OnOfferDeactivated = 103,
+            OnNewOfferGroupActivated = 104,
+            OnOfferGroupDeactivated = 105,
+            
+            OnABTestStarted = 106,
+            OnABTestEnded = 107,
 
-        OnSegmentUpdated = 108,
-        OnShopUpdated = 109,
-        OnDailyBonusUpdated = 110,
-        
-            // Network events
-        OnNetworkDownloadStarted = 111,
-        OnNetworkDownloadFinished = 112,
-        
-        OnShopSlotWasPurchased = 120,
-        OnOfferWasPurchased = 121,
-        OnOfferGroupWasPurchased = 122,
-        
-        Unknown
-    }
+            OnSegmentUpdated = 108,
+            OnShopUpdated = 109,
+            OnDailyBonusUpdated = 110,
+            
+                // Network events
+            OnNetworkDownloadStarted = 111,
+            OnNetworkDownloadFinished = 112,
+            
+            OnShopSlotWasPurchased = 120,
+            OnOfferWasPurchased = 121,
+            OnOfferGroupWasPurchased = 122,
+            
+            OnInventoryUpdated = 131,
+            
+            Unknown
+        }
 
         [StructLayout(LayoutKind.Sequential)]
         public class NotificationBase
@@ -218,6 +220,16 @@ namespace Balancy.Core
         {
             public int StoreItemIndexInGroupOffer;
             public IntPtr OfferGroupInfo;
+        }
+        
+        [StructLayout(LayoutKind.Sequential)]
+        public class LiveOpsNotification_InventoryUpdated : StatusNotificationBase
+        {
+            [MarshalAs(UnmanagedType.LPStr)] public string Item;
+            public int Count;
+            public int SlotIndex;
+            public int CurrentAmount;
+            public IntPtr Inventory;
         }
     }
 }
