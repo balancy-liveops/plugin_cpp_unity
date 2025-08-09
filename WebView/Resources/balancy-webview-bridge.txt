@@ -31,6 +31,8 @@ const balancy = {};
         OfferPrice: 1,
         OfferGroupPrice: 2,
         TimeLeft: 3,
+        OwnerLocalizedKey: 4,
+        OwnerCustom: 5,
         CustomPrice: 9,
         Custom: 10
     };
@@ -192,6 +194,14 @@ const balancy = {};
         });
     };
 
+    async function prepareLocalization(element, key) {
+        if (key) {
+            const localizedText = await balancy.getLocalizedText(key);
+            element.textContent = localizedText;
+        }
+        element.classList.add('balancy-text-prepared');
+    }
+
     async function localizeAllElements() {
         const elements = document.querySelectorAll('[data-text-type="localized"]');
 
@@ -200,12 +210,7 @@ const balancy = {};
                 return;
 
             const key = element.getAttribute('data-localization-key');
-            if (key) {
-                const localizedText = await balancy.getLocalizedText(key);
-                element.textContent = localizedText;
-            }
-
-            element.classList.add('balancy-text-prepared');
+            await prepareLocalization(element, key);
         });
 
         await Promise.all(localizationPromises);
@@ -363,7 +368,8 @@ const balancy = {};
 
         const promises = [];
 
-        elements.forEach(element => {
+        elements.forEach(el => {
+            const element = el;
             if (element.classList.contains('balancy-text-prepared'))
                 return;
 
@@ -393,6 +399,23 @@ const balancy = {};
                 return;
             }
 
+            if (type === InfoType.OwnerCustom) {
+                const formatStr = element.getAttribute("data-text-format");
+                balancy.formatDataTemplate(formatStr, window.balancyViewOwner).then(formattedText => {
+                    element.textContent = formattedText;
+                });
+                return;
+            }
+
+            if (type === InfoType.OwnerLocalizedKey) {
+                const formatStr = element.getAttribute("data-text-format");
+                balancy.formatDataTemplate(formatStr, window.balancyViewOwner).then(formattedKey => {
+                    const key = formattedKey;
+                    return prepareLocalization(element, key);
+                });
+                return;
+            }
+
             const promise = balancy.sendRequest(senderId, RequestAction.GetInfo, {
                 type,
                 productId,
@@ -402,7 +425,9 @@ const balancy = {};
             }).then(result => {
                 try {
                     const formatStr = element.getAttribute("data-text-format");
-                    element.textContent = balancy.formatDataTemplate(formatStr, result);
+                    balancy.formatDataTemplate(formatStr, result).then(formattedText => {
+                        element.textContent = formattedText;
+                    });
                 } catch (error) {
                     console.error('Error formatting text:', error, 'Result:', result);
                 }
@@ -539,20 +564,74 @@ const balancy = {};
             return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     }
 
-    balancy.formatDataTemplate = function(formatStr, data) {
-        function getNestedValue(obj, path) {
-            return path.split('.').reduce((current, key) => {
-                return current && current[key] !== undefined ? current[key] : undefined;
-            }, obj);
+    balancy.formatDataTemplate = async function(formatStr, data) {
+        function capitalize(str) {
+            return str.charAt(0).toUpperCase() + str.slice(1);
         }
 
-        if (formatStr.includes('{') && formatStr.includes('}')) {
-            return formatStr.replace(/\{([^}]+)\}/g, (match, path) => {
-                const value = getNestedValue(data, path.trim());
-                return value !== undefined ? String(value) : match;
+        async function getNestedValueAsync(obj, path) {
+            const parts = path.split('.');
+            let current = obj;
+
+            for (let i = 0; i < parts.length; i++) {
+                const key = parts[i].trim();
+                if (current && current[key] !== undefined && current[key] !== null) {
+                    current = current[key];
+                } else {
+                    const unnyIdKey = 'unnyId' + capitalize(key);
+                    if (current && current[unnyIdKey] !== undefined) {
+                        try {
+                            const document = await balancy.getDocumentValue(current[unnyIdKey], 0);
+                            if (i + 1 < parts.length) {
+                                const remainingPath = parts.slice(i + 1).join('.');
+                                return await getNestedValueAsync(document, remainingPath);
+                            } else
+                                return document;
+                        } catch (error) {
+                            console.error(`Failed to get document for ID ${current[unnyIdKey]}:`, error);
+                            return undefined;
+                        }
+                    }
+                    return undefined;
+                }
+            }
+            return current;
+        }
+
+        if (!formatStr.includes('{') || !formatStr.includes('}'))
+            return formatStr;
+
+        const placeholders = [];
+        const regex = /\{([^}]+)\}/g;
+        let match;
+
+        while ((match = regex.exec(formatStr)) !== null) {
+            placeholders.push({
+                fullMatch: match[0],
+                path: match[1].trim(),
+                index: match.index
             });
         }
-    }
+
+        if (placeholders.length === 0)
+            return formatStr;
+
+        const valuePromises = placeholders.map(async (placeholder) => {
+            const value = await getNestedValueAsync(data, placeholder.path);
+            return {
+                placeholder: placeholder.fullMatch,
+                value: value !== undefined ? String(value) : placeholder.fullMatch
+            };
+        });
+
+        const resolvedValues = await Promise.all(valuePromises);
+
+        let result = formatStr;
+        for (const resolved of resolvedValues)
+            result = result.replace(resolved.placeholder, resolved.value);
+
+        return result;
+    };
 
     balancy.injectFontFace = function(fontName, localFontPath) {
         const style = document.createElement('style');
