@@ -15,6 +15,8 @@ const balancy = {};
         CanBuyGroupOffer: 13,
 
         GetBattlePassProgress: 20,
+        GetCustomEventInfo: 21,
+        SetCustomEventInfo: 22,
 
         BuyOffer: 101,
         BuyGroupOffer: 102,
@@ -73,6 +75,18 @@ const balancy = {};
         });
     };
 
+    balancy.getCustomEventInfo = (id) => {
+        return balancy.sendRequest(null, RequestAction.GetCustomEventInfo, {id}).then(result => {
+            return result ? JSON.parse(result) : {};
+        });
+    };
+
+    balancy.setCustomEventInfo = (id, dataJson) => {
+        const data = JSON.stringify(dataJson);
+        return balancy.sendRequest(null, RequestAction.SetCustomEventInfo, {id, data}).then(result => {
+        });
+    };
+
     balancy.getBattlePassConfig = () => {
         return balancy.getDocumentValue(window.balancyViewOwner.unnyIdGameEvent, 3).then(result => {
             return result.config;
@@ -116,13 +130,19 @@ const balancy = {};
         if (imageUri) {
             if (element.tagName === 'IMG')
                 element.src = imageUri;
-            else
-                element.style.borderImageSource = `url('${imageUri}')`;
+            else {
+                if (element.hasAttribute('data-use-nineslice') && element.getAttribute('data-use-nineslice') === 'false')
+                    element.style.backgroundImage = `url('${imageUri}')`;
+                else
+                    element.style.borderImageSource = `url('${imageUri}')`;
+            }
             element.classList.add('balancy-image-prepared');
         }
     }
 
     balancy.setImage = function(element, sprite) {
+        if (!sprite?.id)
+            return;
         element.setAttribute('data-image-id', sprite.id);
         element.classList.remove('balancy-image-prepared');
         prepareSprite(element, sprite.id);
