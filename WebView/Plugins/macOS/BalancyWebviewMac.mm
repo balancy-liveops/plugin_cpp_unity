@@ -34,6 +34,7 @@ void LogToUnity(const char* message) {
 @property (nonatomic, assign) BOOL debugLogging;
 @property (nonatomic, assign) BOOL transparentBackground;
 @property (nonatomic, assign) BOOL offlineCacheEnabled;
+@property (nonatomic, assign) BOOL webInspectorEnabled;
 @property (nonatomic, strong) NSButton *emergencyExitButton;
 
 - (instancetype)init;
@@ -46,6 +47,7 @@ void LogToUnity(const char* message) {
 - (void)setViewportRect:(CGFloat)x y:(CGFloat)y width:(CGFloat)width height:(CGFloat)height;
 - (void)setTransparentBackground:(BOOL)transparent;
 - (void)setDebugLogging:(BOOL)enabled;
+- (void)setWebInspectorEnabled:(BOOL)enabled;
 @end
 
 // Embedded WebView controller for rendering to texture
@@ -53,6 +55,7 @@ void LogToUnity(const char* message) {
 @property (nonatomic, strong) WKWebView *webView;
 @property (nonatomic, strong) WKUserContentController *userContentController;
 @property (nonatomic, assign) BOOL debugLogging;
+@property (nonatomic, assign) BOOL webInspectorEnabled;
 @property (nonatomic, assign) int textureWidth;
 @property (nonatomic, assign) int textureHeight;
 @property (nonatomic, strong) NSTimer *renderTimer;
@@ -70,6 +73,7 @@ void LogToUnity(const char* message) {
 - (void)updateTexture:(int)width height:(int)height;
 - (void)handleMouseEvent:(int)x y:(int)y eventType:(NSString*)eventType;
 - (void)renderToTexture;
+- (void)setWebInspectorEnabled:(BOOL)enabled;
 @end
 
 // Implementation of embedded WebView controller
@@ -79,6 +83,7 @@ void LogToUnity(const char* message) {
     self = [super init];
     if (self) {
         _debugLogging = NO;
+        _webInspectorEnabled = NO;
         _textureWidth = width;
         _textureHeight = height;
         _pixelDataReady = NO;
@@ -105,6 +110,17 @@ void LogToUnity(const char* message) {
         
         // WebView configuration
         WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
+        
+        // Configure preferences for Web Inspector
+        WKPreferences *preferences = [[WKPreferences alloc] init];
+        
+        // Enable developer extras (Web Inspector)
+        if (@available(macOS 10.11, *)) {
+            [preferences setValue:@YES forKey:@"developerExtrasEnabled"];
+        }
+        
+        configuration.preferences = preferences;
+        
         _userContentController = [[WKUserContentController alloc] init];
         [_userContentController addScriptMessageHandler:self name:@"BalancyWebView"];
         configuration.userContentController = _userContentController;
@@ -125,6 +141,12 @@ void LogToUnity(const char* message) {
         _webView.layer.backgroundColor = [[NSColor clearColor] CGColor];
         _webView.layer.opaque = NO;
         [_webView setValue:@NO forKey:@"drawsBackground"];
+        
+        // Enable context menu for Web Inspector
+        _webView.allowsBackForwardNavigationGestures = YES;
+        if (@available(macOS 10.13, *)) {
+            _webView.configuration.preferences.tabFocusesLinks = NO;
+        }
         
         [containerView addSubview:_webView];
         
@@ -472,6 +494,27 @@ void LogToUnity(const char* message) {
     // Navigation started
 }
 
+- (void)setWebInspectorEnabled:(BOOL)enabled {
+    _webInspectorEnabled = enabled;
+    
+    if (_webView && _webView.configuration.preferences) {
+        if (@available(macOS 10.11, *)) {
+            [_webView.configuration.preferences setValue:@(enabled) forKey:@"developerExtrasEnabled"];
+            
+            // Also try these additional settings
+            if (enabled) {
+                [_webView.configuration.preferences setValue:@YES forKey:@"allowsInlineMediaPlayback"];
+                [_webView.configuration setValue:@YES forKey:@"allowsAirPlayForMediaPlayback"];
+                
+                // Force enable context menu
+                if ([_webView respondsToSelector:@selector(_setCustomUserAgent:)]) {
+                    // This helps ensure the context menu works
+                }
+            }
+        }
+    }
+}
+
 @end
 
 // Global WebView controller instances
@@ -492,6 +535,7 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
         _debugLogging = NO;
         _transparentBackground = NO;
         _offlineCacheEnabled = NO;
+        _webInspectorEnabled = NO;
         _viewportRect = NSMakeRect(0, 0, 1, 1);
         
         NSRect windowRect = NSMakeRect(0, 0, size.width, size.height);
@@ -505,6 +549,17 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
         self = [self initWithWindow:window];
         
         WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
+        
+        // Configure preferences for Web Inspector
+        WKPreferences *preferences = [[WKPreferences alloc] init];
+        
+        // Enable developer extras (Web Inspector)
+        if (@available(macOS 10.11, *)) {
+            [preferences setValue:@YES forKey:@"developerExtrasEnabled"];
+        }
+        
+        configuration.preferences = preferences;
+        
         _userContentController = [[WKUserContentController alloc] init];
         [_userContentController addScriptMessageHandler:self name:@"BalancyWebView"];
         configuration.userContentController = _userContentController;
@@ -512,6 +567,12 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
         _webView = [[WKWebView alloc] initWithFrame:[[window contentView] bounds] configuration:configuration];
         _webView.navigationDelegate = self;
         _webView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+        
+        // Enable context menu for Web Inspector
+        _webView.allowsBackForwardNavigationGestures = YES;
+        if (@available(macOS 10.13, *)) {
+            _webView.configuration.preferences.tabFocusesLinks = NO;
+        }
         
         [[window contentView] addSubview:_webView];
         
@@ -697,6 +758,7 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
             [[self window] setOpaque:YES];
         }
     }
+    
 }
 
 - (void)setDebugLogging:(BOOL)enabled {
@@ -749,6 +811,27 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
 
 - (void)webView:(WKWebView *)webView didStartProvisionalNavigation:(WKNavigation *)navigation {
    // Navigation started
+}
+
+- (void)setWebInspectorEnabled:(BOOL)enabled {
+    _webInspectorEnabled = enabled;
+    
+    if (_webView && _webView.configuration.preferences) {
+        if (@available(macOS 10.11, *)) {
+            [_webView.configuration.preferences setValue:@(enabled) forKey:@"developerExtrasEnabled"];
+            
+            // Also try these additional settings
+            if (enabled) {
+                [_webView.configuration.preferences setValue:@YES forKey:@"allowsInlineMediaPlayback"];
+                [_webView.configuration setValue:@YES forKey:@"allowsAirPlayForMediaPlayback"];
+                
+                // Force enable context menu
+                if ([_webView respondsToSelector:@selector(_setCustomUserAgent:)]) {
+                    // This helps ensure the context menu works
+                }
+            }
+        }
+    }
 }
 
 @end
@@ -974,5 +1057,67 @@ void _balancySetEmergencyExitEnabled(bool enabled) {
            }
        }
    }
+}
+
+void _balancySetWebInspectorEnabled(bool enabled) {
+    @autoreleasepool {
+        if (_sharedController != nil) {
+            [_sharedController setWebInspectorEnabled:enabled];
+        }
+        
+        if (_embeddedController != nil) {
+            [_embeddedController setWebInspectorEnabled:enabled];
+        }
+    }
+}
+
+void _balancyShowWebInspector() {
+    @autoreleasepool {
+        if (_sharedController != nil && _sharedController.webView) {
+            // First make sure developer extras are enabled
+            [_sharedController setWebInspectorEnabled:YES];
+            
+            // Try multiple methods to show the Web Inspector
+            if (@available(macOS 10.11, *)) {
+                // Method 1: Direct private API call
+                if ([_sharedController.webView respondsToSelector:@selector(_showInspector)]) {
+                    [_sharedController.webView performSelector:@selector(_showInspector)];
+                    return;
+                }
+                
+                // Method 2: Alternative private API
+                if ([_sharedController.webView respondsToSelector:@selector(_inspector)]) {
+                    id inspector = [_sharedController.webView performSelector:@selector(_inspector)];
+                    if (inspector && [inspector respondsToSelector:@selector(show)]) {
+                        [inspector performSelector:@selector(show)];
+                        return;
+                    }
+                }
+                
+                // Method 3: Context menu simulation
+                NSEvent *rightClick = [NSEvent mouseEventWithType:NSEventTypeRightMouseDown
+                                                         location:NSMakePoint(100, 100)
+                                                    modifierFlags:0
+                                                        timestamp:[[NSProcessInfo processInfo] systemUptime]
+                                                     windowNumber:[_sharedController.webView window].windowNumber
+                                                          context:nil
+                                                      eventNumber:0
+                                                       clickCount:1
+                                                         pressure:1.0];
+                [_sharedController.webView rightMouseDown:rightClick];
+            }
+        }
+        
+        // Also try for embedded controller
+        if (_embeddedController != nil && _embeddedController.webView) {
+            [_embeddedController setWebInspectorEnabled:YES];
+            
+            if (@available(macOS 10.11, *)) {
+                if ([_embeddedController.webView respondsToSelector:@selector(_showInspector)]) {
+                    [_embeddedController.webView performSelector:@selector(_showInspector)];
+                }
+            }
+        }
+    }
 }
 }

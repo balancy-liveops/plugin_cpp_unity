@@ -44,6 +44,10 @@ bool _balancyGetEmbeddedPixelData(unsigned char* buffer, int bufferSize);
 // Emergency Exit functionality
 void _balancySetEmergencyExitEnabled(bool enabled);
 
+// Web Inspector functionality
+void _balancySetWebInspectorEnabled(bool enabled);
+void _balancyShowWebInspector();
+
 #ifdef __cplusplus
 }
 #endif

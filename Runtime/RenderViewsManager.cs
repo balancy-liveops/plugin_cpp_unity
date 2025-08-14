@@ -206,6 +206,7 @@ namespace Balancy
             BattlePassClaim = 104,
 
             CloseWindow = 200,
+            BalancyIsReady = 201,
 
             CustomMessage = 1000,
         }
@@ -253,6 +254,10 @@ namespace Balancy
         {
             switch ((RequestAction)command)
             {
+                // case RequestAction.BalancyIsReady: {
+                //     this._webView?.show();
+                //     break;
+                // }
                 case RequestAction.BuyOffer:
                 {
                     CommandBuyOffer commandInfo = JsonUtility.FromJson<CommandBuyOffer>(paramsJson);

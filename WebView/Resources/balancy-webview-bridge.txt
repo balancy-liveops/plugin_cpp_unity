@@ -126,6 +126,7 @@ const balancy = {};
     };
 
     async function prepareSprite(element, id) {
+        element.classList.add('balancy-image-prepared');
         const imageUri = await balancy.getImageUrl(id);
         if (imageUri) {
             if (element.tagName === 'IMG')
@@ -136,7 +137,6 @@ const balancy = {};
                 else
                     element.style.borderImageSource = `url('${imageUri}')`;
             }
-            element.classList.add('balancy-image-prepared');
         }
     }
 
@@ -144,7 +144,6 @@ const balancy = {};
         if (!sprite?.id)
             return;
         element.setAttribute('data-image-id', sprite.id);
-        element.classList.remove('balancy-image-prepared');
         prepareSprite(element, sprite.id);
     }
 

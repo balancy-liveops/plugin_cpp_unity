@@ -415,6 +415,12 @@ namespace Balancy.WebView
         private static extern bool _balancySendScrollEvent(int x, int y, float deltaX, float deltaY);
         #endif
         
+        // Web Inspector functionality (macOS only)
+        [DllImport("libBalancyWebViewMac")]
+        private static extern void _balancySetWebInspectorEnabled(bool enabled);
+        [DllImport("libBalancyWebViewMac")]
+        private static extern void _balancyShowWebInspector();
+        
         #endif
 
         #endregion
@@ -430,6 +436,7 @@ namespace Balancy.WebView
             }
 
             _instance = this;
+            // SetWebInspectorEnabled(true);
             DontDestroyOnLoad(gameObject);
 
             // Initialize platform-specific plugin
@@ -899,6 +906,34 @@ namespace Balancy.WebView
 #else
     return false;
 #endif
+        }
+        
+        /// <summary>
+        /// Enables or disables the Web Inspector for debugging (macOS only)
+        /// When enabled, right-click in the WebView will show a context menu with "Inspect Element"
+        /// </summary>
+        /// <param name="enabled">True to enable Web Inspector, false to disable</param>
+        public void SetWebInspectorEnabled(bool enabled)
+        {
+            #if UNITY_EDITOR_OSX || UNITY_STANDALONE_OSX
+            _balancySetWebInspectorEnabled(enabled);
+            Debug.Log($"[BalancyWebView] Web Inspector {(enabled ? "enabled" : "disabled")}");
+            #else
+            Debug.LogWarning("Web Inspector is only supported on macOS");
+            #endif
+        }
+        
+        /// <summary>
+        /// Programmatically shows the Web Inspector window (macOS only)
+        /// </summary>
+        public void ShowWebInspector()
+        {
+            #if UNITY_EDITOR_OSX || UNITY_STANDALONE_OSX
+            _balancyShowWebInspector();
+            Debug.Log("[BalancyWebView] Showing Web Inspector");
+            #else
+            Debug.LogWarning("Web Inspector is only supported on macOS");
+            #endif
         }
         
         /// <summary>
