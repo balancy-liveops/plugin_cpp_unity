@@ -1011,7 +1011,7 @@ namespace Balancy.WebView
                     _balancyInjectJSCode(injectedCode);
                 }
 
-                InjectFileFromResources("balancy-webview-performance");
+                // InjectFileFromResources("balancy-webview-performance");
                 InjectFileFromResources("balancy-webview-styles");
                 InjectFileFromResources("balancy-webview-bridge");
                 
