@@ -30,7 +30,7 @@ namespace Balancy
             LibraryMethods.General.balancySetLogCallback(LogMessage);
             _mainThreadInstance = UnityMainThreadDispatcher.Instance();
             Balancy.Network.UnityWebRequestBridge.Initialize();
-            Balancy.Network.UnityWebSocketBridge.Initialize();
+            // Balancy.Network.UnityWebSocketBridge.Initialize();//temporary turn it off
 
             LibraryMethods.General.balancySetInvokeInMainThreadCallback(InvokeInMainThread);
             UnityFileManager.Init();

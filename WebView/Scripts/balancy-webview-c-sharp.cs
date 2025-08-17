@@ -462,7 +462,7 @@ namespace Balancy.WebView
 #endif
 #endif
             
-#if UNITY_IOS || UNITY_STANDALONE_OSX
+#if UNITY_IOS || UNITY_STANDALONE_OSX || UNITY_EDITOR_OSX
             _balancyRegisterMessageCallback(OnMessageReceived);
             _balancyRegisterLoadCompletedCallback(OnLoadCompletedReceived);
 #endif

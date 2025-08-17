@@ -4,6 +4,12 @@ const balancy = {};
     const pendingRequests = {};
     let requestCounter = 0;
 
+    // Caching for images and localization
+    const imageCache = {};
+    const localizationCache = {};
+    const pendingImageRequests = {};
+    const pendingLocalizationRequests = {};
+
     const RequestAction = {
         None: 0,
         GetProfile: 1,
@@ -26,6 +32,19 @@ const balancy = {};
         CloseWindow: 200,
         BalancyIsReady: 201,
         CustomMessage: 1000,
+        BatchRequest: 399,  // Batch request for multiple requests
+    };
+
+    const ItemType = {
+        Currency: 1 << 0,
+        Item: 1 << 1,
+        Event: 1 << 2,
+    };
+
+    const PriceType = {
+        Hard: 0,
+        Soft: 1,
+        Ads: 2,
     };
 
     const InfoType = {
@@ -50,6 +69,127 @@ const balancy = {};
         OnShopSlotWasPurchased: 120,
         OnOfferWasPurchased: 121,
         OnOfferGroupWasPurchased: 122,
+    };
+
+    balancy.NotificationType = NotificationType;
+    balancy.PriceType = PriceType;
+    balancy.ItemType = ItemType;
+
+    // Batch Manager - collects requests and sends them as a single batch
+    class BatchManager {
+        constructor() {
+            this.pendingBatch = new Map(); // requestId -> {requestData, resolve, reject}
+            this.batchTimeout = null;
+            this.BATCH_DELAY = 16; // 16ms delay before sending batch
+        }
+
+        /**
+         * Add request to current batch
+         */
+        addToBatch(sender, action, params, resolve, reject) {
+            const requestId = (requestCounter++).toString();
+
+            const requestData = {
+                type: 'request',
+                sender,
+                id: requestId,
+                action: action,
+                params: params
+            };
+
+            this.pendingBatch.set(requestId, {
+                requestData,
+                resolve,
+                reject
+            });
+
+            this.scheduleBatch();
+            return requestId;
+        }
+
+        /**
+         * Schedule batch sending if not already scheduled
+         */
+        scheduleBatch() {
+            if (this.batchTimeout) return;
+
+            this.batchTimeout = setTimeout(() => {
+                this.sendBatch();
+            }, this.BATCH_DELAY);
+        }
+
+        /**
+         * Send all accumulated requests as a single batch
+         */
+        sendBatch() {
+            if (this.pendingBatch.size === 0) {
+                this.batchTimeout = null;
+                return;
+            }
+
+            // Collect all requests as array
+            const requests = [];
+            this.pendingBatch.forEach((batchItem, requestId) => {
+                requests.push(batchItem.requestData);
+                // Store the promise handlers in global pendingRequests for response handling
+                pendingRequests[requestId] = {
+                    resolve: batchItem.resolve,
+                    reject: batchItem.reject,
+                    timestamp: Date.now()
+                };
+            });
+
+            console.log(`[BatchManager] Sending batch with ${this.pendingBatch.size} requests`);
+
+            // Create batch message
+            const batchMessage = {
+                type: 'batch',
+                requests: requests
+            };
+
+            // Send the batch
+            balancy.postMessage(JSON.stringify(batchMessage));
+
+            // Clear current batch
+            this.pendingBatch.clear();
+            this.batchTimeout = null;
+        }
+
+        /**
+         * Get current batch statistics
+         */
+        getStats() {
+            return {
+                pendingCount: this.pendingBatch.size,
+                isScheduled: this.batchTimeout !== null
+            };
+        }
+    }
+
+    // Initialize batch manager
+    const batchManager = new BatchManager();
+
+    // Store original sendRequest function
+    const originalSendRequest = function(sender, action, params = {}) {
+        return new Promise((resolve, reject) => {
+            const requestId = (requestCounter++).toString();
+
+            pendingRequests[requestId] = {
+                resolve: resolve,
+                reject: reject,
+                timestamp: Date.now()
+            };
+
+            const message = {
+                type: 'request',
+                sender,
+                id: requestId,
+                action: action,
+                params: params
+            };
+
+            balancy.postMessage(JSON.stringify(message));
+        });
     };
 
     balancy.findDomElement = (dataId, parentElement) => {
@@ -106,15 +246,61 @@ const balancy = {};
     };
 
     balancy.getLocalizedText = async function(key) {
-        return balancy.sendRequest(null, RequestAction.GetLocalization, {key});
+        // Check cache first
+        if (localizationCache[key] !== undefined) {
+            return localizationCache[key];
+        }
+
+        // Check if request is already pending
+        if (pendingLocalizationRequests[key]) {
+            return pendingLocalizationRequests[key];
+        }
+
+        // Create new request and cache it
+        const promise = balancy.sendRequest(null, RequestAction.GetLocalization, {key})
+            .then(result => {
+                localizationCache[key] = result;
+                delete pendingLocalizationRequests[key];
+                return result;
+            })
+            .catch(error => {
+                delete pendingLocalizationRequests[key];
+                throw error;
+            });
+
+        pendingLocalizationRequests[key] = promise;
+        return promise;
     };
 
     balancy.getImageUrl = async function(id) {
-        return balancy.sendRequest(null, RequestAction.GetImageUrl, {id});
+        // Check cache first
+        if (imageCache[id] !== undefined) {
+            return imageCache[id];
+        }
+
+        // Check if request is already pending
+        if (pendingImageRequests[id]) {
+            return pendingImageRequests[id];
+        }
+
+        // Create new request and cache it
+        const promise = balancy.sendRequest(null, RequestAction.GetImageUrl, {id})
+            .then(result => {
+                imageCache[id] = result;
+                delete pendingImageRequests[id];
+                return result;
+            })
+            .catch(error => {
+                delete pendingImageRequests[id];
+                throw error;
+            });
+
+        pendingImageRequests[id] = promise;
+        return promise;
     };
 
     balancy.sendIsReady = () => {
-        return balancy.sendRequest(null, RequestAction.BalancyIsReady, {id: 'none'});
+        return originalSendRequest(null, RequestAction.BalancyIsReady, {id: 'none'});
     };
 
     balancy.delayIsReady = () => {
@@ -191,29 +377,34 @@ const balancy = {};
         balancy.handleResponse(message);
     };
 
+    // Replace sendRequest with batched version
     balancy.sendRequest = function(sender, action, params = {}) {
+        // Some actions should not be batched (e.g., purchases, sensitive operations)
+        const nonBatchableActions = [
+            RequestAction.BuyOffer,
+            RequestAction.BuyGroupOffer,
+            RequestAction.BuyShopSlot,
+            RequestAction.BattlePassClaim,
+            RequestAction.CloseWindow,
+            RequestAction.BalancyIsReady,
+            RequestAction.SetProfile,
+            RequestAction.SetCustomEventInfo
+        ];
+
+        if (nonBatchableActions.includes(action)) {
+            return originalSendRequest(sender, action, params);
+        }
+
+        // Add to batch
         return new Promise((resolve, reject) => {
-            const requestId = (requestCounter++).toString();
-
-            pendingRequests[requestId] = {
-                resolve: resolve,
-                reject: reject,
-                timestamp: Date.now()
-            };
-
-            const message = {
-                type: 'request',
-                sender,
-                id: requestId,
-                action: action,
-                params: params
-            };
-
-            balancy.postMessage(JSON.stringify(message));
+            batchManager.addToBatch(sender, action, params, resolve, reject);
         });
     };
 
-    async function prepareLocalization(element, key) {
+    // Export batch manager for debugging
+    balancy.batchManager = batchManager;
+
+    balancy.setLocalizedText = async function(element, key) {
         if (key) {
             const localizedText = await balancy.getLocalizedText(key);
             element.textContent = localizedText;
@@ -229,7 +420,7 @@ const balancy = {};
                 return;
 
             const key = element.getAttribute('data-localization-key');
-            await prepareLocalization(element, key);
+            await balancy.setLocalizedText(element, key);
         });
 
         await Promise.all(localizationPromises);
@@ -279,11 +470,28 @@ const balancy = {};
             case RequestAction.BuyGroupOffer:
                 const index = parseInt(button.getAttribute('data-index')) || 0;
                 balancy.canBuyGroupOffer(index).then(result => {
-                    console.log(">>>>balancy.canBuyGroupOffer ", result);
                     button.disabled = !result;
                 });
                 break;
         }
+    }
+
+    balancy.buyGroupOffer = function(index, paramsJson = {}) {
+        if (!window.balancyViewOwner || !window.balancyViewOwner.instanceId)
+            return;
+        if (!paramsJson)
+            paramsJson = {};
+        paramsJson.instanceId = window.balancyViewOwner.instanceId;
+        paramsJson.index = index;
+
+        return balancy.sendRequest('buyGroupOfferButton', RequestAction.BuyGroupOffer, paramsJson);
+    }
+
+    balancy.getProductInfo = function(productId) {
+        return balancy.sendRequest('offerGroupPrice', RequestAction.GetInfo, {
+            type: InfoType.CustomPrice,
+            productId
+        });
     }
 
     function balancyButtonClicked(button) {
@@ -430,7 +638,7 @@ const balancy = {};
                 const formatStr = element.getAttribute("data-text-format");
                 balancy.formatDataTemplate(formatStr, window.balancyViewOwner).then(formattedKey => {
                     const key = formattedKey;
-                    return prepareLocalization(element, key);
+                    return balancy.setLocalizedText(element, key);
                 });
                 return;
             }
@@ -477,6 +685,7 @@ const balancy = {};
                 elements.forEach(refreshButtonAvailability);
                 break;
         }
+        window.dispatchEvent(new CustomEvent('balancy-notification', { detail: data }));
     }
 
     balancy.initResponseHandler = function() {
@@ -496,6 +705,20 @@ const balancy = {};
                             request.reject(new Error(response.error));
                         else
                             request.resolve(response.result);
+                    }
+                } else if (response.type === 'batch-response') {
+                    // Handle batch response - array of individual responses
+                    if (response.responses && Array.isArray(response.responses)) {
+                        response.responses.forEach(individualResponse => {
+                            const request = pendingRequests[individualResponse.id];
+                            if (request) {
+                                delete pendingRequests[individualResponse.id];
+                                if (individualResponse.error)
+                                    request.reject(new Error(individualResponse.error));
+                                else
+                                    request.resolve(individualResponse.result);
+                            }
+                        });
                     }
                 } else {
                     if (response.type === 'notification') {
@@ -535,9 +758,8 @@ const balancy = {};
 
             function checkAllReceived(event) {
                 receivedEvents.add(event.type);
-                console.log(':: STATUS :: ' + event.type);
                 if ([...requiredEvents].every(e => receivedEvents.has(e))) {
-                    console.log("ALL IS READY 1");
+                    console.log("ALL IS READY");
                     window.dispatchEvent(new CustomEvent("balancy-ready"));
 
                     if (!balancy.delayedIsReady)
@@ -561,6 +783,41 @@ const balancy = {};
         const timeNow = Math.floor(Date.now() / 1000);
         const timeSpend = timeNow - window.balancySettings.launchTime;
         return window.balancySettings.secondsLeft - timeSpend;
+    }
+
+    balancy.shortenCount = function (count) {
+        if (count >= 1e9) {
+            return `${parseFloat((count / 1e9).toFixed(1))}B`;
+        } else if (count >= 1e6) {
+            return `${parseFloat((count / 1e6).toFixed(1))}M`;
+        } else if (count >= 1e3) {
+            return `${parseFloat((count / 1e3).toFixed(1))}k`;
+        }
+        return count.toString();
+    }
+
+    balancy.formatItemsCount = function (itemWithAmount, shouldShortenCount = false) {
+        const localizedKey = itemWithAmount.item.name;
+        let isDuration = localizedKey?.startsWith("LIVEOPS TEMPLATES/KEY_INFINITE_");
+
+        const isCurrency = itemWithAmount.item.type === ItemType.Currency;
+
+        let text;
+        if (isDuration) {
+            const durationInSecs = itemWithAmount.count;
+            const hoursPart = Math.floor(durationInSecs / 3600);
+            const minsPart = Math.floor((durationInSecs % 3600) / 60);
+            text = `${hoursPart > 0 ? `${hoursPart}h ` : ''}${minsPart > 0 ? `${minsPart}m` : ''}`;
+        } else {
+            const shortCount = shouldShortenCount ? balancy.shortenCount(itemWithAmount.count) : itemWithAmount.count.toString();
+            text = isCurrency ? `${itemWithAmount.count}` : `x${shortCount}`;
+        }
+
+        return {
+            text,
+            isDuration,
+            isCurrency
+        };
     }
 
     balancy.formatTime = function (seconds) {

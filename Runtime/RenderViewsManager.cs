@@ -174,7 +174,7 @@ namespace Balancy
 
         private static void OnMessageReceived(string msg)
         {
-            Debug.Log("Incomming = " + msg);
+            // Debug.Log("Incomming = " + msg);
             
             //hardcode. rewrite the way how native plugins send me the message
             if (msg == "//:balancy_close_view")
