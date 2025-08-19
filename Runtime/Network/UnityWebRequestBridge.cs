@@ -414,6 +414,11 @@ namespace Balancy.Network
                 dataPtr = Marshal.AllocHGlobal(dataSize);
                 Marshal.Copy(data, 0, dataPtr, dataSize);
             }
+            // Ensure consistency: if dataPtr is Zero, dataSize must be 0
+            if (dataPtr == IntPtr.Zero)
+            {
+                dataSize = 0;
+            }
 
             try
             {
@@ -500,8 +505,12 @@ namespace Balancy.Network
                 dataPtr = Marshal.AllocHGlobal(dataSize);
                 Marshal.Copy(data, 0, dataPtr, dataSize);
             }
+            // Ensure consistency: if dataPtr is Zero, dataSize must be 0
+            if (dataPtr == IntPtr.Zero)
+            {
+                dataSize = 0;
+            }
 
-            
             try
             {
                 // Send the result back to the native plugin
