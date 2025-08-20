@@ -798,7 +798,7 @@ const balancy = {};
 
     balancy.formatItemsCount = function (itemWithAmount, shouldShortenCount = false) {
         const localizedKey = itemWithAmount.item.name;
-        let isDuration = localizedKey?.startsWith("LIVEOPS TEMPLATES/KEY_INFINITE_");
+        let isDuration = localizedKey?.startsWith("LIVEOPS_TEMPLATES/INFINITE_");
 
         const isCurrency = itemWithAmount.item.type === ItemType.Currency;
 
