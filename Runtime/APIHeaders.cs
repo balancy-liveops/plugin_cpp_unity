@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using Balancy.Data.SmartObjects;
 using Balancy.Models;
 using Balancy.Models.SmartObjects;
@@ -7,6 +9,102 @@ namespace Balancy
 {
     public static partial class API
     {
+        private class CallbackWithId<T> where T : Balancy.Core.Responses.ResponseData
+        {
+            public int Id { get; set; }
+            public Balancy.Core.ResponseCallback<T> Callback { get; set; }
+            public GCHandle Handle { get; set; }
+        }
+        
+        private struct CallbackResult
+        {
+            public int CallbackId;
+            public Balancy.LibraryMethods.API.ResponseCallback StaticCallback;
+        }
+        
+        private abstract class CallbackWrapperBase
+        {
+            public abstract void InvokeCallback(IntPtr responseDataPtr);
+        }
+        
+        private class TypedCallbackWrapper<T> : CallbackWrapperBase where T : Balancy.Core.Responses.ResponseData
+        {
+            private readonly Balancy.Core.ResponseCallback<T> _callback;
+            
+            public TypedCallbackWrapper(Balancy.Core.ResponseCallback<T> callback)
+            {
+                _callback = callback;
+            }
+            
+            public override void InvokeCallback(IntPtr responseDataPtr)
+            {
+                try
+                {
+                    var responseData = Marshal.PtrToStructure<T>(responseDataPtr);
+                    _callback?.Invoke(responseData);
+                }
+                catch (Exception e)
+                {
+                    UnityEngine.Debug.LogError("Exception in TypedCallbackWrapper: " + e);
+                }
+            }
+        }
+        
+        private static readonly Dictionary<int, CallbackWrapperBase> _callbackStorage = new Dictionary<int, CallbackWrapperBase>();
+        private static readonly object _callbackLock = new object();
+        private static int _callbackIdCounter = 0;
+        
+        [AOT.MonoPInvokeCallback(typeof(LibraryMethods.API.ResponseCallback))]
+        private static void StaticResponseHandler(int callbackId, IntPtr responseDataPtr)
+        {
+            CallbackWrapperBase callbackWrapper = null;
+            lock (_callbackLock)
+            {
+                if (_callbackStorage.TryGetValue(callbackId, out callbackWrapper))
+                {
+                    _callbackStorage.Remove(callbackId);
+                }
+            }
+            
+            if (callbackWrapper != null)
+            {
+                try
+                {
+                    callbackWrapper.InvokeCallback(responseDataPtr);
+                }
+                catch (Exception e)
+                {
+                    UnityEngine.Debug.LogError($"Exception in StaticResponseHandler for callback {callbackId}: " + e);
+                }
+            }
+            else
+            {
+                UnityEngine.Debug.LogError($"Callback with ID {callbackId} not found");
+            }
+        }
+        
+        private static CallbackResult ProtectedFromGCCallback<T>(Balancy.Core.ResponseCallback<T> callback) 
+            where T : Balancy.Core.Responses.ResponseData
+        {
+            int callbackId;
+            lock (_callbackLock)
+            {
+                callbackId = ++_callbackIdCounter;
+            }
+            
+            var wrapper = new TypedCallbackWrapper<T>(callback);
+            
+            lock (_callbackLock)
+            {
+                _callbackStorage[callbackId] = wrapper;
+            }
+            
+            return new CallbackResult
+            {
+                CallbackId = callbackId,
+                StaticCallback = StaticResponseHandler
+            };
+        }
         private static BalancyStatus _status;
         
         public enum AdType
@@ -51,29 +149,33 @@ namespace Balancy
         public static void HardPurchaseStoreItem(StoreItem storeItem, Balancy.Core.PaymentInfo paymentInfo,
             Balancy.Core.ResponseCallback<Balancy.Core.Responses.PurchaseProductResponseData> callback, bool requireValidation)
         {
+            var callbackResult = ProtectedFromGCCallback(callback);
             Balancy.LibraryMethods.API.balancyHardPurchaseStoreItem(storeItem?.GetRawPointer() ?? IntPtr.Zero, paymentInfo,
-                ProtectedFromGCCallback(callback), requireValidation);
+                callbackResult.CallbackId, callbackResult.StaticCallback, requireValidation);
         }
         
         public static void HardPurchaseShopSlot(ShopSlot shopSlot, Balancy.Core.PaymentInfo paymentInfo,
             Balancy.Core.ResponseCallback<Balancy.Core.Responses.PurchaseProductResponseData> callback, bool requireValidation)
         {
+            var callbackResult = ProtectedFromGCCallback(callback);
             Balancy.LibraryMethods.API.balancyHardPurchaseShopSlot(shopSlot?.GetRawPointer() ?? IntPtr.Zero, paymentInfo,
-                ProtectedFromGCCallback(callback), requireValidation);
+                callbackResult.CallbackId, callbackResult.StaticCallback, requireValidation);
         }
 
         public static void HardPurchaseGameOffer(OfferInfo offerInfo, Balancy.Core.PaymentInfo paymentInfo,
             Balancy.Core.ResponseCallback<Balancy.Core.Responses.PurchaseProductResponseData> callback, bool requireValidation)
         {
+            var callbackResult = ProtectedFromGCCallback(callback);
             Balancy.LibraryMethods.API.balancyHardPurchaseGameOffer(offerInfo?.GetRawPointer() ?? IntPtr.Zero, paymentInfo,
-                ProtectedFromGCCallback(callback), requireValidation);
+                callbackResult.CallbackId, callbackResult.StaticCallback, requireValidation);
         }
 
         public static void HardPurchaseGameOfferGroup(OfferGroupInfo offerGroupInfo, StoreItem storeItem, Balancy.Core.PaymentInfo paymentInfo,
             Balancy.Core.ResponseCallback<Balancy.Core.Responses.PurchaseProductResponseData> callback, bool requireValidation)
         {
+            var callbackResult = ProtectedFromGCCallback(callback);
             Balancy.LibraryMethods.API.balancyHardPurchaseGameOfferGroup(offerGroupInfo?.GetRawPointer() ?? IntPtr.Zero, storeItem?.GetRawPointer() ?? IntPtr.Zero, paymentInfo,
-                ProtectedFromGCCallback(callback), requireValidation);
+                callbackResult.CallbackId, callbackResult.StaticCallback, requireValidation);
         }
 
         public static void TrackAdRevenue(AdType type, double revenue, string placement) => 
@@ -102,14 +204,16 @@ namespace Balancy
         public static class Auth
         {
             public static void WithNameAndPassword(string name, string password, Balancy.Core.ResponseCallback<Balancy.Core.Responses.AuthResponseData> callback) {
-                Balancy.LibraryMethods.API.balancyAuth_NameAndPassword(name, password, ProtectedFromGCCallback(callback));
+                var callbackResult = ProtectedFromGCCallback(callback);
+                Balancy.LibraryMethods.API.balancyAuth_NameAndPassword(name, password, callbackResult.CallbackId, callbackResult.StaticCallback);
             }
         }
         
         public static class Link
         {
             public static void WithNameAndPassword(string name, string password, bool forceLink, Balancy.Core.ResponseCallback<Balancy.Core.Responses.LinkResponseData> callback) {
-                Balancy.LibraryMethods.API.balancyLink_NameAndPassword(name, password, forceLink, ProtectedFromGCCallback(callback));
+                var callbackResult = ProtectedFromGCCallback(callback);
+                Balancy.LibraryMethods.API.balancyLink_NameAndPassword(name, password, forceLink, callbackResult.CallbackId, callbackResult.StaticCallback);
             }
         }
         

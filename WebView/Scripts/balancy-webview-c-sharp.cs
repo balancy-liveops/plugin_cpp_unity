@@ -7,6 +7,15 @@ namespace Balancy.WebView
     /// <summary>
     /// Main interface for the Balancy WebView plugin.
     /// Provides methods to open, close, and interact with a WebView overlay.
+    /// 
+    /// Example usage for animation settings:
+    /// 
+    /// // Set 200ms delay and 300ms fade-in animation
+    /// BalancyWebView.Instance.SetShowDelay(0.2f);
+    /// BalancyWebView.Instance.SetAnimationDuration(0.3f);
+    /// 
+    /// // Open WebView - it will be invisible for 200ms, then fade in over 300ms
+    /// BalancyWebView.Instance.OpenWebView("https://example.com", ownerJson, additionalInfo);
     /// </summary>
     public class BalancyWebView : MonoBehaviour
     {
@@ -148,6 +157,8 @@ namespace Balancy.WebView
         private string _ownerJson = string.Empty;
         private string _additionalInfo = string.Empty;
         private string _lastUrl = string.Empty;
+        private float _showDelay = 0.1f; // Default 100ms delay
+        private float _animationDuration = 0.1f; // Default 100ms animation duration
         #if UNITY_EDITOR_OSX
         private RenderTexture _embeddedTexture = null;
         #endif
@@ -191,6 +202,10 @@ namespace Balancy.WebView
         private static extern void _balancyRegisterCacheCompletedCallback(LoadCompletedDelegate callback);
         [DllImport("__Internal")]
         private static extern bool _balancyInjectJSCode(string code);
+        [DllImport("__Internal")]
+        private static extern void _balancySetShowDelay(float delaySeconds);
+        [DllImport("__Internal")]
+        private static extern void _balancySetAnimationDuration(float durationSeconds);
         
         #elif UNITY_ANDROID && !UNITY_EDITOR
         
@@ -351,6 +366,33 @@ namespace Balancy.WebView
             }
         }
         
+        // Android animation methods
+        private static void _balancySetShowDelay(float delaySeconds)
+        {
+            try
+            {
+                var plugin = GetPluginInstance();
+                plugin.Call("setShowDelay", delaySeconds);
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"Android _balancySetShowDelay failed: {e.Message}");
+            }
+        }
+
+        private static void _balancySetAnimationDuration(float durationSeconds)
+        {
+            try
+            {
+                var plugin = GetPluginInstance();
+                plugin.Call("setAnimationDuration", durationSeconds);
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"Android _balancySetAnimationDuration failed: {e.Message}");
+            }
+        }
+        
         // Android callbacks - NO-OP implementations (using Unity messaging instead)
         private static void _balancyRegisterMessageCallback(MessageDelegate callback)
         {
@@ -397,6 +439,10 @@ namespace Balancy.WebView
         private static extern void _balancyRegisterMessageCallback(MessageDelegate callback);
         [DllImport("libBalancyWebViewMac")]
         private static extern void _balancyRegisterLoadCompletedCallback(LoadCompletedDelegate callback);
+        [DllImport("libBalancyWebViewMac")]
+        private static extern void _balancySetShowDelay(float delaySeconds);
+        [DllImport("libBalancyWebViewMac")]
+        private static extern void _balancySetAnimationDuration(float durationSeconds);
         
         // Embedding-specific methods (macOS only)
         [DllImport("libBalancyWebViewMac")]
@@ -436,7 +482,7 @@ namespace Balancy.WebView
             }
 
             _instance = this;
-            // SetWebInspectorEnabled(true);
+            SetWebInspectorEnabled(true);
             DontDestroyOnLoad(gameObject);
 
             // Initialize platform-specific plugin
@@ -761,6 +807,64 @@ namespace Balancy.WebView
         }
 
         /// <summary>
+        /// Sets the delay before showing the WebView after it has loaded
+        /// </summary>
+        /// <param name="delaySeconds">Delay in seconds (default: 0.1)</param>
+        public void SetShowDelay(float delaySeconds)
+        {
+            _showDelay = Mathf.Max(0f, delaySeconds);
+            
+            if (_debugLogging)
+            {
+                Debug.Log($"[BalancyWebView] Show delay set to: {_showDelay:F3} seconds");
+            }
+            
+            // Apply immediately if WebView is open
+            if (_isWebViewOpen || _isWebViewEmbedded)
+            {
+                _balancySetShowDelay(_showDelay);
+            }
+        }
+
+        /// <summary>
+        /// Sets the duration of the fade-in animation when showing the WebView
+        /// </summary>
+        /// <param name="durationSeconds">Animation duration in seconds (default: 0.1)</param>
+        public void SetAnimationDuration(float durationSeconds)
+        {
+            _animationDuration = Mathf.Max(0f, durationSeconds);
+            
+            if (_debugLogging)
+            {
+                Debug.Log($"[BalancyWebView] Animation duration set to: {_animationDuration:F3} seconds");
+            }
+            
+            // Apply immediately if WebView is open
+            if (_isWebViewOpen || _isWebViewEmbedded)
+            {
+                _balancySetAnimationDuration(_animationDuration);
+            }
+        }
+
+        /// <summary>
+        /// Gets the current show delay setting
+        /// </summary>
+        /// <returns>Show delay in seconds</returns>
+        public float GetShowDelay()
+        {
+            return _showDelay;
+        }
+
+        /// <summary>
+        /// Gets the current animation duration setting
+        /// </summary>
+        /// <returns>Animation duration in seconds</returns>
+        public float GetAnimationDuration()
+        {
+            return _animationDuration;
+        }
+
+        /// <summary>
         /// Injects CSS into the WebView
         /// </summary>
         /// <param name="cssCode">The CSS code to inject</param>
@@ -926,7 +1030,7 @@ namespace Balancy.WebView
         /// <summary>
         /// Programmatically shows the Web Inspector window (macOS only)
         /// </summary>
-        public void ShowWebInspector()
+        public static void ShowWebInspector()
         {
             #if UNITY_EDITOR_OSX || UNITY_STANDALONE_OSX
             _balancyShowWebInspector();
@@ -955,6 +1059,7 @@ namespace Balancy.WebView
             ApplyViewportSettings();
             ApplyTransparencySettings();
             ApplyCacheSettings();
+            ApplyAnimationSettings();
             
             // Unified call - platform-specific implementation handled in native layer
             _balancySetDebugLogging(_debugLogging);
@@ -981,6 +1086,14 @@ namespace Balancy.WebView
             _balancySetOfflineCacheEnabled(_offlineCacheEnabled);
         }
         
+        // Apply current animation settings to the WebView
+        private void ApplyAnimationSettings()
+        {
+            // Unified call - platform-specific implementation handled in native layer
+            _balancySetShowDelay(_showDelay);
+            _balancySetAnimationDuration(_animationDuration);
+        }
+        
         // Log a debug message if debug logging is enabled
         private void LogDebug(string message)
         {
@@ -1003,6 +1116,8 @@ namespace Balancy.WebView
         [AOT.MonoPInvokeCallback(typeof(MessageDelegate))]
         public static void OnMessageReceived(string message)
         {
+            Debug.Log("SUKA");
+            Debug.Log("[BalancyWebView] Message Received: " + message);
             _instance.OnMessageReceivedPrivate(message);
         }
         

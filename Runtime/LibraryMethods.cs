@@ -405,7 +405,7 @@ namespace Balancy
         public static class API
         {
             [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-            internal delegate void ResponseCallback(IntPtr responseData);
+            internal delegate void ResponseCallback(int callbackId, IntPtr responseData);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern bool balancySoftPurchaseStoreItem(IntPtr storeItemPointer);
@@ -420,15 +420,15 @@ namespace Balancy
             
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-            public static extern void balancyHardPurchaseStoreItem(IntPtr storeItemPointer, Balancy.Core.PaymentInfo paymentInfo, ResponseCallback callback, bool requireValidation);
+            public static extern void balancyHardPurchaseStoreItem(IntPtr storeItemPointer, Balancy.Core.PaymentInfo paymentInfo, int callbackId, ResponseCallback callback, bool requireValidation);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-            public static extern void balancyHardPurchaseGameOffer(IntPtr gameOfferPointer, Balancy.Core.PaymentInfo paymentInfo, ResponseCallback callback, bool requireValidation);
+            public static extern void balancyHardPurchaseGameOffer(IntPtr gameOfferPointer, Balancy.Core.PaymentInfo paymentInfo, int callbackId, ResponseCallback callback, bool requireValidation);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-            public static extern void balancyHardPurchaseShopSlot(IntPtr shopSlotPointer, Balancy.Core.PaymentInfo paymentInfo, ResponseCallback callback, bool requireValidation);
+            public static extern void balancyHardPurchaseShopSlot(IntPtr shopSlotPointer, Balancy.Core.PaymentInfo paymentInfo, int callbackId, ResponseCallback callback, bool requireValidation);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-            public static extern void balancyHardPurchaseGameOfferGroup(IntPtr gameOfferPointer, IntPtr storeItemPointer, Balancy.Core.PaymentInfo paymentInfo, ResponseCallback callback, bool requireValidation);
+            public static extern void balancyHardPurchaseGameOfferGroup(IntPtr gameOfferPointer, IntPtr storeItemPointer, Balancy.Core.PaymentInfo paymentInfo, int callbackId, ResponseCallback callback, bool requireValidation);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern bool balancyDailyBonus_claimNextReward(IntPtr dailyBonusInfo);
@@ -444,9 +444,9 @@ namespace Balancy
             public static extern int balancyBattlePass_getRewardStatus(IntPtr bpLinePointer, int index);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-            public static extern void balancyAuth_NameAndPassword(string name, string password, ResponseCallback callback);
+            public static extern void balancyAuth_NameAndPassword(string name, string password, int callbackId, ResponseCallback callback);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-            public static extern void balancyLink_NameAndPassword(string name, string password, bool forceLink, ResponseCallback callback);
+            public static extern void balancyLink_NameAndPassword(string name, string password, bool forceLink, int callbackId, ResponseCallback callback);
         }
     }
 }

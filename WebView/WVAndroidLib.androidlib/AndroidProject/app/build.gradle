@@ -1,0 +1,49 @@
+plugins {
+    id 'com.android.library' version '8.6.0' apply false
+}
+
+apply plugin: 'com.android.library'
+
+android {
+    namespace 'com.balancy.webview'
+    compileSdkVersion 35
+
+    defaultConfig {
+        minSdkVersion 22
+        targetSdkVersion 35
+        
+        versionCode 1
+        versionName "1.0.0"
+        
+        ndk {
+            abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging true
+        }
+    }
+    
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+        debug {
+            debuggable true
+        }
+    }
+}
+
+// ✅ NO Unity dependencies - standalone Android library
+dependencies {
+    // No dependencies needed for WebView functionality
+    // Unity integration happens at runtime via reflection
+}

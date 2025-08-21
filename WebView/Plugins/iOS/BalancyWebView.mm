@@ -44,6 +44,10 @@ extern "C" {
         _transparentBackground = YES; // Set transparent background by default
         _viewportRect = CGRectMake(0.0f, 0.0f, 1.0f, 1.0f);
         
+        // Animation defaults
+        _showDelay = 0.1f; // 100ms default delay
+        _animationDuration = 0.1f; // 100ms default animation duration
+        
         // Setup WebView configuration
         [self setupWebView];
     }
@@ -226,6 +230,9 @@ extern "C" {
     _webView.backgroundColor = [UIColor clearColor];
     _webView.opaque = NO;
     
+    // Start with webview completely transparent for animation
+    _webView.alpha = 0.0;
+    
     // === GAME UI MODE NATIVE SETTINGS ===
     // These settings make the WebView feel more like a native game UI
     
@@ -323,6 +330,48 @@ extern "C" {
     // Do nothing - this effectively blocks the double tap
     // You could optionally forward it as a single click if needed:
     // [self handleSingleTap:recognizer];
+}
+
+#pragma mark - Animation Methods
+
+- (void)setShowDelay:(float)delaySeconds {
+    _showDelay = delaySeconds;
+    
+    if (_debugLogging) {
+        NSLog(@"[BalancyWebView] Show delay set to: %.3f seconds", delaySeconds);
+    }
+}
+
+- (void)setAnimationDuration:(float)durationSeconds {
+    _animationDuration = durationSeconds;
+    
+    if (_debugLogging) {
+        NSLog(@"[BalancyWebView] Animation duration set to: %.3f seconds", durationSeconds);
+    }
+}
+
+- (void)startShowAnimation {
+    if (_debugLogging) {
+        NSLog(@"[BalancyWebView] Starting show animation with delay: %.3f, duration: %.3f", _showDelay, _animationDuration);
+    }
+    
+    // Ensure webview starts completely transparent
+    _webView.alpha = 0.0;
+    
+    // Wait for the delay, then animate
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(_showDelay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [UIView animateWithDuration:self.animationDuration
+                              delay:0.0
+                            options:UIViewAnimationOptionCurveEaseOut
+                         animations:^{
+                             self.webView.alpha = 1.0;
+                         }
+                         completion:^(BOOL finished) {
+                             if (self.debugLogging) {
+                                 NSLog(@"[BalancyWebView] Show animation completed");
+                             }
+                         }];
+    });
 }
 
 #pragma mark - View Lifecycle
@@ -964,6 +1013,9 @@ extern "C" {
     if (_debugLogging) {
         NSLog(@"[BalancyWebView] Page loaded successfully");
     }
+    
+    // Start the show animation instead of immediately showing
+    [self startShowAnimation];
     
     // Notify Unity that loading is complete
     if (_loadCompletedCallback != NULL) {

@@ -47,19 +47,20 @@ namespace Balancy
 
         public static void FinalizedHardPurchase(Actions.PurchaseResult result,
             Balancy.Actions.BalancyProductInfo productInfo, Core.PaymentInfo paymentInfo,
-            Action<bool, bool> validationCallback)
+            Action<bool, bool> validationCallback, bool requireReceiptValidation = true)
         {
             Debug.Log("HardPurchase result: " + result);
             Debug.Log("HardPurchase Receipt: " + paymentInfo.Receipt);
 
-#if UNITY_EDITOR
-            bool requireValidation = false;
-            // paymentInfo.Receipt = "{\"Payload\":\"{\\\"json\\\":\\\"{\\\\\\\"orderId\\\\\\\":\\\\\\\"" +
-            //                       paymentInfo.OrderId + "\\\\\\\",\\\\\\\"productId\\\\\\\":\\\\\\\"" +
-            //                       paymentInfo.ProductId + "\\\\\\\"}\\\",\\\"signature\\\":\\\"bypass\\\"}\"}";
-#else
-            bool requireValidation = true;
-#endif
+// #if UNITY_EDITOR
+//             bool requireValidation = false;
+//             // paymentInfo.Receipt = "{\"Payload\":\"{\\\"json\\\":\\\"{\\\\\\\"orderId\\\\\\\":\\\\\\\"" +
+//             //                       paymentInfo.OrderId + "\\\\\\\",\\\\\\\"productId\\\\\\\":\\\\\\\"" +
+//             //                       paymentInfo.ProductId + "\\\\\\\"}\\\",\\\"signature\\\":\\\"bypass\\\"}\"}";
+// #else
+//             bool requireValidation = true;
+// #endif
+            bool requireValidation = requireReceiptValidation;
             if (productInfo != null)
             {
                 var callback = GetCallbackData(productInfo);
@@ -316,30 +317,6 @@ namespace Balancy
         public static void RestorePurchases()
         {
             Balancy.Actions.Purchasing.GetRestorePurchasesCallback()?.Invoke();
-        }
-
-        [AOT.MonoPInvokeCallback(typeof(LibraryMethods.API.ResponseCallback))]
-        private static Balancy.LibraryMethods.API.ResponseCallback ProtectedFromGCCallback<T>(
-            Balancy.Core.ResponseCallback<T> callback) where T : Balancy.Core.Responses.ResponseData
-        {
-            System.Runtime.InteropServices.GCHandle? gch = null;
-            Balancy.LibraryMethods.API.ResponseCallback innerCallback = (responseDataPtr) =>
-            {
-                var responseData = Marshal.PtrToStructure<T>(responseDataPtr);
-                if (gch.HasValue)
-                    gch.Value.Free();
-                try
-                {
-                    callback(responseData);
-                }
-                catch (Exception e)
-                {
-                    UnityEngine.Debug.LogError("Exception in callback: " + e);
-                }
-            };
-
-            gch = GCHandle.Alloc(innerCallback);
-            return innerCallback;
         }
 
         public static string[] GetProductsIdAndType()

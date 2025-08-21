@@ -134,6 +134,13 @@ namespace Balancy.Network
             _bridge = bridge;
         }
 
+        public static void TEST()
+        {
+            var wsServerUrl = "wss://wss.balancy.dev";
+            var rawJson = "{\"token\":\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyIjp7Il9pZCI6MTIwODQ5Mjg1LCJkYXRlIjoxNzUxNjMxMzQ3ODE3fSwiZ2FtZSI6eyJfaWQiOjM0OTAsImJpbmRUeXBlIjo3LCJ1c2VyVmFsdWUiOiJERTIzMDlFQS0wRTgxLTUzMUMtQkREQy1EMzVCQTRDOUZBMTYifSwiaWF0IjoxNzUxNjMxMzQ3LCJleHAiOjE3NTQyMjMzNDd9.3Q249aW0zeZjiblmZ3apFm6GgVIyEHiQ2-PVH0Cvi0U\",\"userId\":\"2bc08ca4-501e-11f0-b88f-1fec53a055ba\",\"gameId\":\"65133930-4d25-11f0-b843-1fec53a055ba\",\"environment\":0,\"deviceId\":\"DE2309EA-0E81-531C-BDDC-D35BA4C9FA16\"}";
+            var connection = new WebSocketConnection(1, null);
+            connection.ConnectAsync(wsServerUrl, rawJson);
+        }
 
         public async Task ConnectAsync(string url, string authDataJson)
         {

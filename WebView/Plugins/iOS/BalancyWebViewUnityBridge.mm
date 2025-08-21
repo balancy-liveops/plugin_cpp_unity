@@ -49,6 +49,35 @@ bool _balancyInjectJSCode(const char* code) {
     }
 }
 
+// Animation configuration functions
+void _balancySetShowDelay(float delaySeconds) {
+    @autoreleasepool {
+        // Find the BalancyWebViewController
+        UIViewController* rootViewController = [UIApplication sharedApplication].keyWindow.rootViewController;
+        for (UIViewController* childVC in rootViewController.childViewControllers) {
+            if ([childVC isKindOfClass:[BalancyWebViewController class]]) {
+                BalancyWebViewController* webViewController = (BalancyWebViewController*)childVC;
+                [webViewController setShowDelay:delaySeconds];
+                break;
+            }
+        }
+    }
+}
+
+void _balancySetAnimationDuration(float durationSeconds) {
+    @autoreleasepool {
+        // Find the BalancyWebViewController
+        UIViewController* rootViewController = [UIApplication sharedApplication].keyWindow.rootViewController;
+        for (UIViewController* childVC in rootViewController.childViewControllers) {
+            if ([childVC isKindOfClass:[BalancyWebViewController class]]) {
+                BalancyWebViewController* webViewController = (BalancyWebViewController*)childVC;
+                [webViewController setAnimationDuration:durationSeconds];
+                break;
+            }
+        }
+    }
+}
+
 // Declare emergency exit function (implementation is in BalancyWebView.mm)
 void _balancySetEmergencyExitEnabled(bool enabled);
 

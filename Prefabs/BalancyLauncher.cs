@@ -31,6 +31,26 @@ namespace Balancy
             DontDestroyOnLoad(gameObject);
         }
         
+        [System.Serializable]
+        private class PaymentReceiptData
+        {
+            public string Payload;
+        }
+
+        [System.Serializable]
+        private class PaymentPayloadData
+        {
+            public string json;
+            public string signature;
+        }
+
+        [System.Serializable]
+        private class PaymentOrderData
+        {
+            public string orderId;
+            public string productId;
+        }
+        
         private static Balancy.Core.PaymentInfo CreateTestPaymentInfo(Balancy.Models.SmartObjects.Price price)
         {
             var orderId = Guid.NewGuid().ToString();
@@ -46,19 +66,28 @@ namespace Balancy
                 Receipt = "<receipt>" // Placeholder for receipt
             };
 
+            Debug.Log("1>>> " + paymentInfo.Receipt);
             // Below is the testing receipt, it's not designed for production
-            paymentInfo.Receipt = JsonUtility.ToJson(new
+            var orderData = new PaymentOrderData
             {
-                Payload = JsonUtility.ToJson(new
-                {
-                    json = JsonUtility.ToJson(new
-                    {
-                        orderId = paymentInfo.OrderId,
-                        productId = paymentInfo.ProductId
-                    }),
-                    signature = "bypass"
-                })
-            });
+                orderId = paymentInfo.OrderId,
+                productId = paymentInfo.ProductId
+            };
+
+            var payloadData = new PaymentPayloadData
+            {
+                json = JsonUtility.ToJson(orderData),
+                signature = "bypass"
+            };
+
+            var receiptData = new PaymentReceiptData
+            {
+                Payload = JsonUtility.ToJson(payloadData)
+            };
+
+            paymentInfo.Receipt = JsonUtility.ToJson(receiptData);
+            
+            Debug.Log("2>>> " + paymentInfo.Receipt);
 
             return paymentInfo;
         }
@@ -74,16 +103,17 @@ namespace Balancy
 
             Balancy.Actions.Purchasing.SetHardPurchaseCallback((productInfo) =>
             {
-                Debug.Log($"Starting Purchase: {productInfo?.ProductId}");
+                Debug.Log($"Starting Purchase:: {productInfo?.ProductId}");
                 var price = productInfo?.GetStoreItem()?.Price;
                 if (price != null)
                 {
                     var paymentInfo = CreateTestPaymentInfo(price);
+                    Debug.LogError(">>== " + paymentInfo.Receipt);
                     Balancy.API.FinalizedHardPurchase(Actions.PurchaseResult.Success, productInfo, paymentInfo,
                         (validationSuccess, removeFromPending) =>
                         {
                             Debug.Log("Purchase completed successfully. Validation success: " + validationSuccess + " Remove from pending: " + removeFromPending);
-                        });
+                        }, false);
                 }
                 else
                 {
@@ -150,6 +180,14 @@ namespace Balancy
         {
             Balancy.Callbacks.ClearAll();
             Main.Stop();
+        }
+
+        private void OnGUI()
+        {
+            if (GUI.Button(new Rect(100, 100, 100, 100), "LOGS"))
+            {
+                Balancy.WebView.BalancyWebView.ShowWebInspector();
+            }
         }
     }
 }
