@@ -1116,8 +1116,6 @@ namespace Balancy.WebView
         [AOT.MonoPInvokeCallback(typeof(MessageDelegate))]
         public static void OnMessageReceived(string message)
         {
-            Debug.Log("SUKA");
-            Debug.Log("[BalancyWebView] Message Received: " + message);
             _instance.OnMessageReceivedPrivate(message);
         }
         

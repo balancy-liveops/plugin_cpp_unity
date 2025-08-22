@@ -34,6 +34,8 @@ namespace Balancy
             _webView.SetFullScreen(true);
             //_webView.SetViewportRect(viewportX, viewportY, viewportWidth, viewportHeight);
             //_webView.SetDebugLogging(true);
+
+            SetViewDelays(0.2f, 0.3f);
         }
 
         private static IntPtr m_LastOpenedOwnerPtr = IntPtr.Zero;
@@ -96,6 +98,15 @@ namespace Balancy
             }
             string fileUrl = "file://" + filePath;
             OpenView(fileUrl, owner);
+        }
+
+        public static void SetViewDelays(float showDelay, float transparencyAnimationDuration)
+        {
+            if (_webView)
+            {
+                _webView.SetShowDelay(showDelay);
+                _webView.SetAnimationDuration(transparencyAnimationDuration);
+            }
         }
         
         public static void OpenView(string url, JsonBasedObject owner = null)

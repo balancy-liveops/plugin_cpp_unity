@@ -23,6 +23,11 @@ void _balancySetViewportRect(float x, float y, float width, float height);
 void _balancySetTransparentBackground(bool transparent);
 void _balancySetOfflineCacheEnabled(bool enabled);
 void _balancySetDebugLogging(bool enabled);
+void _balancySetGameUIMode(bool enabled);
+
+// Animation configuration
+void _balancySetShowDelay(float delaySeconds);
+void _balancySetAnimationDuration(float durationSeconds);
 
 // Callback registration
 typedef void (*MessageCallback)(const char* message);
@@ -40,6 +45,9 @@ void _balancyUpdateEmbeddedTexture(int width, int height);
 bool _balancySendMouseEvent(int x, int y, const char* eventType);
 bool _balancySendScrollEvent(int x, int y, float deltaX, float deltaY);
 bool _balancyGetEmbeddedPixelData(unsigned char* buffer, int bufferSize);
+
+// Game UI Mode
+void _balancySetGameUIMode(bool enabled);
 
 // Emergency Exit functionality
 void _balancySetEmergencyExitEnabled(bool enabled);

@@ -35,7 +35,10 @@ void LogToUnity(const char* message) {
 @property (nonatomic, assign) BOOL transparentBackground;
 @property (nonatomic, assign) BOOL offlineCacheEnabled;
 @property (nonatomic, assign) BOOL webInspectorEnabled;
+@property (nonatomic, assign) BOOL gameUIMode;
 @property (nonatomic, strong) NSButton *emergencyExitButton;
+@property (nonatomic, assign) float showDelay;
+@property (nonatomic, assign) float animationDuration;
 
 - (instancetype)init;
 - (instancetype)initWithSize:(NSSize)size;
@@ -56,6 +59,9 @@ void LogToUnity(const char* message) {
 @property (nonatomic, strong) WKUserContentController *userContentController;
 @property (nonatomic, assign) BOOL debugLogging;
 @property (nonatomic, assign) BOOL webInspectorEnabled;
+@property (nonatomic, assign) BOOL gameUIMode;
+@property (nonatomic, assign) float showDelay;
+@property (nonatomic, assign) float animationDuration;
 @property (nonatomic, assign) int textureWidth;
 @property (nonatomic, assign) int textureHeight;
 @property (nonatomic, strong) NSTimer *renderTimer;
@@ -84,6 +90,9 @@ void LogToUnity(const char* message) {
     if (self) {
         _debugLogging = NO;
         _webInspectorEnabled = NO;
+        _gameUIMode = YES;
+        _showDelay = 0.1f;
+        _animationDuration = 0.1f;
         _textureWidth = width;
         _textureHeight = height;
         _pixelDataReady = NO;
@@ -515,6 +524,19 @@ void LogToUnity(const char* message) {
     }
 }
 
+- (void)setShowDelay:(float)delaySeconds {
+    _showDelay = fmaxf(0.0f, delaySeconds);
+}
+
+- (void)setAnimationDuration:(float)durationSeconds {
+    _animationDuration = fmaxf(0.0f, durationSeconds);
+}
+
+- (void)setGameUIMode:(BOOL)enabled {
+    _gameUIMode = enabled;
+    // Apply game UI mode settings if needed
+}
+
 @end
 
 // Global WebView controller instances
@@ -536,6 +558,9 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
         _transparentBackground = NO;
         _offlineCacheEnabled = NO;
         _webInspectorEnabled = NO;
+        _gameUIMode = YES;
+        _showDelay = 0.1f;
+        _animationDuration = 0.1f;
         _viewportRect = NSMakeRect(0, 0, 1, 1);
         
         NSRect windowRect = NSMakeRect(0, 0, size.width, size.height);
@@ -587,6 +612,8 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
 }
 
 - (BOOL)loadURL:(NSString *)url {
+    // Set window to be initially hidden BEFORE showing it
+    [[self window] setAlphaValue:0.0f];
     [[self window] makeKeyAndOrderFront:nil];
     
     if ([url hasPrefix:@"file://"]) {
@@ -765,6 +792,47 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
     _debugLogging = enabled;
 }
 
+- (void)setGameUIMode:(BOOL)enabled {
+    _gameUIMode = enabled;
+    // Apply game UI mode settings if needed
+}
+
+- (void)setShowDelay:(float)delaySeconds {
+    _showDelay = fmaxf(0.0f, delaySeconds);
+    if (_debugLogging) {
+        LogToUnity([[NSString stringWithFormat:@"Show delay set to: %.3f seconds", _showDelay] UTF8String]);
+    }
+}
+
+- (void)setAnimationDuration:(float)durationSeconds {
+    _animationDuration = fmaxf(0.0f, durationSeconds);
+    if (_debugLogging) {
+        LogToUnity([[NSString stringWithFormat:@"Animation duration set to: %.3f seconds", _animationDuration] UTF8String]);
+    }
+}
+
+- (void)startShowAnimation {
+    // Window is already hidden (alpha = 0.0f) from loadURL
+    
+    if (_debugLogging) {
+        LogToUnity([[NSString stringWithFormat:@"Starting show animation with delay: %.3fs, duration: %.3fs", _showDelay, _animationDuration] UTF8String]);
+    }
+    
+    // Delay before starting the animation
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(_showDelay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        // Animate the webview to fully visible
+        [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+            context.duration = self->_animationDuration;
+            context.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
+            [[[self window] animator] setAlphaValue:1.0f];
+        } completionHandler:^{
+            if (self->_debugLogging) {
+                LogToUnity("Show animation completed");
+            }
+        }];
+    });
+}
+
 #pragma mark - WKScriptMessageHandler
 
 - (void)userContentController:(WKUserContentController *)userContentController didReceiveScriptMessage:(WKScriptMessage *)message {
@@ -790,11 +858,14 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
     }
     
     NSString *initScript = @"if (window.BalancyWebView && typeof window.BalancyWebView.initResponseHandler === 'function') { window.BalancyWebView.initResponseHandler(); }";
-[_webView evaluateJavaScript:initScript completionHandler:nil];
+    [_webView evaluateJavaScript:initScript completionHandler:nil];
+    
+    // Start the show animation instead of immediately showing
+    [self startShowAnimation];
    
-   if (_loadCompletedCallback) {
-       _loadCompletedCallback(true);
-   }
+    if (_loadCompletedCallback) {
+        _loadCompletedCallback(true);
+    }
 }
 
 - (void)webView:(WKWebView *)webView didFailNavigation:(WKNavigation *)navigation withError:(NSError *)error {
@@ -948,6 +1019,42 @@ void _balancySetDebugLogging(bool enabled) {
    @autoreleasepool {
        if (_sharedController != nil) {
            [_sharedController setDebugLogging:enabled];
+       }
+   }
+}
+
+void _balancySetGameUIMode(bool enabled) {
+   @autoreleasepool {
+       if (_sharedController != nil) {
+           [_sharedController setGameUIMode:enabled];
+       }
+       
+       if (_embeddedController != nil) {
+           [_embeddedController setGameUIMode:enabled];
+       }
+   }
+}
+
+void _balancySetShowDelay(float delaySeconds) {
+   @autoreleasepool {
+       if (_sharedController != nil) {
+           [_sharedController setShowDelay:delaySeconds];
+       }
+       
+       if (_embeddedController != nil) {
+           [_embeddedController setShowDelay:delaySeconds];
+       }
+   }
+}
+
+void _balancySetAnimationDuration(float durationSeconds) {
+   @autoreleasepool {
+       if (_sharedController != nil) {
+           [_sharedController setAnimationDuration:durationSeconds];
+       }
+       
+       if (_embeddedController != nil) {
+           [_embeddedController setAnimationDuration:durationSeconds];
        }
    }
 }
@@ -1120,4 +1227,5 @@ void _balancyShowWebInspector() {
         }
     }
 }
+
 }
