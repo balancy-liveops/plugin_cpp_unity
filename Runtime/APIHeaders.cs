@@ -217,6 +217,17 @@ namespace Balancy
             }
         }
         
+        public static class General
+        {
+            public static void LevelCompleted() {
+                Balancy.LibraryMethods.API.balancyGenenal_LevelCompleted();
+            }
+            
+            public static void LevelFailed() {
+                Balancy.LibraryMethods.API.balancyGenenal_LevelFailed();
+            }
+        }
+        
         public static class Inventory
         {
             public static int AddItems(Balancy.Models.SmartObjects.Item item, int count) {

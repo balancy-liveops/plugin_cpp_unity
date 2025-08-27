@@ -23,6 +23,14 @@ const balancy = {};
         GetBattlePassProgress: 20,
         GetCustomEventInfo: 21,
         SetCustomEventInfo: 22,
+        GetTasksInfoForTheEvent: 23,
+        ActivateTasksForTheEvent: 24,
+        DeactivateTasksForTheEvent: 25,
+        ClaimTaskReward: 26,
+
+        GetInventoryItemsCount: 30,
+        AddInventoryItems: 31,
+        RemoveInventoryItems: 32,
 
         BuyOffer: 101,
         BuyGroupOffer: 102,
@@ -45,6 +53,14 @@ const balancy = {};
         Hard: 0,
         Soft: 1,
         Ads: 2,
+    };
+
+    const TaskStatus = {
+        None: 0,
+        InProgress: 1,
+        Completed: 2,
+        Claimed: 3,
+        Failed: 4,
     };
 
     const InfoType = {
@@ -74,6 +90,7 @@ const balancy = {};
     balancy.NotificationType = NotificationType;
     balancy.PriceType = PriceType;
     balancy.ItemType = ItemType;
+    balancy.TaskStatus = TaskStatus;
 
     // Batch Manager - collects requests and sends them as a single batch
     class BatchManager {
@@ -197,6 +214,40 @@ const balancy = {};
         return element instanceof HTMLElement ? element : null;
     }
 
+    balancy.getTasks = () => {
+        return balancy.sendRequest(null, RequestAction.GetTasksInfoForTheEvent, {id: window.balancyViewOwner.unnyIdGameEvent}).then(result => {
+            return JSON.parse(result);
+        });
+    }
+
+    balancy.activateTasks = (tasks) => {
+        return balancy.sendRequest(null, RequestAction.ActivateTasksForTheEvent, {id: window.balancyViewOwner.unnyIdGameEvent, tasks}).then(result => {
+            return JSON.parse(result);
+        });
+    }
+
+    balancy.deactivateTasks = (tasks) => {
+        return balancy.sendRequest(null, RequestAction.DeactivateTasksForTheEvent, {id: window.balancyViewOwner.unnyIdGameEvent, tasks});
+    }
+
+    balancy.claimTaskReward = (id) => {
+        return balancy.sendRequest(null, RequestAction.ClaimTaskReward, {id}).then(response => {
+            return response && response === 'ok';
+        });
+    };
+
+    balancy.getInventoryItemsCount = (id) => {
+        return balancy.sendRequest(null, RequestAction.GetInventoryItemsCount, {id});
+    };
+
+    balancy.addInventoryItems = (id, count) => {
+        return balancy.sendRequest(null, RequestAction.AddInventoryItems, {id, count});
+    };
+
+    balancy.removeInventoryItems = (id, count) => {
+        return balancy.sendRequest(null, RequestAction.RemoveInventoryItems, {id, count});
+    };
+
     balancy.getSystemProfileValue = (path) => {
         return balancy.sendRequest(null, RequestAction.GetProfile, {profile: "UnnyProfile", path});
     };
@@ -215,16 +266,15 @@ const balancy = {};
         });
     };
 
-    balancy.getCustomEventInfo = (id) => {
-        return balancy.sendRequest(null, RequestAction.GetCustomEventInfo, {id}).then(result => {
+    balancy.getCustomEventInfo = () => {
+        return balancy.sendRequest(null, RequestAction.GetCustomEventInfo, {id: window.balancyViewOwner.instanceId}).then(result => {
             return result ? JSON.parse(result) : {};
         });
     };
 
-    balancy.setCustomEventInfo = (id, dataJson) => {
+    balancy.setCustomEventInfo = (dataJson) => {
         const data = JSON.stringify(dataJson);
-        return balancy.sendRequest(null, RequestAction.SetCustomEventInfo, {id, data}).then(result => {
-        });
+        return balancy.sendRequest(null, RequestAction.SetCustomEventInfo, {id: window.balancyViewOwner.instanceId, data});
     };
 
     balancy.getBattlePassConfig = () => {
@@ -386,9 +436,7 @@ const balancy = {};
             RequestAction.BuyShopSlot,
             RequestAction.BattlePassClaim,
             RequestAction.CloseWindow,
-            RequestAction.BalancyIsReady,
-            RequestAction.SetProfile,
-            RequestAction.SetCustomEventInfo
+            RequestAction.BalancyIsReady
         ];
 
         if (nonBatchableActions.includes(action)) {
