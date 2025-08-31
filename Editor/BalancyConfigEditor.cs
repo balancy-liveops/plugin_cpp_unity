@@ -104,6 +104,9 @@ namespace Balancy.Editor
             {
                 SelectedGameBranches = branches;
                 
+                // Sort branches alphabetically by BranchName
+                SelectedGameBranches.Sort((a, b) => string.Compare(a.BranchName, b.BranchName, StringComparison.OrdinalIgnoreCase));
+                
                 _selectedBranchOrder = -1;
                 BranchNames = new string[SelectedGameBranches.Count];
                 for (int i = 0; i < SelectedGameBranches.Count; i++)
@@ -123,6 +126,9 @@ namespace Balancy.Editor
             {
                 Games = list;
                 SelectedGameId = selectedGameId;
+                
+                // Sort games alphabetically by GameName
+                Games.Sort((a, b) => string.Compare(a.GameName, b.GameName, StringComparison.OrdinalIgnoreCase));
                 
                 GameNames = new string[Games.Count];
                 for (int i = 0; i < Games.Count; i++)
@@ -388,6 +394,32 @@ namespace Balancy.Editor
         private string _userPassword = "";
         private string _authErrorMessage = "";
         private bool _showAuthError = false;
+        private bool _isAuthenticating = false;
+        
+        private void PerformAuthorization()
+        {
+            _isAuthenticating = true;
+            _showAuthError = false;
+            _authErrorMessage = "";
+            
+            EditorUtils.Auth(_userEmail, _userPassword, status =>
+            {
+                _isAuthenticating = false;
+                
+                if (!status.IsAuthorized)
+                {
+                    _authErrorMessage = "Failed to auth, no connection or wrong password";
+                    _showAuthError = true;
+                }
+                else
+                {
+                    // Clear any existing error message on successful authentication
+                    _showAuthError = false;
+                    _authErrorMessage = "";
+                }
+                m_EditorDispatcher?.Enqueue(Repaint);
+            });
+        }
         
         private void RenderAuth()
         {
@@ -411,10 +443,19 @@ namespace Balancy.Editor
                 GUILayout.BeginVertical(EditorStyles.helpBox);
                 GUILayout.Label("Balancy User");
                 
+                // Disable UI during authentication
+                GUI.enabled = !_isAuthenticating;
+                
                 // Track changes to email and password to clear error message
                 EditorGUI.BeginChangeCheck();
+                
+                // Set keyboard control names for better focus handling
+                GUI.SetNextControlName("EmailField");
                 _userEmail = EditorGUILayout.TextField("Email", _userEmail);
+                
+                GUI.SetNextControlName("PasswordField");
                 _userPassword = EditorGUILayout.PasswordField("Password", _userPassword);
+                
                 if (EditorGUI.EndChangeCheck())
                 {
                     // Clear error message when user starts typing
@@ -431,30 +472,60 @@ namespace Balancy.Editor
                     GUI.color = originalColor;
                 }
                 
+                // Show loading animation during authentication
+                if (_isAuthenticating)
+                {
+                    GUILayout.BeginHorizontal();
+                    GUILayout.FlexibleSpace();
+                    
+                    var originalColor = GUI.color;
+                    GUI.color = Color.yellow;
+                    
+                    // Simple loading animation using dots
+                    string loadingText = "Authenticating";
+                    int dotCount = Mathf.FloorToInt(Time.realtimeSinceStartup * 2) % 4;
+                    for (int i = 0; i < dotCount; i++)
+                        loadingText += ".";
+                    
+                    EditorGUILayout.LabelField(loadingText, EditorStyles.boldLabel);
+                    GUI.color = originalColor;
+                    
+                    GUILayout.FlexibleSpace();
+                    GUILayout.EndHorizontal();
+                }
+                
                 GUILayout.BeginHorizontal();
+                
+                // Disable "Create Account" button during authentication
+                GUI.enabled = !_isAuthenticating;
                 if (GUILayout.Button("Click to create a new Account"))
                 {
                     Application.OpenURL("https://balancy.dev/auth");
                 }
 
-                GUI.enabled = !string.IsNullOrEmpty(_userEmail) && !string.IsNullOrEmpty(_userPassword);
-                if (GUILayout.Button("Authorize"))
+                // Only enable Authorize button if fields are filled and not authenticating
+                GUI.enabled = !_isAuthenticating && !string.IsNullOrEmpty(_userEmail) && !string.IsNullOrEmpty(_userPassword);
+                
+                string buttonText = _isAuthenticating ? "Authorizing..." : "Authorize";
+                
+                // Make the Authorize button the default button (responds to Enter)
+                bool isDefaultButton = !_isAuthenticating && !string.IsNullOrEmpty(_userEmail) && !string.IsNullOrEmpty(_userPassword);
+                
+                if (isDefaultButton)
                 {
-                    EditorUtils.Auth(_userEmail, _userPassword, status =>
+                    // Check for Enter key globally when button can be activated
+                    if (Event.current.type == EventType.KeyDown && 
+                        (Event.current.keyCode == KeyCode.Return || Event.current.keyCode == KeyCode.KeypadEnter))
                     {
-                        if (!status.IsAuthorized)
-                        {
-                            _authErrorMessage = "Failed to auth, no connection or wrong password";
-                            _showAuthError = true;
-                        }
-                        else
-                        {
-                            // Clear any existing error message on successful authentication
-                            _showAuthError = false;
-                            _authErrorMessage = "";
-                        }
-                        m_EditorDispatcher?.Enqueue(Repaint);
-                    });
+                        Event.current.Use();
+                        PerformAuthorization();
+                        GUIUtility.ExitGUI();
+                    }
+                }
+                
+                if (GUILayout.Button(buttonText))
+                {
+                    PerformAuthorization();
                 }
 
                 GUI.enabled = true;
@@ -577,34 +648,98 @@ namespace Balancy.Editor
                 GUILayout.Space(10);
                 return;
             }
-                
-            // Find BalancyLauncher in the current scene
+
+            GUILayout.Space(10);
+            GUILayout.BeginVertical(EditorStyles.helpBox);
+            GUILayout.Label("Project Setup", EditorStyles.boldLabel);
+            GUILayout.Space(5);
+            
+            // Balancy Launcher Status
+            RenderLauncherStatus(gameId, publicKey, branchName, gameName);
+            
+            GUILayout.Space(5);
+            
+            // Balancy UI Status
+            RenderBalancyUIStatus();
+            
+            GUILayout.EndVertical();
+            GUILayout.Space(10);
+        }
+        
+        private void RenderLauncherStatus(string gameId, string publicKey, string branchName, string gameName)
+        {
             BalancyLauncher launcher = UnityEngine.Object.FindAnyObjectByType<BalancyLauncher>();
             
-            GUILayout.Space(10);
-            EditorGUILayout.BeginHorizontal();
-            GUILayout.FlexibleSpace();
-                
+            GUILayout.BeginHorizontal();
+            
+            // Status icon and label
             if (launcher != null)
             {
-                // BalancyLauncher exists in the scene
-                if (GUILayout.Button($"Sync with \"{gameName}\" branch \"{branchName}\""))
+                // Launcher exists - show checkmark
+                var originalColor = GUI.color;
+                GUI.color = Color.green;
+                GUILayout.Label("✓", EditorStyles.boldLabel, GUILayout.Width(20));
+                GUI.color = originalColor;
+                
+                GUILayout.Label("Launcher:", GUILayout.Width(70));
+                
+                // Show current branch connection
+                // Get current branch using SerializedObject to access private field
+                SerializedObject serializedLauncher = new SerializedObject(launcher);
+                SerializedProperty branchProperty = serializedLauncher.FindProperty("branchName");
+                string currentBranch = branchProperty?.stringValue ?? "";
+                if (string.IsNullOrEmpty(currentBranch))
                 {
-                    // Update existing BalancyLauncher properties
-                    Undo.RecordObject(launcher, "Update BalancyLauncher");
-                    launcher.SetGameId(gameId);
-                    launcher.SetPublicKey(publicKey);
-                    launcher.SetBranchName(branchName);
-                    EditorUtility.SetDirty(launcher);
-                    EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
+                    GUI.color = Color.yellow;
+                    GUILayout.Label("Autodetect branch", EditorStyles.label);
+                    GUI.color = originalColor;
                 }
-
-                GUI.enabled = true;
+                else if (currentBranch == branchName)
+                {
+                    GUI.color = Color.green;
+                    GUILayout.Label($"Connects to '{currentBranch}'", EditorStyles.label);
+                    GUI.color = originalColor;
+                }
+                else
+                {
+                    GUI.color = Color.yellow;
+                    GUILayout.Label($"Connects to '{currentBranch}' (different branch)", EditorStyles.label);
+                    GUI.color = originalColor;
+                }
+                
+                GUILayout.FlexibleSpace();
+                
+                // Update button if branch is different or not set
+                if (currentBranch != branchName)
+                {
+                    if (GUILayout.Button($"Force to '{branchName}'", GUILayout.Width(120)))
+                    {
+                        Undo.RecordObject(launcher, "Update BalancyLauncher");
+                        launcher.SetGameId(gameId);
+                        launcher.SetPublicKey(publicKey);
+                        launcher.SetBranchName(branchName);
+                        EditorUtility.SetDirty(launcher);
+                        EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
+                    }
+                }
             }
             else
             {
-                // No BalancyLauncher in the scene
-                if (GUILayout.Button($"Create BalancyLauncher for \"{gameName}\""))
+                // No launcher - show add option
+                var originalColor = GUI.color;
+                GUI.color = Color.gray;
+                GUILayout.Label("○", EditorStyles.boldLabel, GUILayout.Width(20));
+                GUI.color = originalColor;
+                
+                GUILayout.Label("Launcher:", GUILayout.Width(70));
+                
+                GUI.color = Color.gray;
+                GUILayout.Label("Not found in scene", EditorStyles.label);
+                GUI.color = originalColor;
+                
+                GUILayout.FlexibleSpace();
+                
+                if (GUILayout.Button("Add", GUILayout.Width(60)))
                 {
                     // Create a new GameObject with BalancyLauncher component
                     GameObject newObject = new GameObject("BalancyLauncher");
@@ -613,7 +748,7 @@ namespace Balancy.Editor
                     // Set properties
                     newLauncher.SetGameId(gameId);
                     newLauncher.SetPublicKey(publicKey);
-                    newLauncher.SetBranchName("");
+                    newLauncher.SetBranchName(branchName);
                     
                     // Select the new GameObject in the hierarchy
                     Selection.activeGameObject = newObject;
@@ -621,32 +756,76 @@ namespace Balancy.Editor
                     // Mark the scene as dirty to ensure changes are saved
                     EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
                 }
-                
-                GUI.enabled = false;
             }
             
-            if (GUILayout.Button($"Add Balancy UI"))
+            GUILayout.EndHorizontal();
+        }
+        
+        private void RenderBalancyUIStatus()
+        {
+            GameObject existingUI = GameObject.Find("BalancyUI");
+            
+            GUILayout.BeginHorizontal();
+            
+            // Status icon and label
+            if (existingUI != null)
             {
-                var existing = GameObject.Find("BalancyUI");
-                if (existing != null)
+                // UI exists - show checkmark
+                var originalColor = GUI.color;
+                GUI.color = Color.green;
+                GUILayout.Label("✓", EditorStyles.boldLabel, GUILayout.Width(20));
+                GUI.color = originalColor;
+                
+                GUILayout.Label("Balancy UI:", GUILayout.Width(70));
+                
+                GUI.color = Color.green;
+                GUILayout.Label("Present in scene", EditorStyles.label);
+                GUI.color = originalColor;
+                
+                GUILayout.FlexibleSpace();
+                
+                // Optional: Add "Select" button to highlight the UI in hierarchy
+                if (GUILayout.Button("Select", GUILayout.Width(60)))
                 {
-                    EditorUtility.DisplayDialog("Balancy UI Exists",
-                        "An instance of 'BalancyUI' is already present in the scene.",
-                        "OK");
+                    Selection.activeGameObject = existingUI;
+                    EditorGUIUtility.PingObject(existingUI);
                 }
-                else
+            }
+            else
+            {
+                // No UI - show add option
+                var originalColor = GUI.color;
+                GUI.color = Color.gray;
+                GUILayout.Label("○", EditorStyles.boldLabel, GUILayout.Width(20));
+                GUI.color = originalColor;
+                
+                GUILayout.Label("Balancy UI:", GUILayout.Width(70));
+                
+                GUI.color = Color.gray;
+                GUILayout.Label("Not found in scene", EditorStyles.label);
+                GUI.color = originalColor;
+                
+                GUILayout.FlexibleSpace();
+                
+                if (GUILayout.Button("Add", GUILayout.Width(60)))
                 {
                     var prefab = PrefabFinder.FindPrefabByName("BalancyUI");
                     if (prefab)
-                        PrefabUtility.InstantiatePrefab(prefab);
+                    {
+                        GameObject instance = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
+                        Selection.activeGameObject = instance;
+                        EditorGUIUtility.PingObject(instance);
+                    }
+                    else
+                    {
+                        EditorUtility.DisplayDialog("Prefab Not Found",
+                            "BalancyUI prefab could not be found. Please ensure it's imported correctly.",
+                            "OK");
+                    }
                 }
             }
             
-            GUI.enabled = true;
-            
-            GUILayout.FlexibleSpace();
-            EditorGUILayout.EndHorizontal();
-            GUILayout.Space(10);
+            GUILayout.EndHorizontal();
         }
         
         private void OnEnable()
@@ -668,6 +847,12 @@ namespace Balancy.Editor
                 // Use the static method that properly cleans up all resources
                 CloseAllWindowsAndCleanup();
                 return;
+            }
+            
+            // Refresh during authentication to animate the loading dots
+            if (_isAuthenticating)
+            {
+                Repaint();
             }
             
             if (!_needRefresh)

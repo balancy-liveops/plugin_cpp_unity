@@ -168,7 +168,7 @@ namespace Balancy
         [AOT.MonoPInvokeCallback(typeof(Balancy.ProgressUpdateCallback))]
         private static void OnProgressUpdate(string fileName, float progress)
         {
-            _originalConfig?.OnProgressUpdateCallback(fileName, progress);
+            _originalConfig?.OnProgressUpdateCallback?.Invoke(fileName, progress);
         }
 
         [AOT.MonoPInvokeCallback(typeof(Balancy.StatusUpdateCallback))]
