@@ -182,12 +182,12 @@ namespace Balancy
             Main.Stop();
         }
 
-        private void OnGUI()
-        {
-            if (GUI.Button(new Rect(100, 100, 100, 100), "LOGS"))
-            {
-                Balancy.WebView.BalancyWebView.ShowWebInspector();
-            }
-        }
+        // private void OnGUI()
+        // {
+        //     if (GUI.Button(new Rect(100, 100, 100, 100), "LOGS"))
+        //     {
+        //         Balancy.WebView.BalancyWebView.ShowWebInspector();
+        //     }
+        // }
     }
 }
