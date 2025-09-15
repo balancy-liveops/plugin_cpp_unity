@@ -27,6 +27,9 @@ const balancy = {};
         ActivateTasksForTheEvent: 24,
         DeactivateTasksForTheEvent: 25,
         ClaimTaskReward: 26,
+        GetCustomDocumentInfo: 27,
+        SetCustomDocumentInfo: 28,
+        StopEventManually: 29,
 
         GetInventoryItemsCount: 30,
         AddInventoryItems: 31,
@@ -91,6 +94,7 @@ const balancy = {};
     balancy.PriceType = PriceType;
     balancy.ItemType = ItemType;
     balancy.TaskStatus = TaskStatus;
+    balancy.RequestAction = RequestAction;
 
     // Batch Manager - collects requests and sends them as a single batch
     class BatchManager {
@@ -277,6 +281,12 @@ const balancy = {};
         return balancy.sendRequest(null, RequestAction.SetCustomEventInfo, {id: window.balancyViewOwner.instanceId, data});
     };
 
+    balancy.stopEventManually = (cooldown = -1) => {
+        return balancy.sendRequest(null, RequestAction.StopEventManually, {id: window.balancyViewOwner.unnyIdGameEvent, cooldown}).then(result => {
+            return result;
+        });
+    };
+
     balancy.getBattlePassConfig = () => {
         return balancy.getDocumentValue(window.balancyViewOwner.unnyIdGameEvent, 3).then(result => {
             return result.config;
@@ -436,7 +446,8 @@ const balancy = {};
             RequestAction.BuyShopSlot,
             RequestAction.BattlePassClaim,
             RequestAction.CloseWindow,
-            RequestAction.BalancyIsReady
+            RequestAction.BalancyIsReady,
+            RequestAction.StopEventManually
         ];
 
         if (nonBatchableActions.includes(action)) {
@@ -542,8 +553,8 @@ const balancy = {};
         });
     }
 
-    function balancyButtonClicked(button) {
-        const actionIdStr = button.getAttribute('data-button-action');
+    balancy.balancyButtonClicked = function(button, params) {
+        const actionIdStr = params?.action ?? button.getAttribute('data-button-action');
         if (!actionIdStr) {
             console.warn('Button missing data-button-action attribute', button);
             return;
@@ -574,7 +585,7 @@ const balancy = {};
 
         switch (actionId) {
             case RequestAction.BuyOffer:
-                paramsJson.instanceId = window.balancyViewOwner.instanceId;
+                paramsJson.instanceId = params?.instanceId ?? window.balancyViewOwner.instanceId;
                 break;
             case RequestAction.BuyGroupOffer:
                 paramsJson.instanceId = window.balancyViewOwner.instanceId;
@@ -622,7 +633,7 @@ const balancy = {};
             element._balancyClickHandler = function(event) {
                 event.preventDefault();
                 event.stopPropagation();
-                balancyButtonClicked(element);
+                balancy.balancyButtonClicked(element);
             };
 
             refreshButtonAvailability(element);
@@ -725,8 +736,8 @@ const balancy = {};
         switch (data.type) {
             case NotificationType.OnOfferDeactivated:
             case NotificationType.OnOfferGroupDeactivated:
-                if (window.balancyViewOwner.instanceId === data.id)
-                    balancy.closeView('Offer deactivated');
+                // if (window.balancyViewOwner.instanceId === data.id)
+                //     balancy.closeView('Offer deactivated');
                 break;
             case NotificationType.OnOfferGroupWasPurchased:
                 const elements = document.querySelectorAll(`[data-button-action="${RequestAction.BuyGroupOffer}"]`);
@@ -844,9 +855,34 @@ const balancy = {};
         return count.toString();
     }
 
+    balancy.itemHasDecayEffect = function (item) {
+        const components = item?.components;
+        if (!components)
+            return false;
+
+        for (const component of components) {
+            if (component['$type'] === 'SmartObjects.ItemComponent.Decay')
+                return true;
+        }
+
+        return false;
+    }
+
+    balancy.itemGetBundleReward = function (item) {
+        const components = item?.components;
+        if (!components)
+            return null;
+
+        for (const component of components) {
+            if (component['$type'] === 'SmartObjects.ItemComponent.Bundle')
+                return component.reward;
+        }
+
+        return null;
+    }
+
     balancy.formatItemsCount = function (itemWithAmount, shouldShortenCount = false) {
-        const localizedKey = itemWithAmount.item.name;
-        let isDuration = localizedKey?.startsWith("LIVEOPS_TEMPLATES/INFINITE_");
+        let isDuration = balancy.itemHasDecayEffect(itemWithAmount.item);
 
         const isCurrency = itemWithAmount.item.type === ItemType.Currency;
 
@@ -887,6 +923,12 @@ const balancy = {};
         } else
             return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     }
+
+    balancy.formatString = (str, ...args) => {
+        return str.replace(/{(\d+)}/g, (match, index) => {
+            return args[index] !== undefined ? args[index] : match;
+        });
+    };
 
     balancy.formatDataTemplate = async function(formatStr, data) {
         function capitalize(str) {
