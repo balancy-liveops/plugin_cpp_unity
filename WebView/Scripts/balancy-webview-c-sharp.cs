@@ -393,6 +393,20 @@ namespace Balancy.WebView
             }
         }
         
+        // Android emergency exit method
+        private static void _balancySetEmergencyExitEnabled(bool enabled)
+        {
+            try
+            {
+                var plugin = GetPluginInstance();
+                plugin.Call("setEmergencyExitEnabled", enabled);
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"Android _balancySetEmergencyExitEnabled failed: {e.Message}");
+            }
+        }
+        
         // Android callbacks - NO-OP implementations (using Unity messaging instead)
         private static void _balancyRegisterMessageCallback(MessageDelegate callback)
         {

@@ -1,154 +1,134 @@
 #!/bin/bash
 
-# 🔧 Скрипт для установки переменных среды и сборки Android AAR
+# Android SDK Setup and Build Script
+set -e
 
-echo "🔧 Настройка переменных среды для Android сборки..."
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m'
 
-# Поиск Android SDK
-POSSIBLE_ANDROID_PATHS=(
+echo -e "${YELLOW}🔍 Setting up Android SDK and building AAR...${NC}"
+
+# Try to find Android SDK
+ANDROID_SDK_PATHS=(
     "$HOME/Library/Android/sdk"
-    "$HOME/Android/Sdk" 
-    "/usr/local/android-sdk"
-    "/opt/android-sdk"
+    "$HOME/Android/Sdk"
+    "$HOME/android-sdk"
 )
 
-echo "🔍 Поиск Android SDK..."
-for path in "${POSSIBLE_ANDROID_PATHS[@]}"; do
-    if [ -d "$path" ]; then
-        export ANDROID_HOME="$path"
-        echo "✅ Найден Android SDK: $ANDROID_HOME"
+ANDROID_SDK=""
+for path in "${ANDROID_SDK_PATHS[@]}"; do
+    if [ -d "$path/platforms" ]; then
+        ANDROID_SDK="$path"
+        echo -e "${GREEN}✅ Found Android SDK at: $ANDROID_SDK${NC}"
         break
     fi
 done
 
-if [ -z "$ANDROID_HOME" ]; then
-    echo "❌ Android SDK не найден!"
-    echo "📥 Установите Android SDK через Android Studio или скачайте command line tools"
-    echo "🌐 https://developer.android.com/studio"
+if [ -z "$ANDROID_SDK" ]; then
+    echo -e "${RED}❌ Android SDK not found!${NC}"
+    echo "Please install Android SDK via Android Studio"
+    echo "Or set ANDROID_HOME manually:"
+    echo "  export ANDROID_HOME=/path/to/your/android/sdk"
     exit 1
 fi
 
-# Поиск Unity Editor
-POSSIBLE_UNITY_PATHS=(
-    "/Applications/Unity/Hub/Editor/*/Unity.app/Contents"
-    "/Applications/Unity/Hub/Editor/2024.*/Unity.app/Contents"
-    "/Applications/Unity/Hub/Editor/2023.*/Unity.app/Contents"
-    "/Applications/Unity/Hub/Editor/2022.*/Unity.app/Contents"
-    "/Applications/Unity/Hub/Editor/2021.*/Unity.app/Contents"
-    "/Applications/Unity.app/Contents"
-    "/opt/Unity/Editor/Unity.app/Contents"
-    "$HOME/Unity/Hub/Editor/*/Unity.app/Contents"
-)
+# Set ANDROID_HOME
+export ANDROID_HOME="$ANDROID_SDK"
+echo "📍 ANDROID_HOME set to: $ANDROID_HOME"
 
-echo "🔍 Поиск Unity Editor..."
-# Если UNITY_EDITOR_PATH уже задан, используем его
-if [ ! -z "$UNITY_EDITOR_PATH" ]; then
-    echo "✅ Используется заданный путь: $UNITY_EDITOR_PATH"
-else
-    # Автоматический поиск
-    for pattern in "${POSSIBLE_UNITY_PATHS[@]}"; do
-        # Используем glob для поиска по паттерну
-        for path in $pattern; do
-            if [ -d "$path" ]; then
-                # Проверяем наличие classes.jar для Android Build Support
-                # Поддержка Unity 6+ и старых версий
-                classes_jar_unity6="${path}/PlaybackEngines/AndroidPlayer/Variations/il2cpp/Release/Classes/classes.jar"
-                classes_jar_old="${path}/Editor/Data/PlaybackEngines/AndroidPlayer/Variations/il2cpp/Release/Classes/classes.jar"
-                
-                if [ -f "$classes_jar_unity6" ]; then
-                    export UNITY_EDITOR_PATH="$path"
-                    echo "✅ Найден Unity Editor с Android Build Support (Unity 6+): $UNITY_EDITOR_PATH"
-                    break 2  # Выходим из обоих циклов
-                elif [ -f "$classes_jar_old" ]; then
-                    export UNITY_EDITOR_PATH="$path"
-                    echo "✅ Найден Unity Editor с Android Build Support (старая версия): $UNITY_EDITOR_PATH"
-                    break 2  # Выходим из обоих циклов
-                else
-                    echo "⚠️  Найден Unity без Android Build Support: $path"
-                fi
+# Find available API levels
+if [ -d "$ANDROID_HOME/platforms" ]; then
+    AVAILABLE_APIS=($(ls -1 "$ANDROID_HOME/platforms" | grep "android-" | sed 's/android-//' | sort -n))
+    echo -e "${YELLOW}📋 Available API levels: ${AVAILABLE_APIS[*]}${NC}"
+    
+    # Find the best API to use (prefer 34, then 33, then highest available)
+    TARGET_API=""
+    for preferred in 34 33 32 31 30; do
+        for api in "${AVAILABLE_APIS[@]}"; do
+            if [ "$api" == "$preferred" ]; then
+                TARGET_API="$api"
+                break 2
             fi
         done
     done
-fi
-
-if [ -z "$UNITY_EDITOR_PATH" ]; then
-    echo "❌ Unity Editor с Android Build Support не найден!"
-    echo ""
-    echo "📝 Вариант 1: Указать путь вручную:"
-    echo "   export UNITY_EDITOR_PATH='/Applications/Unity/Hub/Editor/6000.0.46f1/Unity.app/Contents'"
-    echo "   ./setup_and_build.sh"
-    echo ""
-    echo "📝 Вариант 2: Установить Android Build Support:"
-    echo "   1. Откройте Unity Hub"
-    echo "   2. Installs → [Ваша версия Unity] → ⚠️ → Add Modules"
-    echo "   3. Выберите 'Android Build Support' ✅"
-    echo "   4. Нажмите Done и дождитесь установки"
-    echo ""
-    echo "🔍 Для диагностики запустите: ./find_unity.sh"
-    echo "🌐 Unity Hub: https://unity.com/download"
-    exit 1
-fi
-
-# Проверка необходимых файлов
-# Поддержка разных версий Android API
-POSSIBLE_ANDROID_APIS=("35" "34" "33" "32" "31" "30" "29" "28")
-
-ANDROID_JAR_PATH=""
-for api in "${POSSIBLE_ANDROID_APIS[@]}"; do
-    jar_path="${ANDROID_HOME}/platforms/android-${api}/android.jar"
-    if [ -f "$jar_path" ]; then
-        ANDROID_JAR_PATH="$jar_path"
-        echo "✅ Найден Android API $api: $jar_path"
-        break
+    
+    # If no preferred API found, use the highest available
+    if [ -z "$TARGET_API" ]; then
+        TARGET_API="${AVAILABLE_APIS[-1]}"
     fi
-done
-
-# Поддержка разных версий Unity (Unity 6 и более старые)
-POSSIBLE_UNITY_CLASSES_PATHS=(
-    "${UNITY_EDITOR_PATH}/PlaybackEngines/AndroidPlayer/Variations/il2cpp/Release/Classes/classes.jar"  # Unity 6+
-    "${UNITY_EDITOR_PATH}/Editor/Data/PlaybackEngines/AndroidPlayer/Variations/il2cpp/Release/Classes/classes.jar"  # Unity 2022 и старше
-    "${UNITY_EDITOR_PATH}/Editor/Data/PlaybackEngines/AndroidPlayer/Variations/mono/Release/Classes/classes.jar"  # Mono версия
-)
-
-UNITY_CLASSES_JAR_PATH=""
-for jar_path in "${POSSIBLE_UNITY_CLASSES_PATHS[@]}"; do
-    if [ -f "$jar_path" ]; then
-        UNITY_CLASSES_JAR_PATH="$jar_path"
-        break
+    
+    echo -e "${GREEN}🎯 Using Android API: $TARGET_API${NC}"
+    
+    # Check if we need to modify build.gradle
+    if [ "$TARGET_API" != "35" ]; then
+        echo -e "${YELLOW}⚙️  Updating build.gradle to use API $TARGET_API...${NC}"
+        
+        # Create backup
+        cp AndroidProject/app/build.gradle AndroidProject/app/build.gradle.backup
+        
+        # Update API versions
+        sed -i.tmp "s/compileSdkVersion 35/compileSdkVersion $TARGET_API/g" AndroidProject/app/build.gradle
+        sed -i.tmp "s/targetSdkVersion 35/targetSdkVersion $TARGET_API/g" AndroidProject/app/build.gradle
+        
+        # Clean up temp files
+        rm -f AndroidProject/app/build.gradle.tmp
+        
+        echo -e "${GREEN}✅ Updated build.gradle to use API $TARGET_API${NC}"
     fi
-done
-
-echo ""
-echo "🔍 Проверка необходимых файлов..."
-
-if [ -z "$ANDROID_JAR_PATH" ]; then
-    echo "❌ android.jar не найден ни в одной версии Android API!"
-    echo "📂 Проверьте установленные версии: ls ${ANDROID_HOME}/platforms/"
-    echo "📝 Установите Android API через Android Studio SDK Manager"
-    echo "   Tools → SDK Manager → SDK Platforms → Android 13 (API 33)"
-    exit 1
+    
+    # Verify the required android.jar exists
+    ANDROID_JAR="$ANDROID_HOME/platforms/android-$TARGET_API/android.jar"
+    if [ -f "$ANDROID_JAR" ]; then
+        echo -e "${GREEN}✅ Android JAR found: $ANDROID_JAR${NC}"
+    else
+        echo -e "${RED}❌ Android JAR not found: $ANDROID_JAR${NC}"
+        exit 1
+    fi
+    
 else
-    echo "✅ android.jar найден"
-fi
-
-if [ ! -f "$UNITY_CLASSES_JAR_PATH" ]; then
-    echo "❌ Unity classes.jar не найден по пути: $UNITY_CLASSES_JAR_PATH"
-    echo "📥 Установите Android Build Support в Unity Hub"
-    echo "   Unity Hub → Installs → [Your Unity Version] → Add Modules → Android Build Support"
+    echo -e "${RED}❌ Platforms directory not found in Android SDK${NC}"
     exit 1
-else
-    echo "✅ Unity classes.jar найден"
 fi
 
 echo ""
-echo "🎯 Переменные среды установлены:"
-echo "   ANDROID_HOME=$ANDROID_HOME"
-echo "   UNITY_EDITOR_PATH=$UNITY_EDITOR_PATH"
-echo ""
+echo -e "${YELLOW}🔨 Starting AAR build...${NC}"
 
-# Запуск сборки
-echo "🚀 Запуск сборки Android AAR..."
-./build_android_aar.sh
-
-echo ""
-echo "✅ Сборка завершена!"
+# Run the build
+if [ -f "build_android_aar.sh" ]; then
+    chmod +x build_android_aar.sh
+    ./build_android_aar.sh
+    
+    if [ $? -eq 0 ]; then
+        echo ""
+        echo -e "${GREEN}🎉 SUCCESS! Android AAR built successfully!${NC}"
+        
+        # Restore original build.gradle if we modified it
+        if [ -f "AndroidProject/app/build.gradle.backup" ]; then
+            echo -e "${YELLOW}📋 Restoring original build.gradle...${NC}"
+            mv AndroidProject/app/build.gradle.backup AndroidProject/app/build.gradle
+            echo -e "${GREEN}✅ Original build.gradle restored${NC}"
+        fi
+        
+        echo ""
+        echo -e "${YELLOW}📦 AAR file should be at:${NC}"
+        echo "   ../Plugins/Android/balancywebview.aar"
+        
+        # Check if AAR was created
+        AAR_PATH="../Plugins/Android/balancywebview.aar"
+        if [ -f "$AAR_PATH" ]; then
+            AAR_SIZE=$(du -h "$AAR_PATH" | cut -f1)
+            echo -e "${GREEN}✅ AAR created: $AAR_SIZE${NC}"
+        else
+            echo -e "${YELLOW}⚠️  AAR file not found at expected location${NC}"
+        fi
+        
+    else
+        echo -e "${RED}❌ Build failed!${NC}"
+        exit 1
+    fi
+else
+    echo -e "${RED}❌ build_android_aar.sh not found!${NC}"
+    exit 1
+fi

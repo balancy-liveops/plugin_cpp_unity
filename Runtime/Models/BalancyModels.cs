@@ -204,7 +204,6 @@ namespace Balancy.Models
 
             Balancy.Dictionaries.DataObjectsManager.GetObjectView(id, url =>
             {
-                Debug.LogError("Opening = " + url);
                 Balancy.RenderViewsManager.OpenLocalView(url, owner);
                 onShown?.Invoke();
             });

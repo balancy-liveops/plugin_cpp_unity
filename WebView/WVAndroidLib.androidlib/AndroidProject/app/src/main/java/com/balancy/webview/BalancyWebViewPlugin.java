@@ -48,6 +48,8 @@ public class BalancyWebViewPlugin {
     private float showDelay = 0.1f;
     private float animationDuration = 0.1f;
     private boolean unityAvailable = false;
+    private boolean emergencyExitEnabled = true;
+    private boolean offlineCacheEnabled = false;
     
     /**
      * Ensure code runs on UI thread - CRITICAL for Android UI operations
@@ -348,7 +350,12 @@ public class BalancyWebViewPlugin {
             sendUnityMessage("OnAndroidMessageReceived", "{\"action\":200, \"params\":{}}");
         });
         
+        // Set initial visibility based on emergencyExitEnabled setting
+        emergencyExitButton.setVisibility(emergencyExitEnabled ? View.VISIBLE : View.GONE);
+        
         webViewContainer.addView(emergencyExitButton);
+        
+        logDebug("Emergency exit button created (" + (emergencyExitEnabled ? "visible" : "hidden") + ")");
     }
     
     private void startShowAnimation() {
@@ -540,6 +547,7 @@ public class BalancyWebViewPlugin {
             webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
         }
         
+        // Apply transparency settings
         if (transparentBackground) {
             webView.setBackgroundColor(Color.TRANSPARENT);
             webViewContainer.setBackgroundColor(Color.TRANSPARENT);
@@ -547,6 +555,26 @@ public class BalancyWebViewPlugin {
             webView.setBackgroundColor(Color.WHITE);
             webViewContainer.setBackgroundColor(Color.WHITE);
         }
+        
+        // Apply cache settings
+        WebSettings settings = webView.getSettings();
+        if (offlineCacheEnabled) {
+            settings.setCacheMode(WebSettings.LOAD_DEFAULT);
+            settings.setDomStorageEnabled(true);
+            settings.setDatabaseEnabled(true);
+            // Note: setAppCacheEnabled() is deprecated and removed in API 33+
+            // Modern caching is handled by DOM storage and regular cache
+        } else {
+            settings.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK); // Keep some caching for performance
+            settings.setDomStorageEnabled(true);
+            settings.setDatabaseEnabled(true);
+        }
+        
+        // Apply viewport settings
+        applyViewportSettings();
+        
+        logDebug("Settings applied: transparent=" + transparentBackground + 
+                ", cache=" + offlineCacheEnabled + ", gameUI=" + gameUIMode);
     }
     
     public void setDebugLogging(boolean enabled) {
@@ -569,6 +597,191 @@ public class BalancyWebViewPlugin {
     public boolean isUnityAvailable() {
         return unityAvailable;
     }
+    
+    // ================================================================================
+    // ✅ NEW METHODS - Missing methods that C# tries to call
+    // ================================================================================
+    
+    /**
+     * Sets the viewport rectangle for the WebView
+     * @param x X position (0.0-1.0, percentage of screen width from left)
+     * @param y Y position (0.0-1.0, percentage of screen height from top)
+     * @param width Width (0.0-1.0, percentage of screen width)
+     * @param height Height (0.0-1.0, percentage of screen height)
+     */
+    public void setViewportRect(float x, float y, float width, float height) {
+        // Clamp values to valid range (0.0-1.0)
+        this.viewportX = Math.max(0f, Math.min(1f, x));
+        this.viewportY = Math.max(0f, Math.min(1f, y));
+        this.viewportWidth = Math.max(0f, Math.min(1f, width));
+        this.viewportHeight = Math.max(0f, Math.min(1f, height));
+        
+        logDebug(String.format("Viewport set to: x=%.2f, y=%.2f, width=%.2f, height=%.2f", 
+                x, y, width, height));
+        
+        // Apply immediately if WebView is open
+        if (webView != null && isWebViewOpen) {
+            runOnUIThread(this::applyViewportSettings);
+        }
+    }
+    
+    /**
+     * Applies viewport settings to the WebView
+     */
+    private void applyViewportSettings() {
+        if (webView == null || currentActivity == null) return;
+        
+        android.util.DisplayMetrics metrics = new android.util.DisplayMetrics();
+        currentActivity.getWindowManager().getDefaultDisplay().getMetrics(metrics);
+        
+        int screenWidth = metrics.widthPixels;
+        int screenHeight = metrics.heightPixels;
+        
+        int x = (int)(viewportX * screenWidth);
+        int y = (int)(viewportY * screenHeight);
+        int width = (int)(viewportWidth * screenWidth);
+        int height = (int)(viewportHeight * screenHeight);
+        
+        FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) webView.getLayoutParams();
+        if (params != null) {
+            params.leftMargin = x;
+            params.topMargin = y;
+            params.width = width;
+            params.height = height;
+            webView.setLayoutParams(params);
+            
+            logDebug(String.format("Viewport applied: x=%d, y=%d, width=%d, height=%d (screen: %dx%d)", 
+                    x, y, width, height, screenWidth, screenHeight));
+        }
+    }
+    
+    /**
+     * Sets transparent background for the WebView
+     * @param transparent True for transparent background, false for opaque
+     */
+    public void setTransparentBackground(boolean transparent) {
+        this.transparentBackground = transparent;
+        logDebug("Transparent background " + (transparent ? "enabled" : "disabled"));
+        
+        if (webView != null && isWebViewOpen) {
+            runOnUIThread(() -> {
+                if (transparent) {
+                    webView.setBackgroundColor(Color.TRANSPARENT);
+                    if (webViewContainer != null) {
+                        webViewContainer.setBackgroundColor(Color.TRANSPARENT);
+                    }
+                    
+                    // Inject CSS for transparent background
+                    String transparentCSS = 
+                        "(function() {" +
+                        "  document.body.style.backgroundColor = 'transparent';" +
+                        "  document.documentElement.style.backgroundColor = 'transparent';" +
+                        "  var style = document.createElement('style');" +
+                        "  style.innerHTML = 'body, html { background-color: transparent !important; }';" +
+                        "  document.head.appendChild(style);" +
+                        "})();";
+                    
+                    webView.evaluateJavascript(transparentCSS, null);
+                } else {
+                    webView.setBackgroundColor(Color.WHITE);
+                    if (webViewContainer != null) {
+                        webViewContainer.setBackgroundColor(Color.WHITE);
+                    }
+                }
+            });
+        }
+    }
+    
+    /**
+     * Enables or disables offline caching of web content
+     * @param enabled True to enable offline caching, false to disable
+     */
+    public void setOfflineCacheEnabled(boolean enabled) {
+        this.offlineCacheEnabled = enabled;
+        logDebug("Offline cache " + (enabled ? "enabled" : "disabled"));
+        
+        if (webView != null) {
+            runOnUIThread(() -> {
+                WebSettings settings = webView.getSettings();
+                if (enabled) {
+                    settings.setCacheMode(WebSettings.LOAD_DEFAULT);
+                    settings.setDomStorageEnabled(true);
+                    settings.setDatabaseEnabled(true);
+                    // Note: setAppCacheEnabled() is deprecated and removed in API 33+
+                    // Modern caching is handled by DOM storage and regular cache
+                } else {
+                    settings.setCacheMode(WebSettings.LOAD_NO_CACHE);
+                    settings.setDomStorageEnabled(false);
+                    settings.setDatabaseEnabled(false);
+                }
+            });
+        }
+    }
+    
+    /**
+     * Sets the delay before showing the WebView after page loads
+     * @param delaySeconds Delay in seconds (default: 0.1)
+     */
+    public void setShowDelay(float delaySeconds) {
+        this.showDelay = Math.max(0f, delaySeconds);
+        logDebug(String.format("Show delay set to: %.3f seconds", showDelay));
+    }
+    
+    /**
+     * Sets the duration of the fade-in animation when showing the WebView
+     * @param durationSeconds Animation duration in seconds (default: 0.1)
+     */
+    public void setAnimationDuration(float durationSeconds) {
+        this.animationDuration = Math.max(0f, durationSeconds);
+        logDebug(String.format("Animation duration set to: %.3f seconds", animationDuration));
+    }
+    
+    /**
+     * Enables or disables the emergency exit button
+     * @param enabled True to enable emergency exit, false to disable
+     */
+    public void setEmergencyExitEnabled(boolean enabled) {
+        this.emergencyExitEnabled = enabled;
+        logDebug("Emergency exit " + (enabled ? "enabled" : "disabled"));
+        
+        if (emergencyExitButton != null) {
+            runOnUIThread(() -> {
+                emergencyExitButton.setVisibility(enabled ? View.VISIBLE : View.GONE);
+            });
+        }
+    }
+    
+    /**
+     * Sets game UI mode - disables browser features for game-like feel
+     * @param enabled True to enable game UI mode, false for standard web browsing
+     */
+    public void setGameUIMode(boolean enabled) {
+        this.gameUIMode = enabled;
+        logDebug("Game UI mode " + (enabled ? "enabled" : "disabled"));
+        
+        if (webView != null && isWebViewOpen) {
+            runOnUIThread(() -> {
+                if (enabled) {
+                    injectGameUIModeCSS();
+                } else {
+                    // Re-enable standard web behaviors
+                    String standardWebScript = 
+                        "(function() {" +
+                        "  document.documentElement.style.webkitUserSelect = 'auto';" +
+                        "  document.documentElement.style.userSelect = 'auto';" +
+                        "  document.documentElement.oncontextmenu = null;" +
+                        "  document.documentElement.style.webkitTouchCallout = 'default';" +
+                        "})();";
+                    
+                    webView.evaluateJavascript(standardWebScript, null);
+                }
+            });
+        }
+    }
+    
+    // ================================================================================
+    // ✅ EXISTING JAVASCRIPT INTERFACE (UNCHANGED)
+    // ================================================================================
     
     private class WebViewJavaScriptInterface {
         @JavascriptInterface
