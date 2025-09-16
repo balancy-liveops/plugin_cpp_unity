@@ -98,8 +98,8 @@ namespace Balancy.Editor
         {
             try
             {
-                Debug.LogError("AuthDone!!");
                 var authStatus = SetStatus(pointer);
+                Debug.Log("AuthDone!! " + authStatus?.IsAuthorized + " " + authStatus?.Email);
                 _authCallback?.Invoke(authStatus);
             }
             catch (Exception e)
