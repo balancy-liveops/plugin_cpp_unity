@@ -700,22 +700,24 @@ public class BalancyWebViewPlugin {
         this.offlineCacheEnabled = enabled;
         logDebug("Offline cache " + (enabled ? "enabled" : "disabled"));
         
-        if (webView != null) {
-            runOnUIThread(() -> {
-                WebSettings settings = webView.getSettings();
-                if (enabled) {
-                    settings.setCacheMode(WebSettings.LOAD_DEFAULT);
-                    settings.setDomStorageEnabled(true);
-                    settings.setDatabaseEnabled(true);
-                    // Note: setAppCacheEnabled() is deprecated and removed in API 33+
-                    // Modern caching is handled by DOM storage and regular cache
-                } else {
-                    settings.setCacheMode(WebSettings.LOAD_NO_CACHE);
-                    settings.setDomStorageEnabled(false);
-                    settings.setDatabaseEnabled(false);
-                }
-            });
-        }
+        final WebView tmp = webView;
+        
+        runOnUIThread(() -> {
+            if (tmp == null || tmp != webView) return;
+
+            WebSettings settings = tmp.getSettings();
+            if (enabled) {
+                settings.setCacheMode(WebSettings.LOAD_DEFAULT);
+                settings.setDomStorageEnabled(true);
+                settings.setDatabaseEnabled(true);
+                // Note: setAppCacheEnabled() is deprecated and removed in API 33+
+                // Modern caching is handled by DOM storage and regular cache
+            } else {
+                settings.setCacheMode(WebSettings.LOAD_NO_CACHE);
+                settings.setDomStorageEnabled(false);
+                settings.setDatabaseEnabled(false);
+            }
+        });
     }
     
     /**
