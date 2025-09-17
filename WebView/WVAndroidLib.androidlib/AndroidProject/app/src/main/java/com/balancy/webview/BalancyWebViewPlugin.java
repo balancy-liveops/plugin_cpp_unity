@@ -632,7 +632,7 @@ public class BalancyWebViewPlugin {
         if (webView == null || currentActivity == null) return;
         
         android.util.DisplayMetrics metrics = new android.util.DisplayMetrics();
-        currentActivity.getWindowManager().getDefaultDisplay().getMetrics(metrics);
+        currentActivity.getWindowManager().getDefaultDisplay().getRealMetrics(metrics);
         
         int screenWidth = metrics.widthPixels;
         int screenHeight = metrics.heightPixels;
