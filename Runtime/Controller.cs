@@ -21,6 +21,8 @@ namespace Balancy
         
         public static void Init(AppConfig appConfig)
         {
+            _isReadyToUse = false;
+            
             if (!CheckConfig(appConfig))
                 return;
             

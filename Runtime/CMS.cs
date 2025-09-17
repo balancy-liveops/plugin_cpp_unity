@@ -13,8 +13,13 @@ namespace Balancy
 
         public static Func<string, BaseModel> OnTypeRequested = null;
         
+        private static bool IsReadyToUse => Controller.IsReadyToUse;
+        
         public static T[] GetModels<T>(bool includeChildren) where T : BaseModel
         {
+            if (!IsReadyToUse)
+                return Array.Empty<T>();
+            
             //TODO add caching by type
             var templateName = JsonBasedObject.GetModelClassName<T>();
             IntPtr ptr = LibraryMethods.Models.balancyGetModelUnnyIds(templateName, includeChildren, out int size);
@@ -28,6 +33,9 @@ namespace Balancy
 
         public static T GetModelByUnnyId<T>(string unnyId) where T: BaseModel
         {
+            if (!IsReadyToUse)
+                return null;
+            
             if (unnyId == null)
             {
                 UnityEngine.Debug.LogError("Trying to request for NULL unnyId");
