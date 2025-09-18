@@ -22,6 +22,7 @@ namespace Balancy
         public static void Init(AppConfig appConfig)
         {
             _isReadyToUse = false;
+            CMS.SetIsReady(false);
             
             if (!CheckConfig(appConfig))
                 return;
@@ -179,9 +180,13 @@ namespace Balancy
             try
             {
                 var baseNotification = Marshal.PtrToStructure<Notifications.NotificationBase>(notificationPtr);
-                Notifications.NotificationBase notification = baseNotification;
                 switch (baseNotification.Type)
                 {
+                    case Notifications.NotificationType.CMSInited:
+                    {
+                        CMS.SetIsReady(true);
+                        break;
+                    }
                     case Notifications.NotificationType.DataIsReady:
                         var notificationDataIsReady = Marshal.PtrToStructure<Notifications.InitNotificationDataIsReady>(notificationPtr);
                         DataUpdated(notificationDataIsReady.IsCMSUpdated, notificationDataIsReady.IsProfileUpdated);

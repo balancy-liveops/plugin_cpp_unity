@@ -12,6 +12,7 @@ namespace Balancy.Core
             AuthFailed = 2,
             CloudProfileFailed = 3,
             UserRefreshed = 4,
+            CMSInited = 5,
             
             OnNewEventActivated = 100,
             OnEventDeactivated = 101,

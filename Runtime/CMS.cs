@@ -12,8 +12,15 @@ namespace Balancy
         private static Dictionary<string, string> Inheritance = null;
 
         public static Func<string, BaseModel> OnTypeRequested = null;
+
+        private static bool IsReadyToUse = false;
         
-        private static bool IsReadyToUse => Controller.IsReadyToUse;
+        internal static void SetIsReady(bool value)
+        {
+            IsReadyToUse = value;
+            if (IsReadyToUse)
+                RefreshInheritance();
+        }
         
         public static T[] GetModels<T>(bool includeChildren) where T : BaseModel
         {
@@ -68,6 +75,11 @@ namespace Balancy
             Inheritance?.Clear();
         }
 
+        private static void RefreshInheritance()
+        {
+            Inheritance = GetInheritance();
+        }
+
         internal static void RefreshAll()
         {
             List<string> keysToRemove = new List<string>();
@@ -86,7 +98,6 @@ namespace Balancy
 
             foreach (var key in keysToRemove)
                 AllModels.Remove(key);
-            Inheritance = GetInheritance();
         }
 
         private static Dictionary<string, string> GetInheritance()

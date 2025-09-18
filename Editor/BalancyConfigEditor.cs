@@ -686,41 +686,80 @@ namespace Balancy.Editor
                 // Show current branch connection
                 // Get current branch using SerializedObject to access private field
                 SerializedObject serializedLauncher = new SerializedObject(launcher);
+                SerializedProperty apiGameIdProperty = serializedLauncher.FindProperty("apiGameId");
+                SerializedProperty apiPublicKeyProperty = serializedLauncher.FindProperty("apiPublicKey");
                 SerializedProperty branchProperty = serializedLauncher.FindProperty("branchName");
-                string currentBranch = branchProperty?.stringValue ?? "";
-                if (string.IsNullOrEmpty(currentBranch))
+                
+                string currentGameId = apiGameIdProperty?.stringValue ?? "";
+                string currentPublicKey = apiPublicKeyProperty?.stringValue ?? "";
+
+                if (currentGameId == gameId && currentPublicKey == publicKey)
                 {
-                    GUI.color = Color.yellow;
-                    GUILayout.Label("Autodetect branch", EditorStyles.label);
-                    GUI.color = originalColor;
-                }
-                else if (currentBranch == branchName)
-                {
-                    GUI.color = Color.green;
-                    GUILayout.Label($"Connects to '{currentBranch}'", EditorStyles.label);
-                    GUI.color = originalColor;
+                    string currentBranch = branchProperty?.stringValue ?? "";
+                    if (string.IsNullOrEmpty(currentBranch))
+                    {
+                        GUI.color = Color.yellow;
+                        GUILayout.Label("Autodetect branch", EditorStyles.label);
+                        GUI.color = originalColor;
+                    }
+                    else if (currentBranch == branchName)
+                    {
+                        GUI.color = Color.green;
+                        GUILayout.Label($"Connects to '{currentBranch}'", EditorStyles.label);
+                        GUI.color = originalColor;
+                    }
+                    else
+                    {
+                        GUI.color = Color.yellow;
+                        GUILayout.Label($"Connects to '{currentBranch}' (different branch)", EditorStyles.label);
+                        GUI.color = originalColor;
+                    }
+
+                    GUILayout.FlexibleSpace();
+
+                    // Update button if branch is different or not set
+                    if (currentBranch != branchName)
+                    {
+                        if (GUILayout.Button($"Force to '{branchName}'", GUILayout.Width(120)))
+                        {
+                            Undo.RecordObject(launcher, "Update BalancyLauncher");
+                            launcher.SetGameId(gameId);
+                            launcher.SetPublicKey(publicKey);
+                            launcher.SetBranchName(branchName);
+                            EditorUtility.SetDirty(launcher);
+                            EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
+                        }
+                    }
                 }
                 else
                 {
-                    GUI.color = Color.yellow;
-                    GUILayout.Label($"Connects to '{currentBranch}' (different branch)", EditorStyles.label);
-                    GUI.color = originalColor;
-                }
-                
-                GUILayout.FlexibleSpace();
-                
-                // Update button if branch is different or not set
-                if (currentBranch != branchName)
-                {
-                    if (GUILayout.Button($"Force to '{branchName}'", GUILayout.Width(120)))
+                    if (currentGameId != gameId)
+                    {
+                        GUI.color = Color.red;
+                        GUILayout.Label("Different Game ID set!", EditorStyles.label);
+                        GUI.color = originalColor;
+                    }
+                    else if (currentPublicKey != publicKey)
+                    {
+                        GUI.color = Color.red;
+                        GUILayout.Label("Different Public Key set!", EditorStyles.label);
+                        GUI.color = originalColor;
+                    }
+                    
+                    if (GUILayout.Button("Apply Selected Game", GUILayout.Width(150)))
                     {
                         Undo.RecordObject(launcher, "Update BalancyLauncher");
                         launcher.SetGameId(gameId);
                         launcher.SetPublicKey(publicKey);
-                        launcher.SetBranchName(branchName);
                         EditorUtility.SetDirty(launcher);
                         EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
                     }
+                }
+
+                if (GUILayout.Button("Select", GUILayout.Width(60)))
+                {
+                    Selection.activeGameObject = launcher.gameObject;
+                    EditorGUIUtility.PingObject(launcher);
                 }
             }
             else
@@ -748,7 +787,7 @@ namespace Balancy.Editor
                     // Set properties
                     newLauncher.SetGameId(gameId);
                     newLauncher.SetPublicKey(publicKey);
-                    newLauncher.SetBranchName(branchName);
+                    // newLauncher.SetBranchName(branchName);
                     
                     // Select the new GameObject in the hierarchy
                     Selection.activeGameObject = newObject;
