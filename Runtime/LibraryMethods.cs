@@ -294,6 +294,9 @@ namespace Balancy
             public static extern int balancyOfferInfo_GetSecondsLeftBeforeDeactivation(IntPtr offerInfoPointer);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyOfferInfo_Activate(IntPtr offerInfoPointer);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern bool balancyOfferGroupInfo_CanPurchase(IntPtr offerInfoPointer, IntPtr storeItemPointer);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]

@@ -47,5 +47,10 @@ namespace Balancy.Data.SmartObjects
 		{
 			return LibraryMethods.Extra.balancyOfferInfo_GetSecondsLeftBeforeDeactivation(GetRawPointer());
 		}
+		
+		public void Activate()
+		{
+			LibraryMethods.Extra.balancyOfferInfo_Activate(GetRawPointer());
+		}
     }
 }
