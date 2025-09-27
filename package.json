@@ -1,7 +1,7 @@
 {
 	"name": "co.balancy.unity",
 	"displayName": "Balancy",
-	"version": "1.1.23",
+	"version": "1.1.25",
 	"unity": "2022.3",
 	"description": "LiveOps & monetization workspace for games.",
 	"keywords": [
@@ -38,6 +38,6 @@
 	"dependencies": {
 		"com.unity.textmeshpro": "3.0.6"
 	},
-	"documentationUrl": "https://en.docs.balancy.dev",
-	"changelogUrl": "https://en.docs.balancy.dev/release_notes.html"
+	"documentationUrl": "https://en.docsv2.balancy.dev",
+	"changelogUrl": "https://en.docsv2.balancy.dev/release_notes/"
 }

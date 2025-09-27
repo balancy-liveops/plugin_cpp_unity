@@ -51,14 +51,25 @@ namespace Balancy
 
         internal static void CleanUp()
         {
-            LibraryMethods.Data.balancySetProfileOnReset(null);
-            LibraryMethods.Data.balancySetBaseDataParamChanged(null);
-            LibraryMethods.Data.balancySetBaseDataDestroyed(null);
-            foreach (var profile in _cachedProfiles)
-                profile.Value.CleanUp(false);
-            _cachedProfiles.Clear();
-            
-            AllBaseDataSubscriptions.Clear();
+            try
+            {
+                LibraryMethods.Data.balancySetProfileOnReset(null);
+                LibraryMethods.Data.balancySetBaseDataParamChanged(null);
+                LibraryMethods.Data.balancySetBaseDataDestroyed(null);
+                
+                if (_cachedProfiles != null)
+                {
+                    foreach (var profile in _cachedProfiles)
+                        profile.Value?.CleanUp(false);
+                    _cachedProfiles.Clear();
+                }
+                
+                AllBaseDataSubscriptions?.Clear();
+            }
+            catch (System.Exception e)
+            {
+                UnityEngine.Debug.LogError($"[Balancy] Error during cleanup: {e.Message}");
+            }
         }
 
         class BaseDataSubscriptions

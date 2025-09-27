@@ -57,13 +57,21 @@ namespace Balancy
 
         public static void Stop()
         {
-            LibraryMethods.Models.balancySetModelOnRefresh(null);
-            LibraryMethods.Models.balancySetUserDataInitializedCallback(null);
-            LibraryMethods.General.balancyStop();
-            Profiles.CleanUp();
-            CMS.CleanUp();
-            Balancy.Network.UnityWebRequestBridge.Clear();
-            LibraryMethods.General.balancySetInvokeInMainThreadCallback(null);
+            try
+            {
+                LibraryMethods.Models.balancySetModelOnRefresh(null);
+                LibraryMethods.Models.balancySetUserDataInitializedCallback(null);
+                LibraryMethods.General.balancyStop();
+                Profiles.CleanUp();
+                CMS.CleanUp();
+                Balancy.Network.UnityWebRequestBridge.Clear();
+                LibraryMethods.General.balancySetInvokeInMainThreadCallback(null);
+                _isReadyToUse = false;
+            }
+            catch (System.Exception e)
+            {
+                UnityEngine.Debug.LogError($"[Balancy] Error during stop: {e.Message}");
+            }
         }
 
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.ModelRefreshedCallback))]
