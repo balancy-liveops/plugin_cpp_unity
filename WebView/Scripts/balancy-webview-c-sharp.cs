@@ -667,7 +667,8 @@ namespace Balancy.WebView
             // Enable game UI mode by default
             SetGameUIMode(_gameUIMode);
             
-            SetDebugLogging(true);
+            // Only enable debug logging if it was explicitly requested
+            SetDebugLogging(_debugLogging);
 
             // Unified call - platform-specific implementation handled in native layer
             bool success = _balancyOpenWebViewWithSize(url, width, height);
@@ -690,6 +691,10 @@ namespace Balancy.WebView
             _balancyCloseWebView();
 
             _isWebViewOpen = false;
+            
+            // Reset debug logging state to prevent log accumulation
+            _debugLogging = false;
+            
             OnClosed?.Invoke();
         }
 
@@ -705,7 +710,7 @@ namespace Balancy.WebView
             
             if (!_isWebViewOpen && !_isWebViewEmbedded)
             {
-                Debug.Log("Cannot send message: The View is not open. Don't worry, It's ok.");
+                // Silently return false without logging - this is normal during WebView closure
                 return false;
             }
 
@@ -721,9 +726,9 @@ namespace Balancy.WebView
         /// <returns>The result of the JavaScript function call as a string</returns>
         public string CallJavaScript(string functionName, params string[] args)
         {
-            if (!_isWebViewOpen)
+            if (!_isWebViewOpen && !_isWebViewEmbedded)
             {
-                Debug.LogWarning("Cannot call JavaScript: WebView is not open.");
+                // Silently return null without logging - this is normal during WebView closure
                 return null;
             }
 
@@ -943,7 +948,7 @@ namespace Balancy.WebView
             
             // Apply current settings
             ApplySettings();
-            SetDebugLogging(true);
+            SetDebugLogging(_debugLogging);
             
             // OPTIMIZATION: No longer pass texturePtr - native code manages its own pixel buffer
             bool success = _balancyOpenWebViewEmbedded(url, renderTexture.width, renderTexture.height);
@@ -975,6 +980,10 @@ namespace Balancy.WebView
             _balancyCloseWebViewEmbedded();
             _isWebViewEmbedded = false;
             _embeddedTexture = null;
+            
+            // Reset debug logging state to prevent log accumulation
+            _debugLogging = false;
+            
             OnClosed?.Invoke();
             #endif
         }
@@ -1161,15 +1170,18 @@ namespace Balancy.WebView
 
                 if (!string.IsNullOrEmpty(_instance._ownerJson))
                 {
-                    var injectedCode = "try {\n" +
+                    var injectedCode = "(function() {\n" +
+                                       "    try {\n" +
                                        (!string.IsNullOrEmpty(_instance._additionalInfo)
-                                           ? $"window.balancySettings = JSON.parse('{_instance._additionalInfo}');\n"
+                                           ? $"        window.balancySettings = JSON.parse('{_instance._additionalInfo}');\n"
                                            : "") +
-                                       $"window.balancyViewOwner = JSON.parse('{_instance._ownerJson}');\n" +
-                                       "           } catch (error) {\n " +
-                                       "               console.error('Error parsing button params JSON:', error);\n" +
-                                       "               window.balancyViewOwner = null;\n" +
-                                       "            }";
+                                       $"        window.balancyViewOwner = JSON.parse('{_instance._ownerJson}');\n" +
+                                       "    } catch (error) {\n" +
+                                       "        console.error('Error parsing button params JSON:', error);\n" +
+                                       "        window.balancyViewOwner = null;\n" +
+                                       "    }\n" +
+                                       "    return true; // Return explicit value to avoid iOS error code 5\n" +
+                                       "})();";
                     _balancyInjectJSCode(injectedCode);
                 }
 

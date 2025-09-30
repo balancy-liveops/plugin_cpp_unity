@@ -58,6 +58,18 @@ extern "C" {
     // Create a WKWebViewConfiguration object
     WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
     
+    // === REDUCE WEBKIT PROCESS ERRORS ===
+    // Configure process pool to reduce termination errors
+    configuration.processPool = [[WKProcessPool alloc] init];
+    
+    // Suppress media playback (reduces GPU process usage)
+    configuration.allowsInlineMediaPlayback = YES;
+    configuration.mediaTypesRequiringUserActionForPlayback = WKAudiovisualMediaTypeAll;
+    
+    // Configure preferences to reduce process spawning
+    configuration.preferences.javaScriptEnabled = YES;
+    configuration.preferences.javaScriptCanOpenWindowsAutomatically = NO;
+    
     // === AGGRESSIVE MAGNIFYING GLASS PREVENTION ===
     // Try to disable text interaction and magnification at the configuration level
     
@@ -76,6 +88,10 @@ extern "C" {
         // Make sure JavaScript is enabled
         configuration.defaultWebpagePreferences.allowsContentJavaScript = YES;
     }
+    
+    // Configure for local file access
+    // WKWebView automatically allows file:// URLs to access other file:// URLs
+    // in the same directory, which is what we need for local HTML content
     
     // Create user content controller and add script message handler
     _userContentController = [[WKUserContentController alloc] init];
@@ -301,8 +317,13 @@ extern "C" {
         _webView.scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
     }
     
-    // Create activity indicator
-    _activityIndicator = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleLarge];
+    // Create activity indicator with iOS version compatibility
+    if (@available(iOS 13.0, *)) {
+        _activityIndicator = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleLarge];
+    } else {
+        // For iOS 12 and earlier, use the deprecated but compatible style
+        _activityIndicator = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleWhiteLarge];
+    }
     _activityIndicator.hidesWhenStopped = YES;
     
     // Add the activity indicator to the view
@@ -474,14 +495,35 @@ extern "C" {
         _emergencyExitButton = nil;
     }
     
-    // Remove script message handler to avoid memory leaks
-    [_userContentController removeScriptMessageHandlerForName:@"BalancyWebView"];
-    
-    // Stop all loading
-    [_webView stopLoading];
-    
-    // Remove the WebView from its parent view
-    [_webView removeFromSuperview];
+    // Clean up WebView properly to avoid ExtensionKit termination errors
+    if (_webView) {
+        // Clear delegates first to prevent callbacks during cleanup
+        _webView.navigationDelegate = nil;
+        _webView.UIDelegate = nil;
+        
+        // Remove script message handler before stopping loading
+        if (_userContentController) {
+            [_userContentController removeScriptMessageHandlerForName:@"BalancyWebView"];
+            _userContentController = nil;
+        }
+        
+        // Stop all loading and navigation
+        [_webView stopLoading];
+        
+        // Load about:blank to cleanly terminate web processes
+        [_webView loadRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"about:blank"]]];
+        
+        // Remove from view hierarchy
+        [_webView removeFromSuperview];
+        
+        // Nullify the WebView reference immediately
+        // This helps the system clean up WebKit processes
+        _webView = nil;
+        
+        if (_debugLogging) {
+            NSLog(@"[BalancyWebView] WebView cleanup initiated");
+        }
+    }
     
     // Remove the view controller from its parent
     [self willMoveToParentViewController:nil];
@@ -723,10 +765,17 @@ extern "C" {
                 }\
                 lastTouchEnd = now;\
             }, { passive: false });\
+            \
+            return undefined;\
         })();\
         ";
         
-        [_webView evaluateJavaScript:gameUIModeScript completionHandler:nil];
+        // FIX: Add proper completion handler to catch and ignore the "unsupported type" error
+        [_webView evaluateJavaScript:gameUIModeScript completionHandler:^(id _Nullable result, NSError * _Nullable error) {
+            if (error && self.debugLogging && error.code != 5) {
+                NSLog(@"[BalancyWebView] Game UI mode script error (code %ld): %@", (long)error.code, error.localizedDescription);
+            }
+        }];
     } else {
         // Enable standard web browsing features
         _webView.scrollView.bounces = YES;
@@ -786,10 +835,17 @@ extern "C" {
                     styleElements[i].remove();\
                 }\
             }\
+            \
+            return undefined;\
         })();\
         ";
         
-        [_webView evaluateJavaScript:standardWebScript completionHandler:nil];
+        // FIX: Add proper completion handler to catch and ignore the "unsupported type" error
+        [_webView evaluateJavaScript:standardWebScript completionHandler:^(id _Nullable result, NSError * _Nullable error) {
+            if (error && self.debugLogging && error.code != 5) {
+                NSLog(@"[BalancyWebView] Standard web script error (code %ld): %@", (long)error.code, error.localizedDescription);
+            }
+        }];
     }
     
     if (_debugLogging) {
@@ -932,6 +988,7 @@ extern "C" {
         self.view.backgroundColor = [UIColor clearColor];
         
         // JavaScript to make the HTML document body transparent
+        // IMPORTANT: Return undefined explicitly to avoid WKErrorJavaScriptResultTypeIsUnsupported
         NSString *transparencyScript = @"\
         (function() {\
             document.body.style.backgroundColor = 'transparent';\
@@ -940,10 +997,20 @@ extern "C" {
             style.type = 'text/css';\
             style.innerHTML = 'body { background-color: transparent !important; }';\
             document.head.appendChild(style);\
+            return undefined;\
         })();\
         ";
         
-        [_webView evaluateJavaScript:transparencyScript completionHandler:nil];
+        // FIX: Add proper completion handler to catch and ignore the "unsupported type" error
+        [_webView evaluateJavaScript:transparencyScript completionHandler:^(id _Nullable result, NSError * _Nullable error) {
+            if (error) {
+                // WKErrorJavaScriptResultTypeIsUnsupported = 5
+                // Only log unexpected errors, not the common "unsupported type" error
+                if (self.debugLogging && error.code != 5) {
+                    NSLog(@"[BalancyWebView] Transparency script error (code %ld): %@", (long)error.code, error.localizedDescription);
+                }
+            }
+        }];
     } else {
         // Reset to default opaque background
         _webView.backgroundColor = [UIColor whiteColor];
@@ -1059,6 +1126,56 @@ extern "C" {
 
 #pragma mark - C Interface for Unity
 
+// Helper function to get the root view controller safely across all iOS versions
+static UIViewController* GetRootViewController() {
+    UIViewController* rootViewController = nil;
+    
+    // iOS 13+ uses scenes
+    if (@available(iOS 13.0, *)) {
+        // Try to get from the first connected scene
+        NSSet<UIScene *> *connectedScenes = [UIApplication sharedApplication].connectedScenes;
+        for (UIScene *scene in connectedScenes) {
+            if ([scene isKindOfClass:[UIWindowScene class]]) {
+                UIWindowScene *windowScene = (UIWindowScene *)scene;
+                for (UIWindow *window in windowScene.windows) {
+                    if (window.isKeyWindow) {
+                        rootViewController = window.rootViewController;
+                        if (rootViewController) {
+                            return rootViewController;
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Fallback: try the first window in the first scene
+        for (UIScene *scene in connectedScenes) {
+            if ([scene isKindOfClass:[UIWindowScene class]]) {
+                UIWindowScene *windowScene = (UIWindowScene *)scene;
+                UIWindow *firstWindow = windowScene.windows.firstObject;
+                if (firstWindow && firstWindow.rootViewController) {
+                    return firstWindow.rootViewController;
+                }
+            }
+        }
+    }
+    
+    // iOS 12 and earlier - use keyWindow directly
+    rootViewController = [UIApplication sharedApplication].keyWindow.rootViewController;
+    
+    // Final fallback - try all windows
+    if (!rootViewController) {
+        for (UIWindow *window in [UIApplication sharedApplication].windows) {
+            if (window.rootViewController) {
+                rootViewController = window.rootViewController;
+                break;
+            }
+        }
+    }
+    
+    return rootViewController;
+}
+
 // These functions are exported to be called from Unity's C# code
 
 extern "C" {
@@ -1067,7 +1184,7 @@ extern "C" {
 bool _balancyOpenWebView(const char* url) {
     @autoreleasepool {
         // Get the top-most view controller
-        UIViewController* rootViewController = [UIApplication sharedApplication].keyWindow.rootViewController;
+        UIViewController* rootViewController = GetRootViewController();
         if (!rootViewController) {
             NSLog(@"[BalancyWebView] Failed to get root view controller");
             return false;
@@ -1094,24 +1211,26 @@ bool _balancyOpenWebView(const char* url) {
 bool _balancyOpenWebViewWithSize(const char* url, int width, int height) {
     @autoreleasepool {
         // Get the top-most view controller
-        UIViewController* rootViewController = [UIApplication sharedApplication].keyWindow.rootViewController;
+        UIViewController* rootViewController = GetRootViewController();
         if (!rootViewController) {
             NSLog(@"[BalancyWebView] Failed to get root view controller");
             return false;
         }
+        
+        // Create a WebView controller
+        BalancyWebViewController* webViewController = [[BalancyWebViewController alloc] initWithMessageCallback:_messageCallback
+                                                                                           loadCompletedCallback:_loadCompletedCallback
+                                                                                          cacheCompletedCallback:_cacheCompletedCallback];
         
         // Convert from Unity pixels to iOS points by dividing by screen scale
         CGFloat scale = [UIScreen mainScreen].scale;
         CGFloat pointWidth = width / scale;
         CGFloat pointHeight = height / scale;
         
-        NSLog(@"[BalancyWebView] Scale factor: %.1fx, Converting %dx%d pixels to %.1fx%.1f points", 
-              scale, width, height, pointWidth, pointHeight);
-        
-        // Create a WebView controller
-        BalancyWebViewController* webViewController = [[BalancyWebViewController alloc] initWithMessageCallback:_messageCallback
-                                                                                           loadCompletedCallback:_loadCompletedCallback
-                                                                                          cacheCompletedCallback:_cacheCompletedCallback];
+        if (webViewController.debugLogging) {
+            NSLog(@"[BalancyWebView] Scale factor: %.1fx, Converting %dx%d pixels to %.1fx%.1f points", 
+                  scale, width, height, pointWidth, pointHeight);
+        }
         
         // Add as a child view controller
         [rootViewController addChildViewController:webViewController];
@@ -1134,7 +1253,7 @@ bool _balancyOpenWebViewWithSize(const char* url, int width, int height) {
 void _balancyCloseWebView() {
     @autoreleasepool {
         // Find the BalancyWebViewController
-        UIViewController* rootViewController = [UIApplication sharedApplication].keyWindow.rootViewController;
+        UIViewController* rootViewController = GetRootViewController();
         for (UIViewController* childVC in rootViewController.childViewControllers) {
             if ([childVC isKindOfClass:[BalancyWebViewController class]]) {
                 BalancyWebViewController* webViewController = (BalancyWebViewController*)childVC;
@@ -1149,7 +1268,7 @@ void _balancyCloseWebView() {
 bool _balancySendMessage(const char* message) {
     @autoreleasepool {
         // Find the BalancyWebViewController
-        UIViewController* rootViewController = [UIApplication sharedApplication].keyWindow.rootViewController;
+        UIViewController* rootViewController = GetRootViewController();
         for (UIViewController* childVC in rootViewController.childViewControllers) {
             if ([childVC isKindOfClass:[BalancyWebViewController class]]) {
                 BalancyWebViewController* webViewController = (BalancyWebViewController*)childVC;
@@ -1165,7 +1284,7 @@ bool _balancySendMessage(const char* message) {
 const char* _balancyCallJavaScript(const char* function, const char** args, int argsCount) {
     @autoreleasepool {
         // Find the BalancyWebViewController
-        UIViewController* rootViewController = [UIApplication sharedApplication].keyWindow.rootViewController;
+        UIViewController* rootViewController = GetRootViewController();
         for (UIViewController* childVC in rootViewController.childViewControllers) {
             if ([childVC isKindOfClass:[BalancyWebViewController class]]) {
                 BalancyWebViewController* webViewController = (BalancyWebViewController*)childVC;
@@ -1198,7 +1317,7 @@ const char* _balancyCallJavaScript(const char* function, const char** args, int 
 void _balancySetViewportRect(float x, float y, float width, float height) {
     @autoreleasepool {
         // Find the BalancyWebViewController
-        UIViewController* rootViewController = [UIApplication sharedApplication].keyWindow.rootViewController;
+        UIViewController* rootViewController = GetRootViewController();
         for (UIViewController* childVC in rootViewController.childViewControllers) {
             if ([childVC isKindOfClass:[BalancyWebViewController class]]) {
                 BalancyWebViewController* webViewController = (BalancyWebViewController*)childVC;
@@ -1213,7 +1332,7 @@ void _balancySetViewportRect(float x, float y, float width, float height) {
 void _balancySetTransparentBackground(bool transparent) {
     @autoreleasepool {
         // Find the BalancyWebViewController
-        UIViewController* rootViewController = [UIApplication sharedApplication].keyWindow.rootViewController;
+        UIViewController* rootViewController = GetRootViewController();
         for (UIViewController* childVC in rootViewController.childViewControllers) {
             if ([childVC isKindOfClass:[BalancyWebViewController class]]) {
                 BalancyWebViewController* webViewController = (BalancyWebViewController*)childVC;
@@ -1228,7 +1347,7 @@ void _balancySetTransparentBackground(bool transparent) {
 void _balancySetOfflineCacheEnabled(bool enabled) {
     @autoreleasepool {
         // Find the BalancyWebViewController
-        UIViewController* rootViewController = [UIApplication sharedApplication].keyWindow.rootViewController;
+        UIViewController* rootViewController = GetRootViewController();
         for (UIViewController* childVC in rootViewController.childViewControllers) {
             if ([childVC isKindOfClass:[BalancyWebViewController class]]) {
                 BalancyWebViewController* webViewController = (BalancyWebViewController*)childVC;
@@ -1243,7 +1362,7 @@ void _balancySetOfflineCacheEnabled(bool enabled) {
 void _balancySetDebugLogging(bool enabled) {
     @autoreleasepool {
         // Find the BalancyWebViewController
-        UIViewController* rootViewController = [UIApplication sharedApplication].keyWindow.rootViewController;
+        UIViewController* rootViewController = GetRootViewController();
         for (UIViewController* childVC in rootViewController.childViewControllers) {
             if ([childVC isKindOfClass:[BalancyWebViewController class]]) {
                 BalancyWebViewController* webViewController = (BalancyWebViewController*)childVC;
@@ -1258,7 +1377,7 @@ void _balancySetDebugLogging(bool enabled) {
 void _balancySetGameUIMode(bool enabled) {
     @autoreleasepool {
         // Find the BalancyWebViewController
-        UIViewController* rootViewController = [UIApplication sharedApplication].keyWindow.rootViewController;
+        UIViewController* rootViewController = GetRootViewController();
         for (UIViewController* childVC in rootViewController.childViewControllers) {
             if ([childVC isKindOfClass:[BalancyWebViewController class]]) {
                 BalancyWebViewController* webViewController = (BalancyWebViewController*)childVC;
@@ -1273,7 +1392,7 @@ void _balancySetGameUIMode(bool enabled) {
 void _balancySetEmergencyExitEnabled(bool enabled) {
     @autoreleasepool {
         // Find the BalancyWebViewController
-        UIViewController* rootViewController = [UIApplication sharedApplication].keyWindow.rootViewController;
+        UIViewController* rootViewController = GetRootViewController();
         for (UIViewController* childVC in rootViewController.childViewControllers) {
             if ([childVC isKindOfClass:[BalancyWebViewController class]]) {
                 BalancyWebViewController* webViewController = (BalancyWebViewController*)childVC;
@@ -1293,6 +1412,11 @@ void _balancyRegisterLoadCompletedCallback(void (*callback)(bool)) {
     _loadCompletedCallback = callback;
 }
 
-// Note: _balancyRegisterCacheCompletedCallback is implemented in BalancyWebViewUnityBridge.mm
+// Note: The following functions are implemented in BalancyWebViewUnityBridge.mm:
+// - _balancyRegisterCacheCompletedCallback
+// - _balancyInjectJSCode
+// - _balancySetShowDelay
+// - _balancySetAnimationDuration
+// - _balancySetEmergencyExitEnabled
 
 } // extern "C"

@@ -1016,3 +1016,4 @@ const balancy = {};
 })();
 
 window.balancy = balancy;
+true; // Return explicit value to avoid iOS error code 5

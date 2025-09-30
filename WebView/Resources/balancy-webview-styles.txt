@@ -11,7 +11,7 @@
 
         var style = document.createElement('style');
         style.id = 'balancy-game-ui-styles';
-        style.textContent = '
+        style.textContent = `
             /* === УНИВЕРСАЛЬНЫЕ СТИЛИ ДЛЯ ВСЕХ ПЛАТФОРМ === */
             
             /* Отключение выделения текста */
@@ -416,7 +416,7 @@
                 -webkit-box-shadow: 0 0 0 1000px transparent inset !important;
                 -webkit-text-fill-color: inherit !important;
             }
-        ';
+        `;
 
         (document.head || document.documentElement).appendChild(style);
         console.log('[BalancyWebView] Game UI styles injected successfully');
@@ -619,5 +619,6 @@
     } else {
         initializeGameUI();
     }
+})();
 
-})()
+true; // Return explicit value to avoid iOS error code 5

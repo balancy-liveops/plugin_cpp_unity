@@ -239,8 +239,17 @@ void LogToUnity(const char* message) {
     }
     
     if (_webView) {
+        // Stop all loading and clear navigation
         [_webView stopLoading];
+        
+        // Load empty page to clean up resources
+        [_webView loadHTMLString:@"" baseURL:nil];
+        
+        // Clear navigation delegates
         [_webView setNavigationDelegate:nil];
+        [_webView setUIDelegate:nil];
+        
+        // Remove from superview and nullify
         [_webView removeFromSuperview];
         _webView = nil;
     }
