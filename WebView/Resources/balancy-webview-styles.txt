@@ -9,9 +9,9 @@
     function injectGameUIStyles() {
         if (document.getElementById('balancy-game-ui-styles')) return;
 
-        const style = document.createElement('style');
+        var style = document.createElement('style');
         style.id = 'balancy-game-ui-styles';
-        style.textContent = `
+        style.textContent = '
             /* === УНИВЕРСАЛЬНЫЕ СТИЛИ ДЛЯ ВСЕХ ПЛАТФОРМ === */
             
             /* Отключение выделения текста */
@@ -416,7 +416,7 @@
                 -webkit-box-shadow: 0 0 0 1000px transparent inset !important;
                 -webkit-text-fill-color: inherit !important;
             }
-        `;
+        ';
 
         (document.head || document.documentElement).appendChild(style);
         console.log('[BalancyWebView] Game UI styles injected successfully');
@@ -428,8 +428,8 @@
             return false;
         }
         
-        const style = window.getComputedStyle(element);
-        const overflow = style.overflow || style.overflowY || style.overflowX;
+        var style = window.getComputedStyle(element);
+        var overflow = style.overflow || style.overflowY || style.overflowX;
         
         return overflow === 'auto' || 
                overflow === 'scroll' || 
@@ -443,7 +443,7 @@
 
     // Функция для поиска ближайшего скроллируемого родителя
     function findScrollableParent(element) {
-        let current = element;
+        var current = element;
         while (current && current !== document.body && current !== document.documentElement) {
             if (isScrollableElement(current)) {
                 return current;
@@ -488,7 +488,7 @@
                 }
                 
                 // Ищем ближайший скроллируемый родительский элемент
-                const scrollableParent = findScrollableParent(e.target);
+                var scrollableParent = findScrollableParent(e.target);
                 
                 if (scrollableParent) {
                     // Если найден скроллируемый родитель, разрешаем скролл
@@ -500,9 +500,9 @@
             }, { passive: false });
 
             // Предотвращение zoom при double tap
-            let lastTouchEnd = 0;
+            var lastTouchEnd = 0;
             document.addEventListener('touchend', function(event) {
-                const now = Date.now();
+                var now = Date.now();
                 if (now - lastTouchEnd <= 300) {
                     event.preventDefault();
                 }
@@ -530,14 +530,14 @@
             }, { passive: false });
 
             // Отключение pull-to-refresh только для основной страницы
-            let startY = 0;
+            var startY = 0;
             document.addEventListener('touchstart', function(e) {
                 startY = e.touches[0].pageY;
             }, { passive: true });
 
             document.addEventListener('touchmove', function(e) {
                 // Проверяем, находимся ли мы внутри скроллируемого элемента
-                const scrollableParent = findScrollableParent(e.target);
+                var scrollableParent = findScrollableParent(e.target);
                 
                 if (!scrollableParent && e.touches[0].pageY > startY && window.pageYOffset === 0) {
                     e.preventDefault();
@@ -553,7 +553,7 @@
             document.addEventListener('keydown', function(e) {
                 // Отключаем Ctrl+A, Ctrl+C, Ctrl+V, Ctrl+S, Ctrl+P и т.д.
                 if (e.ctrlKey || e.metaKey) {
-                    const blockedKeys = ['a', 'c', 'v', 'x', 's', 'p', 'f', 'h', 'r', 'n', 'w', 't'];
+                    var blockedKeys = ['a', 'c', 'v', 'x', 's', 'p', 'f', 'h', 'r', 'n', 'w', 't'];
                     if (blockedKeys.includes(e.key.toLowerCase())) {
                         e.preventDefault();
                         e.stopPropagation();
@@ -562,7 +562,7 @@
                 }
 
                 // Отключаем функциональные клавиши
-                const blockedKeyCodes = [
+                var blockedKeyCodes = [
                     112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, // F1-F12
                     116, // F5 (Refresh)
                     123  // F12 (Dev Tools)
@@ -594,7 +594,7 @@
 
         // Добавляем meta viewport если его нет
         if (!document.querySelector('meta[name="viewport"]')) {
-            const viewport = document.createElement('meta');
+            var viewport = document.createElement('meta');
             viewport.name = 'viewport';
             viewport.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover';
             document.head.appendChild(viewport);
