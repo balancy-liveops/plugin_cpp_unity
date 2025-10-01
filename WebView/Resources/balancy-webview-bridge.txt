@@ -857,8 +857,10 @@ const balancy = {};
 
     balancy.itemHasDecayEffect = function (item) {
         const components = item?.components;
-        if (!components)
+        if (!components) {
+            console.error("Item has no components, probably you need to increase depth when fetching item data: ", item);
             return false;
+        }
 
         for (const component of components) {
             if (component['$type'] === 'SmartObjects.ItemComponent.Decay')

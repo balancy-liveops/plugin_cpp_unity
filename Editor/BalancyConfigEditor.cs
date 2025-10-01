@@ -911,6 +911,7 @@ namespace Balancy.Editor
         private void SignOut()
         {
             EditorUtils.SignOut();
+            _gamesInfo = null;
             Repaint();
         }
     }
