@@ -1,20 +1,20 @@
 (function() {
-    // Предотвращаем повторную инъекцию
+    // Prevent repeated injection
     if (window.balancyPerformanceInjected) return;
     window.balancyPerformanceInjected = true;
 
     console.log('[BalancyWebView] Injecting universal performance optimizations for game-like WebView');
 
-    // Универсальные CSS стили для игрового WebView
+    // Universal CSS styles for game-like WebView
     function injectGameUIStyles() {
         if (document.getElementById('balancy-game-ui-styles')) return;
 
         var style = document.createElement('style');
         style.id = 'balancy-game-ui-styles';
         style.textContent = `
-            /* === УНИВЕРСАЛЬНЫЕ СТИЛИ ДЛЯ ВСЕХ ПЛАТФОРМ === */
+            /* === UNIVERSAL STYLES FOR ALL PLATFORMS === */
             
-            /* Отключение выделения текста */
+            /* Disable text selection */
             * {
                 -webkit-user-select: none !important;
                 -moz-user-select: none !important;
@@ -27,12 +27,12 @@
                 user-drag: none !important;
             }
             
-            /* Курсор по умолчанию для всех текстовых элементов */
+            /* Default cursor for all text elements */
             body, div, span, p, h1, h2, h3, h4, h5, h6, a, button {
                 cursor: default !important;
             }
             
-            /* Отключение drag and drop для изображений */
+            /* Disable drag and drop for images */
             img {
                 -webkit-user-drag: none !important;
                 user-drag: none !important;
@@ -40,20 +40,20 @@
                 -webkit-touch-callout: none !important;
             }
             
-            /* Отключение автокоррекции и автозаполнения для input полей */
+            /* Disable autocorrect and autofill for input fields */
             input, textarea {
                 -webkit-autocorrect: off !important;
                 -webkit-autocapitalize: off !important;
                 autocomplete: off !important;
                 spellcheck: false !important;
-                /* Предотвращаем zoom при фокусе на мобильных */
+                /* Prevent zoom on focus on mobile devices */
                 font-size: 16px !important;
                 -webkit-appearance: none !important;
                 -moz-appearance: none !important;
                 appearance: none !important;
             }
             
-            /* Основные настройки body */
+            /* Main body settings */
             body {
                 -webkit-tap-highlight-color: transparent !important;
                 overscroll-behavior: none !important;
@@ -75,7 +75,7 @@
                 overflow: hidden !important;
             }
             
-            /* html настройки для предотвращения скролла страницы */
+            /* HTML settings to prevent page scrolling */
             html {
                 position: fixed !important;
                 top: 0 !important;
@@ -89,7 +89,7 @@
                 -ms-overflow-style: none !important;
             }
             
-            /* Скрытие всех скроллбаров */
+            /* Hide all scrollbars */
             ::-webkit-scrollbar {
                 width: 0px !important;
                 height: 0px !important;
@@ -105,7 +105,7 @@
                 display: none !important;
             }
             
-            /* Разрешаем скролл для элементов с определенными CSS свойствами */
+            /* Allow scrolling for elements with specific CSS properties */
             [style*="overflow: auto"], 
             [style*="overflow: scroll"], 
             [style*="overflow-y: auto"], 
@@ -121,7 +121,7 @@
                 overscroll-behavior: contain !important;
             }
             
-            /* === iOS СПЕЦИФИЧНЫЕ СТИЛИ === */
+            /* === iOS SPECIFIC STYLES === */
             @supports (-webkit-touch-callout: none) {
                 body {
                     -webkit-overflow-scrolling: auto !important;
@@ -129,7 +129,7 @@
                     -webkit-user-select: none !important;
                 }
                 
-                /* Предотвращаем zoom при фокусе на input */
+                /* Prevent zoom on input focus */
                 input, textarea, select {
                     font-size: 16px !important;
                     transform: translateZ(0) !important;
@@ -140,7 +140,7 @@
                     -webkit-text-size-adjust: 100% !important;
                 }
                 
-                /* Разрешаем скролл для скроллируемых элементов на iOS */
+                /* Allow scrolling for scrollable elements on iOS */
                 [style*="overflow: auto"], 
                 [style*="overflow: scroll"], 
                 [style*="overflow-y: auto"], 
@@ -155,7 +155,7 @@
                 }
             }
             
-            /* === ANDROID СПЕЦИФИЧНЫЕ СТИЛИ === */
+            /* === ANDROID SPECIFIC STYLES === */
             @media screen and (-webkit-device-pixel-ratio: 1), 
                    screen and (-webkit-device-pixel-ratio: 1.5), 
                    screen and (-webkit-device-pixel-ratio: 2), 
@@ -171,21 +171,21 @@
                 }
             }
             
-            /* === DESKTOP СПЕЦИФИЧНЫЕ СТИЛИ === */
+            /* === DESKTOP SPECIFIC STYLES === */
             @media (hover: hover) and (pointer: fine) {
                 body {
                     overflow-x: hidden !important;
                     -ms-overflow-style: none !important;
                 }
                 
-                /* Отключение контекстного меню для desktop */
+                /* Disable context menu for desktop */
                 * {
                     -webkit-context-menu: none !important;
                     context-menu: none !important;
                 }
             }
             
-            /* === WEBGL СПЕЦИФИЧНЫЕ СТИЛИ === */
+            /* === WEBGL SPECIFIC STYLES === */
             .unity-webgl-canvas {
                 body {
                     margin: 0 !important;
@@ -194,7 +194,7 @@
                 }
             }
             
-            // /* === ОТКЛЮЧЕНИЕ АНИМАЦИЙ БРАУЗЕРА === */
+            // /* === DISABLE BROWSER ANIMATIONS === */
             // *, *::before, *::after {
             //     -webkit-animation-duration: 0s !important;
             //     animation-duration: 0s !important;
@@ -206,8 +206,8 @@
             //     transition-delay: 0s !important;
             // }
             
-            /* === АНИМАЦИИ КНОПОК === */
-            /* Переопределяем отключение анимаций для кнопок */
+            /* === BUTTON ANIMATIONS === */
+            /* Override animation disabling for buttons */
             button, input[type="button"], input[type="submit"], input[type="reset"], .btn, [role="button"] {
                 -webkit-transition-duration: 0.1s !important;
                 transition-duration: 0.1s !important;
@@ -222,7 +222,7 @@
                 will-change: transform !important;
             }
             
-            /* Анимация нажатия - Mouse/Touch Down */
+            /* Press animation - Mouse/Touch Down */
             button:active, 
             input[type="button"]:active, 
             input[type="submit"]:active, 
@@ -235,7 +235,7 @@
                 transition-duration: 0.05s !important;
             }
             
-            /* Анимация отпускания - Mouse/Touch Up */
+            /* Release animation - Mouse/Touch Up */
             button:not(:active), 
             input[type="button"]:not(:active), 
             input[type="submit"]:not(:active), 
@@ -248,7 +248,7 @@
                 transition-duration: 0.1s !important;
             }
             
-            /* Дополнительные селекторы для различных типов кнопок */
+            /* Additional selectors for different button types */
             a[role="button"], 
             div[role="button"], 
             span[role="button"],
@@ -280,9 +280,9 @@
                 transition-duration: 0.05s !important;
             }
             
-            /* === СТИЛИ ДЛЯ DISABLED/ЗАБЛОКИРОВАННЫХ КНОПОК === */
+            /* === STYLES FOR DISABLED/BLOCKED BUTTONS === */
             
-            /* Disabled кнопки - отключение всех анимаций и взаимодействий */
+            /* Disabled buttons - disable all animations and interactions */
             button:disabled,
             input[type="button"]:disabled,
             input[type="submit"]:disabled,
@@ -305,26 +305,26 @@
             .clickable:disabled,
             .clickable.disabled,
             .balancy-button-processing {
-                /* Визуальное состояние */
+                /* Visual state */
                 opacity: 0.5 !important;
                 filter: grayscale(0.7) !important;
                 cursor: not-allowed !important;
                 
-                /* Отключение всех взаимодействий */
+                /* Disable all interactions */
                 pointer-events: none !important;
                 
-                /* Отключение анимаций */
+                /* Disable animations */
                 transform: scale(1) !important;
                 -webkit-transform: scale(1) !important;
                 -webkit-transition: none !important;
                 transition: none !important;
                 
-                /* Отключение hover эффектов */
+                /* Disable hover effects */
                 box-shadow: none !important;
                 -webkit-box-shadow: none !important;
             }
             
-            /* Отключение :active состояния для disabled кнопок */
+            /* Disable :active state for disabled buttons */
             button:disabled:active,
             input[type="button"]:disabled:active,
             input[type="submit"]:disabled:active,
@@ -355,12 +355,12 @@
                 pointer-events: none !important;
             }
             
-            /* Специальные стили для кнопок в процессе обработки */
+            /* Special styles for buttons being processed */
             .balancy-button-processing {
                 position: relative !important;
             }
             
-            /* Опциональный loading индикатор для processing кнопок */
+            /* Optional loading indicator for processing buttons */
             .balancy-button-processing::after {
                 content: '' !important;
                 position: absolute !important;
@@ -386,15 +386,15 @@
                 100% { -webkit-transform: rotate(360deg); }
             }
             
-            /* === ДОПОЛНИТЕЛЬНЫЕ ОПТИМИЗАЦИИ === */
+            /* === ADDITIONAL OPTIMIZATIONS === */
             
-            /* Отключение focus outline */
+            /* Disable focus outline */
             *:focus {
                 outline: none !important;
                 -webkit-tap-highlight-color: transparent !important;
             }
             
-            /* Отключение selection highlight */
+            /* Disable selection highlight */
             ::selection {
                 background: transparent !important;
             }
@@ -403,13 +403,13 @@
                 background: transparent !important;
             }
             
-            /* Предотвращение случайного масштабирования */
+            /* Prevent accidental scaling */
             html {
                 -ms-touch-action: manipulation !important;
                 touch-action: manipulation !important;
             }
             
-            /* Отключение автозаполнения форм */
+            /* Disable form autofill */
             input:-webkit-autofill,
             input:-webkit-autofill:hover,
             input:-webkit-autofill:focus {
@@ -422,7 +422,7 @@
         console.log('[BalancyWebView] Game UI styles injected successfully');
     }
 
-    // Функция для проверки, является ли элемент скроллируемым
+    // Function to check if element is scrollable
     function isScrollableElement(element) {
         if (!element || element === document.body || element === document.documentElement) {
             return false;
@@ -441,7 +441,7 @@
                element.scrollWidth > element.clientWidth;
     }
 
-    // Функция для поиска ближайшего скроллируемого родителя
+    // Function to find nearest scrollable parent
     function findScrollableParent(element) {
         var current = element;
         while (current && current !== document.body && current !== document.documentElement) {
@@ -453,53 +453,53 @@
         return null;
     }
 
-    // Универсальные JavaScript оптимизации
+    // Universal JavaScript optimizations
     function applyGameUIBehavior() {
-        // Отключение контекстного меню
+        // Disable context menu
         document.addEventListener('contextmenu', function(e) {
             e.preventDefault();
             e.stopPropagation();
             return false;
         }, { passive: false, capture: true });
 
-        // Отключение выделения текста
+        // Disable text selection
         document.addEventListener('selectstart', function(e) {
             e.preventDefault();
             e.stopPropagation();
             return false;
         }, { passive: false, capture: true });
 
-        // Отключение drag and drop
+        // Disable drag and drop
         document.addEventListener('dragstart', function(e) {
             e.preventDefault();
             e.stopPropagation();
             return false;
         }, { passive: false, capture: true });
 
-        // iOS специфичные оптимизации
+        // iOS specific optimizations
         if (/iPad|iPhone|iPod/.test(navigator.userAgent)) {
             console.log('[BalancyWebView] Applying iOS-specific optimizations');
 
-            // Умная обработка touchmove для iOS
+            // Smart touchmove handling for iOS
             document.addEventListener('touchmove', function(e) {
-                // Разрешаем touchmove для полей ввода
+                // Allow touchmove for input fields
                 if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) {
                     return;
                 }
                 
-                // Ищем ближайший скроллируемый родительский элемент
+                // Find nearest scrollable parent element
                 var scrollableParent = findScrollableParent(e.target);
                 
                 if (scrollableParent) {
-                    // Если найден скроллируемый родитель, разрешаем скролл
+                    // If scrollable parent found, allow scrolling
                     return;
                 } else {
-                    // Если скроллируемый родитель не найден, предотвращаем bounce эффект страницы
+                    // If no scrollable parent found, prevent page bounce effect
                     e.preventDefault();
                 }
             }, { passive: false });
 
-            // Предотвращение zoom при double tap
+            // Prevent zoom on double tap
             var lastTouchEnd = 0;
             document.addEventListener('touchend', function(event) {
                 var now = Date.now();
@@ -509,17 +509,17 @@
                 lastTouchEnd = now;
             }, { passive: false });
 
-            // Отключение callout
+            // Disable callout
             document.addEventListener('touchstart', function(e) {
                 e.target.style.webkitTouchCallout = 'none';
             }, { passive: true });
         }
 
-        // Android специфичные оптимизации
+        // Android specific optimizations
         if (/Android/.test(navigator.userAgent)) {
             console.log('[BalancyWebView] Applying Android-specific optimizations');
 
-            // Предотвращение системных жестов по краям экрана
+            // Prevent system gestures at screen edges
             document.addEventListener('touchstart', function(e) {
                 if (e.touches[0].clientX < 20 ||
                     e.touches[0].clientX > window.innerWidth - 20 ||
@@ -529,14 +529,14 @@
                 }
             }, { passive: false });
 
-            // Отключение pull-to-refresh только для основной страницы
+            // Disable pull-to-refresh only for main page
             var startY = 0;
             document.addEventListener('touchstart', function(e) {
                 startY = e.touches[0].pageY;
             }, { passive: true });
 
             document.addEventListener('touchmove', function(e) {
-                // Проверяем, находимся ли мы внутри скроллируемого элемента
+                // Check if we're inside a scrollable element
                 var scrollableParent = findScrollableParent(e.target);
                 
                 if (!scrollableParent && e.touches[0].pageY > startY && window.pageYOffset === 0) {
@@ -545,13 +545,13 @@
             }, { passive: false });
         }
 
-        // Desktop специфичные оптимизации
+        // Desktop specific optimizations
         if (!/Mobi|Android/i.test(navigator.userAgent)) {
             console.log('[BalancyWebView] Applying Desktop-specific optimizations');
 
-            // Отключение клавиатурных сочетаний
+            // Disable keyboard shortcuts
             document.addEventListener('keydown', function(e) {
-                // Отключаем Ctrl+A, Ctrl+C, Ctrl+V, Ctrl+S, Ctrl+P и т.д.
+                // Disable Ctrl+A, Ctrl+C, Ctrl+V, Ctrl+S, Ctrl+P, etc.
                 if (e.ctrlKey || e.metaKey) {
                     var blockedKeys = ['a', 'c', 'v', 'x', 's', 'p', 'f', 'h', 'r', 'n', 'w', 't'];
                     if (blockedKeys.includes(e.key.toLowerCase())) {
@@ -561,7 +561,7 @@
                     }
                 }
 
-                // Отключаем функциональные клавиши
+                // Disable function keys
                 var blockedKeyCodes = [
                     112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, // F1-F12
                     116, // F5 (Refresh)
@@ -575,7 +575,7 @@
                 }
             }, { passive: false, capture: true });
 
-            // Отключение middle click scroll
+            // Disable middle click scroll
             document.addEventListener('mousedown', function(e) {
                 if (e.button === 1) { // Middle mouse button
                     e.preventDefault();
@@ -587,12 +587,12 @@
         console.log('[BalancyWebView] Game UI behavior applied successfully');
     }
 
-    // Функция инициализации
+    // Initialization function
     function initializeGameUI() {
         injectGameUIStyles();
         applyGameUIBehavior();
 
-        // Добавляем meta viewport если его нет
+        // Add meta viewport if it doesn't exist
         if (!document.querySelector('meta[name="viewport"]')) {
             var viewport = document.createElement('meta');
             viewport.name = 'viewport';
@@ -603,7 +603,7 @@
 
         console.log('[BalancyWebView] Game UI initialization completed');
 
-        // Уведомляем о завершении инициализации
+        // Notify about initialization completion
         document.dispatchEvent(new CustomEvent('balancyGameUIReady', {
             detail: {
                 platform: /iPad|iPhone|iPod/.test(navigator.userAgent) ? 'iOS' :
@@ -613,7 +613,7 @@
         }));
     }
 
-    // Инициализируем когда DOM готов
+    // Initialize when DOM is ready
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', initializeGameUI);
     } else {
