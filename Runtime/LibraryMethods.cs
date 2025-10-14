@@ -32,16 +32,6 @@ namespace Balancy
             // public delegate void SaveFileCallback(string path, string data);
                         
             [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-            public delegate string LoadFileCallback(string path);
-            
-            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-            public delegate string LoadImageBase64Callback(string path);
-            
-            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-            public delegate bool IsFileExistsCallback(string path);
-            
-            
-            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
             public delegate string DataRequestedCallback(string sender, int command, string paramsJson);
             
             [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
@@ -65,7 +55,7 @@ namespace Balancy
             
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-            public static extern void balancyInitUnityFileHelper(string persistentDataPath, string resourcesPath, string codePath, LoadFileCallback loadFromResources, IsFileExistsCallback isFileExistsCallback, LoadImageBase64Callback loadFromResourcesAsBase64);
+            public static extern void balancyInitUnityFileHelper(string persistentDataPath, string resourcesPath, string codePath);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern IntPtr balancyGetInheritance(out int size);
