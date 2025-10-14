@@ -165,8 +165,8 @@ namespace Balancy
             OnShopSlotWasPurchased += shopSlot => Debug.Log(" => Balancy.OnShopSlotWasPurchased: " + shopSlot?.Slot?.UnnyId);
             OnOfferWasPurchased += offerInfo => Debug.Log(" => Balancy.OnOfferWasPurchased: " + offerInfo?.GameOffer?.Name + " UnnyId = " + offerInfo?.GameOffer?.UnnyId);
             OnOfferGroupWasPurchased += (offerGroupInfo, storeItem) => Debug.Log(" => Balancy.OnOfferGroupWasPurchased: " + offerGroupInfo?.GameOfferGroup?.Name + " Store Item = " + storeItem?.Name);
-            OnInventoryUpdated += (inventory, item, count, slotIndex, currentAmount) => Debug.Log(" => Balancy.OnInventoryUpdated: Inventory = " + inventory + ", Item = " + item?.Name + ", Count = " + count + ", SlotIndex = " + slotIndex + ", CurrentAmount = " + currentAmount);
-            
+            // OnInventoryUpdated += (inventory, item, count, slotIndex, currentAmount) => Debug.Log(" => Balancy.OnInventoryUpdated: Inventory = " + inventory + ", Item = " + item?.Name + ", Count = " + count + ", SlotIndex = " + slotIndex + ", CurrentAmount = " + currentAmount);
+                
             // OnNetworkDownloadStarted += info => Debug.Log($" => Balancy.OnNetworkDownloadStarted: {info.Url}, Type: {(info.IsCDNRequest ? "CDN" : "API")}");
             // OnNetworkDownloadFinished += info => Debug.Log($" => Balancy.OnNetworkDownloadFinished: {info.Url}, Time: {info.TimeMs}ms, Size: {info.DownloadedBytes}B, Speed: {info.SpeedKBps:F1}KB/s, Success: {info.Success}");
             
