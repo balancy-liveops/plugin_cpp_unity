@@ -1,0 +1,7 @@
+fileFormatVersion: 2
+guid: $(uuidgen | tr '[:upper:]' '[:lower:]' | sed 's/-//g' | cut -c1-32)
+TextScriptImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
