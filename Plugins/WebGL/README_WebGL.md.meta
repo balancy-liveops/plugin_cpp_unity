@@ -1,5 +1,5 @@
 fileFormatVersion: 2
-guid: $(uuidgen | tr '[:upper:]' '[:lower:]' | sed 's/-//g' | cut -c1-32)
+guid: 6d74d96e35aea4114a20fb1f623ce050
 TextScriptImporter:
   externalObjects: {}
   userData: 
