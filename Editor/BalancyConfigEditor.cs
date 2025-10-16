@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -314,9 +315,42 @@ namespace Balancy.Editor
             if (!success)
                 _errorMessage = message;
             else
-                PrepareSprites();
+            {
+                // PrepareSprites();
+                CreateBalancyFilesManifest();
+            }
             _downloading = false;
             _needRefresh = true;
+        }
+
+        private void CreateBalancyFilesManifest()
+        {
+            try
+            {
+                string balancyPath = Path.Combine(Application.streamingAssetsPath, "Balancy");
+                
+                if (!Directory.Exists(balancyPath))
+                {
+                    Debug.LogWarning("Balancy folder not found in StreamingAssets, skipping manifest creation.");
+                    return;
+                }
+
+                string manifestPath = Path.Combine(balancyPath, "balancy_files_manifest.txt");
+                
+                var files = Directory.GetFiles(balancyPath, "*", SearchOption.AllDirectories)
+                    .Where(f => !f.EndsWith(".meta") && !Path.GetFileName(f).StartsWith("."))
+                    .Select(f => "./" + f.Substring(balancyPath.Length + 1).Replace('\\', '/'))
+                    .OrderBy(f => f)
+                    .ToList();
+
+                File.WriteAllLines(manifestPath, files);
+                
+                Debug.Log($"Created Balancy files manifest with {files.Count} files at: {manifestPath}");
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"Failed to create Balancy files manifest: {e.Message}");
+            }
         }
 
         private void PrepareSprites()
