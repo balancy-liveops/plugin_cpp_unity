@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Runtime.InteropServices;
 using Balancy.Core;
 using Balancy.Data.SmartObjects;
@@ -21,22 +22,27 @@ namespace Balancy
         
         public static void Init(AppConfig appConfig)
         {
-            _isReadyToUse = false;
-            CMS.SetIsReady(false);
-            
             if (!CheckConfig(appConfig))
                 return;
             
             if (!CheckCallbacks())
                 return;
+            
+            _isReadyToUse = false;
+            CMS.SetIsReady(false);
 
             LibraryMethods.General.balancySetLogCallback(LogMessage);
             _mainThreadInstance = UnityMainThreadDispatcher.Instance();
+            _mainThreadInstance.StartCoroutine(InitCoroutine(appConfig));
+        }
+
+        private static IEnumerator InitCoroutine(AppConfig appConfig)
+        {
             Balancy.Network.UnityWebRequestBridge.Initialize();
             // Balancy.Network.UnityWebSocketBridge.Initialize();//temporary turn it off
 
             LibraryMethods.General.balancySetInvokeInMainThreadCallback(InvokeInMainThread);
-            UnityFileManager.Init();
+            yield return UnityFileManager.InitRuntime();
             LibraryMethods.Models.balancySetModelOnRefresh(ModelRefreshed);
             LibraryMethods.Models.balancySetUserDataInitializedCallback(UserDataInitialized);
             Profiles.Init();
