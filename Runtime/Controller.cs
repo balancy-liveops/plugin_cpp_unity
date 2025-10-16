@@ -187,8 +187,16 @@ namespace Balancy
         {
             try
             {
+#if UNITY_WEBGL && !UNITY_EDITOR
+                // In WebGL, notificationPtr is actually a notification ID, not a memory pointer
+                int notificationId = (int)notificationPtr;
+                var notificationType = (Notifications.NotificationType)LibraryMethods.General.balancyNotification_GetType(notificationId);
+#else
+                // On native platforms, unmarshal the notification struct from memory
                 var baseNotification = Marshal.PtrToStructure<Notifications.NotificationBase>(notificationPtr);
-                switch (baseNotification.Type)
+                var notificationType = baseNotification.Type;
+#endif
+                switch (notificationType)
                 {
                     case Notifications.NotificationType.CMSInited:
                     {
@@ -196,86 +204,160 @@ namespace Balancy
                         break;
                     }
                     case Notifications.NotificationType.DataIsReady:
+#if UNITY_WEBGL && !UNITY_EDITOR
+                        // In WebGL, use accessor functions
+                        bool isCloudSynced = LibraryMethods.General.balancyNotification_IsCloudSynchronized(notificationId);
+                        bool isCMSUpdated = LibraryMethods.General.balancyNotification_IsCMSUpdated(notificationId);
+                        bool isProfileUpdated = LibraryMethods.General.balancyNotification_IsProfileUpdated(notificationId);
+#else
                         var notificationDataIsReady = Marshal.PtrToStructure<Notifications.InitNotificationDataIsReady>(notificationPtr);
-                        DataUpdated(notificationDataIsReady.IsCMSUpdated, notificationDataIsReady.IsProfileUpdated);
+                        bool isCloudSynced = notificationDataIsReady.IsCloudSynced;
+                        bool isCMSUpdated = notificationDataIsReady.IsCMSUpdated;
+                        bool isProfileUpdated = notificationDataIsReady.IsProfileUpdated;
+#endif
+                        DataUpdated(isCMSUpdated, isProfileUpdated);
                         _isReadyToUse = true;
-                        if (notificationDataIsReady.IsCloudSynced)
+                        if (isCloudSynced)
                             OnCloudSynced?.Invoke();
                         Balancy.Callbacks.OnDataUpdated?.Invoke(new Balancy.Callbacks.DataUpdatedStatus(
-                            notificationDataIsReady.IsCloudSynced, 
-                            notificationDataIsReady.IsCMSUpdated,
-                            notificationDataIsReady.IsProfileUpdated));
+                            isCloudSynced, 
+                            isCMSUpdated,
+                            isProfileUpdated));
                         break;
                     case Notifications.NotificationType.AuthFailed:
+#if UNITY_WEBGL && !UNITY_EDITOR
+                        string authMessage = Marshal.PtrToStringAnsi(LibraryMethods.General.balancyNotification_GetMessage(notificationId));
+                        Balancy.Callbacks.OnAuthFailed?.Invoke(new Balancy.Callbacks.ErrorStatus(authMessage));
+#else
                         var authNotification = Marshal.PtrToStructure<Notifications.InitNotificationAuthFailed>(notificationPtr);
                         Balancy.Callbacks.OnAuthFailed?.Invoke(new Balancy.Callbacks.ErrorStatus(authNotification.Message));
+#endif
                         break;
                     case Notifications.NotificationType.CloudProfileFailed:
+#if UNITY_WEBGL && !UNITY_EDITOR
+                        string profileMessage = Marshal.PtrToStringAnsi(LibraryMethods.General.balancyNotification_GetMessage(notificationId));
+                        Balancy.Callbacks.OnCloudProfileFailedToLoad?.Invoke(new Balancy.Callbacks.ErrorStatus(profileMessage));
+#else
                         var profileNotification = Marshal.PtrToStructure<Notifications.InitNotificationCloudProfileFailed>(notificationPtr);
                         Balancy.Callbacks.OnCloudProfileFailedToLoad?.Invoke(new Balancy.Callbacks.ErrorStatus(profileNotification.Message));
+#endif
                         break;
                     case Notifications.NotificationType.UserRefreshed:
                         Balancy.Callbacks.OnGameRefreshed?.Invoke();
                         break;
                     case Notifications.NotificationType.OnNewEventActivated: {
+#if UNITY_WEBGL && !UNITY_EDITOR
+                        IntPtr eventInfoPtr = LibraryMethods.General.balancyNotification_GetEventInfo(notificationId);
+                        var eventInfo = Profiles.System.SmartInfo.FindEventInfo(eventInfoPtr);
+#else
                         var liveOpsNewEvent = Marshal.PtrToStructure<Notifications.LiveOpsNotification_OnNewEventActivated>(notificationPtr);
                         var eventInfo = Profiles.System.SmartInfo.FindEventInfo(liveOpsNewEvent.EventInfo);
+#endif
                         Balancy.Callbacks.OnNewEventActivated?.Invoke(eventInfo);
                         break;
                     }
                     case Notifications.NotificationType.OnEventDeactivated: {
+#if UNITY_WEBGL && !UNITY_EDITOR
+                        IntPtr eventInfoPtr = LibraryMethods.General.balancyNotification_GetEventInfo(notificationId);
+                        var eventInfo = JsonBasedObject.CreateObject<EventInfo>(eventInfoPtr);
+#else
                         var liveOpsEvent = Marshal.PtrToStructure<Notifications.LiveOpsNotification_OnEventDeactivated>(notificationPtr);
                         var eventInfo = JsonBasedObject.CreateObject<EventInfo>(liveOpsEvent.EventInfo);
+#endif
                         Balancy.Callbacks.OnEventDeactivated?.Invoke(eventInfo);
                         break;
                     }
                     case Notifications.NotificationType.OnNewOfferActivated: {
+#if UNITY_WEBGL && !UNITY_EDITOR
+                        IntPtr offerInfoPtr = LibraryMethods.General.balancyNotification_GetOfferInfo(notificationId);
+                        var offerInfo = Profiles.System.SmartInfo.FindOfferInfo(offerInfoPtr);
+#else
                         var notificationTyped = Marshal.PtrToStructure<Notifications.LiveOpsNotification_OnNewOfferActivated>(notificationPtr);
                         var offerInfo = Profiles.System.SmartInfo.FindOfferInfo(notificationTyped.OfferInfo);
+#endif
                         Balancy.Callbacks.OnNewOfferActivated?.Invoke(offerInfo);
                         break;
                     }
                     case Notifications.NotificationType.OnOfferDeactivated: {
+#if UNITY_WEBGL && !UNITY_EDITOR
+                        IntPtr offerInfoPtr = LibraryMethods.General.balancyNotification_GetOfferInfo(notificationId);
+                        bool wasPurchased = LibraryMethods.General.balancyNotification_WasPurchased(notificationId);
+                        var offerInfo = JsonBasedObject.CreateObject<OfferInfo>(offerInfoPtr);
+                        Balancy.Callbacks.OnOfferDeactivated?.Invoke(offerInfo, wasPurchased);
+#else
                         var notificationTyped = Marshal.PtrToStructure<Notifications.LiveOpsNotification_OnOfferDeactivated>(notificationPtr);
                         var offerInfo = JsonBasedObject.CreateObject<OfferInfo>(notificationTyped.OfferInfo);
                         Balancy.Callbacks.OnOfferDeactivated?.Invoke(offerInfo, notificationTyped.WasPurchased);
+#endif
                         break;
                     }
                     case Notifications.NotificationType.OnNewOfferGroupActivated: {
+#if UNITY_WEBGL && !UNITY_EDITOR
+                        IntPtr offerGroupInfoPtr = LibraryMethods.General.balancyNotification_GetOfferGroupInfo(notificationId);
+                        var offerInfo = Profiles.System.SmartInfo.FindOfferGroupInfo(offerGroupInfoPtr);
+#else
                         var notificationTyped = Marshal.PtrToStructure<Notifications.LiveOpsNotification_OnNewOfferGroupActivated>(notificationPtr);
                         var offerInfo = Profiles.System.SmartInfo.FindOfferGroupInfo(notificationTyped.OfferInfo);
+#endif
                         Balancy.Callbacks.OnNewOfferGroupActivated?.Invoke(offerInfo);
                         break;
                     }
                     case Notifications.NotificationType.OnOfferGroupDeactivated: {
+#if UNITY_WEBGL && !UNITY_EDITOR
+                        IntPtr offerGroupInfoPtr = LibraryMethods.General.balancyNotification_GetOfferGroupInfo(notificationId);
+                        var offerInfo = JsonBasedObject.CreateObject<OfferGroupInfo>(offerGroupInfoPtr);
+#else
                         var notificationTyped = Marshal.PtrToStructure<Notifications.LiveOpsNotification_OnOfferGroupDeactivated>(notificationPtr);
                         var offerInfo = JsonBasedObject.CreateObject<OfferGroupInfo>(notificationTyped.OfferInfo);
+#endif
                         Balancy.Callbacks.OnOfferGroupDeactivated?.Invoke(offerInfo);
                         break;
                     }
                     case Notifications.NotificationType.OnABTestStarted: {
+#if UNITY_WEBGL && !UNITY_EDITOR
+                        IntPtr abTestInfoPtr = LibraryMethods.General.balancyNotification_GetAbTestInfo(notificationId);
+                        var abTestInfo = Profiles.System.TestsInfo.FindAbTestInfo(abTestInfoPtr);
+#else
                         var notificationTyped = Marshal.PtrToStructure<Notifications.LiveOpsNotification_ABTestStarted>(notificationPtr);
                         var abTestInfo = Profiles.System.TestsInfo.FindAbTestInfo(notificationTyped.ABTestInfo);
+#endif
                         Balancy.Callbacks.OnNewAbTestStarted?.Invoke(abTestInfo);
                         break;
                     }
                     case Notifications.NotificationType.OnABTestEnded: {
+#if UNITY_WEBGL && !UNITY_EDITOR
+                        IntPtr abTestInfoPtr = LibraryMethods.General.balancyNotification_GetAbTestInfo(notificationId);
+                        var abTestInfo = Profiles.System.TestsInfo.FindAbTestInfo(abTestInfoPtr);
+#else
                         var notificationTyped = Marshal.PtrToStructure<Notifications.LiveOpsNotification_ABTestEnded>(notificationPtr);
                         var abTestInfo = Profiles.System.TestsInfo.FindAbTestInfo(notificationTyped.ABTestInfo);
+#endif
                         Balancy.Callbacks.OnAbTestEnded?.Invoke(abTestInfo);
                         break;
                     }
                     case Notifications.NotificationType.OnSegmentUpdated: {
+#if UNITY_WEBGL && !UNITY_EDITOR
+                        IntPtr segmentInfoPtr = LibraryMethods.General.balancyNotification_GetSegmentInfo(notificationId);
+                        var segmentInfo = Profiles.System.SegmentsInfo.FindSegmentInfo(segmentInfoPtr);
+#else
                         var notificationTyped = Marshal.PtrToStructure<Notifications.LiveOpsNotification_SegmentUpdated>(notificationPtr);
                         var segmentInfo = Profiles.System.SegmentsInfo.FindSegmentInfo(notificationTyped.SegmentInfo);
+#endif
                         Balancy.Callbacks.OnSegmentInfoUpdated?.Invoke(segmentInfo);
                         break;
                     }
                     case Notifications.NotificationType.OnDailyBonusUpdated: {
+#if UNITY_WEBGL && !UNITY_EDITOR
+                        IntPtr dailyBonusInfoPtr = LibraryMethods.General.balancyNotification_GetDailyBonusInfo(notificationId);
+                        var dailyInfo = Profiles.System.LiveOpsInfo.FindDailyBonusInfo(dailyBonusInfoPtr);
+                        if (dailyInfo == null && dailyBonusInfoPtr != IntPtr.Zero)
+                            dailyInfo = JsonBasedObject.CreateObject<DailyBonusInfo>(dailyBonusInfoPtr);
+#else
                         var notificationTyped = Marshal.PtrToStructure<Notifications.LiveOpsNotification_DailyBonusUpdated>(notificationPtr);
                         var dailyInfo = Profiles.System.LiveOpsInfo.FindDailyBonusInfo(notificationTyped.DailyBonusInfo);
                         if (dailyInfo == null && notificationTyped.DailyBonusInfo != IntPtr.Zero)
                             dailyInfo = JsonBasedObject.CreateObject<DailyBonusInfo>(notificationTyped.DailyBonusInfo);
+#endif
                         Balancy.Callbacks.OnDailyBonusUpdated?.Invoke(dailyInfo);
                         break;
                     }
@@ -310,39 +392,75 @@ namespace Balancy
                         break;
                     }
                     case Notifications.NotificationType.OnShopSlotWasPurchased: {
+#if UNITY_WEBGL && !UNITY_EDITOR
+                        IntPtr shopSlotPtr = LibraryMethods.General.balancyNotification_GetShopSlot(notificationId);
+                        var offerInfo = Profiles.System.ShopsInfo.FindShopSlot(shopSlotPtr);
+                        if (offerInfo == null)
+                            offerInfo = JsonBasedObject.CreateObject<Balancy.Data.SmartObjects.ShopSlot>(shopSlotPtr);
+#else
                         var notificationTyped = Marshal.PtrToStructure<Notifications.PurchaseNotification_ShopSlotWasPurchased>(notificationPtr);
                         var offerInfo = Profiles.System.ShopsInfo.FindShopSlot(notificationTyped.ShopSlot);
                         if (offerInfo == null)
                             offerInfo = JsonBasedObject.CreateObject<Balancy.Data.SmartObjects.ShopSlot>(notificationTyped.ShopSlot);
+#endif
                         Balancy.Callbacks.OnShopSlotWasPurchased?.Invoke(offerInfo);
                         break;
                     }
                     case Notifications.NotificationType.OnOfferWasPurchased: {
+#if UNITY_WEBGL && !UNITY_EDITOR
+                        IntPtr offerInfoPtr = LibraryMethods.General.balancyNotification_GetOfferInfo(notificationId);
+                        var offerInfo = Profiles.System.SmartInfo.FindOfferInfo(offerInfoPtr);
+                        if (offerInfo == null)
+                            offerInfo = JsonBasedObject.CreateObject<OfferInfo>(offerInfoPtr);
+#else
                         var notificationTyped = Marshal.PtrToStructure<Notifications.PurchaseNotification_OfferWasPurchased>(notificationPtr);
                         var offerInfo = Profiles.System.SmartInfo.FindOfferInfo(notificationTyped.OfferInfo);
                         if (offerInfo == null)
                             offerInfo = JsonBasedObject.CreateObject<OfferInfo>(notificationTyped.OfferInfo);
+#endif
                         Balancy.Callbacks.OnOfferWasPurchased?.Invoke(offerInfo);
                         break;
                     }
                     case Notifications.NotificationType.OnOfferGroupWasPurchased: {
+#if UNITY_WEBGL && !UNITY_EDITOR
+                        IntPtr offerGroupInfoPtr = LibraryMethods.General.balancyNotification_GetOfferGroupInfo(notificationId);
+                        int storeItemIndex = LibraryMethods.General.balancyNotification_GetStoreItemIndexInGroupOffer(notificationId);
+                        var offerGroupInfo = Profiles.System.SmartInfo.FindOfferGroupInfo(offerGroupInfoPtr);
+                        if (offerGroupInfo == null)
+                            offerGroupInfo = JsonBasedObject.CreateObject<OfferGroupInfo>(offerGroupInfoPtr);
+#else
                         var notificationTyped = Marshal.PtrToStructure<Notifications.PurchaseNotification_OfferGroupWasPurchased>(notificationPtr);
+                        int storeItemIndex = notificationTyped.StoreItemIndexInGroupOffer;
                         var offerGroupInfo = Profiles.System.SmartInfo.FindOfferGroupInfo(notificationTyped.OfferGroupInfo);
                         if (offerGroupInfo == null)
                             offerGroupInfo = JsonBasedObject.CreateObject<OfferGroupInfo>(notificationTyped.OfferGroupInfo);
+#endif
                         
                         Balancy.Models.SmartObjects.StoreItem storeItem = null;
                         if (offerGroupInfo?.GameOfferGroup?.StoreItems != null && 
-                            notificationTyped.StoreItemIndexInGroupOffer >= 0 && 
-                            notificationTyped.StoreItemIndexInGroupOffer < offerGroupInfo.GameOfferGroup.StoreItems.Length)
+                            storeItemIndex >= 0 && 
+                            storeItemIndex < offerGroupInfo.GameOfferGroup.StoreItems.Length)
                         {
-                            storeItem = offerGroupInfo.GameOfferGroup.StoreItems[notificationTyped.StoreItemIndexInGroupOffer];
+                            storeItem = offerGroupInfo.GameOfferGroup.StoreItems[storeItemIndex];
                         }
                         
                         Balancy.Callbacks.OnOfferGroupWasPurchased?.Invoke(offerGroupInfo, storeItem);
                         break;
                     }
                     case Notifications.NotificationType.OnInventoryUpdated: {
+#if UNITY_WEBGL && !UNITY_EDITOR
+                        IntPtr inventoryPtr = LibraryMethods.General.balancyNotification_GetInventory(notificationId);
+                        var inventory = Profiles.System.Inventories.FindInventory(inventoryPtr);
+                        if (inventory != null)
+                        {
+                            string itemId = Marshal.PtrToStringAnsi(LibraryMethods.General.balancyNotification_GetInventoryItem(notificationId));
+                            int count = LibraryMethods.General.balancyNotification_GetInventoryCount(notificationId);
+                            int slotIndex = LibraryMethods.General.balancyNotification_GetInventorySlotIndex(notificationId);
+                            int currentAmount = LibraryMethods.General.balancyNotification_GetInventoryCurrentAmount(notificationId);
+                            var item = !string.IsNullOrEmpty(itemId) ? CMS.GetModelByUnnyId<Balancy.Models.SmartObjects.Item>(itemId) : null;
+                            Balancy.Callbacks.OnInventoryUpdated?.Invoke(inventory, item, count, slotIndex, currentAmount);
+                        }
+#else
                         var notificationTyped = Marshal.PtrToStructure<Notifications.LiveOpsNotification_InventoryUpdated>(notificationPtr);
                         var inventory = Profiles.System.Inventories.FindInventory(notificationTyped.Inventory);
                         if (inventory != null)
@@ -351,12 +469,17 @@ namespace Balancy
                             var item = !string.IsNullOrEmpty(itemId) ? CMS.GetModelByUnnyId<Balancy.Models.SmartObjects.Item>(itemId) : null;
                             Balancy.Callbacks.OnInventoryUpdated?.Invoke(inventory, item, notificationTyped.Count, notificationTyped.SlotIndex, notificationTyped.CurrentAmount);
                         }
+#endif
                         break;
                     }
                     default:
-                        Debug.LogError("**==> Unknown notification type. " + baseNotification.Type);
+                        Debug.LogError("**==> Unknown notification type. " + notificationType);
                         break;
                 }
+#if UNITY_WEBGL && !UNITY_EDITOR
+                // Release notification after processing in WebGL
+                LibraryMethods.General.balancyNotification_Release(notificationId);
+#endif
             }
             catch (Exception e)
             {

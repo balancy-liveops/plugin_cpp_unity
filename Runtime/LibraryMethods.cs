@@ -45,6 +45,74 @@ namespace Balancy
             public static extern void balancySetInvokeInMainThreadCallback(InvokeInMainThreadCallback callback);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyInvokeMethodInMainThread(int id);
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+            // WebGL-specific notification accessor functions (mirrors JSStatusNotification)
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancyNotification_GetType(int notificationId);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyNotification_Release(int notificationId);
+            
+            // InitNotificationDataIsReady
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern bool balancyNotification_IsCloudSynchronized(int notificationId);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern bool balancyNotification_IsCMSUpdated(int notificationId);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern bool balancyNotification_IsProfileUpdated(int notificationId);
+            
+            // InitNotificationError
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyNotification_GetMessage(int notificationId);
+            
+            // LiveOps notifications
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyNotification_GetSegmentInfo(int notificationId);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyNotification_GetDailyBonusInfo(int notificationId);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyNotification_GetEventInfo(int notificationId);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyNotification_GetOfferInfo(int notificationId);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyNotification_GetOfferGroupInfo(int notificationId);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyNotification_GetAbTestInfo(int notificationId);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyNotification_GetShopSlot(int notificationId);
+            
+            // Additional properties
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancyNotification_GetStoreItemIndexInGroupOffer(int notificationId);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern bool balancyNotification_WasPurchased(int notificationId);
+            
+            // Inventory notifications
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyNotification_GetInventory(int notificationId);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyNotification_GetInventoryItem(int notificationId);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancyNotification_GetInventoryCount(int notificationId);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancyNotification_GetInventorySlotIndex(int notificationId);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancyNotification_GetInventoryCurrentAmount(int notificationId);
+#endif
             
             //[DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
@@ -73,7 +141,7 @@ namespace Balancy
             public static extern IntPtr balancyGetParsedObject(IntPtr instance, int depth, bool pretty);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-            public static extern IntPtr balancySetDataRequestedCallback(DataRequestedCallback callback);
+            public static extern void balancySetDataRequestedCallback(DataRequestedCallback callback);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyViewAllowOptimization(bool allow);
@@ -261,7 +329,7 @@ namespace Balancy
             public static extern void balancySmartListClear(IntPtr instance);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-            public static extern IntPtr balancySetProfileOnReset(ModelRefreshedCallback callback);
+            public static extern void balancySetProfileOnReset(ModelRefreshedCallback callback);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancySetBaseDataParamChanged(ParamChangedCallback callback);
