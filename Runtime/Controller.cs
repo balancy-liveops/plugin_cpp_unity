@@ -193,14 +193,22 @@ namespace Balancy
         {
             try
             {
+                Debug.Log($"[C# Notification] OnStatusUpdate called. Platform: {Application.platform}, notificationPtr: {notificationPtr}");
 #if UNITY_WEBGL && !UNITY_EDITOR
+                Debug.Log("[C# Notification] UNITY_WEBGL preprocessor directive IS ACTIVE - using WebGL path");
                 // In WebGL, notificationPtr is actually a notification ID, not a memory pointer
                 int notificationId = (int)notificationPtr;
+                Debug.Log($"[C# Notification] Converted to notification ID: {notificationId}");
+                Debug.Log($"[C# Notification] Calling balancyNotification_GetType({notificationId})");
                 var notificationType = (Notifications.NotificationType)LibraryMethods.General.balancyNotification_GetType(notificationId);
+                Debug.Log($"[C# Notification] Got notification type: {notificationType}");
 #else
+                Debug.Log("[C# Notification] UNITY_WEBGL preprocessor directive IS NOT ACTIVE - using native path");
                 // On native platforms, unmarshal the notification struct from memory
+                Debug.Log($"[C# Notification] Calling Marshal.PtrToStructure with ptr: {notificationPtr}");
                 var baseNotification = Marshal.PtrToStructure<Notifications.NotificationBase>(notificationPtr);
                 var notificationType = baseNotification.Type;
+                Debug.Log($"[C# Notification] Unmarshaled notification type: {notificationType}");
 #endif
                 switch (notificationType)
                 {
@@ -373,15 +381,22 @@ namespace Balancy
                         break;
                     }
                     case Notifications.NotificationType.OnNetworkDownloadStarted: {
+#if UNITY_WEBGL && !UNITY_EDITOR
+                        Debug.Log("[C# Notification] OnNetworkDownloadStarted - skipping in WebGL (not implemented)");
+#else
                         var notificationTyped = Marshal.PtrToStructure<Notifications.NetworkNotification_DownloadStarted>(notificationPtr);
                         Balancy.Callbacks.OnNetworkDownloadStarted?.Invoke(new Callbacks.NetworkDownloadInfo(
                             notificationTyped.Url,
                             notificationTyped.RelativePath,
                             notificationTyped.Domain,
                             notificationTyped.IsCDNRequest));
+#endif
                         break;
                     }
                     case Notifications.NotificationType.OnNetworkDownloadFinished: {
+#if UNITY_WEBGL && !UNITY_EDITOR
+                        Debug.Log("[C# Notification] OnNetworkDownloadFinished - skipping in WebGL (not implemented)");
+#else
                         var notificationTyped = Marshal.PtrToStructure<Notifications.NetworkNotification_DownloadFinished>(notificationPtr);
                         Balancy.Callbacks.OnNetworkDownloadFinished?.Invoke(new Callbacks.NetworkDownloadCompletedInfo(
                             notificationTyped.Url,
@@ -395,6 +410,7 @@ namespace Balancy
                             notificationTyped.ErrorCode,
                             notificationTyped.ErrorMessage,
                             notificationTyped.Attempts));
+#endif
                         break;
                     }
                     case Notifications.NotificationType.OnShopSlotWasPurchased: {
