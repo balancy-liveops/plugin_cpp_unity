@@ -263,6 +263,10 @@ const balancy = {};
     balancy.closeView = (source) => {
         return balancy.sendRequest(null, RequestAction.CloseWindow, {id: source});
     };
+    
+    balancy.sendCustomMessage = (sender, message) => {
+        return balancy.sendRequest(sender, RequestAction.CustomMessage, message);
+    };
 
     balancy.getDocumentValue = (id, depth) => {
         return balancy.sendRequest(null, RequestAction.GetDocument, {id, depth}).then(result => {
@@ -446,6 +450,7 @@ const balancy = {};
             RequestAction.BuyShopSlot,
             RequestAction.BattlePassClaim,
             RequestAction.CloseWindow,
+            RequestAction.CustomMessage,
             RequestAction.BalancyIsReady,
             RequestAction.StopEventManually
         ];
