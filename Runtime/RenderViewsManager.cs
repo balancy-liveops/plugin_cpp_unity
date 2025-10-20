@@ -16,6 +16,8 @@ namespace Balancy
         private const bool UseEmbeddedWebView = false;
 #endif
         
+        internal static Func<string, bool> _onMessageReceived;
+        
         private static BalancyWebView _webView;
         
         internal static void Init()
@@ -87,6 +89,14 @@ namespace Balancy
         private static void OnNotificationReceived(string notification)
         {
             _webView.SendMessageToWebView(notification);
+        }
+        
+        internal static void SendCustomMessageToView(string message)
+        {
+            if (_webView.IsWebViewOpen())
+            {
+                _webView.SendMessageToWebView(message);
+            }
         }
 
         public static void OpenLocalView(string filePath, JsonBasedObject owner = null)
@@ -185,13 +195,22 @@ namespace Balancy
 
         private static void OnMessageReceived(string msg)
         {
+            if (_onMessageReceived != null)
+            {
+                bool proceed = _onMessageReceived(msg);
+                if (!proceed)
+                {
+                    Debug.Log("Message handling was cancelled by external handler: " + msg);
+                    return;
+                }
+            }
             // Debug.Log("Incomming = " + msg);
             
             //hardcode. rewrite the way how native plugins send me the message
-            if (msg == "//:balancy_close_view")
-            {
-                msg= "{\"action\":200, \"params\":{}}";
-            }
+            // if (msg == "//:balancy_close_view")
+            // {
+            //     msg= "{\"action\":200, \"params\":{}}";
+            // }
             
             RunRequestInTheCorePlugin(msg, OnMessageResponseReceived);
         }

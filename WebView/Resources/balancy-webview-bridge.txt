@@ -263,6 +263,10 @@ const balancy = {};
     balancy.closeView = (source) => {
         return balancy.sendRequest(null, RequestAction.CloseWindow, {id: source});
     };
+    
+    balancy.sendCustomMessage = (sender, message) => {
+        return balancy.sendRequest(sender, RequestAction.CustomMessage, message);
+    };
 
     balancy.getDocumentValue = (id, depth) => {
         return balancy.sendRequest(null, RequestAction.GetDocument, {id, depth}).then(result => {
@@ -446,6 +450,7 @@ const balancy = {};
             RequestAction.BuyShopSlot,
             RequestAction.BattlePassClaim,
             RequestAction.CloseWindow,
+            RequestAction.CustomMessage,
             RequestAction.BalancyIsReady,
             RequestAction.StopEventManually
         ];
@@ -619,11 +624,31 @@ const balancy = {};
             });
     }
 
+    // TODO: Not sure if this should be a public API or not, keeping it private for now until we do more testing
+    async function onAudioButtonClick(button) {
+        const audioGuidUrl = button.getAttribute('data-button-audio-fallback');
+        if (!audioGuidUrl) return;
+
+        const player = document.createElement('audio');
+        player.autoplay = true;
+        player.src = audioGuidUrl;
+        player.addEventListener('ended', () => {
+            player.remove();
+        });
+        player.addEventListener('error', (e) => {
+            player.remove();
+        });
+        document.body.appendChild(player);
+    }
+
     function prepareAllButtons() {
         const elements = document.querySelectorAll('[data-button-action]');
+        // TODO: Ideally, we load the audio using id here, but using direct url for now until Pavel implements this
+        const audioElements = document.querySelectorAll('[data-button-audio-fallback]');
+        const allElements = [...elements, ...audioElements];
         let preparedCount = 0;
 
-        elements.forEach(element => {
+        allElements.forEach(element => {
             if (element.classList.contains('balancy-button-prepared'))
                 return;
 
@@ -633,7 +658,8 @@ const balancy = {};
             element._balancyClickHandler = function(event) {
                 event.preventDefault();
                 event.stopPropagation();
-                balancy.balancyButtonClicked(element);
+                if (element.hasAttribute('data-button-action')) balancy.balancyButtonClicked(element);
+                if (element.hasAttribute('data-button-audio-fallback')) onAudioButtonClick(element);
             };
 
             refreshButtonAvailability(element);
@@ -645,7 +671,7 @@ const balancy = {};
         });
 
         document.dispatchEvent(new CustomEvent('balancy-buttons-complete', {
-            detail: { preparedCount, totalFound: elements.length }
+            detail: { preparedCount, totalFound: allElements.length }
         }));
     }
 

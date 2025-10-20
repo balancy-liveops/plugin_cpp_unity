@@ -141,6 +141,19 @@ namespace Balancy
             }
         }
 
+        public static class View
+        {
+            public static void SetOnMessageReceivedCallback(Func<string, bool> callback)
+            {
+                RenderViewsManager._onMessageReceived = callback;
+            }
+
+            public static void SendMessageToView(string message)
+            {
+                RenderViewsManager.SendCustomMessageToView(message);
+            }
+        }
+
         public static class Purchasing
         {
             public delegate void HardPurchaseCallback(BalancyProductInfo productInfo);
