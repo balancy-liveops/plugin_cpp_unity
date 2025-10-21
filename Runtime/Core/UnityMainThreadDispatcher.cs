@@ -110,6 +110,22 @@ namespace Balancy
         private void Update()
         {
             ProcessQueue();
+            
+#if UNITY_WEBGL && !UNITY_EDITOR
+            // Update Balancy timer on WebGL since threads are not available
+            // Only call if Controller is ready to avoid errors before initialization
+            if (Controller.IsReadyToUse)
+            {
+                try
+                {
+                    LibraryMethods.General.balancyUpdate();
+                }
+                catch (Exception e)
+                {
+                    Debug.LogException(e);
+                }
+            }
+#endif
         }
 
         // Common queue processing method

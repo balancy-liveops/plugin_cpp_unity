@@ -137,10 +137,8 @@ namespace Balancy
             }
             catch (Exception e)
             {
-                if (!(e is OperationCanceledException || e.InnerException is TaskCanceledException))
+                if (!(e is OperationCanceledException || e.InnerException is TaskCanceledException || e is ObjectDisposedException))
                     Controller.LogMessage(Controller.Level.Error, "**Exception, Periodic: " + e);
-
-                throw e;
             }
         }
 

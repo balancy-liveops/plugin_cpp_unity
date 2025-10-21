@@ -121,9 +121,22 @@ namespace Balancy
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyStop();
             
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyUpdate();
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyInitUnityFileHelper(string persistentDataPath, string resourcesPath, string codePath);
+            
+#if UNITY_WEBGL && !UNITY_EDITOR
+            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+            public delegate void PreloadCompleteCallback();
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyPreloadFromIndexedDB(PreloadCompleteCallback onComplete);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyPreloadFileFromStreamingAssets(string fileName, byte[] fileData, int dataSize);
+#endif
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern IntPtr balancyGetInheritance(out int size);
@@ -236,7 +249,7 @@ namespace Balancy
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern int balancyGetIntParam(IntPtr instance, string paramName);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-            public static extern int balancyGetLongParam(IntPtr instance, string paramName);
+            public static extern long balancyGetLongParam(IntPtr instance, string paramName);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern float balancyGetFloatParam(IntPtr instance, string paramName);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]

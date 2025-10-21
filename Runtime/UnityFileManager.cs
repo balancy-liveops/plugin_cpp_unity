@@ -7,6 +7,17 @@ namespace Balancy
 {
     internal class UnityFileManager
     {
+#if UNITY_WEBGL && !UNITY_EDITOR
+        private static bool _preloadComplete = false;
+        
+        [AOT.MonoPInvokeCallback(typeof(LibraryMethods.General.PreloadCompleteCallback))]
+        private static void OnPreloadComplete()
+        {
+            Debug.Log("[Balancy] IndexedDB preload completed");
+            _preloadComplete = true;
+        }
+#endif
+
         public static void Init()
         {
             var resourcesPath = Path.Combine(Application.streamingAssetsPath, "Balancy/");
@@ -49,8 +60,67 @@ namespace Balancy
             }
 
             Balancy.LibraryMethods.General.balancyInitUnityFileHelper(Application.persistentDataPath, resourcesPath, codePath);
+            
+#if UNITY_WEBGL && !UNITY_EDITOR
+            // Preload files from IndexedDB on WebGL
+            Debug.Log("[Balancy] Preloading files from IndexedDB...");
+            _preloadComplete = false;
+            Balancy.LibraryMethods.General.balancyPreloadFromIndexedDB(OnPreloadComplete);
+            
+            // Wait for IndexedDB preload to complete
+            while (!_preloadComplete)
+            {
+                yield return null;
+            }
+            
+            // Preload files from StreamingAssets
+            Debug.Log("[Balancy] Preloading files from StreamingAssets...");
+            yield return PreloadStreamingAssets(resourcesPath);
+#endif
         }
 
+#if UNITY_WEBGL && !UNITY_EDITOR
+        private static IEnumerator PreloadStreamingAssets(string resourcesPath)
+        {
+            var manifestPath = Path.Combine(resourcesPath, "balancy_files_manifest.txt");
+            var manifestRequest = UnityWebRequest.Get(manifestPath);
+            yield return manifestRequest.SendWebRequest();
+            
+            if (manifestRequest.result != UnityWebRequest.Result.Success)
+            {
+                Debug.LogWarning($"[Balancy] No manifest file found in StreamingAssets, skipping preload: {manifestRequest.error}");
+                yield break;
+            }
+
+            var lines = manifestRequest.downloadHandler.text.Split('\n');
+            int filesPreloaded = 0;
+            
+            foreach (var line in lines)
+            {
+                var relativePath = line.Trim().TrimStart('.', '/');
+                if (string.IsNullOrEmpty(relativePath) || relativePath == "balancy_files_manifest.txt")
+                    continue;
+
+                var fileUrl = Path.Combine(resourcesPath, relativePath);
+                var fileRequest = UnityWebRequest.Get(fileUrl);
+                yield return fileRequest.SendWebRequest();
+                
+                if (fileRequest.result == UnityWebRequest.Result.Success)
+                {
+                    var fileData = fileRequest.downloadHandler.data;
+                    Balancy.LibraryMethods.General.balancyPreloadFileFromStreamingAssets(relativePath, fileData, fileData.Length);
+                    filesPreloaded++;
+                }
+                else
+                {
+                    Debug.LogWarning($"[Balancy] Failed to preload {relativePath}: {fileRequest.error}");
+                }
+            }
+            
+            Debug.Log($"[Balancy] Preloaded {filesPreloaded} files from StreamingAssets");
+        }
+#endif
+        
         private static IEnumerator CopyStreamingAssetsToPath(string sourcePath, string targetPath)
         {
             if (Directory.Exists(targetPath))

@@ -1,0 +1,346 @@
+// IndexedDB File Helper for Unity WebGL
+// Adapted from TypeScript implementation
+
+var BalancyIndexedDBFileHelper = {
+    db: null,
+    isInitialized: false,
+    DB_NAME: 'BalancyFileStorage',
+    DB_VERSION: 1,
+    STORES: {
+        FILES: 'files',
+        DIRECTORIES: 'directories'
+    },
+    cacheDir: '.balancy',
+    resourcesDir: 'resources',
+    
+    initIndexedDB: function() {
+        return new Promise(function(resolve, reject) {
+            var request = indexedDB.open(BalancyIndexedDBFileHelper.DB_NAME, BalancyIndexedDBFileHelper.DB_VERSION);
+            
+            request.onerror = function() {
+                console.error('IndexedDB initialization failed:', request.error);
+                reject(request.error);
+            };
+            
+            request.onsuccess = function() {
+                BalancyIndexedDBFileHelper.db = request.result;
+                BalancyIndexedDBFileHelper.isInitialized = true;
+                console.log('IndexedDB initialized successfully');
+                resolve();
+            };
+            
+            request.onupgradeneeded = function(event) {
+                var db = event.target.result;
+                
+                // Files store
+                if (!db.objectStoreNames.contains(BalancyIndexedDBFileHelper.STORES.FILES)) {
+                    var filesStore = db.createObjectStore(BalancyIndexedDBFileHelper.STORES.FILES, { keyPath: 'fileName' });
+                    filesStore.createIndex('directory', 'directory', { unique: false });
+                    filesStore.createIndex('fileType', 'fileType', { unique: false });
+                    console.log('Created files store');
+                }
+                
+                // Directories store
+                if (!db.objectStoreNames.contains(BalancyIndexedDBFileHelper.STORES.DIRECTORIES)) {
+                    var dirsStore = db.createObjectStore(BalancyIndexedDBFileHelper.STORES.DIRECTORIES, { keyPath: 'path' });
+                    dirsStore.createIndex('parentPath', 'parentPath', { unique: false });
+                    console.log('Created directories store');
+                }
+            };
+        });
+    },
+    
+    ensureInitialized: function() {
+        if (!BalancyIndexedDBFileHelper.isInitialized) {
+            return BalancyIndexedDBFileHelper.initIndexedDB();
+        }
+        return Promise.resolve();
+    },
+    
+    getFullPath: function(directory, fileName) {
+        return directory + '/' + fileName;
+    },
+    
+    saveFile: function(directory, fileName, data, isBinary) {
+        return BalancyIndexedDBFileHelper.ensureInitialized().then(function() {
+            var fullPath = BalancyIndexedDBFileHelper.getFullPath(directory, fileName);
+            var fileType = isBinary ? 'binary' : 'text';
+            
+            var fileRecord = {
+                fileName: fullPath,
+                directory: directory,
+                data: data,
+                fileType: fileType,
+                size: isBinary ? data.byteLength : data.length,
+                lastModified: Date.now()
+            };
+            
+            return new Promise(function(resolve, reject) {
+                var transaction = BalancyIndexedDBFileHelper.db.transaction([BalancyIndexedDBFileHelper.STORES.FILES], 'readwrite');
+                var request = transaction.objectStore(BalancyIndexedDBFileHelper.STORES.FILES).put(fileRecord);
+                
+                request.onsuccess = function() {
+                    console.log('Saved file:', fullPath, 'type:', fileType, 'size:', fileRecord.size);
+                    resolve();
+                };
+                request.onerror = function() {
+                    console.error('Error saving file:', fullPath, request.error);
+                    reject(request.error);
+                };
+            });
+        });
+    },
+    
+    loadFile: function(directory, fileName) {
+        return BalancyIndexedDBFileHelper.ensureInitialized().then(function() {
+            var fullPath = BalancyIndexedDBFileHelper.getFullPath(directory, fileName);
+            
+            return new Promise(function(resolve, reject) {
+                var transaction = BalancyIndexedDBFileHelper.db.transaction([BalancyIndexedDBFileHelper.STORES.FILES], 'readonly');
+                var request = transaction.objectStore(BalancyIndexedDBFileHelper.STORES.FILES).get(fullPath);
+                
+                request.onsuccess = function() {
+                    var result = request.result;
+                    if (result) {
+                        console.log('Loaded file:', fullPath, 'type:', result.fileType, 'size:', result.size);
+                        resolve(result.data);
+                    } else {
+                        console.warn('File not found:', fullPath);
+                        resolve(null);
+                    }
+                };
+                request.onerror = function() {
+                    console.error('Error loading file:', fullPath, request.error);
+                    reject(request.error);
+                };
+            });
+        });
+    },
+    
+    fileExists: function(directory, fileName) {
+        return BalancyIndexedDBFileHelper.ensureInitialized().then(function() {
+            var fullPath = BalancyIndexedDBFileHelper.getFullPath(directory, fileName);
+            
+            return new Promise(function(resolve, reject) {
+                var transaction = BalancyIndexedDBFileHelper.db.transaction([BalancyIndexedDBFileHelper.STORES.FILES], 'readonly');
+                var request = transaction.objectStore(BalancyIndexedDBFileHelper.STORES.FILES).get(fullPath);
+                
+                request.onsuccess = function() {
+                    resolve(!!request.result);
+                };
+                request.onerror = function() {
+                    reject(request.error);
+                };
+            });
+        });
+    },
+    
+    deleteFile: function(directory, fileName) {
+        return BalancyIndexedDBFileHelper.ensureInitialized().then(function() {
+            var fullPath = BalancyIndexedDBFileHelper.getFullPath(directory, fileName);
+            
+            return new Promise(function(resolve, reject) {
+                var transaction = BalancyIndexedDBFileHelper.db.transaction([BalancyIndexedDBFileHelper.STORES.FILES], 'readwrite');
+                var request = transaction.objectStore(BalancyIndexedDBFileHelper.STORES.FILES).delete(fullPath);
+                
+                request.onsuccess = function() {
+                    console.log('Deleted file:', fullPath);
+                    resolve();
+                };
+                request.onerror = function() {
+                    console.error('Error deleting file:', fullPath, request.error);
+                    reject(request.error);
+                };
+            });
+        });
+    },
+    
+    clearDirectory: function(directory) {
+        return BalancyIndexedDBFileHelper.ensureInitialized().then(function() {
+            return new Promise(function(resolve, reject) {
+                var transaction = BalancyIndexedDBFileHelper.db.transaction([BalancyIndexedDBFileHelper.STORES.FILES], 'readwrite');
+                var store = transaction.objectStore(BalancyIndexedDBFileHelper.STORES.FILES);
+                var index = store.index('directory');
+                var request = index.openCursor(IDBKeyRange.only(directory));
+                
+                request.onsuccess = function(event) {
+                    var cursor = event.target.result;
+                    if (cursor) {
+                        cursor.delete();
+                        cursor.continue();
+                    } else {
+                        console.log('Cleared directory:', directory);
+                        resolve();
+                    }
+                };
+                
+                request.onerror = function() {
+                    console.error('Error clearing directory:', directory, request.error);
+                    reject(request.error);
+                };
+            });
+        });
+    },
+    
+    getFilesInDirectory: function(directory) {
+        return BalancyIndexedDBFileHelper.ensureInitialized().then(function() {
+            return new Promise(function(resolve, reject) {
+                var transaction = BalancyIndexedDBFileHelper.db.transaction([BalancyIndexedDBFileHelper.STORES.FILES], 'readonly');
+                var store = transaction.objectStore(BalancyIndexedDBFileHelper.STORES.FILES);
+                var index = store.index('directory');
+                var files = [];
+                var request = index.openCursor(IDBKeyRange.only(directory));
+                
+                request.onsuccess = function(event) {
+                    var cursor = event.target.result;
+                    if (cursor) {
+                        var record = cursor.value;
+                        var fileName = record.fileName.substring(directory.length + 1);
+                        if (fileName && fileName.indexOf('/') === -1) {
+                            files.push(fileName);
+                        }
+                        cursor.continue();
+                    } else {
+                        resolve(files);
+                    }
+                };
+                
+                request.onerror = function() {
+                    reject(request.error);
+                };
+            });
+        });
+    },
+    
+    applyTempFolder: function(tempFolder) {
+        return BalancyIndexedDBFileHelper.ensureInitialized().then(function() {
+            // tempFolder is the prefix to remove (e.g., "Temp/")
+            var tempFolderPrefix = tempFolder.endsWith('/') ? tempFolder : tempFolder + '/';
+            
+            console.log('Applying temp folder - removing prefix:', tempFolderPrefix);
+            
+            return new Promise(function(resolve, reject) {
+                var transaction = BalancyIndexedDBFileHelper.db.transaction([BalancyIndexedDBFileHelper.STORES.FILES], 'readwrite');
+                var store = transaction.objectStore(BalancyIndexedDBFileHelper.STORES.FILES);
+                var filesToMove = [];
+                
+                // Iterate through ALL files to find ones with the temp prefix in their fileName
+                var cursorRequest = store.openCursor();
+                
+                cursorRequest.onsuccess = function(event) {
+                    var cursor = event.target.result;
+                    if (cursor) {
+                        var record = cursor.value;
+                        var relativeFileName = record.fileName.substring(record.directory.length + 1);
+                        // Check if the relative file name starts with the temp folder prefix
+                        if (relativeFileName.indexOf(tempFolderPrefix) === 0) {
+                            filesToMove.push(record);
+                        }
+                        cursor.continue();
+                    } else {
+                        console.log('Found', filesToMove.length, 'files to move from temp folder');
+                        
+                        var movePromises = filesToMove.map(function(fileRecord) {
+                            var oldFileName = fileRecord.fileName;
+                            var relativeFileName = oldFileName.substring(fileRecord.directory.length + 1);
+                            var newRelativeFileName = relativeFileName.substring(tempFolderPrefix.length);
+                            var newFileName = fileRecord.directory + '/' + newRelativeFileName;
+                            
+                            console.log('Moving file from', oldFileName, 'to', newFileName);
+                            
+                            var newRecord = {
+                                fileName: newFileName,
+                                directory: fileRecord.directory,
+                                data: fileRecord.data,
+                                fileType: fileRecord.fileType,
+                                size: fileRecord.size,
+                                lastModified: Date.now()
+                            };
+                            
+                            return new Promise(function(resolveMove, rejectMove) {
+                                var putTx = BalancyIndexedDBFileHelper.db.transaction([BalancyIndexedDBFileHelper.STORES.FILES], 'readwrite');
+                                var putStore = putTx.objectStore(BalancyIndexedDBFileHelper.STORES.FILES);
+                                
+                                var putRequest = putStore.put(newRecord);
+                                putRequest.onsuccess = function() {
+                                    var deleteRequest = putStore.delete(oldFileName);
+                                    deleteRequest.onsuccess = function() {
+                                        console.log('Successfully moved:', oldFileName, '->', newFileName);
+                                        resolveMove();
+                                    };
+                                    deleteRequest.onerror = rejectMove;
+                                };
+                                putRequest.onerror = rejectMove;
+                            });
+                        });
+                        
+                        Promise.all(movePromises).then(function() {
+                            console.log('All files moved from temp folder');
+                            resolve();
+                        }).catch(reject);
+                    }
+                };
+                
+                cursorRequest.onerror = function() {
+                    reject(cursorRequest.error);
+                };
+            });
+        });
+    },
+    
+    getAllFiles: function() {
+        return BalancyIndexedDBFileHelper.ensureInitialized().then(function() {
+            return new Promise(function(resolve, reject) {
+                var transaction = BalancyIndexedDBFileHelper.db.transaction([BalancyIndexedDBFileHelper.STORES.FILES], 'readonly');
+                var store = transaction.objectStore(BalancyIndexedDBFileHelper.STORES.FILES);
+                var files = [];
+                var request = store.openCursor();
+                
+                request.onsuccess = function(event) {
+                    var cursor = event.target.result;
+                    if (cursor) {
+                        var record = cursor.value;
+                        files.push({
+                            fileName: record.fileName.substring(record.directory.length + 1),
+                            directory: record.directory,
+                            fileType: record.fileType || 'text',
+                            data: record.data,
+                            size: record.size
+                        });
+                        cursor.continue();
+                    } else {
+                        console.log('Found', files.length, 'files in IndexedDB');
+                        resolve(files);
+                    }
+                };
+                
+                request.onerror = function() {
+                    console.error('Error getting all files:', request.error);
+                    reject(request.error);
+                };
+            });
+        });
+    },
+    
+    preloadAllToMemory: function(memoryCache) {
+        return BalancyIndexedDBFileHelper.getAllFiles().then(function(files) {
+            console.log('🚀 Preloading', files.length, 'files into memory cache...');
+            var totalSize = 0;
+            
+            files.forEach(function(file) {
+                var cacheKey = file.fileName;
+                memoryCache[cacheKey] = file.data;
+                totalSize += file.size;
+            });
+            
+            console.log('✅ Preload completed:', files.length, 'files,', totalSize, 'bytes');
+            return files.length;
+        });
+    }
+};
+
+// Initialize on load
+if (typeof window !== 'undefined') {
+    window.BalancyIndexedDBFileHelper = BalancyIndexedDBFileHelper;
+    console.log('BalancyIndexedDBFileHelper loaded');
+}
