@@ -904,11 +904,21 @@ namespace Balancy.Editor
         private void OnEnable()
         {
             EditorApplication.update += update;
+            EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
         }
         
         private void OnDisable()
         {
             EditorApplication.update -= update;
+            EditorApplication.playModeStateChanged -= OnPlayModeStateChanged;
+        }
+        
+        private void OnPlayModeStateChanged(PlayModeStateChange state)
+        {
+            if (state == PlayModeStateChange.ExitingEditMode)
+            {
+                CloseAllWindowsAndCleanup();
+            }
         }
 
         private bool _needRefresh = false;
