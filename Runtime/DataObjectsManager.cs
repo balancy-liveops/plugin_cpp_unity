@@ -236,6 +236,8 @@ namespace Balancy.Dictionaries
         {
             if (AllViews.TryGetValue(id, out var oneObjectView))
             {
+                if (string.IsNullOrEmpty(path))
+                    AllViews.Remove(id);
                 _mainThreadInstance.Enqueue(() => { oneObjectView.SetPath(path); });
             }
             else

@@ -17,6 +17,9 @@ static MessageCallback _messageCallback = NULL;
 static LoadCompletedCallback _loadCompletedCallback = NULL;
 static CacheCompletedCallback _cacheCompletedCallback = NULL;
 
+// Number of directory levels to go up from HTML file to reach common parent
+static const int kDirectoryLevelsUp = 6;
+
 // Unity logging function
 extern "C" void UnitySendMessage(const char* obj, const char* method, const char* msg) __attribute__((weak));
 
@@ -130,6 +133,12 @@ void LogToUnity(const char* message) {
         
         configuration.preferences = preferences;
         
+        // Disable local file restrictions to allow cross-directory file access
+        if (@available(macOS 10.11, *)) {
+            [configuration.preferences setValue:@YES forKey:@"allowFileAccessFromFileURLs"];
+            [configuration setValue:@YES forKey:@"allowUniversalAccessFromFileURLs"];
+        }
+        
         _userContentController = [[WKUserContentController alloc] init];
         [_userContentController addScriptMessageHandler:self name:@"BalancyWebView"];
         configuration.userContentController = _userContentController;
@@ -214,10 +223,13 @@ void LogToUnity(const char* message) {
     if ([url hasPrefix:@"file://"]) {
         NSString *filePath = [url stringByReplacingOccurrencesOfString:@"file://" withString:@""];
         NSURL *fileURL = [NSURL fileURLWithPath:filePath];
-        NSString *htmlPath = [fileURL path];
-        NSString *parentDir = [htmlPath stringByDeletingLastPathComponent];
-        NSString *filesDir = [parentDir stringByDeletingLastPathComponent];
-        NSURL *broadReadAccessURL = [NSURL fileURLWithPath:filesDir];
+        
+        // Go up directory levels to reach common parent containing both Balancy and BalancyResources
+        NSString *readAccessPath = filePath;
+        for (int i = 0; i < kDirectoryLevelsUp; i++) {
+            readAccessPath = [readAccessPath stringByDeletingLastPathComponent];
+        }
+        NSURL *broadReadAccessURL = [NSURL fileURLWithPath:readAccessPath isDirectory:YES];
         
         [_webView loadFileURL:fileURL allowingReadAccessToURL:broadReadAccessURL];
         return YES;
@@ -594,6 +606,12 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
         
         configuration.preferences = preferences;
         
+        // Disable local file restrictions to allow cross-directory file access
+        if (@available(macOS 10.11, *)) {
+            [configuration.preferences setValue:@YES forKey:@"allowFileAccessFromFileURLs"];
+            [configuration setValue:@YES forKey:@"allowUniversalAccessFromFileURLs"];
+        }
+        
         _userContentController = [[WKUserContentController alloc] init];
         [_userContentController addScriptMessageHandler:self name:@"BalancyWebView"];
         configuration.userContentController = _userContentController;
@@ -628,10 +646,13 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
     if ([url hasPrefix:@"file://"]) {
         NSString *filePath = [url stringByReplacingOccurrencesOfString:@"file://" withString:@""];
         NSURL *fileURL = [NSURL fileURLWithPath:filePath];
-        NSString *htmlPath = [fileURL path];
-        NSString *parentDir = [htmlPath stringByDeletingLastPathComponent];
-        NSString *filesDir = [parentDir stringByDeletingLastPathComponent];
-        NSURL *broadReadAccessURL = [NSURL fileURLWithPath:filesDir];
+        
+        // Go up directory levels to reach common parent containing both Balancy and BalancyResources
+        NSString *readAccessPath = filePath;
+        for (int i = 0; i < kDirectoryLevelsUp; i++) {
+            readAccessPath = [readAccessPath stringByDeletingLastPathComponent];
+        }
+        NSURL *broadReadAccessURL = [NSURL fileURLWithPath:readAccessPath isDirectory:YES];
         
         [_webView loadFileURL:fileURL allowingReadAccessToURL:broadReadAccessURL];
         return YES;

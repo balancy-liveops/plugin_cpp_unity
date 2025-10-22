@@ -12,6 +12,9 @@ extern "C" {
     void (*_cacheCompletedCallback)(bool) = NULL;
 }
 
+// Number of directory levels to go up from HTML file to reach common parent
+static const int kDirectoryLevelsUp = 6;
+
 @interface BalancyWebViewController ()
 
 @property (nonatomic, strong, readwrite) WKWebView *webView;
@@ -69,6 +72,9 @@ extern "C" {
     // Configure preferences to reduce process spawning
     configuration.preferences.javaScriptEnabled = YES;
     configuration.preferences.javaScriptCanOpenWindowsAutomatically = NO;
+    
+    // Note: iOS doesn't allow universal file access via configuration
+    // We'll handle cross-directory access via loadFileURL:allowingReadAccessToURL: instead
     
     // === AGGRESSIVE MAGNIFYING GLASS PREVENTION ===
     // Try to disable text interaction and magnification at the configuration level
@@ -447,13 +453,13 @@ extern "C" {
         NSString *filePath = [cleanUrl stringByReplacingOccurrencesOfString:@"file://" withString:@""];
 
         NSURL *fileURL = [NSURL fileURLWithPath:filePath];
-        NSURL *readAccessURL = [fileURL URLByDeletingLastPathComponent];
         
-        NSString *htmlPath = [fileURL path];
-        NSString *parentDir = [htmlPath stringByDeletingLastPathComponent]; // Gets the immediate parent
-        NSString *filesDir = [parentDir stringByDeletingLastPathComponent];  // Goes up one more level to "Files"
-        
-        NSURL *broadReadAccessURL = [NSURL fileURLWithPath:filesDir];
+        // Go up directory levels to reach common parent containing both Balancy/Models and Balancy/Resources
+        NSString *readAccessPath = filePath;
+        for (int i = 0; i < kDirectoryLevelsUp; i++) {
+            readAccessPath = [readAccessPath stringByDeletingLastPathComponent];
+        }
+        NSURL *broadReadAccessURL = [NSURL fileURLWithPath:readAccessPath isDirectory:YES];
         
         if (_debugLogging) {
             NSLog(@"[BalancyWebView] File URL: %@", fileURL);

@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.IO;
 using UnityEngine;
@@ -40,9 +41,14 @@ namespace Balancy
         {
             var resourcesPath = Path.Combine(Application.streamingAssetsPath, "Balancy/");
             
-            if (Application.platform == RuntimePlatform.Android)
+            // Copy StreamingAssets to PersistentDataPath for platforms that need it
+            // This ensures WebView can access all resources from a single directory tree
+            if (Application.platform == RuntimePlatform.Android || 
+                Application.platform == RuntimePlatform.IPhonePlayer ||
+                Application.platform == RuntimePlatform.OSXPlayer ||
+                Application.platform == RuntimePlatform.OSXEditor)
             {
-                var targetPath = Path.Combine(Application.persistentDataPath, "BalancyResources/");
+                var targetPath = Path.Combine(Application.persistentDataPath, "Balancy/Resources/");
                 yield return CopyStreamingAssetsToPath(resourcesPath, targetPath);
                 resourcesPath = targetPath;
             }
@@ -135,6 +141,12 @@ namespace Balancy
         private static IEnumerator CopyDirectory(string sourceDir, string targetDir)
         {
             var manifestPath = Path.Combine(sourceDir, "balancy_files_manifest.txt");
+            
+            // For platforms where we can access files directly (iOS, macOS, Editor), use File.ReadAllText
+            // For Android, we need UnityWebRequest
+            string manifestContent;
+            
+            #if UNITY_ANDROID && !UNITY_EDITOR
             var manifestRequest = UnityWebRequest.Get(manifestPath);
             yield return manifestRequest.SendWebRequest();
             
@@ -143,8 +155,20 @@ namespace Balancy
                 Debug.LogError($"Failed to load manifest: {manifestRequest.error}");
                 yield break;
             }
+            manifestContent = manifestRequest.downloadHandler.text;
+            #else
+            // Direct file access for iOS, macOS, Editor
+            if (!File.Exists(manifestPath))
+            {
+                Debug.LogError($"Manifest file not found: {manifestPath}");
+                yield break;
+            }
+            manifestContent = File.ReadAllText(manifestPath);
+            yield return null; // Yield to maintain coroutine behavior
+            #endif
 
-            var lines = manifestRequest.downloadHandler.text.Split('\n');
+            var lines = manifestContent.Split('\n');
+            
             foreach (var line in lines)
             {
                 var relativePath = line.Trim().TrimStart('.', '/');
@@ -158,6 +182,7 @@ namespace Balancy
                 if (!Directory.Exists(targetDirPath))
                     Directory.CreateDirectory(targetDirPath);
 
+                #if UNITY_ANDROID && !UNITY_EDITOR
                 var fileRequest = UnityWebRequest.Get(sourcePath);
                 yield return fileRequest.SendWebRequest();
                 
@@ -169,6 +194,17 @@ namespace Balancy
                 {
                     Debug.LogError($"Failed to copy {relativePath}: {fileRequest.error}");
                 }
+                #else
+                // Direct file copy for iOS, macOS, Editor
+                if (File.Exists(sourcePath))
+                {
+                    File.Copy(sourcePath, targetPath, true);
+                    
+                    // Yield periodically to avoid blocking
+                    if (lines.Length > 50 && Array.IndexOf(lines, line) % 10 == 0)
+                        yield return null;
+                }
+                #endif
             }
         }
     }
