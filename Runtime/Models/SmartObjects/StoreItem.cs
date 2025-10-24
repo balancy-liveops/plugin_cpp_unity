@@ -3,12 +3,12 @@ namespace Balancy.Models.SmartObjects
 {
     public class StoreItem : Balancy.Models.BaseModel 
     {
-        
 		private string _unnyIdDynamicReward;
 		private Balancy.Models.SmartObjects.Price _price;
 		private Balancy.Models.SmartObjects.Reward _reward;
 		private Localization.LocalizedString _name;
 		private UnnyObject _sprite;
+		private UnnyObject _unnyView;
         
         
 		// public Balancy.Models.VisualScripting.ScriptNode DynamicReward => GetModelByUnnyId<Balancy.Models.VisualScripting.ScriptNode>(_unnyIdDynamicReward);
@@ -16,6 +16,7 @@ namespace Balancy.Models.SmartObjects
 		public Balancy.Models.SmartObjects.Reward Reward => _reward;
 		public Localization.LocalizedString Name => _name;
 		public UnnyObject Sprite => _sprite;
+		public UnnyObject UnnyView => _unnyView;
         
         public override void InitData()
         {
@@ -26,6 +27,7 @@ namespace Balancy.Models.SmartObjects
 			_reward = GetObjectParam<Balancy.Models.SmartObjects.Reward>("reward");
 			_name = GetLocalizedString("name");
 			_sprite = GetObjectParam<UnnyObject>("sprite");
+			_unnyView = GetObjectParam<UnnyObject>("unnyView");
         }
         
         public int GetAdsWatched() => LibraryMethods.Extra.balancyStoreItem_GetAdsWatched(GetRawPointer());
