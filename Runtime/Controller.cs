@@ -193,7 +193,7 @@ namespace Balancy
         {
             try
             {
-                Debug.Log($"[C# Notification] OnStatusUpdate called. Platform: {Application.platform}, notificationPtr: {notificationPtr}");
+                // Debug.Log($"[C# Notification] OnStatusUpdate called. Platform: {Application.platform}, notificationPtr: {notificationPtr}");
 #if UNITY_WEBGL && !UNITY_EDITOR
                 // In WebGL, notificationPtr is actually a notification ID, not a memory pointer
                 int notificationId = (int)notificationPtr;
