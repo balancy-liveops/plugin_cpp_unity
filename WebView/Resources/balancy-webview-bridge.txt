@@ -256,6 +256,38 @@ const balancy = {};
         return balancy.sendRequest(null, RequestAction.GetProfile, {profile: "UnnyProfile", path});
     };
 
+    balancy.getActiveOffers = async (depth = 3) => {
+        const offers = await balancy.getSystemProfileValue("SmartInfo.GameOffers");
+
+        if (!Array.isArray(offers) || offers.length === 0)
+            return offers || [];
+
+        let collectedIds = [];
+        for (const offer of offers) {
+            if (!collectedIds.includes(offer.unnyIdGameOffer))
+                collectedIds.push(offer.unnyIdGameOffer);
+        }
+
+        const allPromises = collectedIds.map((unnyId) =>
+            balancy.getDocumentValue(unnyId, depth)
+        );
+
+        const results = await Promise.all(allPromises);
+
+        const byId = {};
+        for (let i = 0; i < collectedIds.length; i++)
+            byId[collectedIds[i]] = results[i];
+
+        for (const item of offers) {
+            const id = item?.unnyIdGameOffer;
+            if (id != null && byId.hasOwnProperty(id)) {
+                item.gameOffer = byId[id];
+            }
+        }
+
+        return offers;
+    };
+
     balancy.getProfileValue = (profile, path) => {
         return balancy.sendRequest(null, RequestAction.GetProfile, {profile, path});
     };
