@@ -288,6 +288,38 @@ const balancy = {};
         return offers;
     };
 
+    balancy.getActiveGroupOffers = async (depth = 3) => {
+        const offers = await balancy.getSystemProfileValue("SmartInfo.GameOfferGroups");
+
+        if (!Array.isArray(offers) || offers.length === 0)
+            return offers || [];
+
+        let collectedIds = [];
+        for (const offer of offers) {
+            if (!collectedIds.includes(offer.unnyIdGameOfferGroup))
+                collectedIds.push(offer.unnyIdGameOfferGroup);
+        }
+
+        const allPromises = collectedIds.map((unnyId) =>
+            balancy.getDocumentValue(unnyId, depth)
+        );
+
+        const results = await Promise.all(allPromises);
+
+        const byId = {};
+        for (let i = 0; i < collectedIds.length; i++)
+            byId[collectedIds[i]] = results[i];
+
+        for (const item of offers) {
+            const id = item?.unnyIdGameOfferGroup;
+            if (id != null && byId.hasOwnProperty(id)) {
+                item.gameOfferGroup = byId[id];
+            }
+        }
+
+        return offers;
+    };
+
     balancy.getProfileValue = (profile, path) => {
         return balancy.sendRequest(null, RequestAction.GetProfile, {profile, path});
     };
