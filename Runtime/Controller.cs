@@ -39,7 +39,7 @@ namespace Balancy
         private static IEnumerator InitCoroutine(AppConfig appConfig)
         {
             Balancy.Network.UnityWebRequestBridge.Initialize();
-            // Balancy.Network.UnityWebSocketBridge.Initialize();//temporary turn it off
+            Balancy.Network.UnityWebSocketBridge.Initialize();//temporary turn it off
 
             LibraryMethods.General.balancySetInvokeInMainThreadCallback(InvokeInMainThread);
             yield return UnityFileManager.InitRuntime();

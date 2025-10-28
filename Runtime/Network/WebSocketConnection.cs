@@ -1,10 +1,13 @@
 using System;
 using System.Collections.Generic;
+#if !UNITY_WEBGL || UNITY_EDITOR
 using System.Net.WebSockets;
+#endif
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
+using System.Runtime.InteropServices;
 
 namespace Balancy.Network
 {
@@ -106,6 +109,7 @@ namespace Balancy.Network
         }
     }
 
+#if !UNITY_WEBGL || UNITY_EDITOR
     public class WebSocketConnection : IDisposable
     {
         private readonly int _connectionId;
@@ -118,6 +122,8 @@ namespace Balancy.Network
         private string _originalAuthData;
         private SocketIOAuthData _authData;
         private bool _handshakeCompleted;
+        private Task _receiveLoopTask;
+        private Task _healthCheckLoopTask;
         
         // Socket.IO specific
         private HashSet<string> _subscribedEvents = new HashSet<string>();
@@ -127,6 +133,9 @@ namespace Balancy.Network
         private const int PING_INTERVAL_MS = 25000; // 25 seconds
         private const int PING_TIMEOUT_MS = 5000;   // 5 seconds
         private const int RECONNECT_DELAY_MS = 5000; // 5 seconds
+        private const int MAX_RECONNECT_ATTEMPTS = 50; // Maximum reconnection attempts
+        private int _reconnectAttempts = 0;
+        private bool _isReconnecting = false;
 
         public WebSocketConnection(int connectionId, UnityWebSocketBridge bridge)
         {
@@ -155,6 +164,16 @@ namespace Balancy.Network
                     try
                     {
                         _cancellationTokenSource?.Cancel();
+                        
+                        // Wait for background tasks to complete
+                        if (_receiveLoopTask != null)
+                        {
+                            await Task.WhenAny(_receiveLoopTask, Task.Delay(2000));
+                        }
+                        if (_healthCheckLoopTask != null)
+                        {
+                            await Task.WhenAny(_healthCheckLoopTask, Task.Delay(2000));
+                        }
                         
                         if (_webSocket.State == WebSocketState.Open)
                         {
@@ -246,11 +265,12 @@ namespace Balancy.Network
                 await _webSocket.ConnectAsync(uriBuilder.Uri, _cancellationTokenSource.Token);
                 
                 _isConnected = true;
+                _reconnectAttempts = 0; // Reset reconnection counter on successful connection
                 _bridge?.NotifyConnectionStatusChanged(_connectionId, true);
 
-                // Start background tasks
-                _ = Task.Run(ReceiveLoop);
-                _ = Task.Run(HealthCheckLoop);
+                // Start background tasks and track them
+                _receiveLoopTask = Task.Run(ReceiveLoop);
+                _healthCheckLoopTask = Task.Run(HealthCheckLoop);
 
                 Debug.Log($"WebSocket connected successfully (ID: {_connectionId})");
             }
@@ -258,6 +278,17 @@ namespace Balancy.Network
             {
                 Debug.LogError($"WebSocket connection failed (ID: {_connectionId}): {ex.Message}");
                 _bridge?.NotifyConnectionStatusChanged(_connectionId, false, ex.Message);
+                
+                // Only attempt to reconnect if not already in reconnection loop
+                if (!_isReconnecting)
+                {
+                    await AttemptReconnect(ex.Message);
+                }
+                else
+                {
+                    // Re-throw to let AttemptReconnect handle it
+                    throw;
+                }
             }
         }
 
@@ -290,8 +321,9 @@ namespace Balancy.Network
 
             try
             {
-                // Socket.IO ack format: "43[ackId,responseData]"
-                string message = $"43[{ackId},{responseData}]";
+                // Socket.IO v4 ACK format: 43<ackId><data>
+                // responseData should already be a JSON array
+                string message = $"43{ackId}{responseData}";
                 await SendRawMessage(message);
                 Debug.Log($"Sent acknowledgment for ackId: {ackId} (ID: {_connectionId})");
             }
@@ -445,47 +477,60 @@ namespace Balancy.Network
                             Debug.Log($"🔑 Authentication successful! Setting up event subscriptions (ID: {_connectionId})");
                             
                             // Subscribe to key events like C++ code does
+                            SubscribeToEvent("system:connection");
                             SubscribeToEvent("system:ping");
                             SubscribeToEvent("profile:updated");
                             
                             // Send acknowledgment if needed
                             if (hasAckId)
                             {
-                                await SendRawMessage($"43[{ackId},{{\"received\":true}}]");
+                                // Socket.IO v4 ACK format: 43<ackId><data>
+                                await SendRawMessage($"43{ackId}[{{\"received\":true}}]");
                                 Debug.Log($"Sent auth:token ack response (ID: {_connectionId})");
                             }
                             return;
                         }
                         
-                        // Handle system:ping specially - it requires ack response
+                        // Handle system:ping specially - handle COMPLETELY inline like C++ SocketIOWebSocketHandler does
                         if (eventName == "system:ping")
                         {
-                            Debug.Log($"🏓 Received system:ping, sending ack response (ID: {_connectionId})");
+                            Debug.Log($"🏓 Received system:ping (ID: {_connectionId})");
+                            _lastPing = DateTime.UtcNow; // Update ping time
+                            
+                            // IMPORTANT: Send acknowledgment immediately, just like C++ SocketIOWebSocketHandler does (line 224-225)
                             if (hasAckId)
                             {
-                                // FIXED: Try different ack response formats
-                                // Format 1: Simple empty object (current)
-                                await SendRawMessage($"43[{ackId},{{}}]");
-                                Debug.Log($"🏓 Sent system:ping ack response (format 1) with ID {ackId} (ID: {_connectionId})");
-                                
-                                // Format 2: Also try with "received" flag like C++ might do
-                                await Task.Delay(100); // Small delay
-                                await SendRawMessage($"43[{ackId},{{\"received\":true}}]");
-                                Debug.Log($"🏓 Sent system:ping ack response (format 2) with ID {ackId} (ID: {_connectionId})");
-                                
-                                _lastPing = DateTime.UtcNow; // Update ping time
-                            
-                            // POSSIBLE FIX: Send additional heartbeat to show we're alive
-                            // Try sending a simple heartbeat event like C++ might do
-                            _ = Task.Run(async () => {
-                                await Task.Delay(1000); // Wait 1 second
-                                if (_isConnected && _handshakeCompleted)
-                                {
-                                    // Send a simple event to show we're active (optional)
-                                    Debug.Log($"💓 Sending heartbeat after system:ping (ID: {_connectionId})");
-                                }
-                            });
+                                // Socket.IO v4 ACK format: 43<ackId><data>
+                                // Example: 431079[] for ack ID 1079 with empty array data
+                                string ackMessage = $"43{ackId}[]";
+                                Debug.Log($"📤 Sending ping ack message: '{ackMessage}' (ID: {_connectionId})");
+                                await SendRawMessage(ackMessage);
+                                Debug.Log($"✅ Sent inline ping ack for ackId: {ackId} (ID: {_connectionId})");
                             }
+                            
+                            // DO NOT notify C++ at all - handle completely inline like C++ SocketIOWebSocketHandler does
+                            // The C++ handler at line 217-237 handles system:ping entirely inline and never forwards to callback
+                            return;
+                        }
+                        
+                        // Handle profile:updated specially - send ACK inline then notify C++ WITHOUT ack requirement
+                        if (eventName == "profile:updated")
+                        {
+                            Debug.Log($"📝 Received profile:updated (ID: {_connectionId})");
+                            
+                            // IMPORTANT: Send acknowledgment IMMEDIATELY inline, BEFORE notifying C++
+                            if (hasAckId)
+                            {
+                                // Socket.IO v4 ACK format: 43<ackId>[response]
+                                string ackMessage = $"43{ackId}[]";
+                                Debug.Log($"📤 Sending profile:updated ack message: '{ackMessage}' (ID: {_connectionId})");
+                                await SendRawMessage(ackMessage);
+                                Debug.Log($"✅ Sent inline profile:updated ack for ackId: {ackId} (ID: {_connectionId})");
+                            }
+                            
+                            // Now notify C++ WITHOUT ack requirement (needsAck=false, ackId=0)
+                            // This prevents C++ from trying to send another ACK
+                            _bridge?.NotifySocketIOEvent(_connectionId, eventName, eventData, false, 0);
                             return;
                         }
                         
@@ -501,7 +546,8 @@ namespace Balancy.Network
                             // Still send ack if needed to prevent server disconnect
                             if (hasAckId)
                             {
-                                await SendRawMessage($"43[{ackId},{{}}]");
+                                // Socket.IO v4 ACK format: 43<ackId><data>
+                                await SendRawMessage($"43{ackId}[]");
                                 Debug.Log($"Sent automatic ack for ignored event: {eventName} (ID: {_connectionId})");
                             }
                         }
@@ -637,13 +683,61 @@ namespace Balancy.Network
                 Debug.LogWarning($"Error during cleanup (ID: {_connectionId}): {ex.Message}");
             }
 
-            // Wait before reconnecting (increased delay)
-            await Task.Delay(RECONNECT_DELAY_MS * 2); // Doubled delay to 10 seconds
-            
-            if (!_disposed)
+            // Attempt to reconnect
+            await AttemptReconnect(reason);
+        }
+
+        private async Task AttemptReconnect(string reason)
+        {
+            if (_disposed || _isReconnecting)
+                return;
+
+            _isReconnecting = true;
+
+            try
             {
-                Debug.Log($"Attempting to reconnect (ID: {_connectionId})...");
-                await ConnectAsync(_originalUrl, _originalAuthData);
+                while (_reconnectAttempts < MAX_RECONNECT_ATTEMPTS && !_disposed)
+                {
+                    _reconnectAttempts++;
+                    
+                    // Calculate exponential backoff delay: min(1000 * 2^attempt, 10000)
+                    int delay = Math.Min(RECONNECT_DELAY_MS * (int)Math.Pow(2, Math.Min(_reconnectAttempts - 1, 3)), 10000);
+                    
+                    Debug.Log($"Reconnection attempt #{_reconnectAttempts}/{MAX_RECONNECT_ATTEMPTS} after {delay}ms delay (ID: {_connectionId})");
+                    await Task.Delay(delay);
+                    
+                    if (_disposed)
+                        break;
+
+                    try
+                    {
+                        await ConnectAsync(_originalUrl, _originalAuthData);
+                        
+                        // If we reach here without exception, connection was successful
+                        if (_isConnected)
+                        {
+                            Debug.Log($"Reconnection successful after {_reconnectAttempts} attempts (ID: {_connectionId})");
+                            _reconnectAttempts = 0;
+                            _isReconnecting = false;
+                            return;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.LogWarning($"Reconnection attempt #{_reconnectAttempts} failed (ID: {_connectionId}): {ex.Message}");
+                        // Continue to next attempt
+                    }
+                }
+
+                if (_reconnectAttempts >= MAX_RECONNECT_ATTEMPTS)
+                {
+                    Debug.LogError($"Max reconnection attempts ({MAX_RECONNECT_ATTEMPTS}) reached. Giving up (ID: {_connectionId})");
+                    _bridge?.NotifyConnectionStatusChanged(_connectionId, false, $"Max reconnection attempts reached: {reason}");
+                }
+            }
+            finally
+            {
+                _isReconnecting = false;
             }
         }
 
@@ -699,6 +793,8 @@ namespace Balancy.Network
             _disposed = true;
             _isConnected = false;
             _handshakeCompleted = false;
+            _isReconnecting = false;
+            _reconnectAttempts = 0;
 
             _cancellationTokenSource?.Cancel();
             
@@ -754,4 +850,13 @@ namespace Balancy.Network
         public string isEnum;
         public string isNumber;
     }
+#else
+    // WebGL builds use EmscriptenWebSocketHandler (C++ -> JavaScript bridge)
+    // This stub prevents compilation errors but won't be used
+    public class WebSocketConnection : IDisposable
+    {
+        public WebSocketConnection(int connectionId, UnityWebSocketBridge bridge) { }
+        public void Dispose() { }
+    }
+#endif
 }

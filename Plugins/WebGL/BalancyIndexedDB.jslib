@@ -5,7 +5,7 @@ mergeInto(LibraryManager.library, {
         var script = document.createElement('script');
         script.text = jsCode;
         document.head.appendChild(script);
-        console.log('[Balancy] JavaScript injected into page');
+        //console.log('[Balancy] JavaScript injected into page');
     },
     
     // Helper to convert C string to JS string
@@ -25,7 +25,7 @@ mergeInto(LibraryManager.library, {
     balancy_indexeddb_init: function() {
         if (typeof BalancyIndexedDBFileHelper !== 'undefined') {
             BalancyIndexedDBFileHelper.initIndexedDB().then(function() {
-                console.log('IndexedDB initialized from C++');
+                //console.log('IndexedDB initialized from C++');
             }).catch(function(error) {
                 console.error('Failed to initialize IndexedDB:', error);
             });
@@ -145,7 +145,7 @@ mergeInto(LibraryManager.library, {
         
         if (typeof BalancyIndexedDBFileHelper !== 'undefined') {
             BalancyIndexedDBFileHelper.applyTempFolder(tempStr).then(function() {
-                console.log('Temp folder applied successfully');
+                //console.log('Temp folder applied successfully');
             }).catch(function(error) {
                 console.error('Error applying temp folder:', error);
             });
@@ -190,7 +190,7 @@ mergeInto(LibraryManager.library, {
         if (typeof BalancyIndexedDBFileHelper !== 'undefined') {
             console.log('Starting IndexedDB preload...');
             BalancyIndexedDBFileHelper.getAllFiles().then(function(files) {
-                console.log('Loaded', files.length, 'files from IndexedDB, preloading to C++...');
+                //console.log('Loaded', files.length, 'files from IndexedDB, preloading to C++...');
                 var totalFiles = files.length;
                 var loadedFiles = 0;
                 
@@ -206,7 +206,7 @@ mergeInto(LibraryManager.library, {
                         var dataPtr = _malloc(dataLen);
                         stringToUTF8(file.data, dataPtr, dataLen);
                         var sizeToPass = dataLen - 1;
-                        console.log('[Balancy] Preloading file:', file.fileName, 'size:', sizeToPass, 'bytes (text)');
+                        //console.log('[Balancy] Preloading file:', file.fileName, 'size:', sizeToPass, 'bytes (text)');
                         {{{ makeDynCall('viiii', 'callback') }}}(userData, fileNamePtr, dataPtr, sizeToPass);
                         _free(dataPtr);
                     } else if (file.data instanceof ArrayBuffer) {
@@ -214,7 +214,7 @@ mergeInto(LibraryManager.library, {
                         var size = file.data.byteLength;
                         var buffer = _malloc(size);
                         HEAPU8.set(new Uint8Array(file.data), buffer);
-                        console.log('[Balancy] Preloading file:', file.fileName, 'size:', size, 'bytes (binary)');
+                        //console.log('[Balancy] Preloading file:', file.fileName, 'size:', size, 'bytes (binary)');
                         {{{ makeDynCall('viiii', 'callback') }}}(userData, fileNamePtr, buffer, size);
                         _free(buffer);
                     }

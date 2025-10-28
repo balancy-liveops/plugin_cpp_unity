@@ -3,13 +3,16 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
+#if !UNITY_WEBGL || UNITY_EDITOR
 using System.Net.WebSockets;
 using System.Threading;
 using System.Threading.Tasks;
+#endif
 using UnityEngine;
 
 namespace Balancy.Network
 {
+#if !UNITY_WEBGL || UNITY_EDITOR
     public class UnityWebSocketBridge : MonoBehaviour
     {
         private static UnityWebSocketBridge _instance;
@@ -250,4 +253,13 @@ namespace Balancy.Network
             balancyHandleWSSocketIOError(connectionId, errorCode, errorMessage);
         }
     }
+#else
+    // WebGL builds use EmscriptenWebSocketHandler (C++ -> JavaScript bridge)
+    // This stub prevents compilation errors but won't be used
+    public class UnityWebSocketBridge
+    {
+        public static void Initialize() { }
+        public static void Clear() { }
+    }
+#endif
 }

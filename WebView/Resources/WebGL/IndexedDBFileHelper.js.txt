@@ -37,14 +37,14 @@ var BalancyIndexedDBFileHelper = {
                     var filesStore = db.createObjectStore(BalancyIndexedDBFileHelper.STORES.FILES, { keyPath: 'fileName' });
                     filesStore.createIndex('directory', 'directory', { unique: false });
                     filesStore.createIndex('fileType', 'fileType', { unique: false });
-                    console.log('Created files store');
+                    //console.log('Created files store');
                 }
                 
                 // Directories store
                 if (!db.objectStoreNames.contains(BalancyIndexedDBFileHelper.STORES.DIRECTORIES)) {
                     var dirsStore = db.createObjectStore(BalancyIndexedDBFileHelper.STORES.DIRECTORIES, { keyPath: 'path' });
                     dirsStore.createIndex('parentPath', 'parentPath', { unique: false });
-                    console.log('Created directories store');
+                    //console.log('Created directories store');
                 }
             };
         });
@@ -80,7 +80,7 @@ var BalancyIndexedDBFileHelper = {
                 var request = transaction.objectStore(BalancyIndexedDBFileHelper.STORES.FILES).put(fileRecord);
                 
                 request.onsuccess = function() {
-                    console.log('Saved file:', fullPath, 'type:', fileType, 'size:', fileRecord.size);
+                    //console.log('Saved file:', fullPath, 'type:', fileType, 'size:', fileRecord.size);
                     resolve();
                 };
                 request.onerror = function() {
@@ -102,7 +102,7 @@ var BalancyIndexedDBFileHelper = {
                 request.onsuccess = function() {
                     var result = request.result;
                     if (result) {
-                        console.log('Loaded file:', fullPath, 'type:', result.fileType, 'size:', result.size);
+                        //console.log('Loaded file:', fullPath, 'type:', result.fileType, 'size:', result.size);
                         resolve(result.data);
                     } else {
                         console.warn('File not found:', fullPath);
@@ -144,7 +144,7 @@ var BalancyIndexedDBFileHelper = {
                 var request = transaction.objectStore(BalancyIndexedDBFileHelper.STORES.FILES).delete(fullPath);
                 
                 request.onsuccess = function() {
-                    console.log('Deleted file:', fullPath);
+                    //console.log('Deleted file:', fullPath);
                     resolve();
                 };
                 request.onerror = function() {
@@ -169,7 +169,7 @@ var BalancyIndexedDBFileHelper = {
                         cursor.delete();
                         cursor.continue();
                     } else {
-                        console.log('Cleared directory:', directory);
+                        //console.log('Cleared directory:', directory);
                         resolve();
                     }
                 };
@@ -217,7 +217,7 @@ var BalancyIndexedDBFileHelper = {
             // tempFolder is the prefix to remove (e.g., "Temp/")
             var tempFolderPrefix = tempFolder.endsWith('/') ? tempFolder : tempFolder + '/';
             
-            console.log('Applying temp folder - removing prefix:', tempFolderPrefix);
+            //console.log('Applying temp folder - removing prefix:', tempFolderPrefix);
             
             return new Promise(function(resolve, reject) {
                 var transaction = BalancyIndexedDBFileHelper.db.transaction([BalancyIndexedDBFileHelper.STORES.FILES], 'readwrite');
@@ -238,7 +238,7 @@ var BalancyIndexedDBFileHelper = {
                         }
                         cursor.continue();
                     } else {
-                        console.log('Found', filesToMove.length, 'files to move from temp folder');
+                        //console.log('Found', filesToMove.length, 'files to move from temp folder');
                         
                         var movePromises = filesToMove.map(function(fileRecord) {
                             var oldFileName = fileRecord.fileName;
@@ -246,7 +246,7 @@ var BalancyIndexedDBFileHelper = {
                             var newRelativeFileName = relativeFileName.substring(tempFolderPrefix.length);
                             var newFileName = fileRecord.directory + '/' + newRelativeFileName;
                             
-                            console.log('Moving file from', oldFileName, 'to', newFileName);
+                            //console.log('Moving file from', oldFileName, 'to', newFileName);
                             
                             var newRecord = {
                                 fileName: newFileName,
@@ -265,7 +265,7 @@ var BalancyIndexedDBFileHelper = {
                                 putRequest.onsuccess = function() {
                                     var deleteRequest = putStore.delete(oldFileName);
                                     deleteRequest.onsuccess = function() {
-                                        console.log('Successfully moved:', oldFileName, '->', newFileName);
+                                        //console.log('Successfully moved:', oldFileName, '->', newFileName);
                                         resolveMove();
                                     };
                                     deleteRequest.onerror = rejectMove;
@@ -275,7 +275,7 @@ var BalancyIndexedDBFileHelper = {
                         });
                         
                         Promise.all(movePromises).then(function() {
-                            console.log('All files moved from temp folder');
+                            //console.log('All files moved from temp folder');
                             resolve();
                         }).catch(reject);
                     }
@@ -309,7 +309,7 @@ var BalancyIndexedDBFileHelper = {
                         });
                         cursor.continue();
                     } else {
-                        console.log('Found', files.length, 'files in IndexedDB');
+                        //console.log('Found', files.length, 'files in IndexedDB');
                         resolve(files);
                     }
                 };

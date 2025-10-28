@@ -4,6 +4,39 @@ mergeInto(LibraryManager.library, {
        Module.BalancyBridge.module._balancySetLogCallback(callbackPtr);
     },
 
+  // WebSocket bridge functions for C++ WASM (needed by libBalancyCore.a)
+  typescript_websocket_connect_request__proxy: 'sync',
+  typescript_websocket_connect_request: function(connectionId, urlPtr, authDataPtr) {
+    var url = UTF8ToString(urlPtr);
+    var authData = UTF8ToString(authDataPtr);
+    console.log('[WebSocket Bridge] Connect request:', connectionId, url);
+    console.warn('[WebSocket Bridge] NOT IMPLEMENTED YET');
+  },
+  
+  typescript_websocket_disconnect_request__proxy: 'sync',
+  typescript_websocket_disconnect_request: function(connectionId) {
+    console.log('[WebSocket Bridge] Disconnect request:', connectionId);
+  },
+  
+  typescript_websocket_subscribe_event__proxy: 'sync',
+  typescript_websocket_subscribe_event: function(connectionId, eventNamePtr) {
+    var eventName = UTF8ToString(eventNamePtr);
+    console.log('[WebSocket Bridge] Subscribe event:', connectionId, eventName);
+  },
+  
+  typescript_websocket_send_message__proxy: 'sync',
+  typescript_websocket_send_message: function(connectionId, eventNamePtr, dataPtr) {
+    var eventName = UTF8ToString(eventNamePtr);
+    var data = UTF8ToString(dataPtr);
+    console.log('[WebSocket Bridge] Send message:', connectionId, eventName);
+  },
+  
+  typescript_websocket_send_ack__proxy: 'sync',
+  typescript_websocket_send_ack: function(connectionId, ackId, responseDataPtr) {
+    var responseData = UTF8ToString(responseDataPtr);
+    console.log('[WebSocket Bridge] Send ack:', connectionId, ackId);
+  },
+
 balancyLoadAndInit: function (onReadyCallback) {
     if (!Module.BalancyBridge) {
       Module.BalancyBridge = {
@@ -28,6 +61,13 @@ balancyLoadAndInit: function (onReadyCallback) {
     }
 
     console.log("📦 Loading Balancy.js...");
+    
+    // Initialize WebSocket bridge functions globally before loading Balancy
+    if (typeof ___initializeWebSocketBridge === 'function') {
+      ___initializeWebSocketBridge();
+    } else {
+      console.warn('⚠️ __initializeWebSocketBridge not found');
+    }
 
     var script = document.createElement('script');
     script.src = 'StreamingAssets/Balancy.js';
@@ -40,10 +80,97 @@ balancyLoadAndInit: function (onReadyCallback) {
           if (path.endsWith('.wasm')) return 'StreamingAssets/Balancy.wasm';
           return path;
         },
+        // Expose WebSocket bridge functions by delegating to globally exposed functions
+        typescript_websocket_connect_request: function(connectionId, urlPtr, authDataPtr) {
+          console.log('[Balancy Module] typescript_websocket_connect_request called', connectionId);
+          if (typeof globalThis !== 'undefined' && globalThis.__balancyWebSocketBridgeFunctions && globalThis.__balancyWebSocketBridgeFunctions.connect) {
+            globalThis.__balancyWebSocketBridgeFunctions.connect(connectionId, urlPtr, authDataPtr);
+          } else {
+            console.error('[Balancy Module] Bridge connect function not found. Available:', globalThis.__balancyWebSocketBridgeFunctions ? Object.keys(globalThis.__balancyWebSocketBridgeFunctions) : 'none');
+          }
+        },
+        typescript_websocket_disconnect_request: function(connectionId) {
+          if (typeof globalThis !== 'undefined' && globalThis.__balancyWebSocketBridgeFunctions && globalThis.__balancyWebSocketBridgeFunctions.disconnect) {
+            globalThis.__balancyWebSocketBridgeFunctions.disconnect(connectionId);
+          } else {
+            console.error('[Balancy Module] Bridge disconnect function not found');
+          }
+        },
+        typescript_websocket_subscribe_event: function(connectionId, eventNamePtr) {
+          if (typeof globalThis !== 'undefined' && globalThis.__balancyWebSocketBridgeFunctions && globalThis.__balancyWebSocketBridgeFunctions.subscribe) {
+            globalThis.__balancyWebSocketBridgeFunctions.subscribe(connectionId, eventNamePtr);
+          } else {
+            console.error('[Balancy Module] Bridge subscribe function not found');
+          }
+        },
+        typescript_websocket_send_message: function(connectionId, eventNamePtr, dataPtr) {
+          if (typeof globalThis !== 'undefined' && globalThis.__balancyWebSocketBridgeFunctions && globalThis.__balancyWebSocketBridgeFunctions.sendMessage) {
+            globalThis.__balancyWebSocketBridgeFunctions.sendMessage(connectionId, eventNamePtr, dataPtr);
+          } else {
+            console.error('[Balancy Module] Bridge sendMessage function not found');
+          }
+        },
+        typescript_websocket_send_ack: function(connectionId, ackId, responseDataPtr) {
+          if (typeof globalThis !== 'undefined' && globalThis.__balancyWebSocketBridgeFunctions && globalThis.__balancyWebSocketBridgeFunctions.sendAck) {
+            globalThis.__balancyWebSocketBridgeFunctions.sendAck(connectionId, ackId, responseDataPtr);
+          } else {
+            console.error('[Balancy Module] Bridge sendAck function not found');
+          }
+        },
         onRuntimeInitialized: function () {
           console.log("🚀 Balancy initialized");
           bridge.initialized = true;
           bridge.module = this;
+          
+          // Debug: Check what's on this module BEFORE any modifications
+          console.log('[Balancy] Module has typescript_websocket_connect_request?', typeof this.typescript_websocket_connect_request);
+          console.log('[Balancy] Available websocket functions:', Object.keys(this).filter(k => k.includes('websocket')));
+          
+          // IMPORTANT: The functions defined in the module config should already be on 'this'
+          // but let's verify and ensure they're callable
+          if (typeof this.typescript_websocket_connect_request === 'function') {
+            console.log('[Balancy] ✅ Bridge functions are on module');
+          } else {
+            console.error('[Balancy] ❌ Bridge functions NOT on module - trying to fix');
+            // If not, try to get them from the global bridge
+            if (typeof globalThis !== 'undefined' && globalThis.__balancyWebSocketBridgeFunctions) {
+              const funcs = globalThis.__balancyWebSocketBridgeFunctions;
+              this.typescript_websocket_connect_request = function(cid, url, auth) {
+                funcs.connect(cid, url, auth);
+              };
+              this.typescript_websocket_disconnect_request = function(cid) {
+                funcs.disconnect(cid);
+              };
+              this.typescript_websocket_subscribe_event = function(cid, event) {
+                funcs.subscribe(cid, event);
+              };
+              this.typescript_websocket_send_message = function(cid, event, data) {
+                funcs.sendMessage(cid, event, data);
+              };
+              this.typescript_websocket_send_ack = function(cid, ack, data) {
+                funcs.sendAck(cid, ack, data);
+              };
+              console.log('[Balancy] ✅ Manually attached bridge functions to module');
+            }
+          }
+          
+          // Initialize the WebSocket bridge with this module
+          if (typeof BalancyWebSocketBridge !== 'undefined' && BalancyWebSocketBridge.initializeBalancyBridge) {
+            BalancyWebSocketBridge.initializeBalancyBridge(this);
+            console.log("🔌 WebSocket bridge initialized with Balancy module");
+          } else {
+            console.warn("⚠️ BalancyWebSocketBridge not found");
+          }
+          
+          // Debug: Check global bridge functions
+          if (typeof globalThis !== 'undefined' && globalThis.__balancyWebSocketBridgeFunctions) {
+            console.log('[Balancy] Global bridge functions:', Object.keys(globalThis.__balancyWebSocketBridgeFunctions));
+          } else {
+            console.warn('[Balancy] Global bridge functions not found');
+          }
+          
+          // Final check
+          console.log('[Balancy] Final check - typescript_websocket_connect_request type:', typeof this.typescript_websocket_connect_request);
 
           if (bridge.onReadyCallback) {
             dynCall('v', bridge.onReadyCallback);
