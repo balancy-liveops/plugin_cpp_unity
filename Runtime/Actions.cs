@@ -17,6 +17,13 @@ namespace Balancy
         }
 
         [Serializable]
+        public class PurchaseRequestInfo
+        {
+            public PurchaseResult Result { get; set; }
+            public string Error { get; set; }
+        }
+
+        [Serializable]
         public class BalancyProductInfo
         {
             public enum PurchaseType
