@@ -45,9 +45,9 @@ namespace Balancy
             return null;
         }
 
-        public static void FinalizedHardPurchase(Actions.PurchaseRequestInfo result,
-                                                 Balancy.Actions.BalancyProductInfo productInfo, Core.PaymentInfo paymentInfo,
-                                                 Action<bool, bool> validationCallback, bool requireReceiptValidation = true)
+        public static void FinalizedHardPurchase(Actions.PurchaseResult result,
+            Balancy.Actions.BalancyProductInfo productInfo, Core.PaymentInfo paymentInfo,
+            Action<bool, bool> validationCallback, bool requireReceiptValidation = true)
         {
             Debug.Log("HardPurchase result: " + result);
             Debug.Log("HardPurchase Receipt: " + paymentInfo.Receipt);
@@ -65,7 +65,7 @@ namespace Balancy
             {
                 var callback = GetCallbackData(productInfo);
 
-                if (result.Result == Actions.PurchaseResult.Success)
+                if (result == Actions.PurchaseResult.Success)
                 {
                     void InvokeCallbacks(Balancy.Core.Responses.PurchaseProductResponseData responseData)
                     {
@@ -140,7 +140,7 @@ namespace Balancy
                 }
                 else
                 {
-                    callback?.Callback?.Invoke(false, result.Error);
+                    callback?.Callback?.Invoke(false, "");
                 }
             }
             else
