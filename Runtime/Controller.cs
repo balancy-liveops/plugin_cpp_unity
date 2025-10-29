@@ -40,6 +40,7 @@ namespace Balancy
         {
             Balancy.Network.UnityWebRequestBridge.Initialize();
             Balancy.Network.UnityWebSocketBridge.Initialize();//temporary turn it off
+            Balancy.UnzipBridge.Initialize(); // Initialize Unity ZIP bridge for all platforms
 
             LibraryMethods.General.balancySetInvokeInMainThreadCallback(InvokeInMainThread);
             yield return UnityFileManager.InitRuntime();
@@ -71,6 +72,7 @@ namespace Balancy
                 Profiles.CleanUp();
                 CMS.CleanUp();
                 Balancy.Network.UnityWebRequestBridge.Clear();
+                UnzipBridge.Cleanup();
                 LibraryMethods.General.balancySetInvokeInMainThreadCallback(null);
                 _isReadyToUse = false;
             }

@@ -160,7 +160,7 @@ namespace Balancy
             // Direct file access for iOS, macOS, Editor
             if (!File.Exists(manifestPath))
             {
-                Debug.LogError($"Manifest file not found: {manifestPath}");
+                Debug.LogWarning($"Manifest file not found: {manifestPath}");
                 yield break;
             }
             manifestContent = File.ReadAllText(manifestPath);

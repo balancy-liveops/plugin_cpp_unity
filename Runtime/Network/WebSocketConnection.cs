@@ -494,42 +494,25 @@ namespace Balancy.Network
                         // Handle system:ping specially - handle COMPLETELY inline like C++ SocketIOWebSocketHandler does
                         if (eventName == "system:ping")
                         {
-                            Debug.Log($"🏓 Received system:ping (ID: {_connectionId})");
-                            _lastPing = DateTime.UtcNow; // Update ping time
+                            _lastPing = DateTime.UtcNow;
                             
-                            // IMPORTANT: Send acknowledgment immediately, just like C++ SocketIOWebSocketHandler does (line 224-225)
                             if (hasAckId)
                             {
-                                // Socket.IO v4 ACK format: 43<ackId><data>
-                                // Example: 431079[] for ack ID 1079 with empty array data
-                                string ackMessage = $"43{ackId}[]";
-                                Debug.Log($"📤 Sending ping ack message: '{ackMessage}' (ID: {_connectionId})");
-                                await SendRawMessage(ackMessage);
-                                Debug.Log($"✅ Sent inline ping ack for ackId: {ackId} (ID: {_connectionId})");
+                                await SendRawMessage($"43{ackId}[]");
                             }
-                            
-                            // DO NOT notify C++ at all - handle completely inline like C++ SocketIOWebSocketHandler does
-                            // The C++ handler at line 217-237 handles system:ping entirely inline and never forwards to callback
                             return;
                         }
                         
                         // Handle profile:updated specially - send ACK inline then notify C++ WITHOUT ack requirement
                         if (eventName == "profile:updated")
                         {
-                            Debug.Log($"📝 Received profile:updated (ID: {_connectionId})");
-                            
-                            // IMPORTANT: Send acknowledgment IMMEDIATELY inline, BEFORE notifying C++
+                            // Send acknowledgment IMMEDIATELY inline, BEFORE notifying C++
                             if (hasAckId)
                             {
-                                // Socket.IO v4 ACK format: 43<ackId>[response]
-                                string ackMessage = $"43{ackId}[]";
-                                Debug.Log($"📤 Sending profile:updated ack message: '{ackMessage}' (ID: {_connectionId})");
-                                await SendRawMessage(ackMessage);
-                                Debug.Log($"✅ Sent inline profile:updated ack for ackId: {ackId} (ID: {_connectionId})");
+                                await SendRawMessage($"43{ackId}[]");
                             }
                             
                             // Now notify C++ WITHOUT ack requirement (needsAck=false, ackId=0)
-                            // This prevents C++ from trying to send another ACK
                             _bridge?.NotifySocketIOEvent(_connectionId, eventName, eventData, false, 0);
                             return;
                         }

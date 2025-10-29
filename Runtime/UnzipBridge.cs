@@ -1,0 +1,234 @@
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.IO;
+using System.IO.Compression;
+using System.Runtime.InteropServices;
+using UnityEngine;
+
+namespace Balancy
+{
+    /// <summary>
+    /// Bridge between C++ and Unity for unzipping operations.
+    /// Uses Unity's built-in System.IO.Compression instead of native minizip.
+    /// Works on all Unity platforms: iOS, Android, Windows, Mac, WebGL.
+    /// </summary>
+    public static class UnzipBridge
+    {
+        private delegate void OnUnzipRequestDelegate(string id, string zipFilePath);
+        
+        private static readonly Dictionary<string, Action<string>> _pendingRequests = new Dictionary<string, Action<string>>();
+        private static UnityMainThreadDispatcher _dispatcher;
+        
+        /// <summary>
+        /// Initialize the unzip bridge and register callback with C++
+        /// </summary>
+        public static void Initialize()
+        {
+            _dispatcher = UnityMainThreadDispatcher.Instance();
+            LibraryMethods.General.balancySetUnzipCallback(OnUnzipRequest);
+            Debug.Log("[Balancy] UnzipBridge initialized - using Unity's built-in ZIP library for all platforms");
+        }
+        
+        /// <summary>
+        /// Called by C++ when it needs to unzip a file
+        /// </summary>
+        [AOT.MonoPInvokeCallback(typeof(OnUnzipRequestDelegate))]
+        private static void OnUnzipRequest(string id, string zipFilePath)
+        {
+            Debug.Log($"[Balancy] Unzip request received: id={id}, zipFile={zipFilePath}");
+            
+            if (_dispatcher == null)
+            {
+                Debug.LogError("[Balancy] UnzipBridge not initialized! Call Initialize() first.");
+                NotifyUnzipCompleted(id, string.Empty);
+                return;
+            }
+            
+            _dispatcher.StartCoroutine(UnzipAsync(id, zipFilePath));
+        }
+        
+        /// <summary>
+        /// Unzip the file asynchronously using Unity's System.IO.Compression
+        /// </summary>
+        private static IEnumerator UnzipAsync(string id, string zipFilePath)
+        {
+            string extractedFolderPath = string.Empty;
+            bool success = false;
+            Exception errorException = null;
+            
+            // Validate file exists
+            if (!File.Exists(zipFilePath))
+            {
+                Debug.LogError($"[Balancy] ZIP file not found: {zipFilePath}");
+                NotifyUnzipCompleted(id, string.Empty);
+                yield break;
+            }
+            
+            // Get the folder name from the zip file (remove extension)
+            string zipFileName = Path.GetFileNameWithoutExtension(zipFilePath);
+            string destinationFolder = Path.GetDirectoryName(zipFilePath);
+            extractedFolderPath = Path.Combine(destinationFolder, zipFileName);
+            
+            Debug.Log($"[Balancy] Extracting to: {extractedFolderPath}");
+            
+            // Delete existing folder if it exists
+            if (Directory.Exists(extractedFolderPath))
+            {
+                Debug.Log($"[Balancy] Deleting existing folder: {extractedFolderPath}");
+                try
+                {
+                    Directory.Delete(extractedFolderPath, true);
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogError($"[Balancy] Failed to delete existing folder: {ex.Message}");
+                    NotifyUnzipCompleted(id, string.Empty);
+                    yield break;
+                }
+            }
+            
+            // Create destination directory
+            try
+            {
+                Directory.CreateDirectory(extractedFolderPath);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[Balancy] Failed to create destination folder: {ex.Message}");
+                NotifyUnzipCompleted(id, string.Empty);
+                yield break;
+            }
+            
+            // Extract the ZIP file - we need to do this without try-catch to allow yield
+            ZipArchive archive = null;
+            
+            // Open archive (no yield here, so try-catch is ok)
+            try
+            {
+                archive = ZipFile.OpenRead(zipFilePath);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[Balancy] Failed to open ZIP file: {ex.Message}");
+                NotifyUnzipCompleted(id, string.Empty);
+                yield break;
+            }
+            
+            // Extract entries (WITH yield, so NO try-catch allowed here)
+            int totalEntries = archive.Entries.Count;
+            int processedEntries = 0;
+            
+            foreach (var entry in archive.Entries)
+            {
+                // Skip directories (they're created automatically)
+                if (string.IsNullOrEmpty(entry.Name) && entry.FullName.EndsWith("/"))
+                {
+                    processedEntries++;
+                    continue;
+                }
+                
+                // Get the full path for the entry
+                string destinationPath = Path.Combine(extractedFolderPath, entry.FullName);
+                
+                // Create subdirectories if needed
+                string directoryPath = Path.GetDirectoryName(destinationPath);
+                if (!string.IsNullOrEmpty(directoryPath) && !Directory.Exists(directoryPath))
+                {
+                    try
+                    {
+                        Directory.CreateDirectory(directoryPath);
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.LogWarning($"[Balancy] Failed to create directory '{directoryPath}': {ex.Message}");
+                        continue;
+                    }
+                }
+                
+                // Extract the file
+                try
+                {
+                    entry.ExtractToFile(destinationPath, overwrite: true);
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogWarning($"[Balancy] Failed to extract entry '{entry.FullName}': {ex.Message}");
+                }
+                
+                processedEntries++;
+                
+                // Yield every 10 files to avoid blocking the main thread
+                if (processedEntries % 10 == 0)
+                {
+                    yield return null;
+                }
+            }
+            
+            // Cleanup
+            if (archive != null)
+            {
+                archive.Dispose();
+            }
+            
+            success = true;
+            
+            // Handle result after try-finally (no yield in try-catch)
+            if (success)
+            {
+                Debug.Log($"[Balancy] Successfully extracted {extractedFolderPath}");
+                
+                // Add trailing slash to match C++ expectations
+                if (!extractedFolderPath.EndsWith("/"))
+                {
+                    extractedFolderPath += "/";
+                }
+                
+                NotifyUnzipCompleted(id, extractedFolderPath);
+            }
+            else
+            {
+                Debug.LogError($"[Balancy] Failed to unzip {zipFilePath}: {errorException?.Message}\n{errorException?.StackTrace}");
+                
+                // Clean up failed extraction
+                if (!string.IsNullOrEmpty(extractedFolderPath) && Directory.Exists(extractedFolderPath))
+                {
+                    try
+                    {
+                        Directory.Delete(extractedFolderPath, true);
+                    }
+                    catch (Exception cleanupEx)
+                    {
+                        Debug.LogWarning($"[Balancy] Failed to clean up: {cleanupEx.Message}");
+                    }
+                }
+                
+                NotifyUnzipCompleted(id, string.Empty);
+            }
+        }
+        
+        /// <summary>
+        /// Notify C++ that unzipping is complete
+        /// </summary>
+        private static void NotifyUnzipCompleted(string id, string extractedFolderPath)
+        {
+            try
+            {
+                LibraryMethods.General.balancyUnzipCompleted(id, extractedFolderPath);
+                Debug.Log($"[Balancy] Notified C++ of unzip completion: id={id}, success={!string.IsNullOrEmpty(extractedFolderPath)}");
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[Balancy] Failed to notify unzip completion: {ex.Message}");
+            }
+        }
+        
+        /// <summary>
+        /// Clean up resources
+        /// </summary>
+        public static void Cleanup()
+        {
+            _pendingRequests.Clear();
+        }
+    }
+}

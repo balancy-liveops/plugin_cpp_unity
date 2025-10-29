@@ -162,6 +162,15 @@ namespace Balancy
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancySetViewNotificationsCallback(WebviewRequestCallback callback);
             
+            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+            public delegate void OnUnzipCallback(string id, string zipFilePath);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancySetUnzipCallback(OnUnzipCallback callback);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyUnzipCompleted(string id, string zipFolderPath);
+            
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern int balancyInventory_AddItems(IntPtr itemRef, int count);
