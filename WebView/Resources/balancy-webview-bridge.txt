@@ -918,6 +918,10 @@ const balancy = {};
                     if (response.type === 'notification') {
                         const data = response.data ? JSON.parse(response.data) : null;
                         balancy.notificationReceived(data);
+                    } else {
+                        if (response.type === 'custom-message') {
+                            balancy.dispatchCustomMessage(response.data);
+                        }
                     }
                 }
             } catch (error) {

@@ -149,10 +149,17 @@ namespace Balancy
             {
                 RenderViewsManager._onMessageReceived = callback;
             }
-
-            public static void SendMessageToView(string message)
+            
+            public static void SendResponseToView(string requestId, string message)
             {
-                RenderViewsManager.SendCustomMessageToView(message);
+                var response = "{\"type\":\"response\", \"id\":\"" + requestId + "\", \"result\":" + message + "}";
+                RenderViewsManager.SendMessageToView(response);
+            }
+      
+            public static void SendCustomMessageToView(string message)
+            {
+                var customMessage = "{\"type\":\"custom-message\", \"data\":" + message + "}";
+                RenderViewsManager.SendMessageToView(customMessage);
             }
         }
 

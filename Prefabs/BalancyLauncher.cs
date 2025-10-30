@@ -94,11 +94,11 @@ namespace Balancy
         
         private void PreparePayments()
         {
-            Balancy.Actions.Ads.SetAdWatchCallback((storeItem) =>
+            Balancy.Actions.Ads.SetAdWatchCallback((callback) =>
             {
-                Debug.Log($"Fake ad watched for: {storeItem?.Name}");
+                Debug.Log($"Fake ad was watched");
                 //TODO Implement your ad watch logic here
-                storeItem?.AdWasWatched();
+                callback(true);
             });
 
             Balancy.Actions.Purchasing.SetHardPurchaseCallback((productInfo) =>
@@ -112,7 +112,8 @@ namespace Balancy
                     Balancy.API.FinalizedHardPurchase(Actions.PurchaseResult.Success, productInfo, paymentInfo,
                         (validationSuccess, removeFromPending) =>
                         {
-                            Debug.Log("Purchase completed successfully. Validation success: " + validationSuccess + " Remove from pending: " + removeFromPending);
+                            Debug.Log("Purchase completed successfully. Validation success: " + validationSuccess +
+                                      " Remove from pending: " + removeFromPending);
                         }, false);
                 }
                 else
@@ -181,13 +182,5 @@ namespace Balancy
             Balancy.Callbacks.ClearAll();
             Main.Stop();
         }
-
-        // private void OnGUI()
-        // {
-        //     if (GUI.Button(new Rect(100, 100, 100, 100), "LOGS"))
-        //     {
-        //         Balancy.WebView.BalancyWebView.ShowWebInspector();
-        //     }
-        // }
     }
 }

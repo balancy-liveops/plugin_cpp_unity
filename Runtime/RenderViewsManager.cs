@@ -91,14 +91,12 @@ namespace Balancy
             _webView.SendMessageToWebView(notification);
         }
         
-        internal static void SendCustomMessageToView(string message)
+        internal static void SendMessageToView(string message)
         {
             if (_webView.IsWebViewOpen())
-            {
                 _webView.SendMessageToWebView(message);
-            }
         }
-
+        
         public static void OpenLocalView(string filePath, JsonBasedObject owner = null)
         {
             if (string.IsNullOrEmpty(filePath))
