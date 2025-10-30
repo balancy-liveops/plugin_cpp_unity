@@ -115,17 +115,19 @@ namespace Balancy
 
         public static class Ads
         {
-            public delegate void OnAdWatchCallback(StoreItem storeItem);
+            public delegate void OnAdWatchedCallback(bool success);
             
-            private static readonly OnAdWatchCallback DefaultOnAdWatchCallback = (storeItem) =>
+            public delegate void OnWantToWatchAdCallback(OnAdWatchedCallback callback);
+            
+            private static readonly OnWantToWatchAdCallback DefaultOnAdWatchCallback = (callback) =>
             {
                 UnityEngine.Debug.LogWarning(
                     "No Ad Watch implementation provided. Implement your logic using Balancy.Actions.Ads.SetAdWatchCallback");
             };
 
-            private static OnAdWatchCallback _adWatchCallback = DefaultOnAdWatchCallback;
+            private static OnWantToWatchAdCallback _adWatchCallback = DefaultOnAdWatchCallback;
 
-            public static void SetAdWatchCallback(OnAdWatchCallback callback)
+            public static void SetAdWatchCallback(OnWantToWatchAdCallback callback)
             {
                 _adWatchCallback = callback ?? DefaultOnAdWatchCallback;
             }
@@ -135,7 +137,7 @@ namespace Balancy
                 _adWatchCallback = DefaultOnAdWatchCallback;
             }
 
-            internal static OnAdWatchCallback GetAdWatchCallback()
+            internal static OnWantToWatchAdCallback GetAdWatchCallback()
             {
                 return _adWatchCallback;
             }

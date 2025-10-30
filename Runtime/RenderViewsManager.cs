@@ -229,6 +229,8 @@ namespace Balancy
             GetImageUrl = 11,
             GetInfo = 12,
             CanBuyGroupOffer = 13,
+            
+            WatchRewardedAd = 40,
 
             BuyOffer = 101,
             BuyGroupOffer = 102,
@@ -279,8 +281,8 @@ namespace Balancy
             public string cistom;
         }
         
-        [AOT.MonoPInvokeCallback(typeof(LibraryMethods.General.InvokeInMainThreadCallback))]
-        private static string DataRequested(string sender, int command, string paramsJson)
+        [AOT.MonoPInvokeCallback(typeof(LibraryMethods.General.DataRequestedCallback))]
+        private static void DataRequested(string sender, int command, string paramsJson, int requestId)
         {
             switch ((RequestAction)command)
             {
@@ -310,7 +312,8 @@ namespace Balancy
                     }
                     else
                         Debug.LogError("OfferInfo not found for instanceId: " + commandInfo.instanceId);
-                    return DEFAULT_ANSWER;
+                    LibraryMethods.General.balancyDataRequestedResponse(requestId, DEFAULT_ANSWER);
+                    return;
                 }
 
                 case RequestAction.BuyGroupOffer:
@@ -346,7 +349,8 @@ namespace Balancy
                                            ", Error: " + error);
                     });
                     
-                    return DEFAULT_ANSWER;
+                    LibraryMethods.General.balancyDataRequestedResponse(requestId, DEFAULT_ANSWER);
+                    return;
                 }
 
                 case RequestAction.BuyShopSlot:
@@ -372,7 +376,8 @@ namespace Balancy
                     else
                         Debug.LogError("ShopSlot not found for instanceId: " + commandInfo.slotId);
                     
-                    return DEFAULT_ANSWER;
+                    LibraryMethods.General.balancyDataRequestedResponse(requestId, DEFAULT_ANSWER);
+                    return;
                 }
 
                 case RequestAction.GetInfo:
@@ -397,26 +402,39 @@ namespace Balancy
                     
                             var storeItem = offerInfo?.GameOfferGroup?.StoreItems[commandInfo.index];
                             var info = Balancy.Actions.Purchasing.GetHardPurchaseInfoCallback()(storeItem?.Price?.Product?.ProductId);
-                            return JsonUtility.ToJson(info);
+                            LibraryMethods.General.balancyDataRequestedResponse(requestId, JsonUtility.ToJson(info));
+                            return;
                         }
                         case InfoType.CustomPrice:
                         {
                             var info = Balancy.Actions.Purchasing.GetHardPurchaseInfoCallback()(commandInfo.productId);
-                            return JsonUtility.ToJson(info);
+                            LibraryMethods.General.balancyDataRequestedResponse(requestId, JsonUtility.ToJson(info));
+                            return;
                         }
                     }
                     
-                    return DEFAULT_ANSWER;
+                    LibraryMethods.General.balancyDataRequestedResponse(requestId, DEFAULT_ANSWER);
+                    return;
+                }
+                case RequestAction.WatchRewardedAd:
+                {
+                    Balancy.Actions.Ads.GetAdWatchCallback()?.Invoke((success) =>
+                    {
+                        LibraryMethods.General.balancyDataRequestedResponse(requestId, "{\"success\":" + (success ? 1 : 0) + "}");
+                    });
+                    
+                    return;
                 }
 
                 case RequestAction.CloseWindow:
                 {
                     CloseView();
-                    return DEFAULT_ANSWER;
+                    LibraryMethods.General.balancyDataRequestedResponse(requestId, DEFAULT_ANSWER);
+                    return;
                 }
             }
 
-            return DEFAULT_ANSWER;
+            LibraryMethods.General.balancyDataRequestedResponse(requestId, DEFAULT_ANSWER);
         }
 
         public static void CloseView()

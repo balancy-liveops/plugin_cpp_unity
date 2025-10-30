@@ -10,6 +10,9 @@ const balancy = {};
     const pendingImageRequests = {};
     const pendingLocalizationRequests = {};
 
+    // Custom message subscribers
+    const customMessageSubscribers = [];
+
     const RequestAction = {
         None: 0,
         GetProfile: 1,
@@ -34,6 +37,8 @@ const balancy = {};
         GetInventoryItemsCount: 30,
         AddInventoryItems: 31,
         RemoveInventoryItems: 32,
+
+        WatchRewardedAd: 40,
 
         BuyOffer: 101,
         BuyGroupOffer: 102,
@@ -156,7 +161,8 @@ const balancy = {};
                 pendingRequests[requestId] = {
                     resolve: batchItem.resolve,
                     reject: batchItem.reject,
-                    timestamp: Date.now()
+                    timestamp: Date.now(),
+                    message: batchItem.requestData
                 };
             });
 
@@ -195,18 +201,19 @@ const balancy = {};
         return new Promise((resolve, reject) => {
             const requestId = (requestCounter++).toString();
 
-            pendingRequests[requestId] = {
-                resolve: resolve,
-                reject: reject,
-                timestamp: Date.now()
-            };
-
             const message = {
                 type: 'request',
                 sender,
                 id: requestId,
                 action: action,
                 params: params
+            };
+
+            pendingRequests[requestId] = {
+                resolve: resolve,
+                reject: reject,
+                timestamp: Date.now(),
+                message
             };
 
             balancy.postMessage(JSON.stringify(message));
@@ -232,6 +239,13 @@ const balancy = {};
 
     balancy.deactivateTasks = (tasks) => {
         return balancy.sendRequest(null, RequestAction.DeactivateTasksForTheEvent, {id: window.balancyViewOwner.unnyIdGameEvent, tasks});
+    }
+
+    balancy.watchRewardedAd = (callback) => {
+        return balancy.sendRequest(null, RequestAction.WatchRewardedAd, {}).then(response => {
+            console.info("AD WATCHED RESULT: ", response);
+            callback(!!response.success);
+        });
     }
 
     balancy.claimTaskReward = (id) => {
@@ -327,7 +341,7 @@ const balancy = {};
     balancy.closeView = (source) => {
         return balancy.sendRequest(null, RequestAction.CloseWindow, {id: source});
     };
-    
+
     balancy.sendCustomMessage = (sender, message) => {
         return balancy.sendRequest(sender, RequestAction.CustomMessage, message);
     };
@@ -516,7 +530,8 @@ const balancy = {};
             RequestAction.CloseWindow,
             RequestAction.CustomMessage,
             RequestAction.BalancyIsReady,
-            RequestAction.StopEventManually
+            RequestAction.StopEventManually,
+            RequestAction.WatchRewardedAd
         ];
 
         if (nonBatchableActions.includes(action)) {
@@ -837,6 +852,36 @@ const balancy = {};
         window.dispatchEvent(new CustomEvent('balancy-notification', { detail: data }));
     }
 
+    balancy.subscribeToCustomMessages = function(callback) {
+        if (typeof callback !== 'function') {
+            console.error('subscribeToCustomMessages: callback must be a function');
+            return null;
+        }
+
+        customMessageSubscribers.push(callback);
+
+        return function unsubscribe() {
+            const index = customMessageSubscribers.indexOf(callback);
+            if (index > -1) {
+                customMessageSubscribers.splice(index, 1);
+            }
+        };
+    }
+
+    balancy.dispatchCustomMessage = function(data) {
+        console.log(">>>customMessageReceived ", data);
+
+        customMessageSubscribers.forEach(callback => {
+            try {
+                callback(data);
+            } catch (error) {
+                console.error('Error in custom message subscriber:', error);
+            }
+        });
+
+        window.dispatchEvent(new CustomEvent('balancy-custom-message', { detail: data }));
+    }
+
     balancy.initResponseHandler = function() {
         if (balancy._responseHandlerInitialized) return;
 
@@ -849,11 +894,11 @@ const balancy = {};
                 if (response.type === 'response') {
                     const request = pendingRequests[response.id];
                     if (request) {
-                        delete pendingRequests[response.id];
                         if (response.error)
-                            request.reject(new Error(response.error));
+                            request.reject(new Error(response.error + " : " + JSON.stringify(request.message)));
                         else
                             request.resolve(response.result);
+                        delete pendingRequests[response.id];
                     }
                 } else if (response.type === 'batch-response') {
                     // Handle batch response - array of individual responses
@@ -861,11 +906,11 @@ const balancy = {};
                         response.responses.forEach(individualResponse => {
                             const request = pendingRequests[individualResponse.id];
                             if (request) {
-                                delete pendingRequests[individualResponse.id];
                                 if (individualResponse.error)
-                                    request.reject(new Error(individualResponse.error));
+                                    request.reject(new Error(individualResponse.error  + " : " + JSON.stringify(request.message)));
                                 else
                                     request.resolve(individualResponse.result);
+                                delete pendingRequests[individualResponse.id];
                             }
                         });
                     }

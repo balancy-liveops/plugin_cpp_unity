@@ -155,7 +155,11 @@ namespace Balancy
                 return true;
 
             if (storeItem.Price.Type == PriceType.Ads)
-                Balancy.Actions.Ads.GetAdWatchCallback()?.Invoke(storeItem);
+                Balancy.Actions.Ads.GetAdWatchCallback()?.Invoke((success) =>
+                {
+                    if (success)
+                        storeItem.AdWasWatched();
+                });
 
             return false;
         }
