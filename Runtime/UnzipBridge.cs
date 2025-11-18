@@ -21,13 +21,42 @@ namespace Balancy
         private static UnityMainThreadDispatcher _dispatcher;
         
         /// <summary>
-        /// Initialize the unzip bridge and register callback with C++
+        /// Initialize the unzip bridge and register callbacks with C++
         /// </summary>
         public static void Initialize()
         {
             _dispatcher = UnityMainThreadDispatcher.Instance();
             LibraryMethods.General.balancySetUnzipCallback(OnUnzipRequest);
+            LibraryMethods.General.balancySetExtractZipFromMemoryCallback(OnExtractZipFromMemory);
             Debug.Log("[Balancy] UnzipBridge initialized - using Unity's built-in ZIP library for all platforms");
+        }
+        
+        /// <summary>
+        /// Called by C++ when it needs to extract ZIP from memory
+        /// </summary>
+        [AOT.MonoPInvokeCallback(typeof(LibraryMethods.General.ExtractZipFromMemoryCallback))]
+        private static string OnExtractZipFromMemory(IntPtr zipDataPtr, int dataSize, bool includeHeaders)
+        {
+            if (zipDataPtr == IntPtr.Zero || dataSize <= 0)
+            {
+                Debug.LogError("[Balancy] OnExtractZipFromMemory: Invalid ZIP data");
+                return string.Empty;
+            }
+            
+            try
+            {
+                // Marshal the unmanaged byte array to managed byte array
+                byte[] zipData = new byte[dataSize];
+                Marshal.Copy(zipDataPtr, zipData, 0, dataSize);
+                
+                // Extract and return the result
+                return ExtractZipFromMemory(zipData, includeHeaders);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[Balancy] OnExtractZipFromMemory failed: {ex.Message}\n{ex.StackTrace}");
+                return string.Empty;
+            }
         }
         
         /// <summary>
@@ -220,6 +249,68 @@ namespace Balancy
             catch (Exception ex)
             {
                 Debug.LogError($"[Balancy] Failed to notify unzip completion: {ex.Message}");
+            }
+        }
+        
+        /// <summary>
+        /// Extract ZIP archive from memory and return concatenated content of all files
+        /// This is used for compressed dictionary files that need to be merged into a single string
+        /// </summary>
+        public static string ExtractZipFromMemory(byte[] zipData, bool includeHeaders)
+        {
+            if (zipData == null || zipData.Length == 0)
+            {
+                Debug.LogError("[Balancy] ExtractZipFromMemory: ZIP data is empty");
+                return string.Empty;
+            }
+
+            try
+            {
+                using (var memoryStream = new MemoryStream(zipData))
+                using (var archive = new ZipArchive(memoryStream, ZipArchiveMode.Read))
+                {
+                    var resultBuilder = new System.Text.StringBuilder();
+                    int fileCount = 0;
+
+                    foreach (var entry in archive.Entries)
+                    {
+                        // Skip directories
+                        if (string.IsNullOrEmpty(entry.Name) && entry.FullName.EndsWith("/"))
+                        {
+                            continue;
+                        }
+
+                        // Add separator between files (only if multiple files and not first file)
+                        if (fileCount > 0 && includeHeaders)
+                        {
+                            resultBuilder.Append("\n\n");
+                        }
+
+                        // Add file header only if requested and multiple files
+                        if (includeHeaders && archive.Entries.Count > 1)
+                        {
+                            resultBuilder.Append($"// File: {entry.FullName}\n");
+                        }
+
+                        // Extract and append file content
+                        using (var entryStream = entry.Open())
+                        using (var reader = new StreamReader(entryStream))
+                        {
+                            string content = reader.ReadToEnd();
+                            resultBuilder.Append(content);
+                        }
+
+                        fileCount++;
+                    }
+
+                    Debug.Log($"[Balancy] Successfully extracted {fileCount} files from memory ZIP ({zipData.Length} bytes)");
+                    return resultBuilder.ToString();
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[Balancy] Failed to extract ZIP from memory: {ex.Message}\n{ex.StackTrace}");
+                return string.Empty;
             }
         }
         
