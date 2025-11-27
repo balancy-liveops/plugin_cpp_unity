@@ -207,6 +207,11 @@ namespace Balancy
                 var callbackResult = ProtectedFromGCCallback(callback);
                 Balancy.LibraryMethods.API.balancyAuth_NameAndPassword(name, password, callbackResult.CallbackId, callbackResult.StaticCallback);
             }
+            
+            public static void WithNutaku(string userId, string token, Balancy.Core.ResponseCallback<Balancy.Core.Responses.AuthResponseData> callback) {
+                var callbackResult = ProtectedFromGCCallback(callback);
+                Balancy.LibraryMethods.API.balancyAuth_Nutaku(userId, token, callbackResult.CallbackId, callbackResult.StaticCallback);
+            }
         }
         
         public static class Link
