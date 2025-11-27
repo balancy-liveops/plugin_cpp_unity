@@ -243,7 +243,6 @@ const balancy = {};
 
     balancy.watchRewardedAd = (callback) => {
         return balancy.sendRequest(null, RequestAction.WatchRewardedAd, {}).then(response => {
-            console.info("AD WATCHED RESULT: ", response);
             callback(!!response.success);
         });
     }
@@ -851,7 +850,7 @@ const balancy = {};
         }
         window.dispatchEvent(new CustomEvent('balancy-notification', { detail: data }));
     }
-
+    
     balancy.subscribeToCustomMessages = function(callback) {
         if (typeof callback !== 'function') {
             console.error('subscribeToCustomMessages: callback must be a function');
@@ -869,8 +868,6 @@ const balancy = {};
     }
 
     balancy.dispatchCustomMessage = function(data) {
-        console.log(">>>customMessageReceived ", data);
-
         customMessageSubscribers.forEach(callback => {
             try {
                 callback(data);

@@ -10,6 +10,7 @@ namespace Balancy.Dictionaries
     public class DataObjectsManager
     {
         private static string CACHE_PATH;
+        private static string RESOURCES_PATH;
 
         enum Status
         {
@@ -31,15 +32,41 @@ namespace Balancy.Dictionaries
             [MarshalAs(UnmanagedType.LPStr)] public string LocationPath;
         }
 
-        static DataObjectsManager()
+        internal static void Init(string cachePath, string resourcesPath)
         {
-            CACHE_PATH = Application.persistentDataPath + "/Balancy/Models/";
+            CACHE_PATH = Path.Combine(cachePath, "Balancy/Models/");
+            RESOURCES_PATH = resourcesPath;
             _mainThreadInstance = UnityMainThreadDispatcher.Instance();
         }
 
         private static UnityMainThreadDispatcher _mainThreadInstance; 
 
-        private class OneObjectSprite
+        private abstract class OneObjectBase
+        {
+            protected SharedObjectInfo _objectInfo = null;
+            public Status Status = Status.None;
+            
+            protected string PathInStorage => CACHE_PATH + _objectInfo?.LocationPath;
+            protected string PathInResources => RESOURCES_PATH + _objectInfo?.LocationPath;
+
+            public void ProcessLoadedObject(SharedObjectInfo objectInfo)
+            {
+                _objectInfo = objectInfo;
+                if (objectInfo != null)
+                {
+                    OnObjectLoaded();
+                }
+                else
+                {
+                    OnObjectLoadFailed();
+                }
+            }
+
+            protected abstract void OnObjectLoaded();
+            protected abstract void OnObjectLoadFailed();
+        }
+
+        private class OneObjectSprite : OneObjectBase
         {
             private class CallbackInfo
             {
@@ -47,50 +74,47 @@ namespace Balancy.Dictionaries
                 public AsyncLoadHandler LoadHandler;
             }
 
-            private SharedObjectInfo _spriteInfo = null;
-            
-            public Status Status = Status.None;
             private readonly List<CallbackInfo> _callbacks = new List<CallbackInfo>();
             public Sprite Sprite;
-            
-            private string PathInStorage => CACHE_PATH + _spriteInfo?.LocationPath;
 
-            public void PrepareSprite(SharedObjectInfo spriteInfo)
+            protected override void OnObjectLoaded()
             {
-                _spriteInfo = spriteInfo;
-                if (spriteInfo != null)
-                {
-                    Texture2D texture = TryToLoadTextureFromResources();
+                Texture2D texture = TryToLoadTextureFromResources();
 
-                    if (texture == null)
+                if (texture == null)
+                {
+                    var path = PathInStorage;
+                    if (!File.Exists(path))
                     {
-                        var path = PathInStorage;
-                        if (File.Exists(path))
+                        path = PathInResources;
+                        if (!File.Exists(path))
                         {
-                            byte[] bytes = File.ReadAllBytes(path);
-                            texture = new Texture2D(1, 1, TextureFormat.RGBA32, false);
-                            texture.LoadImage(bytes);
-                        }
-                        else
-                        {
-                            Debug.LogError("NO FILE PATH " + path);
+                            if (File.Exists(PathInResources))
+                                Debug.LogError("NO FILE PATH " + path);
                             SetSprite(null);
                             return;
                         }
                     }
+                    byte[] bytes = File.ReadAllBytes(path);
+                    texture = new Texture2D(1, 1, TextureFormat.RGBA32, false);
+                    texture.LoadImage(bytes);
+                }
 
-                    Sprite sprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), 
-                        new Vector2(0.5f, 0.5f), spriteInfo.PixelsPerUnit, 0, 
-                        SpriteMeshType.FullRect, 
-                        new Vector4(spriteInfo.OffsetLeft, spriteInfo.OffsetBottom, spriteInfo.OffsetRight, spriteInfo.OffsetTop));
-                    SetSprite(sprite);
-                } else 
-                    SetSprite(null);
+                Sprite sprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), 
+                    new Vector2(0.5f, 0.5f), _objectInfo.PixelsPerUnit, 0, 
+                    SpriteMeshType.FullRect, 
+                    new Vector4(_objectInfo.OffsetLeft, _objectInfo.OffsetBottom, _objectInfo.OffsetRight, _objectInfo.OffsetTop));
+                SetSprite(sprite);
+            }
+
+            protected override void OnObjectLoadFailed()
+            {
+                SetSprite(null);
             }
 
             private Texture2D TryToLoadTextureFromResources()
             {
-                var resourcesPath = _spriteInfo.LocationPath.Replace('/', '-');
+                var resourcesPath = _objectInfo.LocationPath.Replace('/', '-');
                 string fileNameWithoutExtension = Path.GetFileNameWithoutExtension(resourcesPath);
                 return Resources.Load<Texture2D>(fileNameWithoutExtension);
             }
@@ -113,6 +137,63 @@ namespace Balancy.Dictionaries
             }
 
             public void AddCallback(AsyncLoadHandler handler, Action<UnityEngine.Sprite> callback)
+            {
+                var info = new CallbackInfo
+                {
+                    LoadHandler = handler,
+                    Callback = callback
+                };
+                _callbacks.Add(info);
+            }
+        }
+
+        private class OneObjectPath : OneObjectBase
+        {
+            private class CallbackInfo
+            {
+                public Action<string> Callback;
+                public AsyncLoadHandler LoadHandler;
+            }
+
+            private readonly List<CallbackInfo> _callbacks = new List<CallbackInfo>();
+            public string FilePath;
+
+            protected override void OnObjectLoaded()
+            {
+                if (File.Exists(PathInStorage))
+                    SetPath(PathInStorage);
+                else
+                {
+                    if (File.Exists(PathInResources))
+                        SetPath(PathInResources);
+                    else
+                        SetPath(null);
+                }
+            }
+
+            protected override void OnObjectLoadFailed()
+            {
+                SetPath(null);
+            }
+
+            private void SetPath(string path)
+            {
+                FilePath = path;
+                Status = !string.IsNullOrEmpty(FilePath) ? Status.Loaded : Status.None;
+
+                foreach (var info in _callbacks)
+                {
+                    if (info.LoadHandler.GetStatus() == AsyncLoadHandler.Status.Loading)
+                    {
+                        info.LoadHandler.Finish();
+                        info.Callback?.Invoke(FilePath);
+                    }
+                }
+                
+                _callbacks.Clear();
+            }
+
+            public void AddCallback(AsyncLoadHandler handler, Action<string> callback)
             {
                 var info = new CallbackInfo
                 {
@@ -165,7 +246,7 @@ namespace Balancy.Dictionaries
             }
         }
 
-        private static readonly Dictionary<string, OneObjectSprite> AllSprites = new Dictionary<string, OneObjectSprite>();
+        private static readonly Dictionary<string, OneObjectBase> AllObjects = new Dictionary<string, OneObjectBase>();
         private static readonly Dictionary<string, OneObjectView> AllViews = new Dictionary<string, OneObjectView>();
         
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.Models.DataObjectWasCachedCallback))]
@@ -175,20 +256,18 @@ namespace Balancy.Dictionaries
             {
                 if (ptr == IntPtr.Zero)
                 {
-                    Debug.LogError("Failed to load DataObject " + id);
-                    if (AllSprites.TryGetValue(id, out var oneObjectSprite))
+                    if (AllObjects.TryGetValue(id, out var oneObject))
                     {
-                        _mainThreadInstance.Enqueue(() => { oneObjectSprite.PrepareSprite(null); });
+                        _mainThreadInstance.Enqueue(() => { oneObject.ProcessLoadedObject(null); });
                     } else
                         Debug.Log("No request object found " + id);
                 }
                 else
                 {
-                    if (AllSprites.TryGetValue(id, out var oneObjectSprite))
+                    if (AllObjects.TryGetValue(id, out var oneObject))
                     {
                         var sharedObject = Marshal.PtrToStructure<SharedObjectInfo>(ptr);
-
-                        _mainThreadInstance.Enqueue(() => { oneObjectSprite.PrepareSprite(sharedObject); });
+                        _mainThreadInstance.Enqueue(() => { oneObject.ProcessLoadedObject(sharedObject); });
                     }
                     else
                         Debug.Log("No request object found " + id);
@@ -200,31 +279,84 @@ namespace Balancy.Dictionaries
             }
         }
         
-        public static AsyncLoadHandler GetObject(string id, Action<UnityEngine.Sprite> callback)
+        public static AsyncLoadHandler GetSprite(string id, Action<UnityEngine.Sprite> callback)
         {
             var handler = AsyncLoadHandler.CreateHandler();
-            if (!AllSprites.TryGetValue(id, out var oneObjectSprite))
+            if (!AllObjects.TryGetValue(id, out var oneObject))
             {
-                oneObjectSprite = new OneObjectSprite();
+                var oneObjectSprite = new OneObjectSprite();
                 oneObjectSprite.AddCallback(handler, callback);
-                AllSprites.Add(id, oneObjectSprite);
+                AllObjects.Add(id, oneObjectSprite);
+                oneObject = oneObjectSprite;
             }
             else
             {
-                if (oneObjectSprite.Status == Status.Loaded)
+                if (oneObject is OneObjectSprite sprite)
                 {
-                    handler.Finish();
-                    callback?.Invoke(oneObjectSprite.Sprite);
+                    if (sprite.Status == Status.Loaded)
+                    {
+                        handler.Finish();
+                        callback?.Invoke(sprite.Sprite);
+                    }
+                    else
+                    {
+                        sprite.AddCallback(handler, callback);
+                    }
                 }
                 else
                 {
-                    oneObjectSprite.AddCallback(handler, callback);
+                    Debug.LogError($"Object {id} is not a sprite type");
+                    handler.Finish();
+                    callback?.Invoke(null);
+                    return handler;
                 }
             }
 
-            if (oneObjectSprite.Status == Status.None && !handler.IsFinished())
+            if (oneObject.Status == Status.None && !handler.IsFinished())
             {
-                oneObjectSprite.Status = Status.Loading;
+                oneObject.Status = Status.Loading;
+                LibraryMethods.Models.balancyDataObjectLoad(id, DataObjectLoaded);
+            }
+
+            return handler;
+        }
+
+        public static AsyncLoadHandler GetObject(string id, Action<string> callback)
+        {
+            var handler = AsyncLoadHandler.CreateHandler();
+            if (!AllObjects.TryGetValue(id, out var oneObject))
+            {
+                var oneObjectPath = new OneObjectPath();
+                oneObjectPath.AddCallback(handler, callback);
+                AllObjects.Add(id, oneObjectPath);
+                oneObject = oneObjectPath;
+            }
+            else
+            {
+                if (oneObject is OneObjectPath pathObject)
+                {
+                    if (pathObject.Status == Status.Loaded)
+                    {
+                        handler.Finish();
+                        callback?.Invoke(pathObject.FilePath);
+                    }
+                    else
+                    {
+                        pathObject.AddCallback(handler, callback);
+                    }
+                }
+                else
+                {
+                    Debug.LogError($"Object {id} is not a path type");
+                    handler.Finish();
+                    callback?.Invoke(null);
+                    return handler;
+                }
+            }
+
+            if (oneObject.Status == Status.None && !handler.IsFinished())
+            {
+                oneObject.Status = Status.Loading;
                 LibraryMethods.Models.balancyDataObjectLoad(id, DataObjectLoaded);
             }
 
@@ -273,14 +405,14 @@ namespace Balancy.Dictionaries
         
         internal static void ClearFromMemory(string id)
         {
-            if (AllSprites.TryGetValue(id, out var oneObjectSprite))
+            if (AllObjects.TryGetValue(id, out var oneObject))
             {
-                if (oneObjectSprite.Sprite != null)
+                if (oneObject is OneObjectSprite sprite && sprite.Sprite != null)
                 {
-                    Object.Destroy(oneObjectSprite.Sprite.texture);
-                    Object.Destroy(oneObjectSprite.Sprite);
+                    Object.Destroy(sprite.Sprite.texture);
+                    Object.Destroy(sprite.Sprite);
                 }
-                AllSprites.Remove(id);
+                AllObjects.Remove(id);
             }
         }
         
