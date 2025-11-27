@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using Balancy.Core;
 using Balancy.Data.SmartObjects;
 using Balancy.Models;
 using Balancy.Models.SmartObjects;
@@ -25,6 +26,121 @@ namespace Balancy
         private abstract class CallbackWrapperBase
         {
             public abstract void InvokeCallback(IntPtr responseDataPtr);
+        }
+        
+        // private static string PtrToString(IntPtr ptr)
+        // {
+        //     return ptr == IntPtr.Zero ? null : Marshal.PtrToStringAnsi(ptr);
+        // }
+
+        // private static List<string> PtrToStringList(Responses.InteropStringArray arr)
+        // {
+        //     var result = new List<string>((int)arr.count);
+        //     if (arr.items == IntPtr.Zero || arr.count == 0)
+        //         return result;
+        //
+        //     var size = IntPtr.Size;
+        //     for (int i = 0; i < arr.count; i++)
+        //     {
+        //         var itemPtr = Marshal.ReadIntPtr(arr.items, i * size);
+        //         result.Add(PtrToString(itemPtr));
+        //     }
+        //
+        //     return result;
+        // }
+        
+        // private class TypedCallbackCompletePurchaseResponseDataWrapper : CallbackWrapperBase
+        // {
+        //     private readonly Balancy.Core.ResponseCallback<Responses.CompletePurchaseResponseData> _callback;
+        //     
+        //     public TypedCallbackCompletePurchaseResponseDataWrapper(Balancy.Core.ResponseCallback<Responses.CompletePurchaseResponseData> callback)
+        //     {
+        //         _callback = callback;
+        //     }
+        //     
+        //     public override void InvokeCallback(IntPtr responseDataPtr)
+        //     {
+        //         try
+        //         {
+        //             var response = Marshal.PtrToStructure<Responses.InteropCompletePurchaseResponseData>(responseDataPtr);
+        //             
+        //             var managed = new Responses.CompletePurchaseData
+        //             {
+        //                 Guid = response.data.guid,
+        //                 OrderId = response.data.orderId,
+        //                 Time = (long)response.data.time,
+        //                 Items = PtrToStringList(response.data.items)
+        //             };
+        //
+        //             var res = new Responses.CompletePurchaseResponseData
+        //             {
+        //                 Data = managed,
+        //                 Success = response.success == 1,
+        //                 ErrorCode = response.ErrorCode,
+        //                 ErrorMessage = response.ErrorMessage,
+        //             };
+        //             
+        //             _callback?.Invoke(res);
+        //         }
+        //         catch (Exception e)
+        //         {
+        //             UnityEngine.Debug.LogError("Exception in TypedCallbackCompletePurchaseResponseDataWrapper: " + e);
+        //         }
+        //     }
+        // }
+        
+        private class TypedCallbackProductsResponseDataWrapper : CallbackWrapperBase
+        {
+            private readonly Balancy.Core.ResponseCallback<Responses.ProductsResponseData> _callback;
+            
+            public TypedCallbackProductsResponseDataWrapper(Balancy.Core.ResponseCallback<Responses.ProductsResponseData> callback)
+            {
+                _callback = callback;
+            }
+            
+            public override void InvokeCallback(IntPtr responseDataPtr)
+            {
+                try
+                {
+                    var response = Marshal.PtrToStructure<Responses.InteropProductsResponseData>(responseDataPtr);
+                    var count = response.size;
+                    IntPtr basePtr = response.data;
+                    
+                    var products = new List<Responses.Product>(count);
+                    int elemSize = Marshal.SizeOf<Responses.InteropProductData>();
+                    for (int i = 0; i < count; i++)
+                    {
+                        IntPtr itemPtr = IntPtr.Add(basePtr, i * elemSize);
+                        var interop = Marshal.PtrToStructure<Responses.InteropProductData>(itemPtr);
+
+                        var product = new Responses.Product
+                        {
+                            base_id = Marshal.PtrToStringAnsi(interop.base_id),
+                            type = (byte)interop.type,
+                            item_id = Marshal.PtrToStringAnsi(interop.item_id),
+                            name = Marshal.PtrToStringAnsi(interop.name),
+                            description = Marshal.PtrToStringAnsi(interop.description),
+                            price = interop.price
+                        };
+
+                        products.Add(product);
+                    }
+
+                    var res = new Responses.ProductsResponseData
+                    {
+                        Products = products,
+                        Success = response.Success,
+                        ErrorCode = response.ErrorCode,
+                        ErrorMessage = response.ErrorMessage,
+                    };
+                    
+                    _callback?.Invoke(res);
+                }
+                catch (Exception e)
+                {
+                    UnityEngine.Debug.LogError("Exception in TypedCallbackProductsResponseDataWrapper: " + e);
+                }
+            }
         }
         
         private class TypedCallbackWrapper<T> : CallbackWrapperBase where T : Balancy.Core.Responses.ResponseData
@@ -82,8 +198,8 @@ namespace Balancy
                 UnityEngine.Debug.LogError($"Callback with ID {callbackId} not found");
             }
         }
-        
-        private static CallbackResult ProtectedFromGCCallback<T>(Balancy.Core.ResponseCallback<T> callback) 
+
+        private static CallbackResult ProtectedFromGCCallback<T>(Balancy.Core.ResponseCallback<T> callback, Func<Balancy.Core.ResponseCallback<T>, CallbackWrapperBase> customWrapperCreator = null)
             where T : Balancy.Core.Responses.ResponseData
         {
             int callbackId;
@@ -91,20 +207,21 @@ namespace Balancy
             {
                 callbackId = ++_callbackIdCounter;
             }
-            
-            var wrapper = new TypedCallbackWrapper<T>(callback);
-            
+
+            var wrapper = customWrapperCreator != null ? customWrapperCreator(callback) : new TypedCallbackWrapper<T>(callback);
+
             lock (_callbackLock)
             {
                 _callbackStorage[callbackId] = wrapper;
             }
-            
+
             return new CallbackResult
             {
                 CallbackId = callbackId,
                 StaticCallback = StaticResponseHandler
             };
         }
+
         private static BalancyStatus _status;
         
         public enum AdType
@@ -168,6 +285,13 @@ namespace Balancy
             var callbackResult = ProtectedFromGCCallback(callback);
             Balancy.LibraryMethods.API.balancyHardPurchaseGameOffer(offerInfo?.GetRawPointer() ?? IntPtr.Zero, paymentInfo,
                 callbackResult.CallbackId, callbackResult.StaticCallback, requireValidation);
+        }
+        
+        public static void GetProducts(Balancy.Core.ResponseCallback<Balancy.Core.Responses.ProductsResponseData> callback)
+        {
+            var callbackResult = ProtectedFromGCCallback(callback, responseCallback => new TypedCallbackProductsResponseDataWrapper(responseCallback));
+
+            LibraryMethods.API.balancyGetProducts(callbackResult.CallbackId, callbackResult.StaticCallback);
         }
 
         public static void HardPurchaseGameOfferGroup(OfferGroupInfo offerGroupInfo, StoreItem storeItem, Balancy.Core.PaymentInfo paymentInfo,
