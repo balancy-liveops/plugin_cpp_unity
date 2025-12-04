@@ -30,6 +30,12 @@ namespace Balancy
                 Message = message;
             }
         }
+        
+        public enum DisconnectReason
+        {
+            Unknown = 0,
+            AnotherSessionConflict = 1,
+        }
 
         public delegate void OnDataUpdatedDelegate(DataUpdatedStatus status);
         public delegate void OnErrorDelegate(ErrorStatus status);
@@ -57,6 +63,8 @@ namespace Balancy
         public delegate void OnProfileResetDelegate();
         
         public delegate void OnPaymentIsReadyDelegate();
+
+        public delegate void OnDisconnectedDelegate(DisconnectReason reason);
         
         public static OnDataUpdatedDelegate OnDataUpdated = null;
         public static OnErrorDelegate OnAuthFailed = null;
@@ -90,6 +98,8 @@ namespace Balancy
         public static OnProfileResetDelegate OnProfileResetFinish = null;
         
         public static OnProfileResetDelegate OnGameRefreshed = null;
+        
+        public static OnDisconnectedDelegate OnDisconnected = null;
         
         public struct NetworkDownloadInfo
         {
@@ -174,6 +184,8 @@ namespace Balancy
             OnProfileResetFinish += () => Debug.Log(" => Balancy.OnProfileResetFinish");
             
             OnGameRefreshed += () => Debug.Log(" => Balancy.OnGameRefreshed");
+            
+            OnDisconnected += reason => Debug.Log(" => Balancy.OnDisconnected: " + reason);
         }
         
         internal static void ClearAll()
@@ -212,6 +224,7 @@ namespace Balancy
             OnProfileResetStart = null;
             OnProfileResetFinish = null;
             OnGameRefreshed = null;
+            OnDisconnected = null;
         }
     }
 }

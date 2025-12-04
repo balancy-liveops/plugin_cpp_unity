@@ -174,6 +174,13 @@ namespace Balancy
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyUnzipCompleted(string id, string zipFolderPath);
             
+            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+            [return: MarshalAs(UnmanagedType.LPStr)]
+            public delegate string ExtractZipFromMemoryCallback(IntPtr zipData, int dataSize, bool includeHeaders);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancySetExtractZipFromMemoryCallback(ExtractZipFromMemoryCallback callback);
+            
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern int balancyInventory_AddItems(IntPtr itemRef, int count);
@@ -529,6 +536,8 @@ namespace Balancy
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern int balancyBattlePass_getRewardStatus(IntPtr bpLinePointer, int index);
             
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyAuth_AsGuest(int callbackId, ResponseCallback callback);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyAuth_NameAndPassword(string name, string password, int callbackId, ResponseCallback callback);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
