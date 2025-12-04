@@ -45,25 +45,6 @@ namespace Balancy
             return null;
         }
 
-        public static void NutakuCompletePurchase(int userId, string orderId, Balancy.Core.ResponseCallback<Balancy.Core.Responses.CompletePurchaseResponseData> callback)
-        {
-            Balancy.Core.ResponseCallback<Balancy.Core.Responses.InteropCompletePurchaseResponseData> resCallback = data =>
-            {
-                var resData = new Balancy.Core.Responses.CompletePurchaseResponseData
-                {
-                    Success = data.Success,
-                    ErrorCode = data.ErrorCode,
-                    ErrorMessage = data.ErrorMessage,
-                    Data = JsonUtility.FromJson<Balancy.Core.Responses.CompletePurchaseData>(data.data)
-                };
-                callback?.Invoke(resData);
-            };
-                
-            var callbackResult = ProtectedFromGCCallback(resCallback);
-
-            LibraryMethods.API.balancyNutakuComplete(userId, orderId, callbackResult.CallbackId, callbackResult.StaticCallback);
-        }
-
         public static void FinalizedHardPurchase(Actions.PurchaseResult result,
             Balancy.Actions.BalancyProductInfo productInfo, Core.PaymentInfo paymentInfo,
             Action<bool, bool> validationCallback, bool requireReceiptValidation = true)
