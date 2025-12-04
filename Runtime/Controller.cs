@@ -438,11 +438,6 @@ namespace Balancy
                         Balancy.Callbacks.OnOfferWasPurchased?.Invoke(offerInfo);
                         break;
                     }
-                    case Notifications.NotificationType.DisconnectAnotherSessionConflict:
-                    {
-                        Balancy.Callbacks.OnDisconnected?.Invoke(Callbacks.DisconnectReason.AnotherSessionConflict);
-                        break;
-                    }
                     case Notifications.NotificationType.OnOfferGroupWasPurchased: {
 #if UNITY_WEBGL && !UNITY_EDITOR
                         IntPtr offerGroupInfoPtr = LibraryMethods.General.balancyNotification_GetOfferGroupInfo(notificationId);

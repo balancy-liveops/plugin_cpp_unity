@@ -12,8 +12,7 @@ namespace Balancy.Core
             AuthFailed = 2,
             CloudProfileFailed = 3,
             UserRefreshed = 4,
-            CMSInited = 5, 
-            DisconnectAnotherSessionConflict = 6,
+            CMSInited = 5,
             
             OnNewEventActivated = 100,
             OnEventDeactivated = 101,
@@ -81,11 +80,6 @@ namespace Balancy.Core
         
         [StructLayout(LayoutKind.Sequential)]
         public class NotificationUserRefreshed : StatusNotificationBase
-        {
-        }
-        
-        [StructLayout(LayoutKind.Sequential)]
-        public class NotificationDisconnectAnotherSessionConflict : StatusNotificationBase
         {
         }
         

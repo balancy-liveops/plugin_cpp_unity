@@ -327,11 +327,6 @@ namespace Balancy
 
         public static class Auth
         {
-            public static void AsGuest(Balancy.Core.ResponseCallback<Balancy.Core.Responses.AuthResponseData> callback) {
-                var callbackResult = ProtectedFromGCCallback(callback);
-                Balancy.LibraryMethods.API.balancyAuth_AsGuest(callbackResult.CallbackId, callbackResult.StaticCallback);
-            }
-            
             public static void WithNameAndPassword(string name, string password, Balancy.Core.ResponseCallback<Balancy.Core.Responses.AuthResponseData> callback) {
                 var callbackResult = ProtectedFromGCCallback(callback);
                 Balancy.LibraryMethods.API.balancyAuth_NameAndPassword(name, password, callbackResult.CallbackId, callbackResult.StaticCallback);

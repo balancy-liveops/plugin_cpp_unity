@@ -119,7 +119,7 @@ namespace Balancy.Models
             {
                 case ObjectType.Unknown:
                 case ObjectType.Sprite:
-                    return DataObjectsManager.GetSprite(Id, callback);
+                    return DataObjectsManager.GetObject(Id, callback);
                 case ObjectType.Asset:
                 {
                     // if (OnLoadAssetAsSprite != null)
@@ -192,11 +192,6 @@ namespace Balancy.Models
                     break;
                 }
             }
-        }
-        
-        public void LoadFile(Action<string> callback)
-        {
-            Balancy.Dictionaries.DataObjectsManager.GetObject(Id, callback);
         }
 
         public void OpenView(Action onShown, JsonBasedObject owner = null)

@@ -1,7 +1,6 @@
 using System;
 using System.Collections;
 using System.IO;
-using Balancy.Dictionaries;
 using UnityEngine;
 using UnityEngine.Networking;
 
@@ -44,7 +43,10 @@ namespace Balancy
             
             // Copy StreamingAssets to PersistentDataPath for platforms that need it
             // This ensures WebView can access all resources from a single directory tree
-            if (Application.platform != RuntimePlatform.WebGLPlayer)
+            if (Application.platform == RuntimePlatform.Android || 
+                Application.platform == RuntimePlatform.IPhonePlayer ||
+                Application.platform == RuntimePlatform.OSXPlayer ||
+                Application.platform == RuntimePlatform.OSXEditor)
             {
                 var targetPath = Path.Combine(Application.persistentDataPath, "Balancy/Resources/");
                 yield return CopyStreamingAssetsToPath(resourcesPath, targetPath);
@@ -64,7 +66,6 @@ namespace Balancy
             }
 
             Balancy.LibraryMethods.General.balancyInitUnityFileHelper(Application.persistentDataPath, resourcesPath, codePath);
-            DataObjectsManager.Init(Application.persistentDataPath, resourcesPath);
             
 #if UNITY_WEBGL && !UNITY_EDITOR
             // Preload files from IndexedDB on WebGL
