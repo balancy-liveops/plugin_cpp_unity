@@ -491,12 +491,7 @@ const balancy = {};
 
         // Fallback to postMessage for web views that support it
         if (window.parent && window.parent !== window && window.parent.postMessage) {
-            window.parent.postMessage({
-                source: 'balancy-view',
-                type: 'message',
-                payload: message,
-                timestamp: Date.now()
-            }, '*');
+            window.parent.postMessage(message, '*');
             return true;
         }
 

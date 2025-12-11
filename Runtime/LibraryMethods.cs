@@ -136,8 +136,11 @@ namespace Balancy
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyPreloadFileFromStreamingAssets(string fileName, byte[] fileData, int dataSize);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyLoadFileFromCache(string fileName);
 #endif
-            
+
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern IntPtr balancyGetInheritance(out int size);
             

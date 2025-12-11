@@ -12,14 +12,22 @@ namespace Balancy
     /// Bridge between C++ and Unity for unzipping operations.
     /// Uses Unity's built-in System.IO.Compression instead of native minizip.
     /// Works on all Unity platforms: iOS, Android, Windows, Mac, WebGL.
+    ///
+    /// WebGL Note: Uses JavaScript-side unzipping with JSZip for better IndexedDB integration.
     /// </summary>
     public static class UnzipBridge
     {
         private delegate void OnUnzipRequestDelegate(string id, string zipFilePath);
-        
+
         private static readonly Dictionary<string, Action<string>> _pendingRequests = new Dictionary<string, Action<string>>();
         private static UnityMainThreadDispatcher _dispatcher;
-        
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        // WebGL: DllImport to JavaScript unzip function
+        [DllImport("__Internal")]
+        private static extern void BalancyUnzipFile(string id, string zipFilePath);
+#endif
+
         /// <summary>
         /// Initialize the unzip bridge and register callbacks with C++
         /// </summary>
@@ -28,8 +36,32 @@ namespace Balancy
             _dispatcher = UnityMainThreadDispatcher.Instance();
             LibraryMethods.General.balancySetUnzipCallback(OnUnzipRequest);
             LibraryMethods.General.balancySetExtractZipFromMemoryCallback(OnExtractZipFromMemory);
-            Debug.Log("[Balancy] UnzipBridge initialized - using Unity's built-in ZIP library for all platforms");
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+            Debug.Log("[Balancy] UnzipBridge initialized - using JavaScript JSZip for WebGL");
+
+            // Register the callback that JavaScript will call
+            RegisterWebGLCallback();
+#else
+            Debug.Log("[Balancy] UnzipBridge initialized - using Unity's built-in ZIP library");
+#endif
         }
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        /// <summary>
+        /// Register callback for JavaScript to call when unzip completes
+        /// </summary>
+        private static void RegisterWebGLCallback()
+        {
+            // Create a global JavaScript function that can be called from .jslib
+            Application.ExternalEval(@"
+                Module.BalancyUnzipCompleted = function(id, resultPath) {
+                    console.log('[Balancy] JavaScript calling Unity: UnzipCompleted', id, resultPath);
+                    SendMessage('BalancyBridge', 'OnWebGLUnzipCompleted', id + '|' + resultPath);
+                };
+            ");
+        }
+#endif
         
         /// <summary>
         /// Called by C++ when it needs to extract ZIP from memory
@@ -66,16 +98,54 @@ namespace Balancy
         private static void OnUnzipRequest(string id, string zipFilePath)
         {
             Debug.Log($"[Balancy] Unzip request received: id={id}, zipFile={zipFilePath}");
-            
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+            // WebGL: Use JavaScript-side unzipping
+            Debug.Log($"[Balancy] WebGL: Delegating unzip to JavaScript: {zipFilePath}");
+
+            try
+            {
+                BalancyUnzipFile(id, zipFilePath);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[Balancy] Failed to call JavaScript unzip: {ex.Message}");
+                NotifyUnzipCompleted(id, string.Empty);
+            }
+#else
+            // Other platforms: Use C# unzipping
             if (_dispatcher == null)
             {
                 Debug.LogError("[Balancy] UnzipBridge not initialized! Call Initialize() first.");
                 NotifyUnzipCompleted(id, string.Empty);
                 return;
             }
-            
+
             _dispatcher.StartCoroutine(UnzipAsync(id, zipFilePath));
+#endif
         }
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        /// <summary>
+        /// Called by JavaScript when unzip completes (via Module.BalancyUnzipCompleted)
+        /// Message format: "id|resultPath"
+        /// </summary>
+        public static void OnWebGLUnzipCompleted(string message)
+        {
+            var parts = message.Split('|');
+            if (parts.Length != 2)
+            {
+                Debug.LogError($"[Balancy] Invalid WebGL unzip callback message: {message}");
+                return;
+            }
+
+            string id = parts[0];
+            string resultPath = parts[1];
+
+            Debug.Log($"[Balancy] WebGL unzip completed: id={id}, path={resultPath}");
+            NotifyUnzipCompleted(id, resultPath);
+        }
+#endif
         
         /// <summary>
         /// Unzip the file asynchronously using Unity's System.IO.Compression
