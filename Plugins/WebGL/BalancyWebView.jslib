@@ -26,7 +26,7 @@ var BalancyWebViewPlugin = {
           return false;
         }
       };
-      console.log('[BalancyWebView Plugin] Message forwarder registered');
+      //console.log('[BalancyWebView Plugin] Message forwarder registered');
     },
 
     /**
@@ -38,12 +38,12 @@ var BalancyWebViewPlugin = {
       }
 
       this.initializationStarted = true;
-      console.log('[BalancyWebView Plugin] Loading initialization scripts...');
+      //console.log('[BalancyWebView Plugin] Loading initialization scripts...');
 
       return new Promise((resolve, reject) => {
         // Check if already initialized
         if (typeof window.balancyWebView !== 'undefined') {
-          console.log('[BalancyWebView Plugin] WebView already initialized');
+          //console.log('[BalancyWebView Plugin] WebView already initialized');
           this.webView = window.balancyWebView;
           resolve();
           return;
@@ -53,25 +53,25 @@ var BalancyWebViewPlugin = {
         var jszipScript = document.createElement('script');
         jszipScript.src = 'StreamingAssets/Balancy/jszip.min.js';
         jszipScript.onload = function() {
-          console.log('[BalancyWebView Plugin] JSZip loaded');
+          //console.log('[BalancyWebView Plugin] JSZip loaded');
 
           // Load WebView bundle (includes unity-entry which creates window.balancyWebView)
           var webviewScript = document.createElement('script');
           webviewScript.src = 'StreamingAssets/Balancy/balancy-webview.umd.js';
           webviewScript.onload = function() {
-            console.log('[BalancyWebView Plugin] WebView bundle loaded');
+            //console.log('[BalancyWebView Plugin] WebView bundle loaded');
 
             // Load bridge script
             var bridgeScript = document.createElement('script');
             bridgeScript.src = 'StreamingAssets/Balancy/balancy-webview-bridge.js';
             bridgeScript.onload = function() {
-              console.log('[BalancyWebView Plugin] Bridge loaded');
+              //console.log('[BalancyWebView Plugin] Bridge loaded');
 
               // Wait a bit for initialization to complete
               setTimeout(function() {
                 if (typeof window.balancyWebView !== 'undefined') {
                   BalancyWebViewState.webView = window.balancyWebView;
-                  console.log('[BalancyWebView Plugin] ✅ WebView initialized successfully');
+                  //console.log('[BalancyWebView Plugin] ✅ WebView initialized successfully');
 
                   // Register message forwarder
                   BalancyWebViewState.registerMessageForwarder();
@@ -111,17 +111,17 @@ var BalancyWebViewPlugin = {
       // Check if already available
       if (typeof window.balancyWebView !== 'undefined') {
         this.webView = window.balancyWebView;
-        console.log('[BalancyWebView Plugin] Using existing WebView instance');
+        //console.log('[BalancyWebView Plugin] Using existing WebView instance');
         callback(this.webView);
         return;
       }
 
       // Need to load scripts
-      console.log('[BalancyWebView Plugin] WebView not ready, loading scripts...');
+      //console.log('[BalancyWebView Plugin] WebView not ready, loading scripts...');
       this.initializationCallbacks.push(callback);
 
       this.loadInitScripts().then(function() {
-        console.log('[BalancyWebView Plugin] Initialization complete, notifying callbacks');
+        //console.log('[BalancyWebView Plugin] Initialization complete, notifying callbacks');
         var callbacks = BalancyWebViewState.initializationCallbacks;
         BalancyWebViewState.initializationCallbacks = [];
         callbacks.forEach(function(cb) {
@@ -148,9 +148,9 @@ var BalancyWebViewPlugin = {
       var additionalInfo = UTF8ToString(additionalInfoPtr);
       var manifestJson = UTF8ToString(manifestJsonPtr);
 
-      console.log('[BalancyWebView Plugin] Opening WebView with HTML content:', htmlContent.length, 'bytes');
-      console.log('[BalancyWebView Plugin] Owner JSON:', ownerJson.substring(0, 100) + '...');
-      console.log('[BalancyWebView Plugin] Manifest JSON:', manifestJson.substring(0, 100) + '...');
+      //console.log('[BalancyWebView Plugin] Opening WebView with HTML content:', htmlContent.length, 'bytes');
+      //console.log('[BalancyWebView Plugin] Owner JSON:', ownerJson.substring(0, 100) + '...');
+      //console.log('[BalancyWebView Plugin] Manifest JSON:', manifestJson.substring(0, 100) + '...');
 
       // Get WebView asynchronously
       BalancyWebViewState.getWebView(function(webView) {
@@ -177,16 +177,10 @@ var BalancyWebViewPlugin = {
             manifestData: manifestData
           });
 
-          console.log('[BalancyWebView Plugin] WebView opened successfully');
+          //console.log('[BalancyWebView Plugin] WebView opened successfully (hidden until BalancyIsReady)');
 
-          // Notify Unity of success
-          if (typeof SendMessage !== 'undefined') {
-            try {
-              SendMessage('BalancyView', 'OnWebGLLoadCompleted', 'true');
-            } catch (e) {
-              console.error('[BalancyWebView Plugin] Failed to notify Unity:', e);
-            }
-          }
+          // Note: OnWebGLLoadCompleted is now sent from unity-entry.ts when BalancyIsReady is received
+
         } catch (error) {
           console.error('[BalancyWebView Plugin] Error opening WebView:', error);
           if (typeof SendMessage !== 'undefined') {
@@ -215,7 +209,7 @@ var BalancyWebViewPlugin = {
       var ownerJson = UTF8ToString(ownerJsonPtr);
       var additionalInfo = UTF8ToString(additionalInfoPtr);
 
-      console.log('[BalancyWebView Plugin] Opening WebView with URL:', url);
+      //console.log('[BalancyWebView Plugin] Opening WebView with URL:', url);
 
       BalancyWebViewState.getWebView(function(webView) {
         if (!webView) {
@@ -230,7 +224,7 @@ var BalancyWebViewPlugin = {
           additionalInfo: additionalInfo
         });
 
-        console.log('[BalancyWebView Plugin] WebView opened');
+        //console.log('[BalancyWebView Plugin] WebView opened');
       });
 
       // Return true to indicate request was accepted (actual result comes via callback)
@@ -247,7 +241,7 @@ var BalancyWebViewPlugin = {
    */
   _balancyCloseWebView: function() {
     try {
-      console.log('[BalancyWebView Plugin] Closing WebView');
+      //console.log('[BalancyWebView Plugin] Closing WebView');
 
       BalancyWebViewState.getWebView(function(webView) {
         if (!webView) {
@@ -256,7 +250,7 @@ var BalancyWebViewPlugin = {
         }
 
         webView.closeWebView();
-        console.log('[BalancyWebView Plugin] WebView closed');
+        //console.log('[BalancyWebView Plugin] WebView closed');
       });
 
     } catch (error) {
@@ -270,18 +264,18 @@ var BalancyWebViewPlugin = {
   _balancySendMessage: function(messagePtr) {
     try {
       var message = UTF8ToString(messagePtr);
-      console.log('[BalancyWebView Plugin] Sending message to WebView:', message.substring(0, 100) + '...');
+      //console.log('[BalancyWebView Plugin] Sending message to WebView:', message.substring(0, 100) + '...');
 
       // Try to convert image paths to blob URLs before sending
       // We use the cached blob URLs from the preload system (same as sprite loading)
       var processedMessage = message;
       try {
         var parsed = JSON.parse(message);
-        console.log('[BalancyWebView Plugin] Parsed message type:', parsed.type);
+        //console.log('[BalancyWebView Plugin] Parsed message type:', parsed.type);
 
         // Check if this is a batch response with image URLs
         if (parsed.type === 'batch-response' && Array.isArray(parsed.responses)) {
-          console.log('[BalancyWebView Plugin] Processing batch-response with', parsed.responses.length, 'responses');
+          //console.log('[BalancyWebView Plugin] Processing batch-response with', parsed.responses.length, 'responses');
 
           for (var i = 0; i < parsed.responses.length; i++) {
             var resp = parsed.responses[i];
@@ -290,12 +284,12 @@ var BalancyWebViewPlugin = {
             // Check if result contains a file path
             if (resp.result && typeof resp.result === 'string') {
               if (resp.result.includes('/idbfs/') || /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(resp.result)) {
-                console.log('[BalancyWebView Plugin] 🎯 Found image path in response[' + i + ']:', resp.result);
+                //console.log('[BalancyWebView Plugin] 🎯 Found image path in response[' + i + ']:', resp.result);
 
                 // Check blob URL cache (populated by _balancyPreloadFileAsBlobUrl)
                 if (window._balancyBlobUrlCache && window._balancyBlobUrlCache[resp.result]) {
                   var cachedBlobUrl = window._balancyBlobUrlCache[resp.result];
-                  console.log('[BalancyWebView Plugin] ✅ Using cached blob URL:', cachedBlobUrl);
+                  //console.log('[BalancyWebView Plugin] ✅ Using cached blob URL:', cachedBlobUrl);
                   resp.result = cachedBlobUrl;
                 } else {
                   console.warn('[BalancyWebView Plugin] ⚠️ Image not in cache, will need to be loaded asynchronously');
@@ -309,7 +303,7 @@ var BalancyWebViewPlugin = {
 
           // Re-stringify the modified message
           processedMessage = JSON.stringify(parsed);
-          console.log('[BalancyWebView Plugin] Message processed, sending to WebView');
+          //console.log('[BalancyWebView Plugin] Message processed, sending to WebView');
         }
 
       } catch (parseError) {
@@ -358,7 +352,7 @@ var BalancyWebViewPlugin = {
   _balancyInjectCode: function(codePtr) {
     try {
       var code = UTF8ToString(codePtr);
-      console.log('[BalancyWebView Plugin] Injecting code into WebView');
+//      console.log('[BalancyWebView Plugin] Injecting code into WebView');
 
       BalancyWebViewState.getWebView(function(webView) {
         if (!webView) {
@@ -381,7 +375,7 @@ var BalancyWebViewPlugin = {
    * Set viewport rect
    */
   _balancySetViewportRect: function(x, y, width, height) {
-    console.log('[BalancyWebView Plugin] Set viewport rect:', x, y, width, height);
+    //console.log('[BalancyWebView Plugin] Set viewport rect:', x, y, width, height);
     // TODO: Implement if needed
   },
 
@@ -389,7 +383,7 @@ var BalancyWebViewPlugin = {
    * Set transparent background
    */
   _balancySetTransparentBackground: function(transparent) {
-    console.log('[BalancyWebView Plugin] Set transparent background:', transparent);
+    //console.log('[BalancyWebView Plugin] Set transparent background:', transparent);
     // Handled by WebView CSS
   },
 
@@ -397,7 +391,7 @@ var BalancyWebViewPlugin = {
    * Set game UI mode
    */
   _balancySetGameUIMode: function(enabled) {
-    console.log('[BalancyWebView Plugin] Set game UI mode:', enabled);
+    //console.log('[BalancyWebView Plugin] Set game UI mode:', enabled);
     // Handled by WebView CSS
   },
 
@@ -411,7 +405,7 @@ var BalancyWebViewPlugin = {
       var method = UTF8ToString(methodPtr);
       var message = UTF8ToString(messagePtr);
 
-      console.log('[BalancyWebView Plugin] Forwarding message to Unity:', target, method);
+      //console.log('[BalancyWebView Plugin] Forwarding message to Unity:', target, method);
 
       // SendMessage is available in the Unity runtime context
       if (typeof SendMessage !== 'undefined') {
@@ -443,12 +437,17 @@ var BalancyWebViewPlugin = {
       }
 
       var cachedUrl = window._balancyBlobUrlCache[path];
-      if (cachedUrl) {
-        console.log('[BalancyWebView Plugin] Using cached blob URL for:', path);
+      // Validate cached URL is a valid non-empty string
+      if (cachedUrl && typeof cachedUrl === 'string' && cachedUrl.length > 0) {
+        //console.log('[BalancyWebView Plugin] Using cached blob URL for:', path);
         var bufferSize = lengthBytesUTF8(cachedUrl) + 1;
         var buffer = _malloc(bufferSize);
         stringToUTF8(cachedUrl, buffer, bufferSize);
         return buffer;
+      } else if (cachedUrl !== undefined && cachedUrl !== null) {
+        // Invalid cached value - remove it
+        console.warn('[BalancyWebView Plugin] Removing invalid cached blob URL for:', path);
+        delete window._balancyBlobUrlCache[path];
       }
 
       console.warn('[BalancyWebView Plugin] No cached blob URL for:', path, '- file needs to be preloaded first');
@@ -466,9 +465,9 @@ var BalancyWebViewPlugin = {
       var fileName = UTF8ToString(fileNamePtr);
       var fullPath = directory + '/' + fileName;
 
-      console.log('[BalancyWebView Plugin] Preloading file as blob URL:', fullPath);
-      console.log('[BalancyWebView Plugin]   Directory:', directory);
-      console.log('[BalancyWebView Plugin]   FileName:', fileName);
+      //console.log('[BalancyWebView Plugin] Preloading file as blob URL:', fullPath);
+      //console.log('[BalancyWebView Plugin]   Directory:', directory);
+      //console.log('[BalancyWebView Plugin]   FileName:', fileName);
 
       if (typeof BalancyIndexedDBFileHelper === 'undefined') {
         console.error('[BalancyWebView Plugin] BalancyIndexedDBFileHelper not available');
@@ -484,8 +483,7 @@ var BalancyWebViewPlugin = {
           return;
         }
 
-        console.log('[BalancyWebView Plugin] File loaded from IndexedDB, size:',
-          data.byteLength || data.length, 'bytes');
+        //console.log('[BalancyWebView Plugin] File loaded from IndexedDB, size:', data.byteLength || data.length, 'bytes');
 
         // Determine MIME type from extension
         var ext = fileName.split('.').pop().toLowerCase();
@@ -512,13 +510,17 @@ var BalancyWebViewPlugin = {
 
         // Create blob URL
         var blobUrl = URL.createObjectURL(blob);
-        console.log('[BalancyWebView Plugin] Blob URL created:', blobUrl);
+        //console.log('[BalancyWebView Plugin] Blob URL created:', blobUrl);
 
-        // Cache the blob URL
-        if (!window._balancyBlobUrlCache) {
-          window._balancyBlobUrlCache = {};
+        // Cache the blob URL (only if it's valid and non-empty)
+        if (blobUrl && typeof blobUrl === 'string' && blobUrl.length > 0) {
+          if (!window._balancyBlobUrlCache) {
+            window._balancyBlobUrlCache = {};
+          }
+          window._balancyBlobUrlCache[fullPath] = blobUrl;
+        } else {
+          console.error('[BalancyWebView Plugin] Failed to create valid blob URL for:', fullPath);
         }
-        window._balancyBlobUrlCache[fullPath] = blobUrl;
 
         // Return blob URL to C++
         var bufferSize = lengthBytesUTF8(blobUrl) + 1;
@@ -548,24 +550,32 @@ var BalancyWebViewPlugin = {
       var fileName = UTF8ToString(fileNamePtr);
       var fullPath = directory + '/' + fileName;
 
-      console.log('[BalancyWebView Plugin] Getting or creating blob URL for:', fullPath);
+      //console.log('[BalancyWebView Plugin] Getting or creating blob URL for:', fullPath);
 
-      // Check if already cached
+      // Check if already cached (must be a valid non-empty blob URL)
       if (window._balancyBlobUrlCache && window._balancyBlobUrlCache[fullPath]) {
         var cachedBlobUrl = window._balancyBlobUrlCache[fullPath];
-        console.log('[BalancyWebView Plugin] ✅ Blob URL already cached:', cachedBlobUrl);
 
-        // Return cached blob URL
-        var bufferSize = lengthBytesUTF8(cachedBlobUrl) + 1;
-        var buffer = _malloc(bufferSize);
-        stringToUTF8(cachedBlobUrl, buffer, bufferSize);
-        {{{ makeDynCall('vii', 'callback') }}}(userData, buffer);
-        _free(buffer);
-        return;
+        // Validate that cached value is a non-empty string (not null, undefined, or empty)
+        if (cachedBlobUrl && typeof cachedBlobUrl === 'string' && cachedBlobUrl.length > 0) {
+          //console.log('[BalancyWebView Plugin] ✅ Blob URL already cached:', cachedBlobUrl);
+
+          // Return cached blob URL
+          var bufferSize = lengthBytesUTF8(cachedBlobUrl) + 1;
+          var buffer = _malloc(bufferSize);
+          stringToUTF8(cachedBlobUrl, buffer, bufferSize);
+          {{{ makeDynCall('vii', 'callback') }}}(userData, buffer);
+          _free(buffer);
+          return;
+        } else {
+          // Invalid cached value - remove it and proceed to reload
+          console.warn('[BalancyWebView Plugin] Removing invalid cached blob URL for:', fullPath);
+          delete window._balancyBlobUrlCache[fullPath];
+        }
       }
 
       // Not cached - need to load from IndexedDB
-      console.log('[BalancyWebView Plugin] Blob URL not cached, loading from IndexedDB...');
+      //console.log('[BalancyWebView Plugin] Blob URL not cached, loading from IndexedDB...');
 
       if (typeof BalancyIndexedDBFileHelper === 'undefined') {
         console.error('[BalancyWebView Plugin] BalancyIndexedDBFileHelper not available');
@@ -581,8 +591,7 @@ var BalancyWebViewPlugin = {
           return;
         }
 
-        console.log('[BalancyWebView Plugin] File loaded from IndexedDB, size:',
-          data.byteLength || data.length, 'bytes');
+        //console.log('[BalancyWebView Plugin] File loaded from IndexedDB, size:', data.byteLength || data.length, 'bytes');
 
         // Determine MIME type from extension
         var ext = fileName.split('.').pop().toLowerCase();
@@ -611,13 +620,17 @@ var BalancyWebViewPlugin = {
 
         // Create blob URL
         var blobUrl = URL.createObjectURL(blob);
-        console.log('[BalancyWebView Plugin] ✅ Blob URL created:', blobUrl);
+        //console.log('[BalancyWebView Plugin] ✅ Blob URL created:', blobUrl);
 
-        // Cache the blob URL
-        if (!window._balancyBlobUrlCache) {
-          window._balancyBlobUrlCache = {};
+        // Cache the blob URL (only if it's valid and non-empty)
+        if (blobUrl && typeof blobUrl === 'string' && blobUrl.length > 0) {
+          if (!window._balancyBlobUrlCache) {
+            window._balancyBlobUrlCache = {};
+          }
+          window._balancyBlobUrlCache[fullPath] = blobUrl;
+        } else {
+          console.error('[BalancyWebView Plugin] Failed to create valid blob URL for:', fullPath);
         }
-        window._balancyBlobUrlCache[fullPath] = blobUrl;
 
         // Return blob URL to C++
         var bufferSize = lengthBytesUTF8(blobUrl) + 1;
