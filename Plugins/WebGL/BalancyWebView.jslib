@@ -450,7 +450,7 @@ var BalancyWebViewPlugin = {
         delete window._balancyBlobUrlCache[path];
       }
 
-      console.warn('[BalancyWebView Plugin] No cached blob URL for:', path, '- file needs to be preloaded first');
+      //console.warn('[BalancyWebView Plugin] No cached blob URL for:', path, '- file needs to be preloaded first');
       return 0;
     } catch (error) {
       console.error('[BalancyWebView Plugin] Error reading cached blob URL:', error);
@@ -569,7 +569,7 @@ var BalancyWebViewPlugin = {
           return;
         } else {
           // Invalid cached value - remove it and proceed to reload
-          console.warn('[BalancyWebView Plugin] Removing invalid cached blob URL for:', fullPath);
+          //console.warn('[BalancyWebView Plugin] Removing invalid cached blob URL for:', fullPath);
           delete window._balancyBlobUrlCache[fullPath];
         }
       }
