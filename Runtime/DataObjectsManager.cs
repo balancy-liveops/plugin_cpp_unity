@@ -176,13 +176,13 @@ namespace Balancy.Dictionaries
 #if UNITY_WEBGL && !UNITY_EDITOR
             private IEnumerator LoadTextureWebGL()
             {
-                Debug.Log("**==>> [WebGL] Loading texture from: " + _objectInfo.LocationPath);
+                //Debug.Log("**==>> [WebGL] Loading texture from: " + _objectInfo.LocationPath);
 
                 // Try loading from Resources first
                 Texture2D texture = TryToLoadTextureFromResources();
                 if (texture != null)
                 {
-                    Debug.Log("**==>> [WebGL] Texture loaded from Resources");
+                    //Debug.Log("**==>> [WebGL] Texture loaded from Resources");
                     CreateSpriteFromTexture(texture);
                     yield break;
                 }
@@ -190,7 +190,7 @@ namespace Balancy.Dictionaries
                 // PathInStorage format: /idbfs/{hash}/{fileName}
                 // We need to split into directory and fileName for IndexedDB
                 string fullPath = PathInStorage;
-                Debug.Log("**==>> [WebGL] Full path: " + fullPath);
+                //Debug.Log("**==>> [WebGL] Full path: " + fullPath);
 
                 // Split path: directory is everything up to last '/', fileName is the rest
                 int lastSlash = fullPath.LastIndexOf('/');
@@ -204,19 +204,19 @@ namespace Balancy.Dictionaries
                 string directory = fullPath.Substring(0, lastSlash);
                 string fileName = fullPath.Substring(lastSlash + 1);
 
-                Debug.Log("**==>> [WebGL] Directory: " + directory);
-                Debug.Log("**==>> [WebGL] FileName: " + fileName);
+                //Debug.Log("**==>> [WebGL] Directory: " + directory);
+                //Debug.Log("**==>> [WebGL] FileName: " + fileName);
 
                 // First check if already cached
                 string blobUrl = DataObjectsManager.ReadFileAsBlobUrl(fullPath);
                 if (!string.IsNullOrEmpty(blobUrl))
                 {
-                    Debug.Log("**==>> [WebGL] Using cached blob URL: " + blobUrl);
+                    //Debug.Log("**==>> [WebGL] Using cached blob URL: " + blobUrl);
                 }
                 else
                 {
                     // Need to preload from IndexedDB first
-                    Debug.Log("**==>> [WebGL] Preloading file from IndexedDB...");
+                    //Debug.Log("**==>> [WebGL] Preloading file from IndexedDB...");
 
                     // Create context with unique ID
                     int contextId = DataObjectsManager._nextContextId++;
@@ -253,7 +253,7 @@ namespace Balancy.Dictionaries
 
                     if (!string.IsNullOrEmpty(blobUrl))
                     {
-                        Debug.Log("**==>> [WebGL] Preload complete, blob URL: " + blobUrl);
+                        //Debug.Log("**==>> [WebGL] Preload complete, blob URL: " + blobUrl);
                     }
                     else
                     {
@@ -268,7 +268,7 @@ namespace Balancy.Dictionaries
                     yield break;
                 }
 
-                Debug.Log("**==>> [WebGL] Loading texture from blob URL: " + blobUrl);
+                //Debug.Log("**==>> [WebGL] Loading texture from blob URL: " + blobUrl);
 
                 // Use UnityWebRequest to load texture from blob URL
                 using (UnityWebRequest request = UnityWebRequestTexture.GetTexture(blobUrl))
@@ -278,7 +278,7 @@ namespace Balancy.Dictionaries
                     if (request.result == UnityWebRequest.Result.Success)
                     {
                         texture = DownloadHandlerTexture.GetContent(request);
-                        Debug.Log("**==>> [WebGL] Texture loaded successfully, size: " + texture.width + "x" + texture.height);
+                        //Debug.Log("**==>> [WebGL] Texture loaded successfully, size: " + texture.width + "x" + texture.height);
                         CreateSpriteFromTexture(texture);
                     }
                     else

@@ -297,7 +297,7 @@ namespace Balancy
                     return;
                 }
             }
-            Debug.Log("Incomming = " + msg);
+            // Debug.Log("Incomming = " + msg);
             
             //hardcode. rewrite the way how native plugins send me the message
             // if (msg == "//:balancy_close_view")
@@ -311,7 +311,6 @@ namespace Balancy
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.General.WebviewRequestCallback))]
         private static void OnMessageResponseReceived(string response)
         {
-            Debug.LogWarning("On reply received: " + response);
             _webView.SendMessageToWebView(response);
         }
         
@@ -380,10 +379,16 @@ namespace Balancy
         {
             switch ((RequestAction)command)
             {
-                // case RequestAction.BalancyIsReady: {
-                //     this._webView?.show();
-                //     break;
-                // }
+                case RequestAction.BalancyIsReady:
+                {
+#if UNITY_WEBGL && !UNITY_EDITOR
+                    Debug.Log("[RenderViewsManager] BalancyIsReady received - WebView will be shown by JavaScript");
+                    // For WebGL, the show() is called from JavaScript side via the jslib
+                    // We just acknowledge the message here
+#endif
+                    LibraryMethods.General.balancyDataRequestedResponse(requestId, DEFAULT_ANSWER);
+                    return;
+                }
                 case RequestAction.BuyOffer:
                 {
                     CommandBuyOffer commandInfo = JsonUtility.FromJson<CommandBuyOffer>(paramsJson);
