@@ -178,15 +178,12 @@ namespace Balancy
             long time = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             string additionalInfo = $"{{\"launchTime\":{time}}}";
 
-            // TODO: Add secondsLeft support like TypeScript SDK
-            // if (owner is IDeactivatable deactivatable)
-            // {
-            //     int secondsLeft = deactivatable.GetSecondsLeftBeforeDeactivation();
-            //     if (secondsLeft > 0)
-            //     {
-            //         additionalInfo = $"{{\"launchTime\":{time},\"secondsLeft\":{secondsLeft}}}";
-            //     }
-            // }
+            if (owner is IOwnerWithTimer ownerWithTimer)
+            {
+                int secondsLeft = ownerWithTimer.GetSecondsLeftBeforeDeactivation();
+                if (secondsLeft > 0)
+                    additionalInfo = $"{{\"launchTime\":{time},\"secondsLeft\":{secondsLeft}}}";
+            }
 
             Debug.Log($"[RenderViewsManager] Opening HTML view with content length: {htmlContent.Length}");
 

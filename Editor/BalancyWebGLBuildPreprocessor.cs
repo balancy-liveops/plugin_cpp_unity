@@ -47,18 +47,9 @@ namespace Balancy.Editor
             // Copy jszip (from .txt to .js)
             CopyWebGLFile(resourcesPath, streamingAssetsBalancy, "jszip.min.js.txt", "jszip.min.js");
 
-            // Copy balancy-webview-bridge if it exists in Resources
-            string bridgeSourcePath = Path.Combine(Application.dataPath, "Balancy/WebView/resources");
-            if (Directory.Exists(bridgeSourcePath))
-            {
-                string bridgeFile = Path.Combine(bridgeSourcePath, "balancy-webview-bridge.js");
-                if (File.Exists(bridgeFile))
-                {
-                    string bridgeDest = Path.Combine(streamingAssetsBalancy, "balancy-webview-bridge.js");
-                    File.Copy(bridgeFile, bridgeDest, overwrite: true);
-                    Debug.Log($"[Balancy] Copied: balancy-webview-bridge.js");
-                }
-            }
+            // Note: balancy-webview-bridge.js is copied by BalancyWebGLResourceManager.cs
+            // Source: Assets/Balancy/WebView/Resources/balancy-webview-bridge.txt
+            // This happens automatically during WebGL builds
 
             Debug.Log("[Balancy] WebGL resources copied to StreamingAssets successfully!");
         }

@@ -1334,27 +1334,49 @@ namespace Balancy.WebView
                 // For WebGL, bridge injection is handled by TypeScript (unity-entry.ts)
                 // to ensure proper timing with iframe load events
 
+                string ownerInfo = "";
                 if (!string.IsNullOrEmpty(_instance._ownerJson))
                 {
-                    var injectedCode = "(function() {\n" +
-                                       "    try {\n" +
-                                       (!string.IsNullOrEmpty(_instance._additionalInfo)
-                                           ? $"        window.balancySettings = JSON.parse('{_instance._additionalInfo}');\n"
-                                           : "") +
-                                       $"        window.balancyViewOwner = JSON.parse('{_instance._ownerJson}');\n" +
-                                       "    } catch (error) {\n" +
-                                       "        console.error('Error parsing button params JSON:', error);\n" +
-                                       "        window.balancyViewOwner = null;\n" +
-                                       "    }\n" +
-                                       "    return true; // Return explicit value to avoid iOS error code 5\n" +
-                                       "})();";
-                    _balancyInjectJSCode(injectedCode);
+                    ownerInfo = "(function() {\n" +
+                                "    try {\n" +
+                                (!string.IsNullOrEmpty(_instance._additionalInfo)
+                                    ? $"        window.balancySettings = JSON.parse('{_instance._additionalInfo}');\n"
+                                    : "") +
+                                $"        window.balancyViewOwner = JSON.parse('{_instance._ownerJson}');\n" +
+                                "    } catch (error) {\n" +
+                                "        console.error('Error parsing button params JSON:', error);\n" +
+                                "        window.balancyViewOwner = null;\n" +
+                                "    }\n" +
+                                "    return true; // Return explicit value to avoid iOS error code 5\n" +
+                                "})();";
                 }
 
                 // InjectFileFromResources("balancy-webview-performance");
-                InjectFileFromResources("balancy-webview-styles");
-                InjectFileFromResources("balancy-webview-bridge");
-
+                // InjectFileFromResources("balancy-webview-styles");
+                // InjectFileFromResources("balancy-webview-bridge");
+                var bridgeCode = Resources.Load<TextAsset>("balancy-webview-bridge");
+                
+                // const fullCode = `
+                //     // #1 Owner Info
+                //     ${ownerInfo}
+                //
+                // // #2 Bridge
+                // ${bridgeCode}
+                //
+                // // #3 Scripts
+                // ${this._scriptsCode}
+                //
+                // // #4 Initialize
+                // balancy.initResponseHandler();
+                // console.log('Balancy fully initialized!');
+                // // Return explicit value to avoid iOS error code 5
+                // true;
+                //     `;
+                //Rewrite the commented code above to C#:
+                var fullCode =
+                    $"{ownerInfo} {bridgeCode} balancy.initResponseHandler(); console.log('Balancy fully initialized!'); true";
+                
+                _balancyInjectJSCode(fullCode);
                 // InjectFileFromResources("balancy-webview-css-animations");
                 // InjectFileFromResources("balancy-webview-js-animations");
                 #else
