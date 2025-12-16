@@ -247,10 +247,10 @@ namespace Balancy
             else
             {
                 // Use game view size for popup mode to match embedded mode behavior
-                Debug.LogWarning("[RenderViewsManager] OpenView " + urlToLoad + " in popup mode.");
-                Debug.LogWarning("[RenderViewsManager] ownerJson " + ownerJson);
+                // Debug.LogWarning("[RenderViewsManager] OpenView " + urlToLoad + " in popup mode.");
+                // Debug.LogWarning("[RenderViewsManager] ownerJson " + ownerJson);
                 success = _webView.OpenWebView(urlToLoad, ownerJson, additionalInfo);
-                Debug.LogWarning("[RenderViewsManager] success " + success);
+                // Debug.LogWarning("[RenderViewsManager] success " + success);
             }
             
 #if UNITY_EDITOR
