@@ -136,8 +136,11 @@ namespace Balancy
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyPreloadFileFromStreamingAssets(string fileName, byte[] fileData, int dataSize);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyLoadFileFromCache(string fileName);
 #endif
-            
+
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern IntPtr balancyGetInheritance(out int size);
             
@@ -513,10 +516,6 @@ namespace Balancy
             
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-            public static extern void balancyNutakuComplete(int userId, string orderId, int callbackId, ResponseCallback callback);
-            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-            public static extern void balancyGetProducts(int callbackId, ResponseCallback callback);
-            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyHardPurchaseStoreItem(IntPtr storeItemPointer, Balancy.Core.PaymentInfo paymentInfo, int callbackId, ResponseCallback callback, bool requireValidation);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
@@ -544,8 +543,6 @@ namespace Balancy
             public static extern void balancyAuth_AsGuest(int callbackId, ResponseCallback callback);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyAuth_NameAndPassword(string name, string password, int callbackId, ResponseCallback callback);
-            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-            public static extern void balancyAuth_Nutaku(string userId, string token, int callbackId, ResponseCallback callback);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyLink_NameAndPassword(string name, string password, bool forceLink, int callbackId, ResponseCallback callback);
             

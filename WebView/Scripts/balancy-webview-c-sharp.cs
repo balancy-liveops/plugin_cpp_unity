@@ -115,7 +115,49 @@ namespace Balancy.WebView
         {
             Debug.Log($"[BalancyWebView Native] {message}");
         }
-        
+
+        #endregion
+
+        #region WebGL Unity Messaging Methods
+
+        // These methods are called from JavaScript via SendMessage
+        // Format: SendMessage("BalancyView", "OnWebGLMessageReceived", message)
+
+        #if UNITY_WEBGL && !UNITY_EDITOR
+
+        /// <summary>
+        /// Called from JavaScript when a message is received from WebView
+        /// </summary>
+        /// <param name="message">Message from WebView</param>
+        public void OnWebGLMessageReceived(string message)
+        {
+            LogDebug($"WebGL Unity Message Received: {message.Substring(0, Math.Min(100, message.Length))}...");
+            OnMessageReceivedPrivate(message);
+        }
+
+        /// <summary>
+        /// Called from JavaScript when page load is completed
+        /// </summary>
+        /// <param name="successString">"true" or "false" as string</param>
+        public void OnWebGLLoadCompleted(string successString)
+        {
+            bool success = successString.ToLower() == "true";
+            Debug.Log($"[BalancyWebView] WebGL Load completed: {success}");
+            OnLoadCompletedReceived(success);
+        }
+
+        /// <summary>
+        /// Called from JavaScript when WebView is closed
+        /// </summary>
+        public void OnWebGLClosed(string ignored)
+        {
+            LogDebug("WebGL WebView closed");
+            _isWebViewOpen = false;
+            OnClosed?.Invoke();
+        }
+
+        #endif
+
         #endregion
 
         #region Events
@@ -206,7 +248,82 @@ namespace Balancy.WebView
         private static extern void _balancySetShowDelay(float delaySeconds);
         [DllImport("__Internal")]
         private static extern void _balancySetAnimationDuration(float durationSeconds);
-        
+
+        #elif UNITY_WEBGL && !UNITY_EDITOR
+
+        // WebGL implementation using JavaScript plugin (.jslib)
+        [DllImport("__Internal")]
+        private static extern bool _balancyOpenWebView(string url, string ownerJson, string additionalInfo, int width, int height);
+
+        [DllImport("__Internal")]
+        private static extern void _balancyCloseWebView();
+
+        [DllImport("__Internal")]
+        private static extern bool _balancySendMessage(string message);
+
+        [DllImport("__Internal")]
+        private static extern bool _balancyInjectCode(string code);
+
+        [DllImport("__Internal")]
+        private static extern void _balancySetViewportRect(float x, float y, float width, float height);
+
+        [DllImport("__Internal")]
+        private static extern void _balancySetTransparentBackground(bool transparent);
+
+        [DllImport("__Internal")]
+        private static extern void _balancySetGameUIMode(bool enabled);
+
+        [DllImport("__Internal")]
+        private static extern bool _balancyIsWebViewOpen();
+
+        [DllImport("__Internal")]
+        private static extern bool _balancyOpenWebViewWithHtmlContent(string htmlContent, string ownerJson, string additionalInfo, string manifestJson);
+
+        // WebGL unified interface wrapper (instance method to access instance fields)
+        private bool _balancyOpenWebViewWithSize(string url, int width, int height)
+        {
+            return _balancyOpenWebView(url, _ownerJson ?? "{}", _additionalInfo ?? "{}", width, height);
+        }
+
+        // WebGL wrapper for opening with HTML content (instance method to match pattern)
+        private bool _balancyOpenWebViewWithHtml(string htmlContent, string ownerJson, string additionalInfo, string manifestJson)
+        {
+            return _balancyOpenWebViewWithHtmlContent(htmlContent, ownerJson, additionalInfo, manifestJson);
+        }
+
+        // WebGL wrapper for code injection (static to match other platforms)
+        private static bool _balancyInjectJSCode(string code)
+        {
+            return _balancyInjectCode(code);
+        }
+
+        // Stub methods for WebGL (not implemented in .jslib yet)
+        private static string _balancyCallJavaScript(string function, string[] args, int argsCount)
+        {
+            Debug.LogWarning("[BalancyWebView WebGL] CallJavaScript not implemented for WebGL");
+            return null;
+        }
+
+        private static void _balancySetDebugLogging(bool enabled)
+        {
+            // Debug logging is always on for WebGL (console.log)
+        }
+
+        private static void _balancySetOfflineCacheEnabled(bool enabled)
+        {
+            Debug.LogWarning("[BalancyWebView WebGL] Offline cache not implemented for WebGL");
+        }
+
+        private static void _balancySetShowDelay(float delaySeconds)
+        {
+            Debug.LogWarning("[BalancyWebView WebGL] Show delay not implemented for WebGL");
+        }
+
+        private static void _balancySetAnimationDuration(float durationSeconds)
+        {
+            Debug.LogWarning("[BalancyWebView WebGL] Animation duration not implemented for WebGL");
+        }
+
         #elif UNITY_ANDROID && !UNITY_EDITOR
         
         // Android implementation using AndroidJavaObject
@@ -552,11 +669,11 @@ namespace Balancy.WebView
         /// <returns>True if the WebView was opened successfully, false otherwise</returns>
         public bool OpenWebView(string url, string ownerJson, string additionalInfo)
         {
-#if UNITY_EDITOR_OSX || (!UNITY_EDITOR && (UNITY_IOS || UNITY_ANDROID))
+#if UNITY_EDITOR_OSX || (!UNITY_EDITOR && (UNITY_IOS || UNITY_ANDROID || UNITY_WEBGL))
             // Use Screen dimensions to match game view size
             return OpenWebView(url, ownerJson, additionalInfo, Screen.width, Screen.height);
 #endif
-            Debug.LogWarning("Embedded WebView is only supported in Unity Editor on macOS");
+            Debug.LogWarning("Embedded WebView is only supported in Unity Editor on macOS, iOS, Android, and WebGL");
 
             return false;
         }
@@ -676,6 +793,51 @@ namespace Balancy.WebView
             _isWebViewOpen = success;
             return success;
         }
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        /// <summary>
+        /// Opens the WebView with HTML content instead of a URL (WebGL only)
+        /// </summary>
+        /// <param name="htmlContent">The HTML content to display</param>
+        /// <param name="ownerJson">Owner JSON data</param>
+        /// <param name="additionalInfo">Additional info JSON</param>
+        /// <param name="manifestJson">Manifest JSON</param>
+        /// <returns>True if the WebView was opened successfully, false otherwise</returns>
+        public bool OpenWebViewHtml(string htmlContent, string ownerJson, string additionalInfo, string manifestJson)
+        {
+            if (_isWebViewOpen)
+            {
+                Debug.LogWarning("WebView is already open. Close it first before opening a new one.");
+                return false;
+            }
+
+            _lastUrl = ""; // No URL for HTML content
+            _ownerJson = ownerJson;
+            _additionalInfo = additionalInfo;
+
+            LogDebug($"Opening WebView with HTML content: {htmlContent.Length} bytes");
+            LogDebug($"Owner JSON length: {ownerJson.Length}");
+            LogDebug($"Manifest JSON length: {manifestJson.Length}");
+
+            // Apply current settings before opening
+            ApplySettings();
+
+            // Set transparent background by default
+            SetTransparentBackground(true);
+
+            // Enable game UI mode by default
+            SetGameUIMode(_gameUIMode);
+
+            // Only enable debug logging if it was explicitly requested
+            SetDebugLogging(_debugLogging);
+
+            // Call JavaScript function to open WebView with HTML content
+            bool success = _balancyOpenWebViewWithHtml(htmlContent, ownerJson, additionalInfo, manifestJson);
+
+            _isWebViewOpen = success;
+            return success;
+        }
+#endif
 
         /// <summary>
         /// Closes the currently open WebView
@@ -1168,29 +1330,58 @@ namespace Balancy.WebView
             {
                 Debug.Log($"[BalancyWebView] Load completed: {success}: ");
 
+                #if !(UNITY_WEBGL && !UNITY_EDITOR)
+                // For WebGL, bridge injection is handled by TypeScript (unity-entry.ts)
+                // to ensure proper timing with iframe load events
+
+                string ownerInfo = "";
                 if (!string.IsNullOrEmpty(_instance._ownerJson))
                 {
-                    var injectedCode = "(function() {\n" +
-                                       "    try {\n" +
-                                       (!string.IsNullOrEmpty(_instance._additionalInfo)
-                                           ? $"        window.balancySettings = JSON.parse('{_instance._additionalInfo}');\n"
-                                           : "") +
-                                       $"        window.balancyViewOwner = JSON.parse('{_instance._ownerJson}');\n" +
-                                       "    } catch (error) {\n" +
-                                       "        console.error('Error parsing button params JSON:', error);\n" +
-                                       "        window.balancyViewOwner = null;\n" +
-                                       "    }\n" +
-                                       "    return true; // Return explicit value to avoid iOS error code 5\n" +
-                                       "})();";
-                    _balancyInjectJSCode(injectedCode);
+                    ownerInfo = "(function() {\n" +
+                                "    try {\n" +
+                                (!string.IsNullOrEmpty(_instance._additionalInfo)
+                                    ? $"        window.balancySettings = JSON.parse('{_instance._additionalInfo}');\n"
+                                    : "") +
+                                $"        window.balancyViewOwner = JSON.parse('{_instance._ownerJson}');\n" +
+                                "    } catch (error) {\n" +
+                                "        console.error('Error parsing button params JSON:', error);\n" +
+                                "        window.balancyViewOwner = null;\n" +
+                                "    }\n" +
+                                "    return true; // Return explicit value to avoid iOS error code 5\n" +
+                                "})();";
                 }
 
                 // InjectFileFromResources("balancy-webview-performance");
-                InjectFileFromResources("balancy-webview-styles");
-                InjectFileFromResources("balancy-webview-bridge");
+                // InjectFileFromResources("balancy-webview-styles");
+                // InjectFileFromResources("balancy-webview-bridge");
+                var bridgeCode = Resources.Load<TextAsset>("balancy-webview-bridge");
                 
+                // const fullCode = `
+                //     // #1 Owner Info
+                //     ${ownerInfo}
+                //
+                // // #2 Bridge
+                // ${bridgeCode}
+                //
+                // // #3 Scripts
+                // ${this._scriptsCode}
+                //
+                // // #4 Initialize
+                // balancy.initResponseHandler();
+                // console.log('Balancy fully initialized!');
+                // // Return explicit value to avoid iOS error code 5
+                // true;
+                //     `;
+                //Rewrite the commented code above to C#:
+                var fullCode =
+                    $"{ownerInfo} {bridgeCode} balancy.initResponseHandler(); console.log('Balancy fully initialized!'); true";
+                
+                _balancyInjectJSCode(fullCode);
                 // InjectFileFromResources("balancy-webview-css-animations");
                 // InjectFileFromResources("balancy-webview-js-animations");
+                #else
+                Debug.Log("[BalancyWebView] WebGL: Bridge injection handled by TypeScript");
+                #endif
             }
 
             _instance.OnLoadCompleted?.Invoke(success);

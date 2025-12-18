@@ -1,8 +1,10 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
 using UnityEngine;
+using UnityEngine.Networking;
 using Object = UnityEngine.Object;
 
 namespace Balancy.Dictionaries
@@ -34,12 +36,70 @@ namespace Balancy.Dictionaries
 
         internal static void Init(string cachePath, string resourcesPath)
         {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            // For WebGL, cachePath already includes /idbfs/ prefix
+            // Don't use Path.Combine as it doesn't work correctly with /idbfs/
+            // The path from C++ LocationPath is relative, so we just need the base cache directory
+            CACHE_PATH = cachePath + "/";
+#else
             CACHE_PATH = Path.Combine(cachePath, "Balancy/Models/");
+#endif
             RESOURCES_PATH = resourcesPath;
             _mainThreadInstance = UnityMainThreadDispatcher.Instance();
         }
 
-        private static UnityMainThreadDispatcher _mainThreadInstance; 
+        private static UnityMainThreadDispatcher _mainThreadInstance;
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        // Synchronous version - returns cached blob URL or null
+        [DllImport("__Internal")]
+        private static extern IntPtr _balancyReadFileAsBlobUrl(string path);
+
+        // Async version - preloads file from IndexedDB and caches blob URL
+        private delegate void PreloadCallback(IntPtr userData, IntPtr blobUrlPtr);
+
+        [DllImport("__Internal")]
+        private static extern void _balancyPreloadFileAsBlobUrl(string directory, string fileName,
+            PreloadCallback callback, IntPtr userData);
+
+        private static string ReadFileAsBlobUrl(string path)
+        {
+            IntPtr ptr = _balancyReadFileAsBlobUrl(path);
+            if (ptr == IntPtr.Zero)
+                return null;
+
+            string blobUrl = Marshal.PtrToStringAnsi(ptr);
+            Marshal.FreeHGlobal(ptr);
+            return blobUrl;
+        }
+
+        // Callback context for async preload
+        private class PreloadContext
+        {
+            public bool Complete;
+            public string BlobUrl;
+        }
+
+        // Static dictionary to track preload contexts by ID
+        private static Dictionary<int, PreloadContext> _preloadContexts = new Dictionary<int, PreloadContext>();
+        private static int _nextContextId = 1;
+
+        // Static callback for async preload (required for IL2CPP)
+        [AOT.MonoPInvokeCallback(typeof(PreloadCallback))]
+        private static void OnFilePreloaded(IntPtr userDataPtr, IntPtr blobUrlPtr)
+        {
+            int contextId = userDataPtr.ToInt32();
+
+            if (_preloadContexts.TryGetValue(contextId, out var context))
+            {
+                if (blobUrlPtr != IntPtr.Zero)
+                {
+                    context.BlobUrl = Marshal.PtrToStringAnsi(blobUrlPtr);
+                }
+                context.Complete = true;
+            }
+        }
+#endif 
 
         private abstract class OneObjectBase
         {
@@ -79,6 +139,17 @@ namespace Balancy.Dictionaries
 
             protected override void OnObjectLoaded()
             {
+#if UNITY_WEBGL && !UNITY_EDITOR
+                // For WebGL: Use UnityWebRequest to load texture asynchronously
+                _mainThreadInstance.StartCoroutine(LoadTextureWebGL());
+#else
+                // For native platforms: Use synchronous file loading
+                LoadTextureNative();
+#endif
+            }
+
+            private void LoadTextureNative()
+            {
                 Texture2D texture = TryToLoadTextureFromResources();
 
                 if (texture == null)
@@ -89,8 +160,7 @@ namespace Balancy.Dictionaries
                         path = PathInResources;
                         if (!File.Exists(path))
                         {
-                            if (File.Exists(PathInResources))
-                                Debug.LogError("NO FILE PATH " + path);
+                            Debug.LogError("NO FILE PATH " + path);
                             SetSprite(null);
                             return;
                         }
@@ -100,9 +170,137 @@ namespace Balancy.Dictionaries
                     texture.LoadImage(bytes);
                 }
 
-                Sprite sprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), 
-                    new Vector2(0.5f, 0.5f), _objectInfo.PixelsPerUnit, 0, 
-                    SpriteMeshType.FullRect, 
+                CreateSpriteFromTexture(texture);
+            }
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+            private IEnumerator LoadTextureWebGL()
+            {
+                //Debug.Log("**==>> [WebGL] Loading texture from: " + _objectInfo.LocationPath);
+
+                // Try loading from Resources first
+                Texture2D texture = TryToLoadTextureFromResources();
+                if (texture != null)
+                {
+                    //Debug.Log("**==>> [WebGL] Texture loaded from Resources");
+                    CreateSpriteFromTexture(texture);
+                    yield break;
+                }
+
+                // PathInStorage format: /idbfs/{hash}/{fileName}
+                // We need to split into directory and fileName for IndexedDB
+                string fullPath = PathInStorage;
+                //Debug.Log("**==>> [WebGL] Full path: " + fullPath);
+
+                // Split path: directory is everything up to last '/', fileName is the rest
+                int lastSlash = fullPath.LastIndexOf('/');
+                if (lastSlash < 0)
+                {
+                    Debug.LogError("**==>> [WebGL] Invalid path format: " + fullPath);
+                    SetSprite(null);
+                    yield break;
+                }
+
+                string directory = fullPath.Substring(0, lastSlash);
+                string fileName = fullPath.Substring(lastSlash + 1);
+
+                //Debug.Log("**==>> [WebGL] Directory: " + directory);
+                //Debug.Log("**==>> [WebGL] FileName: " + fileName);
+
+                // First check if already cached
+                string blobUrl = DataObjectsManager.ReadFileAsBlobUrl(fullPath);
+                if (!string.IsNullOrEmpty(blobUrl))
+                {
+                    //Debug.Log("**==>> [WebGL] Using cached blob URL: " + blobUrl);
+                }
+                else
+                {
+                    // Need to preload from IndexedDB first
+                    //Debug.Log("**==>> [WebGL] Preloading file from IndexedDB...");
+
+                    // Create context with unique ID
+                    int contextId = DataObjectsManager._nextContextId++;
+                    var context = new DataObjectsManager.PreloadContext
+                    {
+                        Complete = false,
+                        BlobUrl = null
+                    };
+                    DataObjectsManager._preloadContexts[contextId] = context;
+
+                    // Call async preload with static callback
+                    _balancyPreloadFileAsBlobUrl(directory, fileName,
+                        DataObjectsManager.OnFilePreloaded, new IntPtr(contextId));
+
+                    // Wait for preload to complete
+                    float timeout = 5f;
+                    float elapsed = 0f;
+                    while (!context.Complete && elapsed < timeout)
+                    {
+                        yield return null;
+                        elapsed += Time.deltaTime;
+                    }
+
+                    if (!context.Complete)
+                    {
+                        Debug.LogError("**==>> [WebGL] Preload timeout after " + timeout + " seconds");
+                        DataObjectsManager._preloadContexts.Remove(contextId);
+                        SetSprite(null);
+                        yield break;
+                    }
+
+                    blobUrl = context.BlobUrl;
+                    DataObjectsManager._preloadContexts.Remove(contextId);
+
+                    if (!string.IsNullOrEmpty(blobUrl))
+                    {
+                        //Debug.Log("**==>> [WebGL] Preload complete, blob URL: " + blobUrl);
+                    }
+                    else
+                    {
+                        Debug.LogError("**==>> [WebGL] Preload failed - file not found in IndexedDB");
+                    }
+                }
+
+                if (string.IsNullOrEmpty(blobUrl))
+                {
+                    Debug.LogError("**==>> [WebGL] Failed to get blob URL for: " + fullPath);
+                    SetSprite(null);
+                    yield break;
+                }
+
+                //Debug.Log("**==>> [WebGL] Loading texture from blob URL: " + blobUrl);
+
+                // Use UnityWebRequest to load texture from blob URL
+                using (UnityWebRequest request = UnityWebRequestTexture.GetTexture(blobUrl))
+                {
+                    yield return request.SendWebRequest();
+
+                    if (request.result == UnityWebRequest.Result.Success)
+                    {
+                        texture = DownloadHandlerTexture.GetContent(request);
+                        //Debug.Log("**==>> [WebGL] Texture loaded successfully, size: " + texture.width + "x" + texture.height);
+                        CreateSpriteFromTexture(texture);
+                    }
+                    else
+                    {
+                        Debug.LogError("**==>> [WebGL] Failed to load texture from blob URL: " + request.error);
+                        SetSprite(null);
+                    }
+                }
+            }
+#endif
+
+            private void CreateSpriteFromTexture(Texture2D texture)
+            {
+                if (texture == null)
+                {
+                    SetSprite(null);
+                    return;
+                }
+
+                Sprite sprite = Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height),
+                    new Vector2(0.5f, 0.5f), _objectInfo.PixelsPerUnit, 0,
+                    SpriteMeshType.FullRect,
                     new Vector4(_objectInfo.OffsetLeft, _objectInfo.OffsetBottom, _objectInfo.OffsetRight, _objectInfo.OffsetTop));
                 SetSprite(sprite);
             }
@@ -266,7 +464,11 @@ namespace Balancy.Dictionaries
                 {
                     if (AllObjects.TryGetValue(id, out var oneObject))
                     {
-                        var sharedObject = Marshal.PtrToStructure<SharedObjectInfo>(ptr);
+                        // Unified approach: ptr is always a pointer to a JSON string (all platforms)
+                        string jsonData = Marshal.PtrToStringAnsi(ptr);
+
+                        // Parse JSON to SharedObjectInfo
+                        var sharedObject = JsonUtility.FromJson<SharedObjectInfo>(jsonData);
                         _mainThreadInstance.Enqueue(() => { oneObject.ProcessLoadedObject(sharedObject); });
                     }
                     else

@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.InteropServices;
 using Balancy.Data.SmartObjects;
 using Balancy.Models;
 using Balancy.Models.SmartObjects;
@@ -9,6 +10,7 @@ namespace Balancy
 {
     public class RenderViewsManager
     {
+        private const int DEFAULT_OWNER_DEPTH = 10;
 #if UNITY_EDITOR
         // private const bool UseEmbeddedWebView = true;
         private const bool UseEmbeddedWebView = false;
@@ -104,9 +106,96 @@ namespace Balancy
                 Debug.LogError("File path is null or empty");
                 return;
             }
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+            // WebGL: Load HTML content from cache instead of using file:// URLs
+            OpenLocalViewWebGL(filePath, owner);
+#else
             string fileUrl = "file://" + filePath;
             OpenView(fileUrl, owner);
+#endif
         }
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        private static void OpenLocalViewWebGL(string filePath, JsonBasedObject owner)
+        {
+            Debug.Log($"[RenderViewsManager] Loading HTML content from cache: {filePath}");
+
+            // Extract relative path (remove /idbfs/.../guid_ prefix if present)
+            string relativePath = filePath;
+            if (relativePath.StartsWith("/idbfs/"))
+            {
+                // Pattern: /idbfs/<hash>/<guid>_Cache/Files/...
+                int cacheIndex = relativePath.IndexOf("Cache/");
+                if (cacheIndex > 0)
+                {
+                    relativePath = relativePath.Substring(cacheIndex);
+                }
+            }
+
+            Debug.Log($"[RenderViewsManager] Relative path: {relativePath}");
+
+            // Load HTML content from C++ cache
+            IntPtr contentPtr = LibraryMethods.General.balancyLoadFileFromCache(relativePath);
+            string htmlContent = Marshal.PtrToStringAnsi(contentPtr);
+
+            if (string.IsNullOrEmpty(htmlContent))
+            {
+                Debug.LogError($"[RenderViewsManager] Failed to load HTML content from cache: {relativePath}");
+                return;
+            }
+
+            Debug.Log($"[RenderViewsManager] Loaded HTML content: {htmlContent.Length} bytes");
+
+            // Load manifest.json if it exists
+            string manifestPath = relativePath.Replace("index.html", "manifest.json");
+            IntPtr manifestPtr = LibraryMethods.General.balancyLoadFileFromCache(manifestPath);
+            string manifestContent = Marshal.PtrToStringAnsi(manifestPtr);
+
+            // Open WebView with HTML content
+            OpenHtmlView(htmlContent, manifestContent, owner);
+        }
+
+        private static void OpenHtmlView(string htmlContent, string manifestContent, JsonBasedObject owner)
+        {
+            if (_webView.IsWebViewOpen())
+            {
+                Debug.LogError("View is already opened");
+                return;
+            }
+
+            m_LastOpenedOwnerPtr = owner?.GetRawPointer() ?? IntPtr.Zero;
+            string ownerJson = owner?.ToJsonString(DEFAULT_OWNER_DEPTH, false) ?? "";
+
+            // Parse manifest
+            string manifestJson = "{}";
+            if (!string.IsNullOrEmpty(manifestContent))
+            {
+                manifestJson = manifestContent;
+            }
+
+            // Calculate additional info
+            long time = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            string additionalInfo = $"{{\"launchTime\":{time}}}";
+
+            if (owner is IOwnerWithTimer ownerWithTimer)
+            {
+                int secondsLeft = ownerWithTimer.GetSecondsLeftBeforeDeactivation();
+                if (secondsLeft > 0)
+                    additionalInfo = $"{{\"launchTime\":{time},\"secondsLeft\":{secondsLeft}}}";
+            }
+
+            Debug.Log($"[RenderViewsManager] Opening HTML view with content length: {htmlContent.Length}");
+
+            // Use existing OpenWebView infrastructure
+            bool success = _webView.OpenWebViewHtml(htmlContent, ownerJson, additionalInfo, manifestJson);
+
+            if (!success)
+            {
+                Debug.LogError("[RenderViewsManager] Failed to open HTML view");
+            }
+        }
+#endif
 
         public static void SetViewDelays(float showDelay, float transparencyAnimationDuration)
         {
@@ -134,7 +223,7 @@ namespace Balancy
             var urlToLoad = url;// + "?timestamp=" + Guid.NewGuid().ToString();
 
             m_LastOpenedOwnerPtr = owner?.GetRawPointer() ?? IntPtr.Zero;
-            string ownerJson = owner?.ToJsonString(0, false);
+            string ownerJson = owner?.ToJsonString(DEFAULT_OWNER_DEPTH, false);
 
             long launchTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             string additionalInfo = $"{{\"launchTime\":{launchTime}}}";
@@ -158,7 +247,10 @@ namespace Balancy
             else
             {
                 // Use game view size for popup mode to match embedded mode behavior
+                // Debug.LogWarning("[RenderViewsManager] OpenView " + urlToLoad + " in popup mode.");
+                // Debug.LogWarning("[RenderViewsManager] ownerJson " + ownerJson);
                 success = _webView.OpenWebView(urlToLoad, ownerJson, additionalInfo);
+                // Debug.LogWarning("[RenderViewsManager] success " + success);
             }
             
 #if UNITY_EDITOR
@@ -284,10 +376,16 @@ namespace Balancy
         {
             switch ((RequestAction)command)
             {
-                // case RequestAction.BalancyIsReady: {
-                //     this._webView?.show();
-                //     break;
-                // }
+                case RequestAction.BalancyIsReady:
+                {
+#if UNITY_WEBGL && !UNITY_EDITOR
+                    Debug.Log("[RenderViewsManager] BalancyIsReady received - WebView will be shown by JavaScript");
+                    // For WebGL, the show() is called from JavaScript side via the jslib
+                    // We just acknowledge the message here
+#endif
+                    LibraryMethods.General.balancyDataRequestedResponse(requestId, DEFAULT_ANSWER);
+                    return;
+                }
                 case RequestAction.BuyOffer:
                 {
                     CommandBuyOffer commandInfo = JsonUtility.FromJson<CommandBuyOffer>(paramsJson);
