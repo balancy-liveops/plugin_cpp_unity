@@ -114,6 +114,8 @@ namespace Balancy
                             item_id = Marshal.PtrToStringAnsi(interop.item_id),
                             name = Marshal.PtrToStringAnsi(interop.name),
                             description = Marshal.PtrToStringAnsi(interop.description),
+                            localized_name = Marshal.PtrToStringAnsi(interop.localized_name),
+                            localized_description = Marshal.PtrToStringAnsi(interop.localized_description),
                             price = interop.price
                         };
 

@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using Balancy.Localization;
+using UnityEngine;
 
 namespace Balancy.Core
 {
@@ -103,6 +105,8 @@ namespace Balancy.Core
             public IntPtr item_id;
             public IntPtr name;
             public IntPtr description;
+            public IntPtr localized_name;
+            public IntPtr localized_description;
             public float price;
         };
         
@@ -127,12 +131,15 @@ namespace Balancy.Core
             internal string item_id;
             internal string name;
             internal string description;
-            internal string icon;
-
-            internal float price;
+            // internal string icon;
             // internal Constants.Platform platform;
-            // internal LocalizedString localizedName;
-            // internal LocalizedString localizedDescription;
+            internal string localized_name;
+            internal string localized_description;
+            
+            internal float price;
+            
+            internal LocalizedString localizedName;
+            internal LocalizedString localizedDescription;
 
             public string ProductId
             {
@@ -168,17 +175,41 @@ namespace Balancy.Core
                 get { return name; }
             }
 
-            // public LocalizedString LocalizedName { get { return localizedName; } }
-            // public LocalizedString LocalizedDescription { get { return localizedDescription; } }
+            public LocalizedString LocalizedName
+            {
+                get
+                {
+                    if (localizedName == null)
+                    {
+                        localizedName = new LocalizedString(localized_name);
+                    }
+
+                    return localizedName;
+                }
+            }
+
+            public LocalizedString LocalizedDescription
+            {
+                get
+                {
+                    if (localizedDescription == null)
+                    {
+                        localizedDescription = new LocalizedString(localized_description);
+                    }
+
+                    return localizedDescription;
+                }
+            }
+
             public string Description
             {
                 get { return description; }
             }
 
-            public string Icon
-            {
-                get { return icon; }
-            }
+            // public string Icon
+            // {
+            //     get { return icon; }
+            // }
 
             public float Price
             {
