@@ -171,6 +171,11 @@ namespace Balancy.Core
         {
             public List<Product> Products { get; internal set; }
         }
+
+        public class ProductResponseData : ResponseData
+        {
+            public Product Product { get; set; }
+        }
         //
         // [StructLayout(LayoutKind.Sequential, Pack = 1)]
         // internal struct InteropStringArray

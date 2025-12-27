@@ -249,6 +249,38 @@ namespace Balancy
             LibraryMethods.API.balancyGetProducts(callbackResult.CallbackId, callbackResult.StaticCallback);
         }
 
+        public static void GetProduct(string productId, Balancy.Core.ResponseCallback<Balancy.Core.Responses.ProductResponseData> callback)
+        {
+            GetProducts(productsResponse =>
+            {
+                if (!productsResponse.Success)
+                {
+                    // Forward the error from GetProducts
+                    var errorResponse = new Balancy.Core.Responses.ProductResponseData
+                    {
+                        Success = false,
+                        ErrorCode = productsResponse.ErrorCode,
+                        ErrorMessage = productsResponse.ErrorMessage,
+                        Product = null
+                    };
+                    callback?.Invoke(errorResponse);
+                    return;
+                }
+
+                // Find the product by ID
+                var product = productsResponse.Products?.Find(p => p.ProductId == productId);
+
+                var response = new Balancy.Core.Responses.ProductResponseData
+                {
+                    Success = product != null,
+                    ErrorCode = product != null ? 0 : -1,
+                    ErrorMessage = product != null ? "" : $"Product with ID '{productId}' not found",
+                    Product = product
+                };
+
+                callback?.Invoke(response);
+            });
+        }
 
         public static void HardPurchaseGameOffer(OfferInfo offerInfo, Balancy.Core.PaymentInfo paymentInfo,
             Balancy.Core.ResponseCallback<Balancy.Core.Responses.PurchaseProductResponseData> callback, bool requireValidation)

@@ -495,16 +495,20 @@ namespace Balancy
                                 Debug.LogError("Store item index is invalid or not set for group offer: " + commandInfo.instanceId);
                                 break;
                             }
-                    
+
                             var storeItem = offerInfo?.GameOfferGroup?.StoreItems[commandInfo.index];
-                            var info = Balancy.Actions.Purchasing.GetHardPurchaseInfoCallback()(storeItem?.Price?.Product?.ProductId);
-                            LibraryMethods.General.balancyDataRequestedResponse(requestId, JsonUtility.ToJson(info));
+                            Balancy.Actions.Purchasing.GetHardPurchaseInfoCallback()(storeItem?.Price?.Product?.ProductId, (info) =>
+                            {
+                                LibraryMethods.General.balancyDataRequestedResponse(requestId, JsonUtility.ToJson(info));
+                            });
                             return;
                         }
                         case InfoType.CustomPrice:
                         {
-                            var info = Balancy.Actions.Purchasing.GetHardPurchaseInfoCallback()(commandInfo.productId);
-                            LibraryMethods.General.balancyDataRequestedResponse(requestId, JsonUtility.ToJson(info));
+                            Balancy.Actions.Purchasing.GetHardPurchaseInfoCallback()(commandInfo.productId, (info) =>
+                            {
+                                LibraryMethods.General.balancyDataRequestedResponse(requestId, JsonUtility.ToJson(info));
+                            });
                             return;
                         }
                     }

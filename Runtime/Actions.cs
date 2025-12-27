@@ -226,23 +226,23 @@ namespace Balancy
                 public float LocalizedPrice;
                 public string IsoCurrencyCode;
             }
-            
-            private static readonly Func<string, HardProductInfo> DefaultGetHardPurchaseInfo = (string productId) =>
+
+            private static readonly Action<string, System.Action<HardProductInfo>> DefaultGetHardPurchaseInfoAsync = (string productId, System.Action<HardProductInfo> callback) =>
             {
                 UnityEngine.Debug.LogWarning("You need to implement Balancy.Actions.Purchasing.SetGetHardPurchaseInfoCallback or install the Balancy Purchasing package.");
-                return new HardProductInfo();
+                callback?.Invoke(new HardProductInfo());
             };
 
-            private static Func<string, HardProductInfo> _getHardPurchaseInfo = DefaultGetHardPurchaseInfo;
+            private static Action<string, System.Action<HardProductInfo>> _getHardPurchaseInfoAsync = DefaultGetHardPurchaseInfoAsync;
 
-            public static void SetGetHardPurchaseInfoCallback(Func<string, HardProductInfo> callback)
+            public static void SetGetHardPurchaseInfoCallback(Action<string, System.Action<HardProductInfo>> callback)
             {
-                _getHardPurchaseInfo = callback ?? DefaultGetHardPurchaseInfo;
+                _getHardPurchaseInfoAsync = callback ?? DefaultGetHardPurchaseInfoAsync;
             }
 
-            internal static Func<string, HardProductInfo> GetHardPurchaseInfoCallback()
+            internal static Action<string, System.Action<HardProductInfo>> GetHardPurchaseInfoCallback()
             {
-                return _getHardPurchaseInfo;
+                return _getHardPurchaseInfoAsync;
             }
         }
     }
