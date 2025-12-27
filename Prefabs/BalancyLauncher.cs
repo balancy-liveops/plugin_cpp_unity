@@ -7,6 +7,7 @@ namespace Balancy
     {
         [SerializeField] private bool autoStart = true;
         [SerializeField] private bool activateTestPayments = true;
+        [SerializeField] private bool activateDebugLogs = true;
         
         [SerializeField] private string apiGameId;
         [SerializeField] private string apiPublicKey;
@@ -24,9 +25,6 @@ namespace Balancy
         {
             if (autoStart)
                 InitPrivate();
-            
-            if (activateTestPayments)
-                PreparePayments();
             
             DontDestroyOnLoad(gameObject);
         }
@@ -160,6 +158,11 @@ namespace Balancy
                 });
             });
         }
+        
+        private void Awake()
+        {
+            _instance = this;
+        }
 
         public static void Init()
         {
@@ -171,7 +174,12 @@ namespace Balancy
         
         private void InitPrivate()
         {
-            Balancy.Callbacks.InitExamplesWithLogs();
+            if (activateTestPayments)
+                PreparePayments();
+            
+            if (activateDebugLogs)
+                Balancy.Callbacks.InitExamplesWithLogs();
+            
             Balancy.Main.Init(new AppConfig
             {
                 ApiGameId = apiGameId,

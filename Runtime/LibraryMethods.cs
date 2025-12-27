@@ -20,6 +20,9 @@ namespace Balancy
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         public delegate void UserDataInitializedCallback();
 
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate void RunFunctionCallback(string callbackDataJson, string responseCallbackId);
+
         public static class General
         {
             [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
@@ -158,6 +161,12 @@ namespace Balancy
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancySetDataRequestedCallback(DataRequestedCallback callback);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancySetRunFunctionCallback(RunFunctionCallback callback);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyRunFunctionResponse(string responseCallbackId, string responseJson);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyDataRequestedResponse(int requestId, string response);

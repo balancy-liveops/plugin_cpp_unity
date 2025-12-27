@@ -48,6 +48,7 @@ namespace Balancy
             LibraryMethods.Models.balancySetUserDataInitializedCallback(UserDataInitialized);
             Profiles.Init();
             RenderViewsManager.Init();
+            RunFunctionManager.Init();
 
             CppAppConfig config = CreateConfigForCPP(appConfig);
             IntPtr configPtr = Marshal.AllocHGlobal(Marshal.SizeOf(config));
