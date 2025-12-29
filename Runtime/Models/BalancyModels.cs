@@ -103,15 +103,21 @@ namespace Balancy.Models
         }
         
         private string id;
+        private string name;
         private ObjectType type;
         public string Id => id;
+        public string Name => name;
 
         public override void InitData()
         {
             base.InitData();
             id = GetStringParam("id");
+            name = GetStringParam("name");
             type = (ObjectType)GetIntParam("type");
         }
+        
+        public static Func<string, Action<UnityEngine.Sprite>, AsyncLoadHandler> OnLoadAssetAsSprite = null;
+        public static Func<string, Action<UnityEngine.Object>, AsyncLoadHandler> OnLoadAssetAsObject = null;
         
         public AsyncLoadHandler LoadSprite(Action<UnityEngine.Sprite> callback)
         {
@@ -122,8 +128,8 @@ namespace Balancy.Models
                     return DataObjectsManager.GetSprite(Id, callback);
                 case ObjectType.Asset:
                 {
-                    // if (OnLoadAssetAsSprite != null)
-                    //     return OnLoadAssetAsSprite?.Invoke(Name, callback);
+                    if (OnLoadAssetAsSprite != null)
+                        return OnLoadAssetAsSprite?.Invoke(Name, callback);
                     Debug.LogError($"Addressables plugin wasn't found. Please add it to the project. {Id}");
                     break;
                 }

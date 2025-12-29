@@ -19,6 +19,7 @@ namespace Balancy
         private static UnityMainThreadDispatcher _mainThreadInstance; 
         
         public static event Action OnCloudSynced;
+        public static event Action<bool, bool> OnDataUpdated;
         
         public static void Init(AppConfig appConfig)
         {
@@ -67,6 +68,7 @@ namespace Balancy
         {
             try
             {
+                OnDataUpdated = null;
                 LibraryMethods.Models.balancySetModelOnRefresh(null);
                 LibraryMethods.Models.balancySetUserDataInitializedCallback(null);
                 LibraryMethods.General.balancyStop();
@@ -93,6 +95,13 @@ namespace Balancy
         {
             if (dictsChanged)
                 CMS.RefreshAll();
+            
+            OnDataUpdated?.Invoke(dictsChanged, profileChanged);
+        }
+
+        public static Constants.DevicePlatform GetDevicePlatform()
+        {
+            return (Constants.DevicePlatform)(_cppConfig?.DevicePlatform ?? -1);
         }
 
         private static CppAppConfig CreateConfigForCPP(AppConfig originalConfig)

@@ -441,13 +441,13 @@ namespace Balancy
         {
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern IntPtr balancyLocalization_GetLocalizedValue(string key);
-            
+
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern IntPtr balancyLocalization_GetCurrentLocalizationCode();
-            
+
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyLocalization_ChangeLocalization(string key);
-            
+
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern IntPtr balancyLocalization_GetAllLocalizationCodes(out int size);
         }
