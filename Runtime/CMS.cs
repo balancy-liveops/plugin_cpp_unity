@@ -9,6 +9,7 @@ namespace Balancy
     public static class CMS
     {
         private static readonly Dictionary<string, BaseModel> AllModels = new Dictionary<string, BaseModel>();
+        private static readonly Dictionary<string, object> AllSingletons = new Dictionary<string, object>();
         private static Dictionary<string, string> Inheritance = null;
 
         public static Func<string, BaseModel> OnTypeRequested = null;
@@ -72,7 +73,33 @@ namespace Balancy
         internal static void CleanUp()
         {
             AllModels.Clear();
+            AllSingletons.Clear();
             Inheritance?.Clear();
+        }
+
+        /// <summary>
+        /// Get singleton instance for a given template type.
+        /// Supports both regular singletons and ConditionalTemplate-based singletons.
+        /// For ConditionalTemplate singletons, returns the variant with highest priority whose condition passes.
+        /// </summary>
+        /// <typeparam name="T">Singleton template type (must be a BaseModel)</typeparam>
+        /// <returns>Current singleton instance, may change based on conditions for ConditionalTemplates</returns>
+        public static SmartObjects.BalancySingleton<T> GetSingleton<T>() where T : BaseModel
+        {
+            if (!IsReadyToUse)
+                return null;
+
+            var templateName = JsonBasedObject.GetModelClassName<T>();
+
+            // Check if singleton wrapper already exists
+            if (!AllSingletons.TryGetValue(templateName, out var wrapper))
+            {
+                // Create new singleton wrapper
+                wrapper = new SmartObjects.BalancySingleton<T>();
+                AllSingletons[templateName] = wrapper;
+            }
+
+            return (SmartObjects.BalancySingleton<T>)wrapper;
         }
 
         private static void RefreshInheritance()

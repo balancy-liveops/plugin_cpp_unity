@@ -273,6 +273,8 @@ namespace Balancy
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern IntPtr balancyGetTemplateName(IntPtr instance);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyGetUnnyId(IntPtr instance);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern IntPtr balancyGetObjectParam(IntPtr instance, string paramName, string fileName);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern IntPtr balancyGetObjectArrayParam(IntPtr instance, string paramName, string fileName, out int size);
@@ -318,9 +320,24 @@ namespace Balancy
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyDataObjectViewPreload(string unnyId, DataObjectViewWasCachedCallback callback);
-            
+
         }
-        
+
+        public static class Singletons
+        {
+            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+            public delegate void SingletonChangedCallback(string templateName, IntPtr modelPtr);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyGetSingleton(string templateName);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancySubscribeSingletonChanged(string templateName, SingletonChangedCallback callback);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyUnsubscribeSingletonChanged(string templateName, int callbackId);
+        }
+
         public static class Data
         {
             [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
