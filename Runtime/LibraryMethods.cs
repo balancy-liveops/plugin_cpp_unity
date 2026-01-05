@@ -336,6 +336,9 @@ namespace Balancy
 
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyUnsubscribeSingletonChanged(string templateName, int callbackId);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyClearAllSingletonCallbacks();
         }
 
         public static class Data

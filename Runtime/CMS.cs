@@ -73,6 +73,11 @@ namespace Balancy
         internal static void CleanUp()
         {
             AllModels.Clear();
+
+            // CRITICAL: Clear all singleton callbacks in C++ before domain reload
+            // This prevents crashes when C++ tries to invoke deallocated C# delegates
+            LibraryMethods.Singletons.balancyClearAllSingletonCallbacks();
+
             AllSingletons.Clear();
             Inheritance?.Clear();
         }

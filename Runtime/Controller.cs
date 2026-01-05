@@ -68,6 +68,10 @@ namespace Balancy
         {
             try
             {
+                // CRITICAL: Clear log callback FIRST before any other cleanup
+                // Other cleanup operations may trigger logging, which would crash if callback is invalid
+                LibraryMethods.General.balancySetLogCallback(null);
+
                 OnDataUpdated = null;
                 LibraryMethods.Models.balancySetModelOnRefresh(null);
                 LibraryMethods.Models.balancySetUserDataInitializedCallback(null);
