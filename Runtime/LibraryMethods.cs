@@ -200,6 +200,9 @@ namespace Balancy
             public static extern int balancyInventory_RemoveItems(IntPtr itemRef, int count);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern int balancyInventory_GetTotalItemsCount(IntPtr itemRef);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern bool balancyStartAbTestManually(IntPtr abTest, IntPtr abTestVariant);
         }
 
         public static class WebSocket
@@ -326,7 +329,7 @@ namespace Balancy
         public static class Singletons
         {
             [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-            public delegate void SingletonChangedCallback(string templateName, IntPtr modelPtr);
+            public delegate void SingletonChangedCallback(string templateName, string unnyId);
 
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern IntPtr balancyGetSingleton(string templateName);

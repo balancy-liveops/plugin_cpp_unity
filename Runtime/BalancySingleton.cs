@@ -39,20 +39,15 @@ namespace Balancy.SmartObjects
         }
 
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.Singletons.SingletonChangedCallback))]
-        private static void OnSingletonChangedStatic(string templateName, IntPtr modelPtr)
+        private static void OnSingletonChangedStatic(string templateName, string unnyId)
         {
             if (_instances.TryGetValue(templateName, out var instance))
             {
                 var singleton = instance as BalancySingleton<T>;
-                if (singleton != null && modelPtr != IntPtr.Zero)
+                if (singleton != null && !string.IsNullOrEmpty(unnyId))
                 {
-                    // Get the unnyId from the model pointer
-                    var unnyId = JsonBasedObject.GetUnnyId(modelPtr);
-                    if (!string.IsNullOrEmpty(unnyId))
-                    {
-                        var model = CMS.GetModelByUnnyId<T>(unnyId);
-                        singleton.OnChanged?.Invoke(model);
-                    }
+                    var model = CMS.GetModelByUnnyId<T>(unnyId);
+                    singleton.OnChanged?.Invoke(model);
                 }
             }
         }
