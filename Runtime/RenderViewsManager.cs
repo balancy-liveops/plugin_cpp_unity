@@ -342,6 +342,7 @@ namespace Balancy
         }
         
         const string DEFAULT_ANSWER = "{\"status\":\"ok\"}";
+        const string FAILED_ANSWER = "{\"status\":\"failed\"}";
         
         [System.Serializable]
         class CommandBuyOffer
@@ -401,14 +402,24 @@ namespace Balancy
                         Balancy.API.InitPurchaseOffer(offerInfo, (success, error) =>
                         {
                             if (success)
+                            {
                                 Debug.Log("Offer purchased successfully: " + commandInfo.instanceId);
+                                LibraryMethods.General.balancyDataRequestedResponse(requestId, DEFAULT_ANSWER);
+                            }
                             else
-                                Debug.LogError("Failed to purchase offer: " + commandInfo.instanceId + ", Error: " + error);
+                            {
+                                Debug.LogError("Failed to purchase offer: " + commandInfo.instanceId + ", Error: " +
+                                               error);
+                                LibraryMethods.General.balancyDataRequestedResponse(requestId, FAILED_ANSWER);
+                            }
                         });
                     }
                     else
+                    {
                         Debug.LogError("OfferInfo not found for instanceId: " + commandInfo.instanceId);
-                    LibraryMethods.General.balancyDataRequestedResponse(requestId, DEFAULT_ANSWER);
+                        break;
+                    }
+
                     return;
                 }
 
@@ -439,13 +450,17 @@ namespace Balancy
                     Balancy.API.InitPurchaseOffer(offerInfo, storeItem, (success, error) =>
                     {
                         if (success)
+                        {
                             Debug.Log("Group offer purchased successfully: " + commandInfo.instanceId);
+                            LibraryMethods.General.balancyDataRequestedResponse(requestId, DEFAULT_ANSWER);
+                        }
                         else
+                        {
                             Debug.LogError("Failed to purchase group offer: " + commandInfo.instanceId +
                                            ", Error: " + error);
+                            LibraryMethods.General.balancyDataRequestedResponse(requestId, FAILED_ANSWER);
+                        }
                     });
-                    
-                    LibraryMethods.General.balancyDataRequestedResponse(requestId, DEFAULT_ANSWER);
                     return;
                 }
 
@@ -464,15 +479,24 @@ namespace Balancy
                         Balancy.API.InitPurchaseShop(shopSlot, (success, error) =>
                         {
                             if (success)
+                            {
                                 Debug.Log("Shop slot purchased successfully: " + commandInfo.slotId);
+                                LibraryMethods.General.balancyDataRequestedResponse(requestId, DEFAULT_ANSWER);
+                            }
                             else
-                                Debug.LogError("Failed to purchase shop slot: " + commandInfo.slotId + ", Error: " + error);
+                            {
+                                Debug.LogError("Failed to purchase shop slot: " + commandInfo.slotId + ", Error: " +
+                                               error);
+                                LibraryMethods.General.balancyDataRequestedResponse(requestId, FAILED_ANSWER);
+                            }
                         });
                     }
                     else
+                    {
                         Debug.LogError("ShopSlot not found for instanceId: " + commandInfo.slotId);
-                    
-                    LibraryMethods.General.balancyDataRequestedResponse(requestId, DEFAULT_ANSWER);
+                        break;
+                    }
+
                     return;
                 }
 

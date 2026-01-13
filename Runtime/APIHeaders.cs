@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using Balancy.Data.SmartObjects;
 using Balancy.Models;
 using Balancy.Models.SmartObjects;
+using Balancy.Models.SmartObjects.Analytics;
 
 namespace Balancy
 {
@@ -300,6 +301,11 @@ namespace Balancy
 
         public static void TrackAdRevenue(AdType type, double revenue, string placement) => 
             LibraryMethods.Profile.balancySystemProfileTrackRevenue(type, revenue, placement);
+        
+        public static bool StartAbTestManually(ABTest abTest, ABTestVariant variant)
+        {
+            return Balancy.LibraryMethods.General.balancyStartAbTestManually(abTest?.GetRawPointer() ?? IntPtr.Zero, variant?.GetRawPointer() ?? IntPtr.Zero);
+        }
 
         public static class Localization
         {
