@@ -585,5 +585,26 @@ namespace Balancy
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyGenenal_LevelFailed();
         }
+
+        public static class Conditions
+        {
+            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+            public delegate void ConditionStatusChangedCallback(string unnyId, bool passed);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern bool balancyConditionCanPass(IntPtr conditionPtr);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyConditionSubscribe(IntPtr conditionPtr, ConditionStatusChangedCallback callback);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyConditionUnsubscribe(IntPtr conditionPtr);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancyConditionGetSecondsLeftBeforeDeactivation(IntPtr conditionPtr);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancyConditionGetSecondsBeforeActivation(IntPtr conditionPtr, bool ignoreTriggers);
+        }
     }
 }

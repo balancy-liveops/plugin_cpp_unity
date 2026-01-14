@@ -211,7 +211,7 @@ namespace Balancy
             return Balancy.LibraryMethods.API.balancySoftPurchaseStoreItem(storeItem?.GetRawPointer() ?? IntPtr.Zero);
         }
         
-        public static bool SoftPurchaseShopSlot(ShopSlot shopSlot)
+        public static bool SoftPurchaseShopSlot(Balancy.Data.SmartObjects.ShopSlot shopSlot)
         {
             return Balancy.LibraryMethods.API.balancySoftPurchaseShopSlot(shopSlot?.GetRawPointer() ?? IntPtr.Zero);
         }
@@ -235,7 +235,7 @@ namespace Balancy
                 callbackResult.CallbackId, callbackResult.StaticCallback, requireValidation);
         }
         
-        public static void HardPurchaseShopSlot(ShopSlot shopSlot, Balancy.Core.PaymentInfo paymentInfo,
+        public static void HardPurchaseShopSlot(Balancy.Data.SmartObjects.ShopSlot shopSlot, Balancy.Core.PaymentInfo paymentInfo,
             Balancy.Core.ResponseCallback<Balancy.Core.Responses.PurchaseProductResponseData> callback, bool requireValidation)
         {
             var callbackResult = ProtectedFromGCCallback(callback);
