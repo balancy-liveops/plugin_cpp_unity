@@ -20,6 +20,9 @@ namespace Balancy
         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
         public delegate void UserDataInitializedCallback();
 
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        public delegate void RunFunctionCallback(string callbackDataJson, string responseCallbackId);
+
         public static class General
         {
             [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
@@ -160,6 +163,12 @@ namespace Balancy
             public static extern void balancySetDataRequestedCallback(DataRequestedCallback callback);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancySetRunFunctionCallback(RunFunctionCallback callback);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyRunFunctionResponse(string responseCallbackId, string responseJson);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyDataRequestedResponse(int requestId, string response);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
@@ -191,6 +200,9 @@ namespace Balancy
             public static extern int balancyInventory_RemoveItems(IntPtr itemRef, int count);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern int balancyInventory_GetTotalItemsCount(IntPtr itemRef);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern bool balancyStartAbTestManually(IntPtr abTest, IntPtr abTestVariant);
         }
 
         public static class WebSocket
@@ -264,6 +276,8 @@ namespace Balancy
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern IntPtr balancyGetTemplateName(IntPtr instance);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyGetUnnyId(IntPtr instance);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern IntPtr balancyGetObjectParam(IntPtr instance, string paramName, string fileName);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern IntPtr balancyGetObjectArrayParam(IntPtr instance, string paramName, string fileName, out int size);
@@ -309,9 +323,27 @@ namespace Balancy
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyDataObjectViewPreload(string unnyId, DataObjectViewWasCachedCallback callback);
-            
+
         }
-        
+
+        public static class Singletons
+        {
+            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+            public delegate void SingletonChangedCallback(string templateName, string unnyId);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyGetSingleton(string templateName);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancySubscribeSingletonChanged(string templateName, SingletonChangedCallback callback);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyUnsubscribeSingletonChanged(string templateName, int callbackId);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyClearAllSingletonCallbacks();
+        }
+
         public static class Data
         {
             [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
@@ -432,13 +464,13 @@ namespace Balancy
         {
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern IntPtr balancyLocalization_GetLocalizedValue(string key);
-            
+
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern IntPtr balancyLocalization_GetCurrentLocalizationCode();
-            
+
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyLocalization_ChangeLocalization(string key);
-            
+
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern IntPtr balancyLocalization_GetAllLocalizationCodes(out int size);
         }
@@ -514,6 +546,8 @@ namespace Balancy
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern bool balancySoftPurchaseGameOfferGroup(IntPtr gameOfferPointer, IntPtr storeItemPointer);
             
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyGetProducts(int callbackId, ResponseCallback callback);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyHardPurchaseStoreItem(IntPtr storeItemPointer, Balancy.Core.PaymentInfo paymentInfo, int callbackId, ResponseCallback callback, bool requireValidation);
@@ -550,6 +584,27 @@ namespace Balancy
             public static extern void balancyGenenal_LevelCompleted();
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyGenenal_LevelFailed();
+        }
+
+        public static class Conditions
+        {
+            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+            public delegate void ConditionStatusChangedCallback(string unnyId, bool passed);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern bool balancyConditionCanPass(IntPtr conditionPtr);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyConditionSubscribe(IntPtr conditionPtr, ConditionStatusChangedCallback callback);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyConditionUnsubscribe(IntPtr conditionPtr);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancyConditionGetSecondsLeftBeforeDeactivation(IntPtr conditionPtr);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancyConditionGetSecondsBeforeActivation(IntPtr conditionPtr, bool ignoreTriggers);
         }
     }
 }

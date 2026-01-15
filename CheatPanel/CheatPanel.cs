@@ -18,6 +18,8 @@ namespace Balancy.Cheats
         [SerializeField] private TMP_Text segmentsInfo;
         [SerializeField] private Button resetButton;
         
+        [SerializeField] private Button winLevel;
+        [SerializeField] private Button failLevel;
         
         [SerializeField] private TMP_Text statusBranch;
         [SerializeField] private TMP_Text statusDeploy;
@@ -30,12 +32,26 @@ namespace Balancy.Cheats
         {
             closeButton.onClick.AddListener(HideWindow);
             resetButton.onClick.AddListener(ResetProfiles);
+            winLevel.onClick.AddListener(OnWinLevelClicked);
+            failLevel.onClick.AddListener(OnFailLevelClicked);
             
             Balancy.Actions.Ads.SetAdWatchCallback((callback) => {
                 Debug.Log("WATCH AD - FAKE");
                 //TODO Implement your ad watch logic here
                 callback(true);
             });
+        }
+
+        private void OnWinLevelClicked()
+        {
+            Balancy.API.General.LevelCompleted();
+            UpdateData();
+        }
+
+        private void OnFailLevelClicked()
+        {
+            Balancy.API.General.LevelFailed();
+            UpdateData();
         }
 
         private void ResetProfiles()
@@ -92,6 +108,7 @@ namespace Balancy.Cheats
         {
             UnnyProfile profile = Profiles.System;
             var info = profile.GeneralInfo;
+            var smartInfo = profile.SmartInfo;
             return $"UserId:   {info.ProfileId}\n" +
                    $"DeviceId: {info.DeviceId}\n" +
                    $"CustomId: {info.CustomId}\n" +
@@ -102,20 +119,28 @@ namespace Balancy.Cheats
                    $"Country:           {info.Country}\n" +
                    $"SystemLanguage:    {info.SystemLanguage}\n" +
                    $"GameLocalization:  {info.GameLocalization}\n" +
-                   
+
                    $"Session:           {info.Session}\n" +
                    $"IsNewUser:         {info.IsNewUser}\n" +
                    $"FirstLoginTime:    {info.FirstLoginTime}\n" +
                    $"PlayTime:          {info.PlayTime}\n" +
                    $"TimeSinceInstall:  {info.TimeSinceInstall}\n" +
                    $"TimeSincePurchase: {info.TimeSincePurchase}\n" +
-                   
+
                    $"Level:             {info.Level}\n" +
-                   $"TutorialStep:      {info.TutorialStep}\n" +
+                   $"WinStreak:         {info.WinStreak}\n" +
+                   $"LoseStreak:        {info.LoseStreak}\n" +
+                   $"LevelsCompletedThisSession:        {info.LevelsCompletedThisSession}\n" +
+                   $"LevelsFailedThisSession:      {info.LevelsFailedThisSession}\n" +
                    
+                   $"ActiveEventsCount:       {smartInfo.ActiveEventsCount}\n" +
+                   $"ActiveOffersCount:       {smartInfo.ActiveOffersCount}\n" +
+                   $"ActiveSingleOffersCount: {smartInfo.ActiveSingleOffersCount}\n" +
+                   $"ActiveGroupOffersCount:  {smartInfo.ActiveGroupOffersCount}\n" +
+
                    $"TrafficSource:     {info.TrafficSource}\n" +
                    $"TrafficCampaign:   {info.TrafficCampaign}\n" +
-                   
+
                    $"DeviceModel:       {info.DeviceModel}\n" +
                    $"DeviceName:        {info.DeviceName}\n" +
                    $"DeviceType:        {info.DeviceType}\n" +

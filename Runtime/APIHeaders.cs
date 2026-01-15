@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using Balancy.Data.SmartObjects;
 using Balancy.Models;
 using Balancy.Models.SmartObjects;
+using Balancy.Models.SmartObjects.Analytics;
 
 namespace Balancy
 {
@@ -83,6 +84,86 @@ namespace Balancy
             }
         }
         
+        
+        private class TypedCallbackProductsResponseDataWrapper : CallbackWrapperBase
+        {
+            private readonly Balancy.Core.ResponseCallback<Core.Responses.ProductsResponseData> _callback;
+
+            public TypedCallbackProductsResponseDataWrapper(Balancy.Core.ResponseCallback<Core.Responses.ProductsResponseData> callback)
+            {
+                _callback = callback;
+            }
+
+            public override void InvokeCallback(IntPtr responseDataPtr)
+            {
+                try
+                {
+                    var response = Marshal.PtrToStructure<Core.Responses.InteropProductsResponseData>(responseDataPtr);
+                    var count = response.size;
+                    IntPtr basePtr = response.data;
+
+                    var products = new List<Core.Responses.Product>(count);
+                    int elemSize = Marshal.SizeOf<Core.Responses.InteropProductData>();
+                    for (int i = 0; i < count; i++)
+                    {
+                        IntPtr itemPtr = IntPtr.Add(basePtr, i * elemSize);
+                        var interop = Marshal.PtrToStructure<Core.Responses.InteropProductData>(itemPtr);
+
+                        var product = new Core.Responses.Product
+                        {
+                            base_id = Marshal.PtrToStringAnsi(interop.base_id),
+                            type = (byte)interop.type,
+                            item_id = Marshal.PtrToStringAnsi(interop.item_id),
+                            name = Marshal.PtrToStringAnsi(interop.name),
+                            description = Marshal.PtrToStringAnsi(interop.description),
+                            localized_name = Marshal.PtrToStringAnsi(interop.localized_name),
+                            localized_description = Marshal.PtrToStringAnsi(interop.localized_description),
+                            price = interop.price
+                        };
+
+                        products.Add(product);
+                    }
+
+                    var res = new Core.Responses.ProductsResponseData
+                    {
+                        Products = products,
+                        Success = response.Success,
+                        ErrorCode = response.ErrorCode,
+                        ErrorMessage = response.ErrorMessage,
+                    };
+
+                    _callback?.Invoke(res);
+                }
+                catch (Exception e)
+                {
+                    UnityEngine.Debug.LogError("Exception in TypedCallbackProductsResponseDataWrapper: " + e);
+                }
+            }
+        }
+
+
+        private static CallbackResult ProtectedFromGCCallback<T>(Balancy.Core.ResponseCallback<T> callback, Func<Balancy.Core.ResponseCallback<T>, CallbackWrapperBase> customWrapperCreator) where T : Balancy.Core.Responses.ResponseData
+        {
+            int callbackId;
+            lock (_callbackLock)
+            {
+                callbackId = ++_callbackIdCounter;
+            }
+            
+            var wrapper = customWrapperCreator(callback);
+            
+            lock (_callbackLock)
+            {
+                _callbackStorage[callbackId] = wrapper;
+            }
+            
+            return new CallbackResult
+            {
+                CallbackId = callbackId,
+                StaticCallback = StaticResponseHandler
+            };
+        }
+        
         private static CallbackResult ProtectedFromGCCallback<T>(Balancy.Core.ResponseCallback<T> callback) 
             where T : Balancy.Core.Responses.ResponseData
         {
@@ -130,7 +211,7 @@ namespace Balancy
             return Balancy.LibraryMethods.API.balancySoftPurchaseStoreItem(storeItem?.GetRawPointer() ?? IntPtr.Zero);
         }
         
-        public static bool SoftPurchaseShopSlot(ShopSlot shopSlot)
+        public static bool SoftPurchaseShopSlot(Balancy.Data.SmartObjects.ShopSlot shopSlot)
         {
             return Balancy.LibraryMethods.API.balancySoftPurchaseShopSlot(shopSlot?.GetRawPointer() ?? IntPtr.Zero);
         }
@@ -154,12 +235,52 @@ namespace Balancy
                 callbackResult.CallbackId, callbackResult.StaticCallback, requireValidation);
         }
         
-        public static void HardPurchaseShopSlot(ShopSlot shopSlot, Balancy.Core.PaymentInfo paymentInfo,
+        public static void HardPurchaseShopSlot(Balancy.Data.SmartObjects.ShopSlot shopSlot, Balancy.Core.PaymentInfo paymentInfo,
             Balancy.Core.ResponseCallback<Balancy.Core.Responses.PurchaseProductResponseData> callback, bool requireValidation)
         {
             var callbackResult = ProtectedFromGCCallback(callback);
             Balancy.LibraryMethods.API.balancyHardPurchaseShopSlot(shopSlot?.GetRawPointer() ?? IntPtr.Zero, paymentInfo,
                 callbackResult.CallbackId, callbackResult.StaticCallback, requireValidation);
+        }
+        
+        public static void GetProducts(Balancy.Core.ResponseCallback<Balancy.Core.Responses.ProductsResponseData> callback)
+        {
+            var callbackResult = ProtectedFromGCCallback(callback, responseCallback => new TypedCallbackProductsResponseDataWrapper(responseCallback));
+
+            LibraryMethods.API.balancyGetProducts(callbackResult.CallbackId, callbackResult.StaticCallback);
+        }
+
+        public static void GetProduct(string productId, Balancy.Core.ResponseCallback<Balancy.Core.Responses.ProductResponseData> callback)
+        {
+            GetProducts(productsResponse =>
+            {
+                if (!productsResponse.Success)
+                {
+                    // Forward the error from GetProducts
+                    var errorResponse = new Balancy.Core.Responses.ProductResponseData
+                    {
+                        Success = false,
+                        ErrorCode = productsResponse.ErrorCode,
+                        ErrorMessage = productsResponse.ErrorMessage,
+                        Product = null
+                    };
+                    callback?.Invoke(errorResponse);
+                    return;
+                }
+
+                // Find the product by ID
+                var product = productsResponse.Products?.Find(p => p.ProductId == productId);
+
+                var response = new Balancy.Core.Responses.ProductResponseData
+                {
+                    Success = product != null,
+                    ErrorCode = product != null ? 0 : -1,
+                    ErrorMessage = product != null ? "" : $"Product with ID '{productId}' not found",
+                    Product = product
+                };
+
+                callback?.Invoke(response);
+            });
         }
 
         public static void HardPurchaseGameOffer(OfferInfo offerInfo, Balancy.Core.PaymentInfo paymentInfo,
@@ -180,6 +301,11 @@ namespace Balancy
 
         public static void TrackAdRevenue(AdType type, double revenue, string placement) => 
             LibraryMethods.Profile.balancySystemProfileTrackRevenue(type, revenue, placement);
+        
+        public static bool StartAbTestManually(ABTest abTest, ABTestVariant variant)
+        {
+            return Balancy.LibraryMethods.General.balancyStartAbTestManually(abTest?.GetRawPointer() ?? IntPtr.Zero, variant?.GetRawPointer() ?? IntPtr.Zero);
+        }
 
         public static class Localization
         {

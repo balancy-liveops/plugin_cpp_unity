@@ -7,6 +7,7 @@ namespace Balancy
     {
         [SerializeField] private bool autoStart = true;
         [SerializeField] private bool activateTestPayments = true;
+        [SerializeField] private bool activateDebugLogs = true;
         
         [SerializeField] private string apiGameId;
         [SerializeField] private string apiPublicKey;
@@ -24,9 +25,6 @@ namespace Balancy
         {
             if (autoStart)
                 InitPrivate();
-            
-            if (activateTestPayments)
-                PreparePayments();
             
             DontDestroyOnLoad(gameObject);
         }
@@ -50,12 +48,18 @@ namespace Balancy
             public string orderId;
             public string productId;
         }
-        
+
         private static Balancy.Core.PaymentInfo CreateTestPaymentInfo(Balancy.Models.SmartObjects.Price price)
         {
-            var orderId = Guid.NewGuid().ToString();
             var productId = price?.Product?.ProductId ?? string.Empty;
             var productPrice = price?.Product?.Price ?? 0;
+            return CreateTestPaymentInfo(productId, productPrice);
+        }
+
+        private static Balancy.Core.PaymentInfo CreateTestPaymentInfo(string productId, float productPrice)
+        {
+            var orderId = Guid.NewGuid().ToString();
+            
 
             var paymentInfo = new Balancy.Core.PaymentInfo
             {
@@ -104,47 +108,60 @@ namespace Balancy
             Balancy.Actions.Purchasing.SetHardPurchaseCallback((productInfo) =>
             {
                 Debug.Log($"Starting Purchase:: {productInfo?.ProductId}");
-                var price = productInfo?.GetStoreItem()?.Price;
-                if (price != null)
+                Balancy.API.GetProduct(productInfo?.ProductId, data =>
                 {
-                    var paymentInfo = CreateTestPaymentInfo(price);
-                    Debug.LogError(">>== " + paymentInfo.Receipt);
-                    Balancy.API.FinalizedHardPurchase(Actions.PurchaseResult.Success, productInfo, paymentInfo,
-                        (validationSuccess, removeFromPending) =>
-                        {
-                            Debug.Log("Purchase completed successfully. Validation success: " + validationSuccess +
-                                      " Remove from pending: " + removeFromPending);
-                        }, false);
-                }
-                else
-                {
-                    Debug.LogWarning($"No price information available for the product: {productInfo?.ProductId}");
-                }
-            });
-
-            Balancy.Actions.Purchasing.SetGetHardPurchaseInfoCallback((productId) =>
-            {
-                var allStoreItems = Balancy.CMS.GetModels<Balancy.Models.SmartObjects.StoreItem>(true);
-                var price = 0.01f;
-                foreach (var storeItem in allStoreItems)
-                {
-                    if (storeItem?.Price?.Product?.ProductId == productId)
+                    var product = data?.Product;
+                    if (product != null)
                     {
-                        price = storeItem.Price.Product.Price;
-                        break;
+                        var paymentInfo = CreateTestPaymentInfo(product.PlatformProductId, product.Price);
+                        Balancy.API.FinalizedHardPurchase(Actions.PurchaseResult.Success, productInfo, paymentInfo,
+                            (validationSuccess, removeFromPending) =>
+                            {
+                                Debug.Log("Purchase completed successfully. Validation success: " + validationSuccess +
+                                          " Remove from pending: " + removeFromPending);
+                            }, false);
                     }
-                }
-
-                return new Balancy.Actions.Purchasing.HardProductInfo
-                {
-                    LocalizedTitle = "Test Purchase",
-                    LocalizedDescription = "Test Purchase Description",
-                    LocalizedPriceString = $"${price:F2}",
-                    LocalizedPrice = price,
-                    IsoCurrencyCode = "USD",
-                    
-                };
+                    else
+                    {
+                        Debug.LogWarning($"No price information available for the product: {productInfo?.ProductId}");
+                    }
+                });
             });
+
+            Balancy.Actions.Purchasing.SetGetHardPurchaseInfoCallback((productId, callback) =>
+            {
+                Balancy.API.GetProduct(productId, response =>
+                {
+                    var hardProductInfo = new Balancy.Actions.Purchasing.HardProductInfo();
+
+                    if (response.Success && response.Product != null)
+                    {
+                        var product = response.Product;
+                        hardProductInfo.LocalizedTitle = product.LocalizedName?.Value ?? product.Name;
+                        hardProductInfo.LocalizedDescription = product.LocalizedDescription?.Value ?? product.Description;
+                        hardProductInfo.LocalizedPriceString = $"${product.Price:F2}";
+                        hardProductInfo.LocalizedPrice = product.Price;
+                        hardProductInfo.IsoCurrencyCode = "USD";
+                    }
+                    else
+                    {
+                        Debug.LogWarning($"Failed to get product info for {productId}: {response.ErrorMessage}");
+                        // Return default values
+                        hardProductInfo.LocalizedTitle = "Unknown Product";
+                        hardProductInfo.LocalizedDescription = "Product information unavailable";
+                        hardProductInfo.LocalizedPriceString = "$0.00";
+                        hardProductInfo.LocalizedPrice = 0.0f;
+                        hardProductInfo.IsoCurrencyCode = "USD";
+                    }
+
+                    callback?.Invoke(hardProductInfo);
+                });
+            });
+        }
+        
+        private void Awake()
+        {
+            _instance = this;
         }
 
         public static void Init()
@@ -157,7 +174,12 @@ namespace Balancy
         
         private void InitPrivate()
         {
-            Balancy.Callbacks.InitExamplesWithLogs();
+            if (activateTestPayments)
+                PreparePayments();
+            
+            if (activateDebugLogs)
+                Balancy.Callbacks.InitExamplesWithLogs();
+            
             Balancy.Main.Init(new AppConfig
             {
                 ApiGameId = apiGameId,
@@ -170,7 +192,7 @@ namespace Balancy
                 }),
             });
         }
-        
+
         private Constants.Environment GetEnvironment()
         {
             //TODO use define symbols here, like PRODUCTION or DEVELOPMENT if required

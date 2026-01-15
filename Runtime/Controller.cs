@@ -19,6 +19,7 @@ namespace Balancy
         private static UnityMainThreadDispatcher _mainThreadInstance; 
         
         public static event Action OnCloudSynced;
+        public static event Action<bool, bool> OnDataUpdated;
         
         public static void Init(AppConfig appConfig)
         {
@@ -48,6 +49,7 @@ namespace Balancy
             LibraryMethods.Models.balancySetUserDataInitializedCallback(UserDataInitialized);
             Profiles.Init();
             RenderViewsManager.Init();
+            RunFunctionManager.Init();
 
             CppAppConfig config = CreateConfigForCPP(appConfig);
             IntPtr configPtr = Marshal.AllocHGlobal(Marshal.SizeOf(config));
@@ -66,6 +68,11 @@ namespace Balancy
         {
             try
             {
+                // CRITICAL: Clear log callback FIRST before any other cleanup
+                // Other cleanup operations may trigger logging, which would crash if callback is invalid
+                LibraryMethods.General.balancySetLogCallback(null);
+
+                OnDataUpdated = null;
                 LibraryMethods.Models.balancySetModelOnRefresh(null);
                 LibraryMethods.Models.balancySetUserDataInitializedCallback(null);
                 LibraryMethods.General.balancyStop();
@@ -92,6 +99,13 @@ namespace Balancy
         {
             if (dictsChanged)
                 CMS.RefreshAll();
+            
+            OnDataUpdated?.Invoke(dictsChanged, profileChanged);
+        }
+
+        public static Constants.DevicePlatform GetDevicePlatform()
+        {
+            return (Constants.DevicePlatform)(_cppConfig?.DevicePlatform ?? -1);
         }
 
         private static CppAppConfig CreateConfigForCPP(AppConfig originalConfig)

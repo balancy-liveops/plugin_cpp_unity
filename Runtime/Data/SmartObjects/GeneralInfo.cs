@@ -35,8 +35,17 @@ namespace Balancy.Data.SmartObjects
 		private int _operatingSystemFamily;
 		private int _systemMemorySize;
 		private string _installVersion;
-        
-        
+		private string _bundleId;
+		private int _winStreak;
+		private int _loseStreak;
+		private int _lastWinTime;
+		private int _lastLoseTime;
+		private string _sdkVersion;
+		private int _offlineTime;
+		private int _levelsCompletedThisSession;
+		private int _levelsFailedThisSession;
+
+
 		public int PlayTime
 		{
 			get => _playTime;
@@ -194,7 +203,17 @@ namespace Balancy.Data.SmartObjects
 			get => _installVersion;
 			// set => SetStringValue("installVersion", value);
 		}
-        
+
+		public string BundleId => _bundleId;
+		public int WinStreak => _winStreak;
+		public int LoseStreak => _loseStreak;
+		public int LastWinTime => _lastWinTime;
+		public int LastLoseTime => _lastLoseTime;
+		public string SdkVersion => _sdkVersion;
+		public int OfflineTime => _offlineTime;
+		public int LevelsCompletedThisSession => _levelsCompletedThisSession;
+		public int LevelsFailedThisSession => _levelsFailedThisSession;
+
         public override void InitData()
         {
             base.InitData();
@@ -230,6 +249,15 @@ namespace Balancy.Data.SmartObjects
 			InitAndSubscribeForParamChange("operatingSystemFamily", Update_operatingSystemFamily);
 			InitAndSubscribeForParamChange("systemMemorySize", Update_systemMemorySize);
 			InitAndSubscribeForParamChange("installVersion", Update_installVersion);
+			InitAndSubscribeForParamChange("bundleId", Update_bundleId);
+			InitAndSubscribeForParamChange("winStreak", Update_winStreak);
+			InitAndSubscribeForParamChange("loseStreak", Update_loseStreak);
+			InitAndSubscribeForParamChange("lastWinTime", Update_lastWinTime);
+			InitAndSubscribeForParamChange("lastLoseTime", Update_lastLoseTime);
+			InitAndSubscribeForParamChange("sdkVersion", Update_sdkVersion);
+			InitAndSubscribeForParamChange("offlineTime", Update_offlineTime);
+			InitAndSubscribeForParamChange("levelsCompletedThisSession", Update_levelsCompletedThisSession);
+			InitAndSubscribeForParamChange("levelsFailedThisSession", Update_levelsFailedThisSession);
         }
         
 		private void Update_playTime() { _playTime = GetIntParam("playTime"); }
@@ -263,5 +291,14 @@ namespace Balancy.Data.SmartObjects
 		private void Update_operatingSystemFamily() { _operatingSystemFamily = GetIntParam("operatingSystemFamily"); }
 		private void Update_systemMemorySize() { _systemMemorySize = GetIntParam("systemMemorySize"); }
 		private void Update_installVersion() { _installVersion = GetStringParam("installVersion"); }
+		private void Update_bundleId() { _bundleId = GetStringParam("bundleId"); }
+		private void Update_winStreak() { _winStreak = GetIntParam("winStreak"); }
+		private void Update_loseStreak() { _loseStreak = GetIntParam("loseStreak"); }
+		private void Update_lastWinTime() { _lastWinTime = GetIntParam("lastWinTime"); }
+		private void Update_lastLoseTime() { _lastLoseTime = GetIntParam("lastLoseTime"); }
+		private void Update_sdkVersion() { _sdkVersion = GetStringParam("sdkVersion"); }
+		private void Update_offlineTime() { _offlineTime = GetIntParam("offlineTime"); }
+		private void Update_levelsCompletedThisSession() { _levelsCompletedThisSession = GetIntParam("levelsCompletedThisSession"); }
+		private void Update_levelsFailedThisSession() { _levelsFailedThisSession = GetIntParam("levelsFailedThisSession"); }
     }
 }

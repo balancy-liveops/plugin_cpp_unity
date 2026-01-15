@@ -1,4 +1,7 @@
+using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using Balancy.Localization;
 
 namespace Balancy.Core
 {
@@ -13,7 +16,11 @@ namespace Balancy.Core
             public int ErrorCode;
             [MarshalAs(UnmanagedType.LPStr)] public string ErrorMessage;
             
-            public bool Success => success == 1;
+            public bool Success
+            {
+                get { return success == 1; }
+                set { success = (byte)(value ? 1 : 0); }
+            }
         }
 
 
@@ -36,5 +43,167 @@ namespace Balancy.Core
         {
             [MarshalAs(UnmanagedType.LPStr)] public string UserId;
         }
+        
+        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        internal struct InteropProductData {
+            public IntPtr base_id;
+            public int type;
+            public IntPtr item_id;
+            public IntPtr name;
+            public IntPtr description;
+            public IntPtr localized_name;
+            public IntPtr localized_description;
+            public float price;
+        };
+        
+        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        internal class InteropProductsResponseData : ResponseData
+        {
+            internal IntPtr data;
+            internal int size;
+        }
+
+        public enum ProductType
+        {
+            Consumable = 1,
+            NonConsumable = 2,
+            Subscription = 3,
+        }
+
+        public class Product
+        {
+            internal string base_id;
+            internal byte type;
+            internal string item_id;
+            internal string name;
+            internal string description;
+            internal string localized_name;
+            internal string localized_description;
+            
+            internal float price;
+            
+            internal LocalizedString localizedName;
+            internal LocalizedString localizedDescription;
+            // internal Constants.Platform platform;
+            // internal LocalizedString localizedName;
+            // internal LocalizedString localizedDescription;
+
+            public string ProductId
+            {
+                get { return base_id; }
+            }
+
+            // internal Constants.Platform Platform => platform;
+            public ProductType Type
+            {
+                get
+                {
+                    switch (type)
+                    {
+                        case 1:
+                            return ProductType.Consumable;
+                        case 2:
+                            return ProductType.NonConsumable;
+                        case 3:
+                            return ProductType.Subscription;
+                        default:
+                            return ProductType.Consumable;
+                    }
+                }
+            }
+
+            public string PlatformProductId
+            {
+                get { return item_id; }
+            }
+
+            public string Name
+            {
+                get { return name; }
+            }
+
+            // public LocalizedString LocalizedName { get { return localizedName; } }
+            // public LocalizedString LocalizedDescription { get { return localizedDescription; } }
+            public LocalizedString LocalizedName
+            {
+                get
+                {
+                    if (localizedName == null)
+                    {
+                        localizedName = new LocalizedString(localized_name);
+                    }
+
+                    return localizedName;
+                }
+            }
+
+            public LocalizedString LocalizedDescription
+            {
+                get
+                {
+                    if (localizedDescription == null)
+                    {
+                        localizedDescription = new LocalizedString(localized_description);
+                    }
+
+                    return localizedDescription;
+                }
+            }
+
+            public string Description
+            {
+                get { return description; }
+            }
+
+            // public string Icon
+            // {
+            //     get { return icon; }
+            // }
+
+
+            public float Price
+            {
+                get { return price; }
+            }
+        }
+
+        public class ProductsResponseData : ResponseData
+        {
+            public List<Product> Products { get; internal set; }
+        }
+
+        public class ProductResponseData : ResponseData
+        {
+            public Product Product { get; set; }
+        }
+        //
+        // [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        // internal struct InteropStringArray
+        // {
+        //     public IntPtr items;
+        //     public uint count;
+        // }
+        //
+        // [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        // internal struct InteropCompletePurchaseData
+        // {
+        //     [MarshalAs(UnmanagedType.LPStr)]
+        //     public string guid;
+        //     [MarshalAs(UnmanagedType.LPStr)]
+        //     public string orderId;
+        //     public InteropStringArray items;
+        //     public ulong time;
+        // }
+        //
+        // [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        // internal struct InteropCompletePurchaseResponseData 
+        // {
+        //     public InteropCompletePurchaseData data;
+        //
+        //     public byte success;
+        //     public int ErrorCode;
+        //     [MarshalAs(UnmanagedType.LPStr)]
+        //     public string ErrorMessage;
+        // }
     }
 }
