@@ -344,6 +344,24 @@ namespace Balancy
             public static extern void balancyClearAllSingletonCallbacks();
         }
 
+        public static class ConditionalTemplates
+        {
+            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+            public delegate void ConditionalTemplateChangedCallback(string templateName, string unnyId, bool passed);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancySubscribeConditionalTemplateChanged(string templateName, ConditionalTemplateChangedCallback callback);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyUnsubscribeConditionalTemplateChanged(string templateName, int callbackId);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyGetActiveConditionalTemplates(string templateName, out int size);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyClearAllConditionalTemplateCallbacks();
+        }
+
         public static class Data
         {
             [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
