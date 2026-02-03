@@ -63,7 +63,7 @@ namespace Balancy.SmartObjects
             if (ptr == IntPtr.Zero)
                 return null;
 
-            var unnyId = JsonBasedObject.GetUnnyId(ptr);
+            var unnyId = JsonBasedObject.GetStringFromIntPtr(ptr);
             if (string.IsNullOrEmpty(unnyId))
                 return null;
 

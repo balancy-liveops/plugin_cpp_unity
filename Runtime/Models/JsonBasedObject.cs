@@ -73,14 +73,6 @@ namespace Balancy.Models
             return GetStringFromIntPtr(LibraryMethods.Models.balancyGetTemplateName(instance));
         }
 
-        /// <summary>
-        /// Get UnnyId from a model pointer. Used for singleton callbacks.
-        /// </summary>
-        internal static string GetUnnyId(IntPtr instance)
-        {
-            return GetStringFromIntPtr(LibraryMethods.Models.balancyGetUnnyId(instance));
-        }
-
         protected UnnyColor GetColor(string paramName)
         {
             return new UnnyColor(GetStringParam(paramName));

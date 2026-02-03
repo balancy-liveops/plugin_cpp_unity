@@ -11,6 +11,7 @@ namespace Balancy
         private static readonly Dictionary<string, BaseModel> AllModels = new Dictionary<string, BaseModel>();
         private static readonly Dictionary<string, object> AllSingletons = new Dictionary<string, object>();
         private static readonly Dictionary<string, ConditionalTemplateSubscription> AllConditionalTemplateSubscriptions = new Dictionary<string, ConditionalTemplateSubscription>();
+        private static readonly Dictionary<string, int> _ctNativeCallbackIds = new Dictionary<string, int>();
         private static Dictionary<string, string> Inheritance = null;
 
         public static Func<string, BaseModel> OnTypeRequested = null;
@@ -19,9 +20,8 @@ namespace Balancy
 
         private class ConditionalTemplateSubscription
         {
-            public int CallbackId;
             public string TemplateName;
-            public Delegate Callback;
+            public Action<BaseModel, bool> Callback;
         }
         
         internal static void SetIsReady(bool value)
@@ -78,6 +78,25 @@ namespace Balancy
                 model.RefreshData(newPointer);
         }
 
+        [AOT.MonoPInvokeCallback(typeof(LibraryMethods.ConditionalTemplates.ConditionalTemplateChangedCallback))]
+        private static void OnConditionalTemplateChangedStatic(string templateName, string unnyId, bool passed)
+        {
+            if (string.IsNullOrEmpty(unnyId))
+                return;
+
+            BaseModel model = null;
+            foreach (var kvp in AllConditionalTemplateSubscriptions)
+            {
+                if (kvp.Value.TemplateName == templateName)
+                {
+                    if (model == null)
+                        model = GetModelByUnnyId<BaseModel>(unnyId);
+                    if (model != null)
+                        kvp.Value.Callback?.Invoke(model, passed);
+                }
+            }
+        }
+
         internal static void CleanUp()
         {
             AllModels.Clear();
@@ -91,6 +110,7 @@ namespace Balancy
 
             AllSingletons.Clear();
             AllConditionalTemplateSubscriptions.Clear();
+            _ctNativeCallbackIds.Clear();
             Inheritance?.Clear();
         }
 
@@ -133,37 +153,30 @@ namespace Balancy
                 return null;
 
             var templateName = JsonBasedObject.GetModelClassName<T>();
-            var subscriptionKey = $"{templateName}_{Guid.NewGuid()}";
 
-            // Create static callback that routes to user callback
-            LibraryMethods.ConditionalTemplates.ConditionalTemplateChangedCallback staticCallback =
-                (templateNameFromCpp, unnyId, passed) =>
-                {
-                    if (!string.IsNullOrEmpty(unnyId))
-                    {
-                        var model = GetModelByUnnyId<T>(unnyId);
-                        if (model != null)
-                        {
-                            callback(model, passed);
-                        }
-                    }
-                };
-
-            int callbackId = LibraryMethods.ConditionalTemplates.balancySubscribeConditionalTemplateChanged(
-                templateName,
-                staticCallback);
-
-            if (callbackId >= 0)
+            // Register the static AOT callback with native once per templateName
+            if (!_ctNativeCallbackIds.ContainsKey(templateName))
             {
-                AllConditionalTemplateSubscriptions[subscriptionKey] = new ConditionalTemplateSubscription
-                {
-                    CallbackId = callbackId,
-                    TemplateName = templateName,
-                    Callback = staticCallback
-                };
+                int nativeId = LibraryMethods.ConditionalTemplates.balancySubscribeConditionalTemplateChanged(
+                    templateName,
+                    OnConditionalTemplateChangedStatic);
+
+                if (nativeId < 0)
+                    return null;
+
+                _ctNativeCallbackIds[templateName] = nativeId;
             }
 
-            return callbackId >= 0 ? subscriptionKey : null;
+            var subscriptionKey = $"{templateName}_{Guid.NewGuid()}";
+
+            // Wrap the typed callback — this lambda stays in C# land, never crosses native boundary
+            AllConditionalTemplateSubscriptions[subscriptionKey] = new ConditionalTemplateSubscription
+            {
+                TemplateName = templateName,
+                Callback = (model, passed) => callback((T)model, passed)
+            };
+
+            return subscriptionKey;
         }
 
         /// <summary>
@@ -177,11 +190,26 @@ namespace Balancy
 
             if (AllConditionalTemplateSubscriptions.TryGetValue(subscriptionKey, out var subscription))
             {
-                LibraryMethods.ConditionalTemplates.balancyUnsubscribeConditionalTemplateChanged(
-                    subscription.TemplateName,
-                    subscription.CallbackId);
-
                 AllConditionalTemplateSubscriptions.Remove(subscriptionKey);
+
+                // Only unsubscribe from native if no more C# subscribers for this template
+                bool hasMore = false;
+                foreach (var kvp in AllConditionalTemplateSubscriptions)
+                {
+                    if (kvp.Value.TemplateName == subscription.TemplateName)
+                    {
+                        hasMore = true;
+                        break;
+                    }
+                }
+
+                if (!hasMore && _ctNativeCallbackIds.TryGetValue(subscription.TemplateName, out var nativeId))
+                {
+                    LibraryMethods.ConditionalTemplates.balancyUnsubscribeConditionalTemplateChanged(
+                        subscription.TemplateName,
+                        nativeId);
+                    _ctNativeCallbackIds.Remove(subscription.TemplateName);
+                }
             }
         }
 
