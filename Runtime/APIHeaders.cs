@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Reflection;
 using Balancy.Data.SmartObjects;
 using Balancy.Models;
 using Balancy.Models.SmartObjects;
@@ -31,17 +32,25 @@ namespace Balancy
         private class TypedCallbackWrapper<T> : CallbackWrapperBase where T : Balancy.Core.Responses.ResponseData
         {
             private readonly Balancy.Core.ResponseCallback<T> _callback;
-            
+
             public TypedCallbackWrapper(Balancy.Core.ResponseCallback<T> callback)
             {
                 _callback = callback;
             }
-            
+
             public override void InvokeCallback(IntPtr responseDataPtr)
             {
                 try
                 {
+#if UNITY_WEBGL && !UNITY_EDITOR
+                    // WebGL/Wasm workaround: Marshal.PtrToStructure crashes with
+                    // "function signature mismatch" due to IL2CPP using long (i64) for
+                    // PtrToStructure's first parameter while Wasm32 uses i32 pointers.
+                    // Manually read fields from the packed struct instead.
+                    var responseData = ManualMarshal<T>(responseDataPtr);
+#else
                     var responseData = Marshal.PtrToStructure<T>(responseDataPtr);
+#endif
                     _callback?.Invoke(responseData);
                 }
                 catch (Exception e)
@@ -50,6 +59,87 @@ namespace Balancy
                 }
             }
         }
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        /// <summary>
+        /// Manual field-by-field marshaling for WebGL/Wasm where Marshal.PtrToStructure
+        /// crashes due to function signature mismatch in IL2CPP's Wasm implementation.
+        /// Reads Pack=1 sequential layout structs: [byte success][int errorCode][LPStr errorMessage][...derived fields]
+        /// </summary>
+        private static T ManualMarshal<T>(IntPtr ptr) where T : Balancy.Core.Responses.ResponseData
+        {
+            int offset = 0;
+
+            // Base ResponseData fields (Pack=1):
+            // byte success (1 byte)
+            byte success = Marshal.ReadByte(ptr, offset);
+            offset += 1;
+
+            // int ErrorCode (4 bytes)
+            int errorCode = Marshal.ReadInt32(ptr, offset);
+            offset += 4;
+
+            // const char* ErrorMessage (pointer-sized: 4 bytes on Wasm32)
+            IntPtr errorMessagePtr = Marshal.ReadIntPtr(ptr, offset);
+            string errorMessage = errorMessagePtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(errorMessagePtr) : null;
+            offset += IntPtr.Size;
+
+            if (typeof(T) == typeof(Balancy.Core.Responses.AuthResponseData))
+            {
+                // const char* UserId (pointer-sized)
+                IntPtr userIdPtr = Marshal.ReadIntPtr(ptr, offset);
+                string userId = userIdPtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(userIdPtr) : null;
+
+                var result = new Balancy.Core.Responses.AuthResponseData();
+                result.Success = success == 1;
+                result.ErrorCode = errorCode;
+                result.ErrorMessage = errorMessage;
+                result.UserId = userId;
+                return result as T;
+            }
+            else if (typeof(T) == typeof(Balancy.Core.Responses.LinkResponseData))
+            {
+                IntPtr userIdPtr = Marshal.ReadIntPtr(ptr, offset);
+                string userId = userIdPtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(userIdPtr) : null;
+
+                var result = new Balancy.Core.Responses.LinkResponseData();
+                result.Success = success == 1;
+                result.ErrorCode = errorCode;
+                result.ErrorMessage = errorMessage;
+                result.UserId = userId;
+                return result as T;
+            }
+            else if (typeof(T) == typeof(Balancy.Core.Responses.PurchaseProductResponseData))
+            {
+                // const char* ProductId (pointer-sized)
+                IntPtr productIdPtr = Marshal.ReadIntPtr(ptr, offset);
+                string productId = productIdPtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(productIdPtr) : null;
+                offset += IntPtr.Size;
+
+                // int removeFromPending (4 bytes) - private field, use reflection
+                int removeFromPending = Marshal.ReadInt32(ptr, offset);
+
+                var result = new Balancy.Core.Responses.PurchaseProductResponseData();
+                result.Success = success == 1;
+                result.ErrorCode = errorCode;
+                result.ErrorMessage = errorMessage;
+                result.ProductId = productId;
+                var field = typeof(Balancy.Core.Responses.PurchaseProductResponseData)
+                    .GetField("removeFromPending", BindingFlags.NonPublic | BindingFlags.Instance);
+                field?.SetValue(result, removeFromPending);
+                return result as T;
+            }
+            else
+            {
+                // Fallback for unknown types - create base ResponseData
+                var result = System.Activator.CreateInstance<T>();
+                result.Success = success == 1;
+                result.ErrorCode = errorCode;
+                result.ErrorMessage = errorMessage;
+                return result;
+            }
+        }
+#endif
         
         private static readonly Dictionary<int, CallbackWrapperBase> _callbackStorage = new Dictionary<int, CallbackWrapperBase>();
         private static readonly object _callbackLock = new object();
@@ -98,15 +188,64 @@ namespace Balancy
             {
                 try
                 {
+#if UNITY_WEBGL && !UNITY_EDITOR
+                    // WebGL/Wasm workaround: manually read fields to avoid Marshal.PtrToStructure crash
+                    int offset = 0;
+                    byte success = Marshal.ReadByte(responseDataPtr, offset); offset += 1;
+                    int errorCode = Marshal.ReadInt32(responseDataPtr, offset); offset += 4;
+                    IntPtr errorMsgPtr = Marshal.ReadIntPtr(responseDataPtr, offset); offset += IntPtr.Size;
+                    string errorMessage = errorMsgPtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(errorMsgPtr) : null;
+                    // InteropProductsResponseData derived fields:
+                    IntPtr dataPtr = Marshal.ReadIntPtr(responseDataPtr, offset); offset += IntPtr.Size;
+                    int count = Marshal.ReadInt32(responseDataPtr, offset);
+#else
                     var response = Marshal.PtrToStructure<Core.Responses.InteropProductsResponseData>(responseDataPtr);
                     var count = response.size;
-                    IntPtr basePtr = response.data;
+                    IntPtr dataPtr = response.data;
+                    byte success = (byte)(response.Success ? 1 : 0);
+                    int errorCode = response.ErrorCode;
+                    string errorMessage = response.ErrorMessage;
+#endif
 
                     var products = new List<Core.Responses.Product>(count);
+#if UNITY_WEBGL && !UNITY_EDITOR
+                    // InteropProductData struct layout (Pack=1):
+                    // IntPtr base_id, int type, IntPtr item_id, IntPtr name, IntPtr description,
+                    // IntPtr localized_name, IntPtr localized_description, float price
+                    int elemSize = IntPtr.Size * 6 + 4 + 4; // 6 pointers + 1 int(type) + 1 float(price)
+                    for (int i = 0; i < count; i++)
+                    {
+                        int pOff = 0;
+                        IntPtr itemPtr = IntPtr.Add(dataPtr, i * elemSize);
+                        IntPtr baseIdPtr = Marshal.ReadIntPtr(itemPtr, pOff); pOff += IntPtr.Size;
+                        int pType = Marshal.ReadInt32(itemPtr, pOff); pOff += 4;
+                        IntPtr itemIdPtr = Marshal.ReadIntPtr(itemPtr, pOff); pOff += IntPtr.Size;
+                        IntPtr namePtr = Marshal.ReadIntPtr(itemPtr, pOff); pOff += IntPtr.Size;
+                        IntPtr descPtr = Marshal.ReadIntPtr(itemPtr, pOff); pOff += IntPtr.Size;
+                        IntPtr locNamePtr = Marshal.ReadIntPtr(itemPtr, pOff); pOff += IntPtr.Size;
+                        IntPtr locDescPtr = Marshal.ReadIntPtr(itemPtr, pOff); pOff += IntPtr.Size;
+                        // float is 4 bytes - read as int bits and convert
+                        int priceBits = Marshal.ReadInt32(itemPtr, pOff);
+                        float priceVal = BitConverter.ToSingle(BitConverter.GetBytes(priceBits), 0);
+
+                        var product = new Core.Responses.Product
+                        {
+                            base_id = baseIdPtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(baseIdPtr) : null,
+                            type = (byte)pType,
+                            item_id = itemIdPtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(itemIdPtr) : null,
+                            name = namePtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(namePtr) : null,
+                            description = descPtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(descPtr) : null,
+                            localized_name = locNamePtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(locNamePtr) : null,
+                            localized_description = locDescPtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(locDescPtr) : null,
+                            price = priceVal
+                        };
+                        products.Add(product);
+                    }
+#else
                     int elemSize = Marshal.SizeOf<Core.Responses.InteropProductData>();
                     for (int i = 0; i < count; i++)
                     {
-                        IntPtr itemPtr = IntPtr.Add(basePtr, i * elemSize);
+                        IntPtr itemPtr = IntPtr.Add(dataPtr, i * elemSize);
                         var interop = Marshal.PtrToStructure<Core.Responses.InteropProductData>(itemPtr);
 
                         var product = new Core.Responses.Product
@@ -123,13 +262,14 @@ namespace Balancy
 
                         products.Add(product);
                     }
+#endif
 
                     var res = new Core.Responses.ProductsResponseData
                     {
                         Products = products,
-                        Success = response.Success,
-                        ErrorCode = response.ErrorCode,
-                        ErrorMessage = response.ErrorMessage,
+                        Success = success == 1,
+                        ErrorCode = errorCode,
+                        ErrorMessage = errorMessage,
                     };
 
                     _callback?.Invoke(res);
@@ -369,7 +509,7 @@ namespace Balancy
                 return Balancy.LibraryMethods.General.balancyInventory_RemoveItems(item?.GetRawPointer() ?? IntPtr.Zero, count);
             }
             
-            public static int getTotalItemsCount(Balancy.Models.SmartObjects.Item item) {
+            public static int GetTotalItemsCount(Balancy.Models.SmartObjects.Item item) {
                 return Balancy.LibraryMethods.General.balancyInventory_GetTotalItemsCount(item?.GetRawPointer() ?? IntPtr.Zero);
             }
         }
