@@ -682,6 +682,15 @@ namespace Balancy
             public static extern void balancyGenenal_LevelCompleted();
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyGenenal_LevelFailed();
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyTasks_ActivateTask(IntPtr taskPointer, IntPtr gameEventPointer);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyTasks_DeactivateTask(IntPtr taskPointer);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern bool balancyTasks_ClaimReward(IntPtr taskPointer);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyTasks_RestoreFailedTask(IntPtr taskPointer);
         }
 
         public static class Conditions

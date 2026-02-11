@@ -504,13 +504,34 @@ namespace Balancy
             public static int AddItems(Balancy.Models.SmartObjects.Item item, int count) {
                 return Balancy.LibraryMethods.General.balancyInventory_AddItems(item?.GetRawPointer() ?? IntPtr.Zero, count);
             }
-            
+
             public static int RemoveItems(Balancy.Models.SmartObjects.Item item, int count) {
                 return Balancy.LibraryMethods.General.balancyInventory_RemoveItems(item?.GetRawPointer() ?? IntPtr.Zero, count);
             }
-            
+
             public static int GetTotalItemsCount(Balancy.Models.SmartObjects.Item item) {
                 return Balancy.LibraryMethods.General.balancyInventory_GetTotalItemsCount(item?.GetRawPointer() ?? IntPtr.Zero);
+            }
+        }
+
+        public static class Tasks
+        {
+            public static void ActivateTask(Balancy.Models.LiveOps.Tasks.BaseTask task, GameEvent gameEvent = null) {
+                Balancy.LibraryMethods.API.balancyTasks_ActivateTask(
+                    task?.GetRawPointer() ?? IntPtr.Zero,
+                    gameEvent?.GetRawPointer() ?? IntPtr.Zero);
+            }
+
+            public static void DeactivateTask(Balancy.Models.LiveOps.Tasks.BaseTask task) {
+                Balancy.LibraryMethods.API.balancyTasks_DeactivateTask(task?.GetRawPointer() ?? IntPtr.Zero);
+            }
+
+            public static bool ClaimReward(Balancy.Models.LiveOps.Tasks.BaseTask task) {
+                return Balancy.LibraryMethods.API.balancyTasks_ClaimReward(task?.GetRawPointer() ?? IntPtr.Zero);
+            }
+
+            public static void RestoreFailedTask(Balancy.Models.LiveOps.Tasks.BaseTask task) {
+                Balancy.LibraryMethods.API.balancyTasks_RestoreFailedTask(task?.GetRawPointer() ?? IntPtr.Zero);
             }
         }
         
