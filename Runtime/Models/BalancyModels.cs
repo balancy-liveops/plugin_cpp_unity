@@ -37,6 +37,59 @@ namespace Balancy.Localization
     }
 }
 
+namespace Balancy
+{
+    /// <summary>
+    /// A lightweight reference to a Visual Scripting script in the CMS.
+    /// Holds the script's CMS ID and provides methods to launch and stop it.
+    /// </summary>
+    public class ScriptRef
+    {
+        /// <summary>
+        /// The script's CMS ID (unnyId).
+        /// </summary>
+        public readonly string ScriptId;
+
+        /// <summary>
+        /// Whether this reference points to a valid script (i.e., has a non-empty ID).
+        /// </summary>
+        public bool HasValue => !string.IsNullOrEmpty(ScriptId);
+
+        public ScriptRef(string scriptId)
+        {
+            ScriptId = scriptId;
+        }
+
+        /// <summary>
+        /// Launch this script.
+        /// </summary>
+        /// <param name="launcherId">Optional identifier for who launched the script. Accessible inside the script via GetLauncherId().</param>
+        /// <param name="inputJson">Optional JSON string with input parameters keyed by port name. Example: {"score":100,"mode":"hard"}</param>
+        /// <returns>The instance ID of the running script, or empty string on failure.</returns>
+        public string Launch(string launcherId = null, string inputJson = null)
+        {
+            if (!HasValue)
+                return "";
+            return API.VisualScripting.RunScriptById(ScriptId, launcherId, inputJson);
+        }
+
+        /// <summary>
+        /// Stop a running instance of this script.
+        /// </summary>
+        /// <param name="instanceId">The instance ID returned from Launch().</param>
+        /// <returns>True if the script was found and stopped.</returns>
+        public static bool Stop(string instanceId)
+        {
+            return API.VisualScripting.StopScript(instanceId);
+        }
+
+        public override string ToString()
+        {
+            return ScriptId ?? "";
+        }
+    }
+}
+
 namespace Balancy.Models
 {
     public class UnnyColor

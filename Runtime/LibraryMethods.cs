@@ -691,6 +691,13 @@ namespace Balancy
             public static extern bool balancyTasks_ClaimReward(IntPtr taskPointer);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyTasks_RestoreFailedTask(IntPtr taskPointer);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyScripts_RunById(string scriptId, string launcherId, string inputJson);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyScripts_RunByName(string scriptName, string launcherId, string inputJson);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern bool balancyScripts_Stop(string instanceId);
         }
 
         public static class Conditions

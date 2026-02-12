@@ -535,6 +535,42 @@ namespace Balancy
             }
         }
         
+        public static class VisualScripting
+        {
+            /// <summary>
+            /// Run a visual script by its CMS ID.
+            /// </summary>
+            /// <param name="scriptId">The script's ID in the CMS.</param>
+            /// <param name="launcherId">Optional identifier for who launched the script (e.g., a GameEvent UnnyId). Accessible inside the script via GetLauncherId().</param>
+            /// <param name="inputJson">Optional JSON string with input parameters keyed by port name. Example: {"GameEvent":"unnyId123","score":100}</param>
+            /// <returns>The instance ID of the running script, or empty string on failure.</returns>
+            public static string RunScriptById(string scriptId, string launcherId = null, string inputJson = null) {
+                return Marshal.PtrToStringAnsi(
+                    Balancy.LibraryMethods.API.balancyScripts_RunById(scriptId, launcherId ?? "", inputJson ?? ""));
+            }
+
+            /// <summary>
+            /// Run a visual script by its name.
+            /// </summary>
+            /// <param name="scriptName">The script's name in the CMS.</param>
+            /// <param name="launcherId">Optional identifier for who launched the script.</param>
+            /// <param name="inputJson">Optional JSON string with input parameters keyed by port name.</param>
+            /// <returns>The instance ID of the running script, or empty string on failure.</returns>
+            public static string RunScriptByName(string scriptName, string launcherId = null, string inputJson = null) {
+                return Marshal.PtrToStringAnsi(
+                    Balancy.LibraryMethods.API.balancyScripts_RunByName(scriptName, launcherId ?? "", inputJson ?? ""));
+            }
+
+            /// <summary>
+            /// Stop a running visual script by its instance ID.
+            /// </summary>
+            /// <param name="instanceId">The instance ID returned from RunScriptById/RunScriptByName.</param>
+            /// <returns>True if the script was found and stopped.</returns>
+            public static bool StopScript(string instanceId) {
+                return Balancy.LibraryMethods.API.balancyScripts_Stop(instanceId);
+            }
+        }
+
         //This method doesn't work in production
         public static void SetTimeCheatingOffset(int seconds) => LibraryMethods.Extra.balancySetTimeOffset(seconds);
         public static int GetTimeCheatingOffset() => LibraryMethods.Extra.balancyGetTimeOffset();
