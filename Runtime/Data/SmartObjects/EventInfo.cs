@@ -5,6 +5,7 @@ namespace Balancy.Data.SmartObjects
 {
     public class EventInfo : Balancy.Data.BaseData, IOwnerWithTimer
     {
+	    private string _instanceId;
 	    private string _unnyIdGameEvent;
 		private string _offerInstanceId;
 		private string _scriptInstance;
@@ -12,9 +13,10 @@ namespace Balancy.Data.SmartObjects
 		private int _session;
 		private bool _isFinished;
         
+		public string InstanceId => _instanceId;
 		public Balancy.Models.SmartObjects.GameEvent GameEvent => GetModelByUnnyId<Balancy.Models.SmartObjects.GameEvent>(_unnyIdGameEvent);
 		public string GameEventUnnyId => _unnyIdGameEvent;
-		
+
 		public string OfferInstanceId
 		{
 			get => _offerInstanceId;
@@ -45,6 +47,7 @@ namespace Balancy.Data.SmartObjects
         {
             base.InitData();
             
+            InitAndSubscribeForParamChange("instanceId", Update_instanceId);
             InitAndSubscribeForParamChange("unnyIdGameEvent", Update_unnyIdGameEvent);
 			InitAndSubscribeForParamChange("offerInstanceId", Update_offerInstanceId);
 			InitAndSubscribeForParamChange("scriptInstance", Update_scriptInstance);
@@ -53,6 +56,7 @@ namespace Balancy.Data.SmartObjects
 			InitAndSubscribeForParamChange("isFinished", Update_isFinished);
         }
         
+        private void Update_instanceId() { _instanceId = GetStringParam("instanceId"); }
         private void Update_unnyIdGameEvent() { _unnyIdGameEvent = GetStringParam("unnyIdGameEvent"); }
 		private void Update_offerInstanceId() { _offerInstanceId = GetStringParam("offerInstanceId"); }
 		private void Update_scriptInstance() { _scriptInstance = GetStringParam("scriptInstance"); }
