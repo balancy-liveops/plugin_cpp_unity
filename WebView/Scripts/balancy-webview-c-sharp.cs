@@ -73,7 +73,7 @@ namespace Balancy.WebView
         /// <param name="message">Message from WebView</param>
         public void OnAndroidMessageReceived(string message)
         {
-            Debug.Log($"[BalancyWebView] Android Unity Message Received: {message.Substring(0, Math.Min(100, message.Length))}...");
+            // Debug.Log($"[BalancyWebView] Android Unity Message Received: {message.Substring(0, Math.Min(100, message.Length))}...");
             OnMessageReceivedPrivate(message);
         }
         
@@ -131,7 +131,7 @@ namespace Balancy.WebView
         /// <param name="message">Message from WebView</param>
         public void OnWebGLMessageReceived(string message)
         {
-            LogDebug($"WebGL Unity Message Received: {message.Substring(0, Math.Min(100, message.Length))}...");
+            //LogDebug($"WebGL Unity Message Received: {message.Substring(0, Math.Min(100, message.Length))}...");
             OnMessageReceivedPrivate(message);
         }
 

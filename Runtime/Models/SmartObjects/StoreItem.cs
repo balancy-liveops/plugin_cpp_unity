@@ -11,7 +11,7 @@ namespace Balancy.Models.SmartObjects
 		private UnnyObject _unnyView;
         
         
-		// public Balancy.Models.VisualScripting.ScriptNode DynamicReward => GetModelByUnnyId<Balancy.Models.VisualScripting.ScriptNode>(_unnyIdDynamicReward);
+		public Balancy.ScriptRef DynamicReward => GetScriptRef(_unnyIdDynamicReward);
 		public Balancy.Models.SmartObjects.Price Price => _price;
 		public Balancy.Models.SmartObjects.Reward Reward => _reward;
 		public Localization.LocalizedString Name => _name;

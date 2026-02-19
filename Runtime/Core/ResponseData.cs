@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using Balancy.Localization;
 using UnityEngine;
 
+
 namespace Balancy.Core
 {
     public delegate void ResponseCallback<T>(T responseData) where T : Responses.ResponseData;
@@ -133,6 +134,7 @@ namespace Balancy.Core
             internal string description;
             // internal string icon;
             // internal Constants.Platform platform;
+
             internal string localized_name;
             internal string localized_description;
             
@@ -221,6 +223,12 @@ namespace Balancy.Core
         {
             public List<Product> Products { get; internal set; }
         }
+
+        public class ProductResponseData : ResponseData
+        {
+            public Product Product { get; set; }
+        }
+
         //
         // [StructLayout(LayoutKind.Sequential, Pack = 1)]
         // internal struct InteropStringArray

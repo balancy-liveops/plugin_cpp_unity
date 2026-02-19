@@ -15,8 +15,10 @@ namespace Balancy.Data.SmartObjects
 		private Balancy.Data.SmartObjects.InventoryInfo _inventories;
 		private Balancy.Data.SmartObjects.ShopsInfo _shopsInfo;
 		private Balancy.Data.SmartObjects.BattlePassesInfo _battlePassesInfo;
-        
-        
+		private Balancy.Data.SmartObjects.CustomInfo _customInfo;
+		private Balancy.Data.SmartObjects.TasksInfo _tasksInfo;
+
+
 		public Balancy.Data.SmartObjects.Payments Payments => _payments;
 		// public Balancy.Data.SmartObjects.ScriptsState ScriptsState => _scriptsState;
 		public Balancy.Data.SmartObjects.SmartInfo SmartInfo => _smartInfo;
@@ -28,6 +30,8 @@ namespace Balancy.Data.SmartObjects
 		public Balancy.Data.SmartObjects.InventoryInfo Inventories => _inventories;
 		public Balancy.Data.SmartObjects.ShopsInfo ShopsInfo => _shopsInfo;
 		public Balancy.Data.SmartObjects.BattlePassesInfo BattlePassesInfo => _battlePassesInfo;
+		public Balancy.Data.SmartObjects.CustomInfo CustomInfo => _customInfo;
+		public Balancy.Data.SmartObjects.TasksInfo TasksInfo => _tasksInfo;
         
         public override void InitData()
         {
@@ -44,6 +48,8 @@ namespace Balancy.Data.SmartObjects
 			_inventories = GetBaseDataParam<Balancy.Data.SmartObjects.InventoryInfo>("inventories");
 			_shopsInfo = GetBaseDataParam<Balancy.Data.SmartObjects.ShopsInfo>("shopsInfo");
 			_battlePassesInfo = GetBaseDataParam<Balancy.Data.SmartObjects.BattlePassesInfo>("battlePassesInfo");
+			_customInfo = GetBaseDataParam<Balancy.Data.SmartObjects.CustomInfo>("customInfo");
+			_tasksInfo = GetBaseDataParam<Balancy.Data.SmartObjects.TasksInfo>("tasksInfo");
         }
         
     }

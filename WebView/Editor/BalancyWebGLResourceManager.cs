@@ -33,101 +33,6 @@ namespace Balancy.WebView.Editor
         private const string JSZIP_DEST = DEST_DIR + "/jszip.min.js";
 
         /// <summary>
-        /// Menu item to manually copy WebGL resources
-        /// </summary>
-        [MenuItem("Balancy/WebView/Copy WebGL Resources to StreamingAssets")]
-        public static void CopyResourcesToStreamingAssets()
-        {
-            Debug.Log("[Balancy] Copying WebGL resources to StreamingAssets...");
-
-            bool success = CopyWebGLResources();
-
-            if (success)
-            {
-                AssetDatabase.Refresh();
-                Debug.Log("[Balancy] ✅ WebGL resources copied successfully!");
-            }
-            else
-            {
-                Debug.LogError("[Balancy] ❌ Failed to copy WebGL resources!");
-            }
-        }
-
-        /// <summary>
-        /// Menu item to validate WebGL resources
-        /// </summary>
-        [MenuItem("Balancy/WebView/Validate WebGL Resources")]
-        public static void ValidateWebGLResources()
-        {
-            Debug.Log("[Balancy] Validating WebGL resources...");
-
-            bool allValid = true;
-
-            // Check source files
-            if (!File.Exists(WEBVIEW_BUNDLE_SOURCE))
-            {
-                Debug.LogError($"[Balancy] ❌ Missing source: {WEBVIEW_BUNDLE_SOURCE}");
-                Debug.LogError("[Balancy] Please run the TypeScript build: npm run build:webview");
-                allValid = false;
-            }
-            else
-            {
-                Debug.Log($"[Balancy] ✅ Found: {WEBVIEW_BUNDLE_SOURCE}");
-            }
-
-            if (!File.Exists(BRIDGE_SOURCE))
-            {
-                Debug.LogError($"[Balancy] ❌ Missing source: {BRIDGE_SOURCE}");
-                allValid = false;
-            }
-            else
-            {
-                Debug.Log($"[Balancy] ✅ Found: {BRIDGE_SOURCE}");
-            }
-
-            if (!File.Exists(INIT_SCRIPT_SOURCE))
-            {
-                Debug.LogError($"[Balancy] ❌ Missing source: {INIT_SCRIPT_SOURCE}");
-                allValid = false;
-            }
-            else
-            {
-                Debug.Log($"[Balancy] ✅ Found: {INIT_SCRIPT_SOURCE}");
-            }
-
-            if (!File.Exists(JSZIP_SOURCE))
-            {
-                Debug.LogError($"[Balancy] ❌ Missing source: {JSZIP_SOURCE}");
-                allValid = false;
-            }
-            else
-            {
-                Debug.Log($"[Balancy] ✅ Found: {JSZIP_SOURCE}");
-            }
-
-            // Check destination files
-            if (!File.Exists(WEBVIEW_BUNDLE_DEST))
-            {
-                Debug.LogWarning($"[Balancy] ⚠️ Missing in StreamingAssets: {WEBVIEW_BUNDLE_DEST}");
-                Debug.LogWarning("[Balancy] Run: Balancy > WebView > Copy WebGL Resources");
-                allValid = false;
-            }
-            else
-            {
-                Debug.Log($"[Balancy] ✅ Found: {WEBVIEW_BUNDLE_DEST}");
-            }
-
-            if (allValid)
-            {
-                Debug.Log("[Balancy] ✅ All WebGL resources are valid!");
-            }
-            else
-            {
-                Debug.LogWarning("[Balancy] ⚠️ Some WebGL resources are missing. Fix before building.");
-            }
-        }
-
-        /// <summary>
         /// Called before Unity build starts
         /// </summary>
         public void OnPreprocessBuild(BuildReport report)
@@ -250,24 +155,6 @@ namespace Balancy.WebView.Editor
             {
                 Debug.LogError($"[Balancy] Exception while copying resources: {ex.Message}");
                 return false;
-            }
-        }
-
-        /// <summary>
-        /// Menu item to clean StreamingAssets
-        /// </summary>
-        [MenuItem("Balancy/WebView/Clean WebGL Resources from StreamingAssets")]
-        public static void CleanStreamingAssets()
-        {
-            if (Directory.Exists(DEST_DIR))
-            {
-                Directory.Delete(DEST_DIR, true);
-                AssetDatabase.Refresh();
-                Debug.Log("[Balancy] ✅ Cleaned WebGL resources from StreamingAssets");
-            }
-            else
-            {
-                Debug.Log("[Balancy] StreamingAssets/Balancy directory doesn't exist");
             }
         }
     }

@@ -7,9 +7,13 @@ namespace Balancy.Models.SmartObjects
         
         public int Priority => _priority;
         
+        private string _unnyIdCondition;
+        public Balancy.Models.SmartObjects.Conditions.Logic Condition => GetModelByUnnyId<Balancy.Models.SmartObjects.Conditions.Logic>(_unnyIdCondition);
+        
         public override void InitData()
         {
             base.InitData();
+            _unnyIdCondition = GetStringParam("unnyIdCondition");
             _priority = GetIntParam("priority");
         }
     }

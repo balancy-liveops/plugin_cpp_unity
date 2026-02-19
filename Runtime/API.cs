@@ -183,7 +183,7 @@ namespace Balancy
             return false;
         }
         
-        public static void InitPurchaseShop(ShopSlot shopSlot, Action<bool, string> callback)
+        public static void InitPurchaseShop(Balancy.Data.SmartObjects.ShopSlot shopSlot, Action<bool, string> callback)
         {
             if (shopSlot?.Slot == null)
             {

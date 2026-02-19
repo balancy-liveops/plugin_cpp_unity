@@ -283,10 +283,10 @@ namespace Balancy.Editor
 
                 if (GUILayout.Button("Download Data"))
                     StartDownloading();
-                
-                // if (GUILayout.Button("Synch Addressables"))
-                //     StartSynchingAddressables();
-                
+
+                if (GUILayout.Button("Sync Addressables"))
+                    StartSynchingAddressables();
+
                 GUILayout.EndHorizontal();
             }
 
@@ -308,6 +308,90 @@ namespace Balancy.Editor
             _downloadingProgress = 0;
 
             EditorUtils.DownloadContent(OnDownloadCompleted, OnProgressUpdate);
+        }
+
+        private void StartSynchingAddressables()
+        {
+            if (_gamesInfo == null || !_gamesInfo.HasSelectedGame() || !HasValidBranchSelected())
+            {
+                EditorUtility.DisplayDialog("Error", "Please select a game and branch first", "OK");
+                return;
+            }
+
+            var gameInfo = _gamesInfo.GetSelectedGameInfo();
+            string gameId = gameInfo?.GameId;
+
+            // Get selected branch info
+            string branchName = "";
+            int branchId = -1;
+            if (_gamesInfo.HasBranches && _gamesInfo.GetBranches != null)
+            {
+                foreach (var branch in _gamesInfo.GetBranches)
+                {
+                    if (branch.BranchId == _gamesInfo.SelectedBranchId)
+                    {
+                        branchName = branch.BranchName;
+                        branchId = branch.BranchId;
+                        break;
+                    }
+                }
+            }
+
+            if (string.IsNullOrEmpty(branchName) || branchId < 0)
+            {
+                EditorUtility.DisplayDialog("Error", "Invalid branch selection", "OK");
+                return;
+            }
+
+            // Create a minimal EditorAuth wrapper
+            var editorAuth = new Balancy_EditorAuth();
+
+            _downloading = true;
+            _downloadingProgress = 0;
+            _downloadingFileName = "Initializing addressables sync...";
+
+            // Trigger the addressables sync event
+            Balancy_Editor.TriggerSynchAddressables(
+                editorAuth,
+                gameId,
+                "", // token - not used in new implementation
+                branchId,
+                branchName,
+                OnAddressablesProgress,
+                OnAddressablesStart,
+                OnAddressablesComplete
+            );
+        }
+
+        private void OnAddressablesStart()
+        {
+            _downloadingFileName = "Starting addressables sync...";
+            _downloadingProgress = 0.1f;
+            _needRefresh = true;
+        }
+
+        private void OnAddressablesProgress(string fileName, float progress)
+        {
+            _downloadingFileName = fileName;
+            _downloadingProgress = progress;
+            _needRefresh = true;
+        }
+
+        private void OnAddressablesComplete(string message)
+        {
+            _downloading = false;
+            _downloadingFileName = "";
+
+            if (string.IsNullOrEmpty(message))
+            {
+                EditorUtility.DisplayDialog("Success", "Addressables synchronized successfully!", "OK");
+            }
+            else
+            {
+                _errorMessage = message;
+            }
+
+            _needRefresh = true;
         }
 
         private void OnDownloadCompleted(bool success, string message)

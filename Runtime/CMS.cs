@@ -9,11 +9,20 @@ namespace Balancy
     public static class CMS
     {
         private static readonly Dictionary<string, BaseModel> AllModels = new Dictionary<string, BaseModel>();
+        private static readonly Dictionary<string, object> AllSingletons = new Dictionary<string, object>();
+        private static readonly Dictionary<string, ConditionalTemplateSubscription> AllConditionalTemplateSubscriptions = new Dictionary<string, ConditionalTemplateSubscription>();
+        private static readonly Dictionary<string, int> _ctNativeCallbackIds = new Dictionary<string, int>();
         private static Dictionary<string, string> Inheritance = null;
 
         public static Func<string, BaseModel> OnTypeRequested = null;
 
         private static bool IsReadyToUse = false;
+
+        private class ConditionalTemplateSubscription
+        {
+            public string TemplateName;
+            public Action<BaseModel, bool> Callback;
+        }
         
         internal static void SetIsReady(bool value)
         {
@@ -69,10 +78,169 @@ namespace Balancy
                 model.RefreshData(newPointer);
         }
 
+        [AOT.MonoPInvokeCallback(typeof(LibraryMethods.ConditionalTemplates.ConditionalTemplateChangedCallback))]
+        private static void OnConditionalTemplateChangedStatic(string templateName, string unnyId, bool passed)
+        {
+            if (string.IsNullOrEmpty(unnyId))
+                return;
+
+            BaseModel model = null;
+            foreach (var kvp in AllConditionalTemplateSubscriptions)
+            {
+                if (kvp.Value.TemplateName == templateName)
+                {
+                    if (model == null)
+                        model = GetModelByUnnyId<BaseModel>(unnyId);
+                    if (model != null)
+                        kvp.Value.Callback?.Invoke(model, passed);
+                }
+            }
+        }
+
         internal static void CleanUp()
         {
             AllModels.Clear();
+
+            // CRITICAL: Clear all singleton callbacks in C++ before domain reload
+            // This prevents crashes when C++ tries to invoke deallocated C# delegates
+            LibraryMethods.Singletons.balancyClearAllSingletonCallbacks();
+
+            // CRITICAL: Clear all conditional template callbacks in C++ before domain reload
+            LibraryMethods.ConditionalTemplates.balancyClearAllConditionalTemplateCallbacks();
+
+            AllSingletons.Clear();
+            AllConditionalTemplateSubscriptions.Clear();
+            _ctNativeCallbackIds.Clear();
             Inheritance?.Clear();
+        }
+
+        /// <summary>
+        /// Get singleton instance for a given template type.
+        /// Supports both regular singletons and ConditionalTemplate-based singletons.
+        /// For ConditionalTemplate singletons, returns the variant with highest priority whose condition passes.
+        /// </summary>
+        /// <typeparam name="T">Singleton template type (must be a BaseModel)</typeparam>
+        /// <returns>Current singleton instance, may change based on conditions for ConditionalTemplates</returns>
+        public static SmartObjects.BalancySingleton<T> GetSingleton<T>() where T : BaseModel
+        {
+            if (!IsReadyToUse)
+                return null;
+
+            var templateName = JsonBasedObject.GetModelClassName<T>();
+
+            // Check if singleton wrapper already exists
+            if (!AllSingletons.TryGetValue(templateName, out var wrapper))
+            {
+                // Create new singleton wrapper
+                wrapper = new SmartObjects.BalancySingleton<T>();
+                AllSingletons[templateName] = wrapper;
+            }
+
+            return (SmartObjects.BalancySingleton<T>)wrapper;
+        }
+
+        /// <summary>
+        /// Subscribe to ConditionalTemplate status changes.
+        /// The callback will be invoked whenever any document of type T (or its children) becomes active or inactive.
+        /// </summary>
+        /// <typeparam name="T">ConditionalTemplate type (must inherit from BaseModel)</typeparam>
+        /// <param name="callback">Callback invoked with (model, isActive) when status changes</param>
+        /// <param name="includeChildren">If true, includes child templates in notifications (currently always includes children)</param>
+        /// <returns>Subscription key for unsubscribing later</returns>
+        public static string SubscribeConditionalTemplate<T>(Action<T, bool> callback, bool includeChildren = true) where T : BaseModel
+        {
+            if (!IsReadyToUse || callback == null)
+                return null;
+
+            var templateName = JsonBasedObject.GetModelClassName<T>();
+
+            // Register the static AOT callback with native once per templateName
+            if (!_ctNativeCallbackIds.ContainsKey(templateName))
+            {
+                int nativeId = LibraryMethods.ConditionalTemplates.balancySubscribeConditionalTemplateChanged(
+                    templateName,
+                    OnConditionalTemplateChangedStatic);
+
+                if (nativeId < 0)
+                    return null;
+
+                _ctNativeCallbackIds[templateName] = nativeId;
+            }
+
+            var subscriptionKey = $"{templateName}_{Guid.NewGuid()}";
+
+            // Wrap the typed callback — this lambda stays in C# land, never crosses native boundary
+            AllConditionalTemplateSubscriptions[subscriptionKey] = new ConditionalTemplateSubscription
+            {
+                TemplateName = templateName,
+                Callback = (model, passed) => callback((T)model, passed)
+            };
+
+            return subscriptionKey;
+        }
+
+        /// <summary>
+        /// Unsubscribe from ConditionalTemplate status changes.
+        /// </summary>
+        /// <param name="subscriptionKey">Subscription key returned from SubscribeConditionalTemplate</param>
+        public static void UnsubscribeConditionalTemplate(string subscriptionKey)
+        {
+            if (string.IsNullOrEmpty(subscriptionKey))
+                return;
+
+            if (AllConditionalTemplateSubscriptions.TryGetValue(subscriptionKey, out var subscription))
+            {
+                AllConditionalTemplateSubscriptions.Remove(subscriptionKey);
+
+                // Only unsubscribe from native if no more C# subscribers for this template
+                bool hasMore = false;
+                foreach (var kvp in AllConditionalTemplateSubscriptions)
+                {
+                    if (kvp.Value.TemplateName == subscription.TemplateName)
+                    {
+                        hasMore = true;
+                        break;
+                    }
+                }
+
+                if (!hasMore && _ctNativeCallbackIds.TryGetValue(subscription.TemplateName, out var nativeId))
+                {
+                    LibraryMethods.ConditionalTemplates.balancyUnsubscribeConditionalTemplateChanged(
+                        subscription.TemplateName,
+                        nativeId);
+                    _ctNativeCallbackIds.Remove(subscription.TemplateName);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Get all currently active ConditionalTemplate documents of type T.
+        /// Returns documents whose conditions are currently passing.
+        /// </summary>
+        /// <typeparam name="T">ConditionalTemplate type (must inherit from BaseModel)</typeparam>
+        /// <param name="includeChildren">If true, includes child templates (currently always includes children)</param>
+        /// <returns>Array of active documents</returns>
+        public static T[] GetActiveConditionalTemplates<T>(bool includeChildren = true) where T : BaseModel
+        {
+            if (!IsReadyToUse)
+                return Array.Empty<T>();
+
+            var templateName = JsonBasedObject.GetModelClassName<T>();
+            IntPtr arrayPtr = LibraryMethods.ConditionalTemplates.balancyGetActiveConditionalTemplates(
+                templateName,
+                out int size);
+
+            if (arrayPtr == IntPtr.Zero || size == 0)
+                return Array.Empty<T>();
+
+            var strs = JsonBasedObject.ReadStringArrayValues(arrayPtr, size);
+            T[] result = new T[size];
+            for (int i = 0; i < size; i++)
+            {
+                result[i] = GetModelByUnnyId<T>(strs[i]);
+            }
+
+            return result;
         }
 
         private static void RefreshInheritance()
@@ -133,6 +301,7 @@ namespace Balancy
                 case "SmartObjects.SegmentOption": return new SegmentOption();
                 case "SmartObjects.Item": return new Item();
                 case "SmartObjects.Price": return new Balancy.Models.SmartObjects.Price();
+                case "SmartObjects.Conditions.Logic": return new Balancy.Models.SmartObjects.Conditions.Logic();
 				// case "SmartObjects.TimeConfig": return new Balancy.Models.SmartObjects.TimeConfig();
 				case "SmartObjects.Reward": return new Balancy.Models.SmartObjects.Reward();
 				case "SmartObjects.GameEvent": return new Balancy.Models.SmartObjects.GameEvent();
