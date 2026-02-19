@@ -73,14 +73,6 @@ namespace Balancy.Models
             return GetStringFromIntPtr(LibraryMethods.Models.balancyGetTemplateName(instance));
         }
 
-        /// <summary>
-        /// Get UnnyId from a model pointer. Used for singleton callbacks.
-        /// </summary>
-        internal static string GetUnnyId(IntPtr instance)
-        {
-            return GetStringFromIntPtr(LibraryMethods.Models.balancyGetUnnyId(instance));
-        }
-
         protected UnnyColor GetColor(string paramName)
         {
             return new UnnyColor(GetStringParam(paramName));
@@ -99,13 +91,30 @@ namespace Balancy.Models
         {
             return new LocalizedString(GetStringParam(paramName));
         }
-        
+
         protected LocalizedString[] GetLocalizedStrings(string paramName)
         {
             var strings = GetStringArrayParam(paramName);
             var result = new LocalizedString[strings.Length];
             for (int i = 0; i < strings.Length; i++)
                 result[i] = new LocalizedString(strings[i]);
+            return result;
+        }
+
+        protected ScriptRef GetScriptRef(string scriptId)
+        {
+            if (string.IsNullOrEmpty(scriptId))
+                return null;
+            return new ScriptRef(scriptId);
+        }
+
+        protected ScriptRef[] GetScriptRefs(string[] scriptIds)
+        {
+            if (scriptIds == null || scriptIds.Length == 0)
+                return Array.Empty<ScriptRef>();
+            var result = new ScriptRef[scriptIds.Length];
+            for (int i = 0; i < scriptIds.Length; i++)
+                result[i] = new ScriptRef(scriptIds[i]);
             return result;
         }
 

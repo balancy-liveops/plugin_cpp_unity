@@ -1,9 +1,8 @@
 
 namespace Balancy.Models.SmartObjects
 {
-    public class GameEvent : Balancy.Models.BaseModel, IViewModel
+    public class GameEvent : Balancy.Models.SmartObjects.ConditionalTemplate, IViewModel
     {
-		private string _unnyIdCondition;
 		private string _description;
 		private Balancy.Models.SmartObjects.EventFinishType _finishType;
 		private Localization.LocalizedString _name;
@@ -15,7 +14,6 @@ namespace Balancy.Models.SmartObjects
 		private UnnyObject _unnyView;
 		private Balancy.Models.SmartObjects.ViewPlacement _unnyPlacement;
         
-		// public Balancy.Models.SmartObjects.Conditions.Logic Condition => GetModelByUnnyId<Balancy.Models.SmartObjects.Conditions.Logic>(_unnyIdCondition);
 		public string Description => _description;
 		public Balancy.Models.SmartObjects.EventFinishType FinishType => _finishType;
 		public Localization.LocalizedString Name => _name;
@@ -31,7 +29,6 @@ namespace Balancy.Models.SmartObjects
         {
             base.InitData();
             
-			_unnyIdCondition = GetStringParam("unnyIdCondition");
 			_description = GetStringParam("description");
 			_finishType = (Balancy.Models.SmartObjects.EventFinishType)GetIntParam("finishType");
 			_name = GetLocalizedString("name");

@@ -276,8 +276,6 @@ namespace Balancy
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern IntPtr balancyGetTemplateName(IntPtr instance);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-            public static extern IntPtr balancyGetUnnyId(IntPtr instance);
-            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern IntPtr balancyGetObjectParam(IntPtr instance, string paramName, string fileName);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern IntPtr balancyGetObjectArrayParam(IntPtr instance, string paramName, string fileName, out int size);
@@ -344,6 +342,24 @@ namespace Balancy
             public static extern void balancyClearAllSingletonCallbacks();
         }
 
+        public static class ConditionalTemplates
+        {
+            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+            public delegate void ConditionalTemplateChangedCallback(string templateName, string unnyId, bool passed);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancySubscribeConditionalTemplateChanged(string templateName, ConditionalTemplateChangedCallback callback);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyUnsubscribeConditionalTemplateChanged(string templateName, int callbackId);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyGetActiveConditionalTemplates(string templateName, out int size);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyClearAllConditionalTemplateCallbacks();
+        }
+
         public static class Data
         {
             [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
@@ -361,7 +377,19 @@ namespace Balancy
             public static extern IntPtr balancyGetBaseDataParam(IntPtr instance, string paramName, string fileName);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern IntPtr balancyGetListBaseDataParam(IntPtr instance, string paramName, string fileName);
-            
+
+            // SmartListSimple getter P/Invoke declarations
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyGetListSimpleIntParam(IntPtr instance, string paramName);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyGetListSimpleFloatParam(IntPtr instance, string paramName);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+            public static extern IntPtr balancyGetListSimpleStringParam(IntPtr instance, string paramName);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyGetListSimpleLongParam(IntPtr instance, string paramName);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyGetListSimpleBoolParam(IntPtr instance, string paramName);
+
             // [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             // public static extern int balancySubscribeBaseDataParamChange(IntPtr instance, string paramName, IntPtr callback);
             //
@@ -394,7 +422,77 @@ namespace Balancy
             public static extern void balancySmartListRemoveElementAt(IntPtr instance, int index);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancySmartListClear(IntPtr instance);
-            
+
+            // SmartListSimple<int> P/Invoke declarations
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancySmartListSimpleIntAddElement(IntPtr instance, int value);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancySmartListSimpleIntGetSize(IntPtr instance);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancySmartListSimpleIntGetElementAt(IntPtr instance, int index);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancySmartListSimpleIntSetElementAt(IntPtr instance, int index, int value);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancySmartListSimpleIntRemoveAt(IntPtr instance, int index);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancySmartListSimpleIntClear(IntPtr instance);
+
+            // SmartListSimple<float> P/Invoke declarations
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancySmartListSimpleFloatAddElement(IntPtr instance, float value);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancySmartListSimpleFloatGetSize(IntPtr instance);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern float balancySmartListSimpleFloatGetElementAt(IntPtr instance, int index);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancySmartListSimpleFloatSetElementAt(IntPtr instance, int index, float value);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancySmartListSimpleFloatRemoveAt(IntPtr instance, int index);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancySmartListSimpleFloatClear(IntPtr instance);
+
+            // SmartListSimple<string> P/Invoke declarations
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+            public static extern void balancySmartListSimpleStringAddElement(IntPtr instance, string value);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancySmartListSimpleStringGetSize(IntPtr instance);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+            public static extern IntPtr balancySmartListSimpleStringGetElementAt(IntPtr instance, int index);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+            public static extern void balancySmartListSimpleStringSetElementAt(IntPtr instance, int index, string value);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancySmartListSimpleStringRemoveAt(IntPtr instance, int index);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancySmartListSimpleStringClear(IntPtr instance);
+
+            // SmartListSimple<long> P/Invoke declarations
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancySmartListSimpleLongAddElement(IntPtr instance, long value);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancySmartListSimpleLongGetSize(IntPtr instance);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern long balancySmartListSimpleLongGetElementAt(IntPtr instance, int index);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancySmartListSimpleLongSetElementAt(IntPtr instance, int index, long value);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancySmartListSimpleLongRemoveAt(IntPtr instance, int index);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancySmartListSimpleLongClear(IntPtr instance);
+
+            // SmartListSimple<bool> P/Invoke declarations
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancySmartListSimpleBoolAddElement(IntPtr instance, bool value);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancySmartListSimpleBoolGetSize(IntPtr instance);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern bool balancySmartListSimpleBoolGetElementAt(IntPtr instance, int index);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancySmartListSimpleBoolSetElementAt(IntPtr instance, int index, bool value);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancySmartListSimpleBoolRemoveAt(IntPtr instance, int index);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancySmartListSimpleBoolClear(IntPtr instance);
+
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancySetProfileOnReset(ModelRefreshedCallback callback);
             
@@ -579,11 +677,27 @@ namespace Balancy
             public static extern void balancyAuth_NameAndPassword(string name, string password, int callbackId, ResponseCallback callback);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyLink_NameAndPassword(string name, string password, bool forceLink, int callbackId, ResponseCallback callback);
-            
+
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyGenenal_LevelCompleted();
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyGenenal_LevelFailed();
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyTasks_ActivateTask(IntPtr taskPointer, IntPtr gameEventPointer);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyTasks_DeactivateTask(IntPtr taskPointer);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern bool balancyTasks_ClaimReward(IntPtr taskPointer);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyTasks_RestoreFailedTask(IntPtr taskPointer);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyScripts_RunById(string scriptId, string launcherId, string inputJson);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyScripts_RunByName(string scriptName, string launcherId, string inputJson);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern bool balancyScripts_Stop(string instanceId);
         }
 
         public static class Conditions

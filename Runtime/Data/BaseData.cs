@@ -102,7 +102,41 @@ namespace Balancy.Data
             _children.Add(data);
             return data;
         }
-        
+
+        protected SmartListSimple<T> GetListSimpleParam<T>(string paramName)
+        {
+            IntPtr ptr;
+            if (typeof(T) == typeof(int))
+            {
+                ptr = LibraryMethods.Data.balancyGetListSimpleIntParam(_pointer, paramName);
+            }
+            else if (typeof(T) == typeof(float))
+            {
+                ptr = LibraryMethods.Data.balancyGetListSimpleFloatParam(_pointer, paramName);
+            }
+            else if (typeof(T) == typeof(string))
+            {
+                ptr = LibraryMethods.Data.balancyGetListSimpleStringParam(_pointer, paramName);
+            }
+            else if (typeof(T) == typeof(long))
+            {
+                ptr = LibraryMethods.Data.balancyGetListSimpleLongParam(_pointer, paramName);
+            }
+            else if (typeof(T) == typeof(bool))
+            {
+                ptr = LibraryMethods.Data.balancyGetListSimpleBoolParam(_pointer, paramName);
+            }
+            else
+            {
+                throw new NotSupportedException($"SmartListSimple does not support type {typeof(T).Name}");
+            }
+
+            var data = CreateObject<SmartListSimple<T>>(ptr, TempCopy);
+            data.SubscribeForUpdates(paramName, this);
+            _children.Add(data);
+            return data;
+        }
+
         private IntPtr GetBaseDataParamPrivate(string paramName, string fileName)
         {
             return LibraryMethods.Data.balancyGetBaseDataParam(_pointer, paramName, fileName);
