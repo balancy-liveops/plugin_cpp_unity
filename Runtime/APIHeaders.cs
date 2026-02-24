@@ -211,7 +211,7 @@ namespace Balancy
                     // InteropProductData struct layout (Pack=1):
                     // IntPtr base_id, int type, IntPtr item_id, IntPtr name, IntPtr description,
                     // IntPtr localized_name, IntPtr localized_description, float price
-                    int elemSize = IntPtr.Size * 6 + 4 + 4; // 6 pointers + 1 int(type) + 1 float(price)
+                    int elemSize = IntPtr.Size * 7 + 4 + 4; // 6 pointers + 1 int(type) + 1 float(price)
                     for (int i = 0; i < count; i++)
                     {
                         int pOff = 0;
@@ -223,6 +223,7 @@ namespace Balancy
                         IntPtr descPtr = Marshal.ReadIntPtr(itemPtr, pOff); pOff += IntPtr.Size;
                         IntPtr locNamePtr = Marshal.ReadIntPtr(itemPtr, pOff); pOff += IntPtr.Size;
                         IntPtr locDescPtr = Marshal.ReadIntPtr(itemPtr, pOff); pOff += IntPtr.Size;
+                        IntPtr iconPtr = Marshal.ReadIntPtr(itemPtr, pOff); pOff += IntPtr.Size;
                         // float is 4 bytes - read as int bits and convert
                         int priceBits = Marshal.ReadInt32(itemPtr, pOff);
                         float priceVal = BitConverter.ToSingle(BitConverter.GetBytes(priceBits), 0);
@@ -236,7 +237,9 @@ namespace Balancy
                             description = descPtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(descPtr) : null,
                             localized_name = locNamePtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(locNamePtr) : null,
                             localized_description = locDescPtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(locDescPtr) : null,
+                            icon = iconPtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(iconPtr) : null,
                             price = priceVal
+                            
                         };
                         products.Add(product);
                     }
@@ -256,7 +259,8 @@ namespace Balancy
                             description = Marshal.PtrToStringAnsi(interop.description),
                             localized_name = Marshal.PtrToStringAnsi(interop.localized_name),
                             localized_description = Marshal.PtrToStringAnsi(interop.localized_description),
-                            price = interop.price
+                            icon =  Marshal.PtrToStringAnsi(interop.icon),
+                            price = interop.price,
                         };
 
                         products.Add(product);

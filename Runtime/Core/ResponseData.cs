@@ -109,6 +109,7 @@ namespace Balancy.Core
             public IntPtr localized_name;
             public IntPtr localized_description;
             public float price;
+            public IntPtr icon;
         };
         
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -132,14 +133,15 @@ namespace Balancy.Core
             internal string item_id;
             internal string name;
             internal string description;
-            // internal string icon;
             // internal Constants.Platform platform;
 
             internal string localized_name;
             internal string localized_description;
             
-            internal float price;
+            internal string icon;
             
+            internal float price;
+
             internal LocalizedString localizedName;
             internal LocalizedString localizedDescription;
 
@@ -167,6 +169,11 @@ namespace Balancy.Core
                 }
             }
 
+            public string Icon
+            {
+                get { return icon; }
+            }
+            
             public string PlatformProductId
             {
                 get { return item_id; }
