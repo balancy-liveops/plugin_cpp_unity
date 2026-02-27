@@ -7,27 +7,27 @@ namespace Balancy.Data
 {
     public class BaseData : JsonBasedObject
     {
-        protected void SetIntValue(string paramName, int inValue)
+        public void SetIntValue(string paramName, int inValue)
         {
             LibraryMethods.Data.balancySetIntParam(_pointer, paramName, inValue);
         }
         
-        protected void SetLongValue(string paramName, long inValue)
+        public void SetLongValue(string paramName, long inValue)
         {
             LibraryMethods.Data.balancySetLongParam(_pointer, paramName, inValue);
         }
         
-        protected void SetStringValue(string paramName, string inValue)
+        public void SetStringValue(string paramName, string inValue)
         {
             LibraryMethods.Data.balancySetStringParam(_pointer, paramName, inValue);
         }
         
-        protected void SetFloatValue(string paramName, float inValue)
+        public void SetFloatValue(string paramName, float inValue)
         {
             LibraryMethods.Data.balancySetFloatParam(_pointer, paramName, inValue);
         }
         
-        protected void SetBoolValue(string paramName, bool inValue)
+        public void SetBoolValue(string paramName, bool inValue)
         {
             LibraryMethods.Data.balancySetBoolParam(_pointer, paramName, inValue);
         }

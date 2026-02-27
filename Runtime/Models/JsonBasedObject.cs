@@ -183,27 +183,27 @@ namespace Balancy.Models
             return LibraryMethods.Models.balancyGetObjectArrayParam(_pointer, paramName, fileName, out size);
         }
         
-        protected int GetIntParam(string paramName)
+        public int GetIntParam(string paramName)
         {
             return LibraryMethods.Models.balancyGetIntParam(_pointer, paramName);
         }
         
-        protected long GetLongParam(string paramName)
+        public long GetLongParam(string paramName)
         {
             return LibraryMethods.Models.balancyGetLongParam(_pointer, paramName);
         }
         
-        protected float GetFloatParam(string paramName)
+        public float GetFloatParam(string paramName)
         {
             return LibraryMethods.Models.balancyGetFloatParam(_pointer, paramName);
         }
         
-        protected bool GetBoolParam(string paramName)
+        public bool GetBoolParam(string paramName)
         {
             return LibraryMethods.Models.balancyGetBoolParam(_pointer, paramName);
         }
         
-        protected string GetStringParam(string paramName)
+        public string GetStringParam(string paramName)
         {
             return GetStringFromIntPtr(LibraryMethods.Models.balancyGetStringParam(_pointer, paramName));
         }
