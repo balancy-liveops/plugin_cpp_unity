@@ -5,6 +5,31 @@ using UnityEngine;
 
 namespace Balancy.SmartObjects
 {
+    // Non-generic dispatcher so [MonoPInvokeCallback] works on Android/IL2CPP.
+    // IL2CPP cannot generate a native thunk for a static method inside a generic class.
+    internal static class BalancySingletonDispatcher
+    {
+        private static readonly Dictionary<string, Action<string>> _handlers =
+            new Dictionary<string, Action<string>>();
+
+        internal static void Register(string templateName, Action<string> handler)
+        {
+            _handlers[templateName] = handler;
+        }
+
+        internal static void Unregister(string templateName)
+        {
+            _handlers.Remove(templateName);
+        }
+
+        [AOT.MonoPInvokeCallback(typeof(LibraryMethods.Singletons.SingletonChangedCallback))]
+        internal static void OnSingletonChangedStatic(string templateName, string unnyId)
+        {
+            if (_handlers.TryGetValue(templateName, out var handler))
+                handler(unnyId);
+        }
+    }
+
     /// <summary>
     /// Wrapper for singleton models. Supports both regular singletons and ConditionalTemplate-based singletons.
     /// ConditionalTemplate singletons automatically update based on user conditions and priority.
@@ -19,36 +44,29 @@ namespace Balancy.SmartObjects
 
         private readonly int _callbackId;
         private readonly string _templateName;
-        private static readonly Dictionary<string, object> _instances = new Dictionary<string, object>();
 
         internal BalancySingleton()
         {
             _templateName = JsonBasedObject.GetModelClassName<T>();
+            BalancySingletonDispatcher.Register(_templateName, OnSingletonChanged);
             _callbackId = LibraryMethods.Singletons.balancySubscribeSingletonChanged(
                 _templateName,
-                OnSingletonChangedStatic
+                BalancySingletonDispatcher.OnSingletonChangedStatic
             );
-
-            _instances[_templateName] = this;
         }
 
         ~BalancySingleton()
         {
+            BalancySingletonDispatcher.Unregister(_templateName);
             LibraryMethods.Singletons.balancyUnsubscribeSingletonChanged(_templateName, _callbackId);
-            _instances.Remove(_templateName);
         }
 
-        [AOT.MonoPInvokeCallback(typeof(LibraryMethods.Singletons.SingletonChangedCallback))]
-        private static void OnSingletonChangedStatic(string templateName, string unnyId)
+        private void OnSingletonChanged(string unnyId)
         {
-            if (_instances.TryGetValue(templateName, out var instance))
+            if (!string.IsNullOrEmpty(unnyId))
             {
-                var singleton = instance as BalancySingleton<T>;
-                if (singleton != null && !string.IsNullOrEmpty(unnyId))
-                {
-                    var model = CMS.GetModelByUnnyId<T>(unnyId);
-                    singleton.OnChanged?.Invoke(model);
-                }
+                var model = CMS.GetModelByUnnyId<T>(unnyId);
+                OnChanged?.Invoke(model);
             }
         }
 
