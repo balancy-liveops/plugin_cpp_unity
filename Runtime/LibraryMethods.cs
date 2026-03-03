@@ -203,6 +203,9 @@ namespace Balancy
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern bool balancyStartAbTestManually(IntPtr abTest, IntPtr abTestVariant);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyDataObjectCompileAllScripts();
         }
 
         public static class WebSocket

@@ -19,6 +19,17 @@ namespace Balancy.WebView
     /// </summary>
     public class BalancyWebView : MonoBehaviour
     {
+        private string _scriptsCode = "";
+
+        /// <summary>
+        /// Store compiled scripts code for injection into WebView.
+        /// Called from RenderViewsManager after compiling scripts via native layer.
+        /// </summary>
+        public void SetScriptsCode(string scriptsCode)
+        {
+            _scriptsCode = scriptsCode ?? "";
+        }
+
         #region Singleton Implementation
 
         private static BalancyWebView _instance;
@@ -1328,7 +1339,7 @@ namespace Balancy.WebView
         {
             if (success)
             {
-                Debug.Log($"[BalancyWebView] Load completed: {success}: ");
+                Debug.Log($"[BalancyWebView] Load completed: {success}");
 
                 #if !(UNITY_WEBGL && !UNITY_EDITOR)
                 // For WebGL, bridge injection is handled by TypeScript (unity-entry.ts)
@@ -1344,41 +1355,36 @@ namespace Balancy.WebView
                                     : "") +
                                 $"        window.balancyViewOwner = JSON.parse('{_instance._ownerJson}');\n" +
                                 "    } catch (error) {\n" +
-                                "        console.error('Error parsing button params JSON:', error);\n" +
+                                "        console.error('Error parsing owner JSON:', error);\n" +
                                 "        window.balancyViewOwner = null;\n" +
                                 "    }\n" +
-                                "    return true; // Return explicit value to avoid iOS error code 5\n" +
+                                "    return true;\n" +
                                 "})();";
                 }
 
-                // InjectFileFromResources("balancy-webview-performance");
-                // InjectFileFromResources("balancy-webview-styles");
-                // InjectFileFromResources("balancy-webview-bridge");
                 var bridgeCode = Resources.Load<TextAsset>("balancy-webview-bridge");
-                
-                // const fullCode = `
-                //     // #1 Owner Info
-                //     ${ownerInfo}
-                //
-                // // #2 Bridge
-                // ${bridgeCode}
-                //
-                // // #3 Scripts
-                // ${this._scriptsCode}
-                //
-                // // #4 Initialize
-                // balancy.initResponseHandler();
-                // console.log('Balancy fully initialized!');
-                // // Return explicit value to avoid iOS error code 5
-                // true;
-                //     `;
-                //Rewrite the commented code above to C#:
+                var scriptsCode = _instance._scriptsCode;
+
+                // Build full injection code with all 4 sections, wrapped in try/catch
                 var fullCode =
-                    $"{ownerInfo} {bridgeCode} balancy.initResponseHandler(); console.log('Balancy fully initialized!'); true";
-                
+                    "try {\n" +
+                    // #1 Owner Info
+                    $"  {ownerInfo}\n" +
+                    // #2 Bridge
+                    $"  {bridgeCode}\n" +
+                    // #3 Scripts
+                    $"  {scriptsCode}\n" +
+                    // #4 Initialize
+                    "  window.balancy.initResponseHandler();\n" +
+                    "  console.log('Balancy fully initialized!');\n" +
+                    "} catch (error) {\n" +
+                    "  console.error('***Balancy Injection Error***', error);\n" +
+                    "  console.error('Error message:', error.message);\n" +
+                    "  console.error('Error stack:', error.stack);\n" +
+                    "}\n" +
+                    "true;";
+
                 _balancyInjectJSCode(fullCode);
-                // InjectFileFromResources("balancy-webview-css-animations");
-                // InjectFileFromResources("balancy-webview-js-animations");
                 #else
                 Debug.Log("[BalancyWebView] WebGL: Bridge injection handled by TypeScript");
                 #endif

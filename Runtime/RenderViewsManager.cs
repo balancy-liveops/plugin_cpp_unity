@@ -17,29 +17,49 @@ namespace Balancy
 #else
         private const bool UseEmbeddedWebView = false;
 #endif
-        
+
         internal static Func<string, bool> _onMessageReceived;
-        
+
         private static BalancyWebView _webView;
-        
+
         internal static void Init()
         {
             LibraryMethods.General.balancySetDataRequestedCallback(DataRequested);
             LibraryMethods.General.balancyViewAllowOptimization(true);
             LibraryMethods.General.balancySetViewNotificationsCallback(OnNotificationReceived);
             PrepareCallbacks();
-            
+
             BalancyWebView.Instance.OnMessage = OnMessageReceived;
             _webView = BalancyWebView.Instance;
             _webView.OnLoadCompleted += HandleLoadCompleted;
             _webView.OnClosed += HandleWebViewClosed;
-            
+
             _webView.SetTransparentBackground(true);
             _webView.SetFullScreen(true);
             //_webView.SetViewportRect(viewportX, viewportY, viewportWidth, viewportHeight);
             //_webView.SetDebugLogging(true);
 
             SetViewDelays(0.2f, 0.3f);
+        }
+
+        /// <summary>
+        /// Compile all view scripts from the native layer and pass them to BalancyWebView for injection.
+        /// Called automatically during Init() and can be called again if scripts need refreshing.
+        /// </summary>
+        public static void RefreshScripts()
+        {
+            try
+            {
+                IntPtr ptr = LibraryMethods.General.balancyDataObjectCompileAllScripts();
+                string scriptsCode = Marshal.PtrToStringAnsi(ptr) ?? "";
+                Debug.Log($"[RenderViewsManager] Scripts compiled: {scriptsCode.Length} characters");
+                _webView.SetScriptsCode(scriptsCode);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[RenderViewsManager] Failed to compile scripts: {e.Message}");
+                _webView.SetScriptsCode("");
+            }
         }
 
         private static IntPtr m_LastOpenedOwnerPtr = IntPtr.Zero;
@@ -291,17 +311,12 @@ namespace Balancy
                 if (!proceed)
                 {
                     Debug.Log("Message handling was cancelled by external handler: " + msg);
+                    // Send response back so the WebView bridge doesn't hang waiting
+                    _webView.SendMessageToWebView("{\"status\":\"ok\"}");
                     return;
                 }
             }
-            // Debug.Log("Incomming = " + msg);
-            
-            //hardcode. rewrite the way how native plugins send me the message
-            // if (msg == "//:balancy_close_view")
-            // {
-            //     msg= "{\"action\":200, \"params\":{}}";
-            // }
-            
+
             RunRequestInTheCorePlugin(msg, OnMessageResponseReceived);
         }
 
@@ -375,187 +390,202 @@ namespace Balancy
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.General.DataRequestedCallback))]
         private static void DataRequested(string sender, int command, string paramsJson, int requestId)
         {
-            switch ((RequestAction)command)
+            try
             {
-                case RequestAction.BalancyIsReady:
+                switch ((RequestAction)command)
                 {
-#if UNITY_WEBGL && !UNITY_EDITOR
-                    Debug.Log("[RenderViewsManager] BalancyIsReady received - WebView will be shown by JavaScript");
-                    // For WebGL, the show() is called from JavaScript side via the jslib
-                    // We just acknowledge the message here
-#endif
-                    LibraryMethods.General.balancyDataRequestedResponse(requestId, DEFAULT_ANSWER);
-                    return;
-                }
-                case RequestAction.BuyOffer:
-                {
-                    CommandBuyOffer commandInfo = JsonUtility.FromJson<CommandBuyOffer>(paramsJson);
-                    if (commandInfo == null || string.IsNullOrEmpty(commandInfo.instanceId))
+                    case RequestAction.BalancyIsReady:
                     {
-                        Debug.LogError("Invalid command parameters for IBuyOffer");
-                        break;
+                        LibraryMethods.General.balancyDataRequestedResponse(requestId, DEFAULT_ANSWER);
+                        return;
                     }
-                    
-                    var offerInfo = Profiles.System?.SmartInfo.FindOfferInfo(commandInfo.instanceId);
-                    if (offerInfo != null)
+                    case RequestAction.BuyOffer:
                     {
-                        Balancy.API.InitPurchaseOffer(offerInfo, (success, error) =>
+                        CommandBuyOffer commandInfo = JsonUtility.FromJson<CommandBuyOffer>(paramsJson);
+                        if (commandInfo == null || string.IsNullOrEmpty(commandInfo.instanceId))
                         {
-                            if (success)
-                            {
-                                Debug.Log("Offer purchased successfully: " + commandInfo.instanceId);
-                                LibraryMethods.General.balancyDataRequestedResponse(requestId, DEFAULT_ANSWER);
-                            }
-                            else
-                            {
-                                Debug.LogError("Failed to purchase offer: " + commandInfo.instanceId + ", Error: " +
-                                               error);
-                                LibraryMethods.General.balancyDataRequestedResponse(requestId, FAILED_ANSWER);
-                            }
-                        });
-                    }
-                    else
-                    {
-                        Debug.LogError("OfferInfo not found for instanceId: " + commandInfo.instanceId);
-                        break;
-                    }
+                            Debug.LogError("Invalid command parameters for IBuyOffer");
+                            break;
+                        }
 
-                    return;
-                }
-
-                case RequestAction.BuyGroupOffer:
-                {
-                    CommandBuyOfferGroup commandInfo = JsonUtility.FromJson<CommandBuyOfferGroup>(paramsJson);
-                    if (commandInfo == null || string.IsNullOrEmpty(commandInfo.instanceId))
-                    {
-                        Debug.LogError("Invalid command parameters for IBuyGroupOffer");
-                        break;
-                    }
-                    
-                    var offerInfo = Profiles.System?.SmartInfo.FindOfferGroupInfo(commandInfo.instanceId);
-                    if (offerInfo?.GameOfferGroup?.StoreItems == null || offerInfo.GameOfferGroup.StoreItems.Length <= commandInfo.index)
-                    {
-                        Debug.LogError("Store item index is invalid or not set for group offer: " + commandInfo.instanceId);
-                        break;
-                    }
-
-                    var storeItem = offerInfo?.GameOfferGroup?.StoreItems[commandInfo.index];
-
-                    if (storeItem == null || !offerInfo.CanPurchase(storeItem))
-                    {
-                        Debug.LogError("StoreItem is not available for purchase: " + commandInfo.instanceId);
-                        break;
-                    }
-                    
-                    Balancy.API.InitPurchaseOffer(offerInfo, storeItem, (success, error) =>
-                    {
-                        if (success)
+                        var offerInfo = Profiles.System?.SmartInfo.FindOfferInfo(commandInfo.instanceId);
+                        if (offerInfo != null)
                         {
-                            Debug.Log("Group offer purchased successfully: " + commandInfo.instanceId);
-                            LibraryMethods.General.balancyDataRequestedResponse(requestId, DEFAULT_ANSWER);
+                            Balancy.API.InitPurchaseOffer(offerInfo, (success, error) =>
+                            {
+                                if (success)
+                                {
+                                    Debug.Log("Offer purchased successfully: " + commandInfo.instanceId);
+                                    LibraryMethods.General.balancyDataRequestedResponse(requestId, DEFAULT_ANSWER);
+                                }
+                                else
+                                {
+                                    Debug.LogError("Failed to purchase offer: " + commandInfo.instanceId +
+                                                   ", Error: " + error);
+                                    LibraryMethods.General.balancyDataRequestedResponse(requestId, FAILED_ANSWER);
+                                }
+                            });
                         }
                         else
                         {
-                            Debug.LogError("Failed to purchase group offer: " + commandInfo.instanceId +
-                                           ", Error: " + error);
-                            LibraryMethods.General.balancyDataRequestedResponse(requestId, FAILED_ANSWER);
+                            Debug.LogError("OfferInfo not found for instanceId: " + commandInfo.instanceId);
+                            break;
                         }
-                    });
-                    return;
-                }
 
-                case RequestAction.BuyShopSlot:
-                {
-                    CommandBuyShopSlot commandInfo = JsonUtility.FromJson<CommandBuyShopSlot>(paramsJson);
-                    if (commandInfo == null || string.IsNullOrEmpty(commandInfo.slotId))
-                    {
-                        Debug.LogError("Invalid command parameters for IBuyShopSlot");
-                        break;
+                        return;
                     }
-                    
-                    var shopSlot = Profiles.System?.ShopsInfo.FindShopSlot(commandInfo.slotId);
-                    if (shopSlot != null)
+
+                    case RequestAction.BuyGroupOffer:
                     {
-                        Balancy.API.InitPurchaseShop(shopSlot, (success, error) =>
+                        CommandBuyOfferGroup commandInfo = JsonUtility.FromJson<CommandBuyOfferGroup>(paramsJson);
+                        if (commandInfo == null || string.IsNullOrEmpty(commandInfo.instanceId))
+                        {
+                            Debug.LogError("Invalid command parameters for IBuyGroupOffer");
+                            break;
+                        }
+
+                        var offerInfo = Profiles.System?.SmartInfo.FindOfferGroupInfo(commandInfo.instanceId);
+                        if (offerInfo?.GameOfferGroup?.StoreItems == null ||
+                            offerInfo.GameOfferGroup.StoreItems.Length <= commandInfo.index)
+                        {
+                            Debug.LogError("Store item index is invalid or not set for group offer: " +
+                                           commandInfo.instanceId);
+                            break;
+                        }
+
+                        var storeItem = offerInfo?.GameOfferGroup?.StoreItems[commandInfo.index];
+
+                        if (storeItem == null || !offerInfo.CanPurchase(storeItem))
+                        {
+                            Debug.LogError("StoreItem is not available for purchase: " + commandInfo.instanceId);
+                            break;
+                        }
+
+                        Balancy.API.InitPurchaseOffer(offerInfo, storeItem, (success, error) =>
                         {
                             if (success)
                             {
-                                Debug.Log("Shop slot purchased successfully: " + commandInfo.slotId);
+                                Debug.Log("Group offer purchased successfully: " + commandInfo.instanceId);
                                 LibraryMethods.General.balancyDataRequestedResponse(requestId, DEFAULT_ANSWER);
                             }
                             else
                             {
-                                Debug.LogError("Failed to purchase shop slot: " + commandInfo.slotId + ", Error: " +
-                                               error);
+                                Debug.LogError("Failed to purchase group offer: " + commandInfo.instanceId +
+                                               ", Error: " + error);
                                 LibraryMethods.General.balancyDataRequestedResponse(requestId, FAILED_ANSWER);
                             }
                         });
-                    }
-                    else
-                    {
-                        Debug.LogError("ShopSlot not found for instanceId: " + commandInfo.slotId);
-                        break;
+                        return;
                     }
 
-                    return;
-                }
-
-                case RequestAction.GetInfo:
-                {
-                    CommandGetInfo commandInfo = JsonUtility.FromJson<CommandGetInfo>(paramsJson);
-                    if (commandInfo == null || commandInfo.type == 0)
+                    case RequestAction.BuyShopSlot:
                     {
-                        Debug.LogError("Invalid command parameters for GetInfo");
-                        break;
-                    }
-
-                    switch ((InfoType)commandInfo.type)
-                    {
-                        case InfoType.OfferGroupPrice:
+                        CommandBuyShopSlot commandInfo = JsonUtility.FromJson<CommandBuyShopSlot>(paramsJson);
+                        if (commandInfo == null || string.IsNullOrEmpty(commandInfo.slotId))
                         {
-                            var offerInfo = Profiles.System?.SmartInfo.FindOfferGroupInfo(commandInfo.instanceId);
-                            if (offerInfo?.GameOfferGroup?.StoreItems == null || offerInfo.GameOfferGroup.StoreItems.Length <= commandInfo.index)
+                            Debug.LogError("Invalid command parameters for IBuyShopSlot");
+                            break;
+                        }
+
+                        var shopSlot = Profiles.System?.ShopsInfo.FindShopSlot(commandInfo.slotId);
+                        if (shopSlot != null)
+                        {
+                            Balancy.API.InitPurchaseShop(shopSlot, (success, error) =>
                             {
-                                Debug.LogError("Store item index is invalid or not set for group offer: " + commandInfo.instanceId);
-                                break;
+                                if (success)
+                                {
+                                    Debug.Log("Shop slot purchased successfully: " + commandInfo.slotId);
+                                    LibraryMethods.General.balancyDataRequestedResponse(requestId, DEFAULT_ANSWER);
+                                }
+                                else
+                                {
+                                    Debug.LogError("Failed to purchase shop slot: " + commandInfo.slotId +
+                                                   ", Error: " + error);
+                                    LibraryMethods.General.balancyDataRequestedResponse(requestId, FAILED_ANSWER);
+                                }
+                            });
+                        }
+                        else
+                        {
+                            Debug.LogError("ShopSlot not found for instanceId: " + commandInfo.slotId);
+                            break;
+                        }
+
+                        return;
+                    }
+
+                    case RequestAction.GetInfo:
+                    {
+                        CommandGetInfo commandInfo = JsonUtility.FromJson<CommandGetInfo>(paramsJson);
+                        if (commandInfo == null || commandInfo.type == 0)
+                        {
+                            Debug.LogError("Invalid command parameters for GetInfo");
+                            break;
+                        }
+
+                        switch ((InfoType)commandInfo.type)
+                        {
+                            case InfoType.OfferGroupPrice:
+                            {
+                                var offerInfo =
+                                    Profiles.System?.SmartInfo.FindOfferGroupInfo(commandInfo.instanceId);
+                                if (offerInfo?.GameOfferGroup?.StoreItems == null ||
+                                    offerInfo.GameOfferGroup.StoreItems.Length <= commandInfo.index)
+                                {
+                                    Debug.LogError(
+                                        "Store item index is invalid or not set for group offer: " +
+                                        commandInfo.instanceId);
+                                    break;
+                                }
+
+                                var storeItem = offerInfo?.GameOfferGroup?.StoreItems[commandInfo.index];
+                                Balancy.Actions.Purchasing.GetHardPurchaseInfoCallback()(
+                                    storeItem?.Price?.Product?.ProductId, (info) =>
+                                    {
+                                        LibraryMethods.General.balancyDataRequestedResponse(requestId,
+                                            JsonUtility.ToJson(info));
+                                    });
+                                return;
                             }
+                            case InfoType.CustomPrice:
+                            {
+                                Balancy.Actions.Purchasing.GetHardPurchaseInfoCallback()(commandInfo.productId,
+                                    (info) =>
+                                    {
+                                        LibraryMethods.General.balancyDataRequestedResponse(requestId,
+                                            JsonUtility.ToJson(info));
+                                    });
+                                return;
+                            }
+                        }
 
-                            var storeItem = offerInfo?.GameOfferGroup?.StoreItems[commandInfo.index];
-                            Balancy.Actions.Purchasing.GetHardPurchaseInfoCallback()(storeItem?.Price?.Product?.ProductId, (info) =>
-                            {
-                                LibraryMethods.General.balancyDataRequestedResponse(requestId, JsonUtility.ToJson(info));
-                            });
-                            return;
-                        }
-                        case InfoType.CustomPrice:
-                        {
-                            Balancy.Actions.Purchasing.GetHardPurchaseInfoCallback()(commandInfo.productId, (info) =>
-                            {
-                                LibraryMethods.General.balancyDataRequestedResponse(requestId, JsonUtility.ToJson(info));
-                            });
-                            return;
-                        }
+                        LibraryMethods.General.balancyDataRequestedResponse(requestId, DEFAULT_ANSWER);
+                        return;
                     }
-                    
-                    LibraryMethods.General.balancyDataRequestedResponse(requestId, DEFAULT_ANSWER);
-                    return;
-                }
-                case RequestAction.WatchRewardedAd:
-                {
-                    Balancy.Actions.Ads.GetAdWatchCallback()?.Invoke((success) =>
+                    case RequestAction.WatchRewardedAd:
                     {
-                        LibraryMethods.General.balancyDataRequestedResponse(requestId, "{\"success\":" + (success ? 1 : 0) + "}");
-                    });
-                    
-                    return;
-                }
+                        Balancy.Actions.Ads.GetAdWatchCallback()?.Invoke((success) =>
+                        {
+                            LibraryMethods.General.balancyDataRequestedResponse(requestId,
+                                "{\"success\":" + (success ? 1 : 0) + "}");
+                        });
 
-                case RequestAction.CloseWindow:
-                {
-                    CloseView();
-                    LibraryMethods.General.balancyDataRequestedResponse(requestId, DEFAULT_ANSWER);
-                    return;
+                        return;
+                    }
+
+                    case RequestAction.CloseWindow:
+                    {
+                        CloseView();
+                        LibraryMethods.General.balancyDataRequestedResponse(requestId, DEFAULT_ANSWER);
+                        return;
+                    }
                 }
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"[RenderViewsManager] Error in DataRequested (command={command}): {e.Message}\n{e.StackTrace}");
+                LibraryMethods.General.balancyDataRequestedResponse(requestId, FAILED_ANSWER);
+                return;
             }
 
             LibraryMethods.General.balancyDataRequestedResponse(requestId, DEFAULT_ANSWER);

@@ -238,6 +238,7 @@ namespace Balancy
                         bool isCMSUpdated = notificationDataIsReady.IsCMSUpdated;
                         bool isProfileUpdated = notificationDataIsReady.IsProfileUpdated;
 #endif
+                        RenderViewsManager.RefreshScripts();
                         DataUpdated(isCMSUpdated, isProfileUpdated);
                         _isReadyToUse = true;
                         if (isCloudSynced)
