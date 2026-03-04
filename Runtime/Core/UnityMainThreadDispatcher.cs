@@ -15,6 +15,7 @@ namespace Balancy
         private static UnityMainThreadDispatcher _instance;
 
         private bool _isDestroyed = false;
+        private float _sessionStartTime = 0f;
         
 #if UNITY_EDITOR
         // Flag to check if EditorUpdate is registered
@@ -163,6 +164,23 @@ namespace Balancy
 #endif
         }
         
+        private void OnApplicationPause(bool pauseStatus)
+        {
+            if (!Controller.IsReadyToUse)
+                return;
+
+            if (pauseStatus)
+            {
+                int sessionSeconds = Mathf.Max(0, (int)(Time.realtimeSinceStartup - _sessionStartTime));
+                API.NotifyAppPause(sessionSeconds);
+            }
+            else
+            {
+                _sessionStartTime = Time.realtimeSinceStartup;
+                API.NotifyAppResume();
+            }
+        }
+
         private void OnApplicationQuit()
         {
             StopDispatcher();
