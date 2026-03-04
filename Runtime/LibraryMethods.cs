@@ -521,7 +521,10 @@ namespace Balancy
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyOfferInfo_Activate(IntPtr offerInfoPointer);
-            
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern bool balancyOfferInfo_DeactivateOffer(IntPtr offerBasePointer);
+
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern bool balancyOfferGroupInfo_CanPurchase(IntPtr offerInfoPointer, IntPtr storeItemPointer);
             
@@ -542,7 +545,13 @@ namespace Balancy
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancySetTimeOffset(int seconds);
-            
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyNotifyAppPause(int secondsElapsed);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyNotifyAppResume();
+
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern int balancyStoreItem_GetAdsWatched(IntPtr storeItemPointer);
             
