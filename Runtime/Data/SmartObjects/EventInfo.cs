@@ -65,5 +65,6 @@ namespace Balancy.Data.SmartObjects
 		private void Update_isFinished() { _isFinished = GetBoolParam("isFinished"); }
 		
 		public int GetSecondsLeftBeforeDeactivation() => LibraryMethods.Extra.balancyEventInfo_GetSecondsLeftBeforeDeactivation(GetRawPointer());
+		public void StopEventManually(int cooldown) => GameEvent?.StopEventManually(cooldown);
     }
 }
