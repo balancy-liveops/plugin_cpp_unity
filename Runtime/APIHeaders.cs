@@ -544,9 +544,12 @@ namespace Balancy
             /// <param name="launcherId">Optional identifier for who launched the script (e.g., a GameEvent UnnyId). Accessible inside the script via GetLauncherId().</param>
             /// <param name="inputJson">Optional JSON string with input parameters keyed by port name. Example: {"GameEvent":"unnyId123","score":100}</param>
             /// <returns>The instance ID of the running script, or empty string on failure.</returns>
-            public static string RunScriptById(string scriptId, string launcherId = null, string inputJson = null) {
-                return Marshal.PtrToStringAnsi(
+            public static string RunScriptById(string scriptId, string launcherId = null, string inputJson = null, Action<string, string> onComplete = null) {
+                var instanceId = Marshal.PtrToStringAnsi(
                     Balancy.LibraryMethods.API.balancyScripts_RunById(scriptId, launcherId ?? "", inputJson ?? ""));
+                if (onComplete != null && !string.IsNullOrEmpty(instanceId))
+                    ScriptCompletionManager.Register(instanceId, onComplete);
+                return instanceId;
             }
 
             /// <summary>
@@ -555,10 +558,14 @@ namespace Balancy
             /// <param name="scriptName">The script's name in the CMS.</param>
             /// <param name="launcherId">Optional identifier for who launched the script.</param>
             /// <param name="inputJson">Optional JSON string with input parameters keyed by port name.</param>
+            /// <param name="onComplete">Optional callback invoked when the script finishes. Receives (exitPortName, outputsJson).</param>
             /// <returns>The instance ID of the running script, or empty string on failure.</returns>
-            public static string RunScriptByName(string scriptName, string launcherId = null, string inputJson = null) {
-                return Marshal.PtrToStringAnsi(
+            public static string RunScriptByName(string scriptName, string launcherId = null, string inputJson = null, Action<string, string> onComplete = null) {
+                var instanceId = Marshal.PtrToStringAnsi(
                     Balancy.LibraryMethods.API.balancyScripts_RunByName(scriptName, launcherId ?? "", inputJson ?? ""));
+                if (onComplete != null && !string.IsNullOrEmpty(instanceId))
+                    ScriptCompletionManager.Register(instanceId, onComplete);
+                return instanceId;
             }
 
             /// <summary>

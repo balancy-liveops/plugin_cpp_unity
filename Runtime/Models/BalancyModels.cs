@@ -65,12 +65,13 @@ namespace Balancy
         /// </summary>
         /// <param name="launcherId">Optional identifier for who launched the script. Accessible inside the script via GetLauncherId().</param>
         /// <param name="inputJson">Optional JSON string with input parameters keyed by port name. Example: {"score":100,"mode":"hard"}</param>
+        /// <param name="onComplete">Optional callback invoked when the script finishes. Receives (exitPortName, outputsJson).</param>
         /// <returns>The instance ID of the running script, or empty string on failure.</returns>
-        public string Launch(string launcherId = null, string inputJson = null)
+        public string Launch(string launcherId = null, string inputJson = null, Action<string, string> onComplete = null)
         {
             if (!HasValue)
                 return "";
-            return API.VisualScripting.RunScriptById(ScriptId, launcherId, inputJson);
+            return API.VisualScripting.RunScriptById(ScriptId, launcherId, inputJson, onComplete);
         }
 
         /// <summary>

@@ -50,6 +50,7 @@ namespace Balancy
             Profiles.Init();
             RenderViewsManager.Init();
             RunFunctionManager.Init();
+            ScriptCompletionManager.Init();
 
             CppAppConfig config = CreateConfigForCPP(appConfig);
             IntPtr configPtr = Marshal.AllocHGlobal(Marshal.SizeOf(config));
