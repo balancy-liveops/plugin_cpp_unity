@@ -63,6 +63,7 @@ namespace Balancy.Editor
             
             LibraryMethods.Editor.balancyConfigLaunch(LibraryMethods.Editor.Language.CSharp);
             Balancy.Network.UnityWebRequestBridge.Initialize();
+            Balancy.UnzipBridge.Initialize(); // Initialize Unity ZIP bridge for all platforms
             UpdateStatus();
         }
 
