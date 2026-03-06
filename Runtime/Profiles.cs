@@ -23,6 +23,9 @@ namespace Balancy
                 return profile as T;
             
             var ptr = LibraryMethods.Data.balancyGetProfile(className);
+            if (ptr == IntPtr.Zero)
+                return null;
+            
             profile = JsonBasedObject.CreateObject<T>(ptr, false);
             _cachedProfiles.Add(className, profile);
             return (T)profile;
