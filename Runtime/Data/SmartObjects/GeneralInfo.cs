@@ -44,6 +44,8 @@ namespace Balancy.Data.SmartObjects
 		private int _offlineTime;
 		private int _levelsCompletedThisSession;
 		private int _levelsFailedThisSession;
+		private int _levelStartTime;
+		private int _levelAttempts;
 
 
 		public int PlayTime
@@ -213,6 +215,8 @@ namespace Balancy.Data.SmartObjects
 		public int OfflineTime => _offlineTime;
 		public int LevelsCompletedThisSession => _levelsCompletedThisSession;
 		public int LevelsFailedThisSession => _levelsFailedThisSession;
+		public int LevelStartTime => _levelStartTime;
+		public int LevelAttempts => _levelAttempts;
 
         public override void InitData()
         {
@@ -258,6 +262,8 @@ namespace Balancy.Data.SmartObjects
 			InitAndSubscribeForParamChange("offlineTime", Update_offlineTime);
 			InitAndSubscribeForParamChange("levelsCompletedThisSession", Update_levelsCompletedThisSession);
 			InitAndSubscribeForParamChange("levelsFailedThisSession", Update_levelsFailedThisSession);
+			InitAndSubscribeForParamChange("levelStartTime", Update_levelStartTime);
+			InitAndSubscribeForParamChange("levelAttempts", Update_levelAttempts);
         }
         
 		private void Update_playTime() { _playTime = GetIntParam("playTime"); }
@@ -300,5 +306,7 @@ namespace Balancy.Data.SmartObjects
 		private void Update_offlineTime() { _offlineTime = GetIntParam("offlineTime"); }
 		private void Update_levelsCompletedThisSession() { _levelsCompletedThisSession = GetIntParam("levelsCompletedThisSession"); }
 		private void Update_levelsFailedThisSession() { _levelsFailedThisSession = GetIntParam("levelsFailedThisSession"); }
+		private void Update_levelStartTime() { _levelStartTime = GetIntParam("levelStartTime"); }
+		private void Update_levelAttempts() { _levelAttempts = GetIntParam("levelAttempts"); }
     }
 }

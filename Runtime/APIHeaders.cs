@@ -490,6 +490,10 @@ namespace Balancy
         
         public static class General
         {
+            public static void LevelStarted() {
+                Balancy.LibraryMethods.API.balancyGenenal_LevelStarted();
+            }
+            
             public static void LevelCompleted() {
                 Balancy.LibraryMethods.API.balancyGenenal_LevelCompleted();
             }
