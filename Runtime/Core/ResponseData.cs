@@ -29,6 +29,7 @@ namespace Balancy.Core
         {
             [MarshalAs(UnmanagedType.LPStr)] public string ProductId;
             private int removeFromPending;
+            public float PriceUSD;
             public bool RemoveFromPending => removeFromPending == 1;
         }
         
