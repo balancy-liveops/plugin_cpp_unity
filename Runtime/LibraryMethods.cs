@@ -565,8 +565,12 @@ namespace Balancy
             public static extern void balancyStoreItem_AdWasWatched(IntPtr storeItemPointer);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern bool balancyStoreItem_HaveEnoughResources(IntPtr storeItemPointer);
-            
-            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern float balancyStoreItem_GetMultiplier(IntPtr storeItemPointer);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern bool balancyStoreItem_HasMultiplier(IntPtr storeItemPointer);
+
+
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern bool balancyShopSlot_IsAvailable(IntPtr shopSlotPointer);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
