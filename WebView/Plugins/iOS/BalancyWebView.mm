@@ -433,13 +433,10 @@ static const int kDirectoryLevelsUp = 6;
 
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
-    
+
     // Update the activity indicator position
     _activityIndicator.center = self.view.center;
-    
-    // Apply viewport settings
-    [self applyViewportSettings];
-    
+
     // Update emergency exit button position
     [self updateEmergencyExitButtonPosition];
 }
@@ -961,25 +958,7 @@ static const int kDirectoryLevelsUp = 6;
 #pragma mark - Private Methods
 
 - (void)applyViewportSettings {
-    if (!self.isViewLoaded || !_webView) {
-        return;
-    }
-    
-    // Calculate actual pixel values from percentages
-    CGFloat screenWidth = self.view.bounds.size.width;
-    CGFloat screenHeight = self.view.bounds.size.height;
-    
-    CGFloat x = _viewportRect.origin.x * screenWidth;
-    CGFloat y = _viewportRect.origin.y * screenHeight;
-    CGFloat width = _viewportRect.size.width * screenWidth;
-    CGFloat height = _viewportRect.size.height * screenHeight;
-    
-    // Update WebView frame
-    _webView.frame = CGRectMake(x, y, width, height);
-    
-    if (_debugLogging) {
-        NSLog(@"[BalancyWebView] Viewport updated: x=%f, y=%f, width=%f, height=%f", x, y, width, height);
-    }
+    // WebView is always full screen via Auto Layout constraints - nothing to do here
 }
 
 - (void)applyTransparencySettings {
@@ -1201,12 +1180,13 @@ bool _balancyOpenWebView(const char* url) {
                                                                                            loadCompletedCallback:_loadCompletedCallback
                                                                                           cacheCompletedCallback:_cacheCompletedCallback];
         
-        // Add as a child view controller
+        // Add as a child view controller - always full screen
         [rootViewController addChildViewController:webViewController];
-        [rootViewController.view addSubview:webViewController.view];
         webViewController.view.frame = rootViewController.view.bounds;
+        webViewController.view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        [rootViewController.view addSubview:webViewController.view];
         [webViewController didMoveToParentViewController:rootViewController];
-        
+
         // Load the URL
         NSString* nsUrl = [NSString stringWithUTF8String:url];
         return [webViewController loadURL:nsUrl];
@@ -1222,33 +1202,20 @@ bool _balancyOpenWebViewWithSize(const char* url, int width, int height) {
             NSLog(@"[BalancyWebView] Failed to get root view controller");
             return false;
         }
-        
+
         // Create a WebView controller
         BalancyWebViewController* webViewController = [[BalancyWebViewController alloc] initWithMessageCallback:_messageCallback
                                                                                            loadCompletedCallback:_loadCompletedCallback
                                                                                           cacheCompletedCallback:_cacheCompletedCallback];
-        
-        // Convert from Unity pixels to iOS points by dividing by screen scale
-        CGFloat scale = [UIScreen mainScreen].scale;
-        CGFloat pointWidth = width / scale;
-        CGFloat pointHeight = height / scale;
-        
-        if (webViewController.debugLogging) {
-            NSLog(@"[BalancyWebView] Scale factor: %.1fx, Converting %dx%d pixels to %.1fx%.1f points", 
-                  scale, width, height, pointWidth, pointHeight);
-        }
-        
-        // Add as a child view controller
+
+        // Add as a child view controller - always full screen
+        // Auto Layout constraints on the WKWebView (set in viewDidLoad) handle sizing
         [rootViewController addChildViewController:webViewController];
+        webViewController.view.frame = rootViewController.view.bounds;
+        webViewController.view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
         [rootViewController.view addSubview:webViewController.view];
-        
-        // Set custom size using points - center the view in the parent
-        CGFloat x = (rootViewController.view.bounds.size.width - pointWidth) / 2.0;
-        CGFloat y = (rootViewController.view.bounds.size.height - pointHeight) / 2.0;
-        webViewController.view.frame = CGRectMake(x, y, pointWidth, pointHeight);
-        
         [webViewController didMoveToParentViewController:rootViewController];
-        
+
         // Load the URL
         NSString* nsUrl = [NSString stringWithUTF8String:url];
         return [webViewController loadURL:nsUrl];
