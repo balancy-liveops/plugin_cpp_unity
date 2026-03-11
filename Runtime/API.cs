@@ -76,7 +76,10 @@ namespace Balancy
                         callback?.Callback?.Invoke(responseData.Success, responseData.ErrorMessage);
 
                         if (responseData.Success)
+                        {
+                            paymentInfo.PriceUSD = responseData.PriceUSD;
                             productInfo.ReportThePurchase(paymentInfo);
+                        }
                     }
 
                     switch (productInfo.Type)

@@ -167,10 +167,10 @@ namespace Balancy
             OnShopUpdated += () => Debug.Log(" => Balancy.OnShopUpdated");
             OnPaymentIsReady += () => Debug.Log(" => Balancy.OnPaymentIsReady");
             
-            OnHardPurchasedStoreItem += (paymentInfo, storeItem) => Debug.Log(" => Balancy.OnHardPurchasedStoreItem: " + storeItem?.Name + " UnnyId = " + storeItem?.UnnyId);
-            OnHardPurchasedShopSlot += (paymentInfo, shopSlot) => Debug.Log(" => Balancy.OnHardPurchasedShopSlot: " + shopSlot?.UnnyId);
-            OnHardPurchasedOffer += (paymentInfo, gameOffer) => Debug.Log(" => Balancy.OnHardPurchasedOffer: " + gameOffer?.Name + " UnnyId = " + gameOffer?.UnnyId);
-            OnHardPurchasedOfferGroup += (paymentInfo, gameOfferGroup, storeItem) => Debug.Log(" => Balancy.OnHardPurchasedOfferGroup: " + gameOfferGroup?.Name + " UnnyId = " + gameOfferGroup?.UnnyId);
+            OnHardPurchasedStoreItem += (paymentInfo, storeItem) => Debug.Log(" => Balancy.OnHardPurchasedStoreItem: " + storeItem?.Name + " UnnyId = " + storeItem?.UnnyId + " price = " + paymentInfo.Price + " priceUSD = " + paymentInfo.PriceUSD);
+            OnHardPurchasedShopSlot += (paymentInfo, shopSlot) => Debug.Log(" => Balancy.OnHardPurchasedShopSlot: " + shopSlot?.UnnyId + " price = " + paymentInfo.Price + " priceUSD = " + paymentInfo.PriceUSD);
+            OnHardPurchasedOffer += (paymentInfo, gameOffer) => Debug.Log(" => Balancy.OnHardPurchasedOffer: " + gameOffer?.Name + " UnnyId = " + gameOffer?.UnnyId + " price = " + paymentInfo.Price + " priceUSD = " + paymentInfo.PriceUSD);
+            OnHardPurchasedOfferGroup += (paymentInfo, gameOfferGroup, storeItem) => Debug.Log(" => Balancy.OnHardPurchasedOfferGroup: " + gameOfferGroup?.Name + " UnnyId = " + gameOfferGroup?.UnnyId + " price = " + paymentInfo.Price + " priceUSD = " + paymentInfo.PriceUSD);
             
             OnShopSlotWasPurchased += shopSlot => Debug.Log(" => Balancy.OnShopSlotWasPurchased: " + shopSlot?.Slot?.UnnyId);
             OnOfferWasPurchased += offerInfo => Debug.Log(" => Balancy.OnOfferWasPurchased: " + offerInfo?.GameOffer?.Name + " UnnyId = " + offerInfo?.GameOffer?.UnnyId);
