@@ -41,11 +41,24 @@ namespace Balancy.Editor
 
         private void UpdateEditorQueue()
         {
+            Action[] actions;
             lock (_executionQueue)
             {
-                while (_executionQueue.Count > 0)
+                if (_executionQueue.Count == 0)
+                    return;
+                actions = _executionQueue.ToArray();
+                _executionQueue.Clear();
+            }
+
+            foreach (var action in actions)
+            {
+                try
                 {
-                    _executionQueue.Dequeue()?.Invoke();
+                    action?.Invoke();
+                }
+                catch (Exception e)
+                {
+                    Debug.LogException(e);
                 }
             }
         }

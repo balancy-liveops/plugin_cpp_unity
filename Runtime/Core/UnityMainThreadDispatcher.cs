@@ -130,20 +130,30 @@ namespace Balancy
         }
 
         // Common queue processing method
+        // NOTE: We copy the queue under the lock, then execute outside the lock.
+        // This prevents a deadlock where:
+        //   - Main thread holds _executionQueue lock, then a callback tries to acquire C++ m_ContextMutex
+        //   - Scheduler thread holds m_ContextMutex, then tries to Enqueue (which needs _executionQueue lock)
         private void ProcessQueue()
         {
+            Action[] actions;
             lock (_executionQueue)
             {
-                while (_executionQueue.Count > 0)
+                if (_executionQueue.Count == 0)
+                    return;
+                actions = _executionQueue.ToArray();
+                _executionQueue.Clear();
+            }
+
+            foreach (var action in actions)
+            {
+                try
                 {
-                    try
-                    {
-                        _executionQueue.Dequeue().Invoke();
-                    }
-                    catch (Exception e)
-                    {
-                        Debug.LogException(e);
-                    }
+                    action.Invoke();
+                }
+                catch (Exception e)
+                {
+                    Debug.LogException(e);
                 }
             }
         }
