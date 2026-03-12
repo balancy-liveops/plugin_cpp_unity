@@ -45,6 +45,11 @@ namespace Balancy
             Balancy.Callbacks.OnProfileResetFinish?.Invoke();
         }
 
+        public static void ForceSaveSmartObjects()
+        {
+            LibraryMethods.Data.balancyForceSaveSmartObjects();
+        }
+
         internal static void Init()
         {
             LibraryMethods.Data.balancySetProfileOnReset(ProfileReset);
