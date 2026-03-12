@@ -109,8 +109,8 @@ namespace Balancy.Core
             public IntPtr description;
             public IntPtr localized_name;
             public IntPtr localized_description;
-            public float price;
             public IntPtr icon;
+            public float price;
         };
         
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
