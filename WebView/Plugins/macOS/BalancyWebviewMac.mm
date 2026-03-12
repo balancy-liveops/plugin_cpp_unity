@@ -39,8 +39,11 @@ void LogToUnity(const char* message) {
 @property (nonatomic, assign) BOOL offlineCacheEnabled;
 @property (nonatomic, assign) BOOL webInspectorEnabled;
 @property (nonatomic, assign) BOOL gameUIMode;
-@property (nonatomic, strong) NSButton *emergencyExitButton;
+@property (nonatomic, strong) NSView *emergencyExitButton;
 @property (nonatomic, strong) NSTimer *emergencyExitHideTimer;
+@property (nonatomic, assign) NSTimeInterval popupLastClickTime;
+@property (nonatomic, assign) int popupRapidClickCount;
+@property (nonatomic, strong) id clickMonitor;
 @property (nonatomic, assign) float showDelay;
 @property (nonatomic, assign) float animationDuration;
 
@@ -635,11 +638,27 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
         
         [[window contentView] addSubview:_webView];
 
-        // Triple-click gesture to reveal emergency exit button
-        NSClickGestureRecognizer *tripleClick = [[NSClickGestureRecognizer alloc] initWithTarget:self action:@selector(handleTripleClick:)];
-        tripleClick.numberOfClicksRequired = 3;
-        tripleClick.delaysPrimaryMouseButtonEvents = NO;
-        [_webView addGestureRecognizer:tripleClick];
+        // Monitor clicks in this window for triple-click emergency exit
+        _popupLastClickTime = 0;
+        _popupRapidClickCount = 0;
+        // Safe to capture self: monitor is removed in -close before dealloc
+        __unsafe_unretained BalancyWebViewController *unsafeSelf = self;
+        _clickMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskLeftMouseDown handler:^NSEvent*(NSEvent *event) {
+            if (event.window == unsafeSelf.window) {
+                NSTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
+                if (now - unsafeSelf.popupLastClickTime < 0.4) {
+                    unsafeSelf.popupRapidClickCount++;
+                } else {
+                    unsafeSelf.popupRapidClickCount = 1;
+                }
+                unsafeSelf.popupLastClickTime = now;
+                if (unsafeSelf.popupRapidClickCount >= 3) {
+                    unsafeSelf.popupRapidClickCount = 0;
+                    [unsafeSelf showEmergencyExitButton];
+                }
+            }
+            return event;
+        }];
 
         [[NSNotificationCenter defaultCenter] addObserver:self
                                                  selector:@selector(windowDidResize:)
@@ -678,36 +697,49 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
     return YES;
 }
 
-- (void)handleTripleClick:(NSClickGestureRecognizer *)recognizer {
-    [self showEmergencyExitButton];
-}
-
 - (void)showEmergencyExitButton {
     // Cancel any pending hide timer
     [_emergencyExitHideTimer invalidate];
     _emergencyExitHideTimer = nil;
 
     if (!_emergencyExitButton) {
-        _emergencyExitButton = [[NSButton alloc] initWithFrame:NSZeroRect];
-        [_emergencyExitButton setTarget:self];
-        [_emergencyExitButton setAction:@selector(emergencyExitButtonClicked:)];
-        [_emergencyExitButton setBezelStyle:NSBezelStyleRounded];
-        [_emergencyExitButton setTitle:@"Close View"];
-        [_emergencyExitButton setFont:[NSFont boldSystemFontOfSize:16]];
+        CGFloat btnSize = 32.0;
+        _emergencyExitButton = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, btnSize, btnSize)];
         _emergencyExitButton.wantsLayer = YES;
+        _emergencyExitButton.layer.cornerRadius = btnSize / 2.0;
+        _emergencyExitButton.layer.backgroundColor = [[NSColor colorWithRed:0.9 green:0.1 blue:0.1 alpha:0.9] CGColor];
         _emergencyExitButton.layer.zPosition = 1000;
+
+        // Draw white X using two crossing lines
+        CGFloat inset = 10.0;
+        CGMutablePathRef xPath = CGPathCreateMutable();
+        CGPathMoveToPoint(xPath, NULL, inset, inset);
+        CGPathAddLineToPoint(xPath, NULL, btnSize - inset, btnSize - inset);
+        CGPathMoveToPoint(xPath, NULL, btnSize - inset, inset);
+        CGPathAddLineToPoint(xPath, NULL, inset, btnSize - inset);
+
+        CAShapeLayer *xLayer = [CAShapeLayer layer];
+        xLayer.path = xPath;
+        xLayer.strokeColor = [[NSColor whiteColor] CGColor];
+        xLayer.lineWidth = 2.5;
+        xLayer.lineCap = kCALineCapRound;
+        xLayer.fillColor = nil;
+        [_emergencyExitButton.layer addSublayer:xLayer];
+        CGPathRelease(xPath);
+
+        // Click handler via gesture recognizer on the button itself
+        NSClickGestureRecognizer *click = [[NSClickGestureRecognizer alloc] initWithTarget:self action:@selector(emergencyExitButtonClicked:)];
+        [_emergencyExitButton addGestureRecognizer:click];
+
         [[[self window] contentView] addSubview:_emergencyExitButton positioned:NSWindowAbove relativeTo:_webView];
     }
 
-    // Size and center the button
-    [_emergencyExitButton sizeToFit];
-    NSRect btnFrame = _emergencyExitButton.frame;
-    // Add padding
-    btnFrame.size.width += 40;
-    btnFrame.size.height += 16;
+    // Position top-right corner with margin
+    CGFloat margin = 12.0;
     NSRect contentFrame = [[[self window] contentView] bounds];
-    btnFrame.origin.x = (contentFrame.size.width - btnFrame.size.width) / 2.0;
-    btnFrame.origin.y = (contentFrame.size.height - btnFrame.size.height) / 2.0;
+    NSRect btnFrame = _emergencyExitButton.frame;
+    btnFrame.origin.x = contentFrame.size.width - btnFrame.size.width - margin;
+    btnFrame.origin.y = contentFrame.size.height - btnFrame.size.height - margin;
     [_emergencyExitButton setFrame:btnFrame];
 
     [_emergencyExitButton setHidden:NO];
@@ -733,7 +765,7 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
     }
 }
 
-- (void)emergencyExitButtonClicked:(NSButton *)sender {
+- (void)emergencyExitButtonClicked:(id)sender {
     [_emergencyExitHideTimer invalidate];
     _emergencyExitHideTimer = nil;
     if (_messageCallback) {
@@ -742,21 +774,23 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
 }
 
 - (void)windowDidResize:(NSNotification *)notification {
-    // Re-center the button if it's visible
+    // Reposition the button to top-right if it's visible
     if (_emergencyExitButton && ![_emergencyExitButton isHidden]) {
-        [_emergencyExitButton sizeToFit];
-        NSRect btnFrame = _emergencyExitButton.frame;
-        btnFrame.size.width += 40;
-        btnFrame.size.height += 16;
+        CGFloat margin = 12.0;
         NSRect contentFrame = [[[self window] contentView] bounds];
-        btnFrame.origin.x = (contentFrame.size.width - btnFrame.size.width) / 2.0;
-        btnFrame.origin.y = (contentFrame.size.height - btnFrame.size.height) / 2.0;
+        NSRect btnFrame = _emergencyExitButton.frame;
+        btnFrame.origin.x = contentFrame.size.width - btnFrame.size.width - margin;
+        btnFrame.origin.y = contentFrame.size.height - btnFrame.size.height - margin;
         [_emergencyExitButton setFrame:btnFrame];
     }
 }
 
 - (void)close {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
+    if (_clickMonitor) {
+        [NSEvent removeMonitor:_clickMonitor];
+        _clickMonitor = nil;
+    }
     [_emergencyExitHideTimer invalidate];
     _emergencyExitHideTimer = nil;
     if (_emergencyExitButton) {
@@ -1234,7 +1268,7 @@ void _balancySetEmergencyExitEnabled(bool enabled) {
                _sharedController.emergencyExitButton = nil;
            }
        }
-       // When enabled, the triple-click gesture recognizer (always active) handles showing the button
+       // When enabled, the click monitor (always active) handles showing the button on triple-click
    }
 }
 
