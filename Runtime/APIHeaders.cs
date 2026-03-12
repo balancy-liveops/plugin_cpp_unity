@@ -174,7 +174,6 @@ namespace Balancy
             }
         }
         
-        
         private class TypedCallbackProductsResponseDataWrapper : CallbackWrapperBase
         {
             private readonly Balancy.Core.ResponseCallback<Core.Responses.ProductsResponseData> _callback;
@@ -212,7 +211,7 @@ namespace Balancy
                     // InteropProductData struct layout (Pack=1):
                     // IntPtr base_id, int type, IntPtr item_id, IntPtr name, IntPtr description,
                     // IntPtr localized_name, IntPtr localized_description, float price
-                    int elemSize = IntPtr.Size * 6 + 4 + 4; // 6 pointers + 1 int(type) + 1 float(price)
+                    int elemSize = IntPtr.Size * 7 + 4 + 4; // 6 pointers + 1 int(type) + 1 float(price)
                     for (int i = 0; i < count; i++)
                     {
                         int pOff = 0;
@@ -224,6 +223,7 @@ namespace Balancy
                         IntPtr descPtr = Marshal.ReadIntPtr(itemPtr, pOff); pOff += IntPtr.Size;
                         IntPtr locNamePtr = Marshal.ReadIntPtr(itemPtr, pOff); pOff += IntPtr.Size;
                         IntPtr locDescPtr = Marshal.ReadIntPtr(itemPtr, pOff); pOff += IntPtr.Size;
+                        IntPtr iconPtr = Marshal.ReadIntPtr(itemPtr, pOff); pOff += IntPtr.Size;
                         // float is 4 bytes - read as int bits and convert
                         int priceBits = Marshal.ReadInt32(itemPtr, pOff);
                         float priceVal = BitConverter.ToSingle(BitConverter.GetBytes(priceBits), 0);
@@ -237,7 +237,9 @@ namespace Balancy
                             description = descPtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(descPtr) : null,
                             localized_name = locNamePtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(locNamePtr) : null,
                             localized_description = locDescPtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(locDescPtr) : null,
+                            icon = iconPtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(iconPtr) : null,
                             price = priceVal
+                            
                         };
                         products.Add(product);
                     }
@@ -257,7 +259,8 @@ namespace Balancy
                             description = Marshal.PtrToStringAnsi(interop.description),
                             localized_name = Marshal.PtrToStringAnsi(interop.localized_name),
                             localized_description = Marshal.PtrToStringAnsi(interop.localized_description),
-                            price = interop.price
+                            icon =  Marshal.PtrToStringAnsi(interop.icon),
+                            price = interop.price,
                         };
 
                         products.Add(product);
@@ -280,32 +283,8 @@ namespace Balancy
                 }
             }
         }
-
-
-        private static CallbackResult ProtectedFromGCCallback<T>(Balancy.Core.ResponseCallback<T> callback, Func<Balancy.Core.ResponseCallback<T>, CallbackWrapperBase> customWrapperCreator) where T : Balancy.Core.Responses.ResponseData
-        {
-            int callbackId;
-            lock (_callbackLock)
-            {
-                callbackId = ++_callbackIdCounter;
-            }
-            
-            var wrapper = customWrapperCreator(callback);
-            
-            lock (_callbackLock)
-            {
-                _callbackStorage[callbackId] = wrapper;
-            }
-            
-            return new CallbackResult
-            {
-                CallbackId = callbackId,
-                StaticCallback = StaticResponseHandler
-            };
-        }
         
-        private static CallbackResult ProtectedFromGCCallback<T>(Balancy.Core.ResponseCallback<T> callback) 
-            where T : Balancy.Core.Responses.ResponseData
+        private static CallbackResult ProtectedFromGCCallback<T>(Balancy.Core.ResponseCallback<T> callback, Func<Balancy.Core.ResponseCallback<T>, CallbackWrapperBase> customWrapperCreator = null)  where T : Balancy.Core.Responses.ResponseData
         {
             int callbackId;
             lock (_callbackLock)
@@ -313,7 +292,7 @@ namespace Balancy
                 callbackId = ++_callbackIdCounter;
             }
             
-            var wrapper = new TypedCallbackWrapper<T>(callback);
+            var wrapper = customWrapperCreator != null ? customWrapperCreator(callback) : new TypedCallbackWrapper<T>(callback);
             
             lock (_callbackLock)
             {
@@ -382,13 +361,6 @@ namespace Balancy
             Balancy.LibraryMethods.API.balancyHardPurchaseShopSlot(shopSlot?.GetRawPointer() ?? IntPtr.Zero, paymentInfo,
                 callbackResult.CallbackId, callbackResult.StaticCallback, requireValidation);
         }
-        
-        public static void GetProducts(Balancy.Core.ResponseCallback<Balancy.Core.Responses.ProductsResponseData> callback)
-        {
-            var callbackResult = ProtectedFromGCCallback(callback, responseCallback => new TypedCallbackProductsResponseDataWrapper(responseCallback));
-
-            LibraryMethods.API.balancyGetProducts(callbackResult.CallbackId, callbackResult.StaticCallback);
-        }
 
         public static void GetProduct(string productId, Balancy.Core.ResponseCallback<Balancy.Core.Responses.ProductResponseData> callback)
         {
@@ -439,6 +411,13 @@ namespace Balancy
                 callbackResult.CallbackId, callbackResult.StaticCallback, requireValidation);
         }
 
+        public static void GetProducts(Balancy.Core.ResponseCallback<Balancy.Core.Responses.ProductsResponseData> callback)
+        {
+            var callbackResult = ProtectedFromGCCallback(callback, responseCallback => new TypedCallbackProductsResponseDataWrapper(responseCallback));
+
+            LibraryMethods.API.balancyGetProducts(callbackResult.CallbackId, callbackResult.StaticCallback);
+        }
+
         public static void TrackAdRevenue(AdType type, double revenue, string placement) => 
             LibraryMethods.Profile.balancySystemProfileTrackRevenue(type, revenue, placement);
         
@@ -477,6 +456,11 @@ namespace Balancy
             public static void WithNameAndPassword(string name, string password, Balancy.Core.ResponseCallback<Balancy.Core.Responses.AuthResponseData> callback) {
                 var callbackResult = ProtectedFromGCCallback(callback);
                 Balancy.LibraryMethods.API.balancyAuth_NameAndPassword(name, password, callbackResult.CallbackId, callbackResult.StaticCallback);
+            }
+                        
+            public static void WithNutaku(string userId, string token, Balancy.Core.ResponseCallback<Balancy.Core.Responses.AuthResponseData> callback) {
+                var callbackResult = ProtectedFromGCCallback(callback);
+                Balancy.LibraryMethods.API.balancyAuth_Nutaku(userId, token, callbackResult.CallbackId, callbackResult.StaticCallback);
             }
         }
         

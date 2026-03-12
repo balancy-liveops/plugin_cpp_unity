@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Balancy.Localization;
+using UnityEngine;
+
 
 namespace Balancy.Core
 {
@@ -46,6 +48,59 @@ namespace Balancy.Core
         }
         
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        public class CompletePurchaseData
+        {
+            private string guid;
+        
+            private long time;
+
+            private List<string> items;
+        
+            private string orderId;
+
+            public long Time
+            {
+                get { return time; }
+                set { time = value; }
+            }
+        
+            public string OrderId
+            {
+                get { return orderId; }
+                set { orderId = value; }
+            }
+        
+            public string Guid
+            {
+                get { return guid; }
+                set { guid = value; }
+            }
+
+            public List<string> Items
+            {
+                get { return items; }
+                set { items = value; }
+            }
+        }
+        
+        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        public class InteropCompletePurchaseResponseData : ResponseData
+        {
+            public string data;
+        }
+        
+        public class CompletePurchaseResponseData : ResponseData
+        {
+            private CompletePurchaseData data;
+            
+            public CompletePurchaseData Data
+            {
+                get => this.data;
+                set => this.data = value;
+            }
+        }
+        
+        [StructLayout(LayoutKind.Sequential, Pack = 1)]
         internal struct InteropProductData {
             public IntPtr base_id;
             public int type;
@@ -55,6 +110,7 @@ namespace Balancy.Core
             public IntPtr localized_name;
             public IntPtr localized_description;
             public float price;
+            public IntPtr icon;
         };
         
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -78,16 +134,17 @@ namespace Balancy.Core
             internal string item_id;
             internal string name;
             internal string description;
+            // internal Constants.Platform platform;
+
             internal string localized_name;
             internal string localized_description;
             
-            internal float price;
+            internal string icon;
             
+            internal float price;
+
             internal LocalizedString localizedName;
             internal LocalizedString localizedDescription;
-            // internal Constants.Platform platform;
-            // internal LocalizedString localizedName;
-            // internal LocalizedString localizedDescription;
 
             public string ProductId
             {
@@ -113,6 +170,11 @@ namespace Balancy.Core
                 }
             }
 
+            public string Icon
+            {
+                get { return icon; }
+            }
+            
             public string PlatformProductId
             {
                 get { return item_id; }
@@ -123,8 +185,6 @@ namespace Balancy.Core
                 get { return name; }
             }
 
-            // public LocalizedString LocalizedName { get { return localizedName; } }
-            // public LocalizedString LocalizedDescription { get { return localizedDescription; } }
             public LocalizedString LocalizedName
             {
                 get
@@ -161,7 +221,6 @@ namespace Balancy.Core
             //     get { return icon; }
             // }
 
-
             public float Price
             {
                 get { return price; }
@@ -177,6 +236,7 @@ namespace Balancy.Core
         {
             public Product Product { get; set; }
         }
+
         //
         // [StructLayout(LayoutKind.Sequential, Pack = 1)]
         // internal struct InteropStringArray

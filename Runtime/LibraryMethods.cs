@@ -670,6 +670,9 @@ namespace Balancy
             public static extern bool balancySoftPurchaseGameOfferGroup(IntPtr gameOfferPointer, IntPtr storeItemPointer);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyNutakuComplete(int userId, string orderId, int callbackId, ResponseCallback callback);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyGetProducts(int callbackId, ResponseCallback callback);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
@@ -696,6 +699,8 @@ namespace Balancy
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern int balancyBattlePass_getRewardStatus(IntPtr bpLinePointer, int index);
             
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyAuth_Nutaku(string userId, string token, int callbackId, ResponseCallback callback);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyAuth_AsGuest(int callbackId, ResponseCallback callback);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]

@@ -16,6 +16,8 @@ namespace Balancy
 
         public static bool IsReadyToUse => _isReadyToUse;
         
+        public static AppConfig Config => _originalConfig;
+        
         private static UnityMainThreadDispatcher _mainThreadInstance; 
         
         public static event Action OnCloudSynced;
