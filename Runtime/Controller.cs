@@ -280,7 +280,8 @@ namespace Balancy
                         var liveOpsNewEvent = Marshal.PtrToStructure<Notifications.LiveOpsNotification_OnNewEventActivated>(notificationPtr);
                         var eventInfo = Profiles.System.SmartInfo.FindEventInfo(liveOpsNewEvent.EventInfo);
 #endif
-                        Balancy.Callbacks.OnNewEventActivated?.Invoke(eventInfo);
+                        if (eventInfo != null)
+                            Balancy.Callbacks.OnNewEventActivated?.Invoke(eventInfo);
                         break;
                     }
                     case Notifications.NotificationType.OnEventDeactivated: {
@@ -291,7 +292,8 @@ namespace Balancy
                         var liveOpsEvent = Marshal.PtrToStructure<Notifications.LiveOpsNotification_OnEventDeactivated>(notificationPtr);
                         var eventInfo = JsonBasedObject.CreateObject<EventInfo>(liveOpsEvent.EventInfo);
 #endif
-                        Balancy.Callbacks.OnEventDeactivated?.Invoke(eventInfo);
+                        if (eventInfo != null)
+                            Balancy.Callbacks.OnEventDeactivated?.Invoke(eventInfo);
                         break;
                     }
                     case Notifications.NotificationType.OnNewOfferActivated: {
@@ -302,7 +304,8 @@ namespace Balancy
                         var notificationTyped = Marshal.PtrToStructure<Notifications.LiveOpsNotification_OnNewOfferActivated>(notificationPtr);
                         var offerInfo = Profiles.System.SmartInfo.FindOfferInfo(notificationTyped.OfferInfo);
 #endif
-                        Balancy.Callbacks.OnNewOfferActivated?.Invoke(offerInfo);
+                        if (offerInfo != null)
+                            Balancy.Callbacks.OnNewOfferActivated?.Invoke(offerInfo);
                         break;
                     }
                     case Notifications.NotificationType.OnOfferDeactivated: {
@@ -310,11 +313,13 @@ namespace Balancy
                         IntPtr offerInfoPtr = LibraryMethods.General.balancyNotification_GetOfferInfo(notificationId);
                         bool wasPurchased = LibraryMethods.General.balancyNotification_WasPurchased(notificationId);
                         var offerInfo = JsonBasedObject.CreateObject<OfferInfo>(offerInfoPtr);
-                        Balancy.Callbacks.OnOfferDeactivated?.Invoke(offerInfo, wasPurchased);
+                        if (offerInfo != null)
+                            Balancy.Callbacks.OnOfferDeactivated?.Invoke(offerInfo, wasPurchased);
 #else
                         var notificationTyped = Marshal.PtrToStructure<Notifications.LiveOpsNotification_OnOfferDeactivated>(notificationPtr);
                         var offerInfo = JsonBasedObject.CreateObject<OfferInfo>(notificationTyped.OfferInfo);
-                        Balancy.Callbacks.OnOfferDeactivated?.Invoke(offerInfo, notificationTyped.WasPurchased);
+                        if (offerInfo != null)
+                            Balancy.Callbacks.OnOfferDeactivated?.Invoke(offerInfo, notificationTyped.WasPurchased);
 #endif
                         break;
                     }
@@ -326,7 +331,8 @@ namespace Balancy
                         var notificationTyped = Marshal.PtrToStructure<Notifications.LiveOpsNotification_OnNewOfferGroupActivated>(notificationPtr);
                         var offerInfo = Profiles.System.SmartInfo.FindOfferGroupInfo(notificationTyped.OfferInfo);
 #endif
-                        Balancy.Callbacks.OnNewOfferGroupActivated?.Invoke(offerInfo);
+                        if (offerInfo != null)
+                            Balancy.Callbacks.OnNewOfferGroupActivated?.Invoke(offerInfo);
                         break;
                     }
                     case Notifications.NotificationType.OnOfferGroupDeactivated: {
@@ -337,7 +343,8 @@ namespace Balancy
                         var notificationTyped = Marshal.PtrToStructure<Notifications.LiveOpsNotification_OnOfferGroupDeactivated>(notificationPtr);
                         var offerInfo = JsonBasedObject.CreateObject<OfferGroupInfo>(notificationTyped.OfferInfo);
 #endif
-                        Balancy.Callbacks.OnOfferGroupDeactivated?.Invoke(offerInfo);
+                        if (offerInfo != null)
+                            Balancy.Callbacks.OnOfferGroupDeactivated?.Invoke(offerInfo);
                         break;
                     }
                     case Notifications.NotificationType.OnABTestStarted: {
