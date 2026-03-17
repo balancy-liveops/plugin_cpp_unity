@@ -259,6 +259,8 @@ namespace Balancy.WebView
         private static extern void _balancySetShowDelay(float delaySeconds);
         [DllImport("__Internal")]
         private static extern void _balancySetAnimationDuration(float durationSeconds);
+        [DllImport("__Internal")]
+        private static extern void _balancySetEmergencyExitEnabled(bool enabled);
 
         #elif UNITY_WEBGL && !UNITY_EDITOR
 
@@ -333,6 +335,11 @@ namespace Balancy.WebView
         private static void _balancySetAnimationDuration(float durationSeconds)
         {
             Debug.LogWarning("[BalancyWebView WebGL] Animation duration not implemented for WebGL");
+        }
+
+        private static void _balancySetEmergencyExitEnabled(bool enabled)
+        {
+            // No-op for WebGL - no emergency exit button in browser
         }
 
         #elif UNITY_ANDROID && !UNITY_EDITOR
@@ -585,7 +592,9 @@ namespace Balancy.WebView
         private static extern void _balancySetShowDelay(float delaySeconds);
         [DllImport("libBalancyWebViewMac")]
         private static extern void _balancySetAnimationDuration(float durationSeconds);
-        
+        [DllImport("libBalancyWebViewMac")]
+        private static extern void _balancySetEmergencyExitEnabled(bool enabled);
+
         // Embedding-specific methods (macOS only)
         [DllImport("libBalancyWebViewMac")]
         private static extern bool _balancyOpenWebViewEmbedded(string url, int width, int height);
@@ -1054,6 +1063,16 @@ namespace Balancy.WebView
         public float GetAnimationDuration()
         {
             return _animationDuration;
+        }
+
+        /// <summary>
+        /// Enables or disables the emergency exit button (triple-tap to close).
+        /// When disabled, triple-tap will not show the close button.
+        /// </summary>
+        /// <param name="enabled">True to enable emergency exit (default), false to disable</param>
+        public void SetEmergencyExitEnabled(bool enabled)
+        {
+            _balancySetEmergencyExitEnabled(enabled);
         }
 
         /// <summary>

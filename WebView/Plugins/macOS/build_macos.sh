@@ -21,7 +21,7 @@ fi
 
 # Build for both Intel and Apple Silicon
 echo "⚙️  Compiling for Intel and Apple Silicon..."
-clang++ -std=c++11 -dynamiclib -framework Cocoa -framework WebKit -framework QuartzCore -framework CoreGraphics \
+xcrun clang++ -std=c++11 -dynamiclib -framework Cocoa -framework WebKit -framework QuartzCore -framework CoreGraphics \
     -arch x86_64 -arch arm64 \
     -Wl,-undefined,dynamic_lookup \
     -o "$OUTPUT_FILE" BalancyWebviewMac.mm \

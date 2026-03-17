@@ -359,6 +359,7 @@ public class BalancyWebViewPlugin {
     }
 
     private void showEmergencyExitButton() {
+        if (!emergencyExitEnabled) return;
         if (webViewContainer == null || currentActivity == null) return;
 
         // Cancel pending hide

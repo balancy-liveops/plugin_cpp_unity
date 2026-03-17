@@ -225,6 +225,14 @@ namespace Balancy
                 _webView.SetAnimationDuration(transparencyAnimationDuration);
             }
         }
+
+        public static void SetEmergencyExitEnabled(bool enabled)
+        {
+            if (_webView)
+            {
+                _webView.SetEmergencyExitEnabled(enabled);
+            }
+        }
         
         public static void OpenView(string url, JsonBasedObject owner = null)
         {
@@ -344,6 +352,7 @@ namespace Balancy
 
             CloseWindow = 200,
             BalancyIsReady = 201,
+            SetEmergencyExitEnabled = 203,
 
             CustomMessage = 1000,
         }
@@ -385,6 +394,12 @@ namespace Balancy
             public int index;
             public string productId;
             public string cistom;
+        }
+
+        [System.Serializable]
+        class CommandSetEmergencyExit
+        {
+            public bool enabled;
         }
         
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.General.DataRequestedCallback))]
@@ -573,6 +588,16 @@ namespace Balancy
                         return;
                     }
 
+                    case RequestAction.SetEmergencyExitEnabled:
+                    {
+                        CommandSetEmergencyExit emergencyCmd = JsonUtility.FromJson<CommandSetEmergencyExit>(paramsJson);
+                        if (emergencyCmd != null)
+                        {
+                            _webView.SetEmergencyExitEnabled(emergencyCmd.enabled);
+                        }
+                        LibraryMethods.General.balancyDataRequestedResponse(requestId, DEFAULT_ANSWER);
+                        return;
+                    }
                     case RequestAction.CloseWindow:
                     {
                         CloseView();

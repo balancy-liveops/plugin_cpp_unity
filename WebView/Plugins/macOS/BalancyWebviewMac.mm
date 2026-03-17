@@ -46,6 +46,7 @@ void LogToUnity(const char* message) {
 @property (nonatomic, strong) id clickMonitor;
 @property (nonatomic, assign) float showDelay;
 @property (nonatomic, assign) float animationDuration;
+@property (nonatomic, assign) BOOL emergencyExitEnabled;
 
 - (instancetype)init;
 - (instancetype)initWithSize:(NSSize)size;
@@ -79,6 +80,7 @@ void LogToUnity(const char* message) {
 @property (nonatomic, assign) BOOL hasNewFrame;
 @property (nonatomic, assign) NSTimeInterval lastClickTime;
 @property (nonatomic, assign) int rapidClickCount;
+@property (nonatomic, assign) BOOL emergencyExitEnabled;
 
 - (instancetype)initWithWidth:(int)width height:(int)height;
 - (BOOL)loadURL:(NSString *)url;
@@ -108,7 +110,8 @@ void LogToUnity(const char* message) {
         _hasNewFrame = NO;
         _lastClickTime = 0;
         _rapidClickCount = 0;
-        
+        _emergencyExitEnabled = YES;
+
         // Allocate pixel buffer
         size_t bufferSize = width * height * 4; // RGBA
         _pixelBuffer = (unsigned char*)malloc(bufferSize);
@@ -360,7 +363,9 @@ void LogToUnity(const char* message) {
 
         if (_rapidClickCount >= 3) {
             _rapidClickCount = 0;
-            [self triggerEmergencyExit];
+            if (_emergencyExitEnabled) {
+                [self triggerEmergencyExit];
+            }
             return;
         }
     }
@@ -590,6 +595,7 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
         _offlineCacheEnabled = NO;
         _webInspectorEnabled = NO;
         _gameUIMode = YES;
+        _emergencyExitEnabled = YES;
         _showDelay = 0.1f;
         _animationDuration = 0.1f;
         _viewportRect = NSMakeRect(0, 0, 1, 1);
@@ -654,7 +660,9 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
                 unsafeSelf.popupLastClickTime = now;
                 if (unsafeSelf.popupRapidClickCount >= 3) {
                     unsafeSelf.popupRapidClickCount = 0;
-                    [unsafeSelf showEmergencyExitButton];
+                    if (unsafeSelf.emergencyExitEnabled) {
+                        [unsafeSelf showEmergencyExitButton];
+                    }
                 }
             }
             return event;
@@ -698,6 +706,8 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
 }
 
 - (void)showEmergencyExitButton {
+    if (!_emergencyExitEnabled) return;
+
     // Cancel any pending hide timer
     [_emergencyExitHideTimer invalidate];
     _emergencyExitHideTimer = nil;
@@ -1259,16 +1269,21 @@ bool _balancyGetEmbeddedPixelData(unsigned char* buffer, int bufferSize) {
 
 void _balancySetEmergencyExitEnabled(bool enabled) {
    @autoreleasepool {
-       if (_sharedController != nil && !enabled) {
-           // Hide the button if currently shown
-           [_sharedController.emergencyExitHideTimer invalidate];
-           _sharedController.emergencyExitHideTimer = nil;
-           if (_sharedController.emergencyExitButton) {
-               [_sharedController.emergencyExitButton removeFromSuperview];
-               _sharedController.emergencyExitButton = nil;
+       if (_sharedController != nil) {
+           _sharedController.emergencyExitEnabled = enabled;
+           if (!enabled) {
+               // Hide the button if currently shown
+               [_sharedController.emergencyExitHideTimer invalidate];
+               _sharedController.emergencyExitHideTimer = nil;
+               if (_sharedController.emergencyExitButton) {
+                   [_sharedController.emergencyExitButton removeFromSuperview];
+                   _sharedController.emergencyExitButton = nil;
+               }
            }
        }
-       // When enabled, the click monitor (always active) handles showing the button on triple-click
+       if (_embeddedController != nil) {
+           _embeddedController.emergencyExitEnabled = enabled;
+       }
    }
 }
 

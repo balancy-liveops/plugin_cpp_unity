@@ -24,6 +24,7 @@ static const int kDirectoryLevelsUp = 6;
 @property (nonatomic, assign) CGRect viewportRect;
 @property (nonatomic, assign) BOOL transparentBackground;
 @property (nonatomic, strong) NSTimer *emergencyExitHideTimer;
+@property (nonatomic, assign) BOOL emergencyExitEnabled;
 
 @end
 
@@ -51,6 +52,9 @@ static const int kDirectoryLevelsUp = 6;
         // Animation defaults
         _showDelay = 0.1f; // 100ms default delay
         _animationDuration = 0.1f; // 100ms default animation duration
+
+        // Emergency exit enabled by default
+        _emergencyExitEnabled = YES;
         
         // Setup WebView configuration
         [self setupWebView];
@@ -900,6 +904,8 @@ static const int kDirectoryLevelsUp = 6;
 }
 
 - (void)showEmergencyExitButton {
+    if (!_emergencyExitEnabled) return;
+
     // Cancel any pending hide timer
     [_emergencyExitHideTimer invalidate];
     _emergencyExitHideTimer = nil;
@@ -1007,6 +1013,8 @@ static const int kDirectoryLevelsUp = 6;
 
 // Enable or disable emergency exit
 - (void)setEmergencyExitEnabled:(BOOL)enabled {
+    _emergencyExitEnabled = enabled;
+
     if (!enabled) {
         [_emergencyExitHideTimer invalidate];
         _emergencyExitHideTimer = nil;
@@ -1016,7 +1024,7 @@ static const int kDirectoryLevelsUp = 6;
         }
     }
     // When enabled, the triple-tap gesture (always active on webView) handles showing the button
-    
+
     if (_debugLogging) {
         NSLog(@"[BalancyWebView] Emergency exit %@", enabled ? @"enabled" : @"disabled");
     }
