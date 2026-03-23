@@ -102,7 +102,10 @@ namespace Balancy
         {
             if (dictsChanged)
                 CMS.RefreshAll();
-            
+
+            if (profileChanged)
+                RenderViewsManager.OnProfileUpdated();
+
             OnDataUpdated?.Invoke(dictsChanged, profileChanged);
         }
 

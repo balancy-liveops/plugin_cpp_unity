@@ -101,6 +101,18 @@ namespace Balancy
             }
         }
 
+        internal static void OnProfileUpdated()
+        {
+            if (m_LastOpenedOwnerPtr == IntPtr.Zero)
+                return;
+
+            // Profile was recreated — all smart object pointers (offers, events, etc.)
+            // are now invalid. Close the view (it may be showing stale data) and null
+            // the cached owner pointer so we don't send a dangling pointer to C++.
+            m_LastOpenedOwnerPtr = IntPtr.Zero;
+            CloseView();
+        }
+        
         private static void HandleWebViewClosed()
         {
             m_LastOpenedOwnerPtr = IntPtr.Zero;
