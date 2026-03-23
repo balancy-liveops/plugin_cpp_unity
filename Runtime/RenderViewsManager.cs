@@ -93,8 +93,12 @@ namespace Balancy
 
         private static void CheckForClosing(JsonBasedObject deactivatedOwner)
         {
-            if (m_LastOpenedOwnerPtr == deactivatedOwner.GetRawPointer())
+            if (m_LastOpenedOwnerPtr != IntPtr.Zero &&
+                m_LastOpenedOwnerPtr == deactivatedOwner.GetRawPointer())
+            {
+                m_LastOpenedOwnerPtr = IntPtr.Zero;
                 CloseView();
+            }
         }
 
         private static void HandleWebViewClosed()
