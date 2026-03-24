@@ -119,6 +119,12 @@ namespace Balancy.Core
             internal IntPtr data;
             internal int size;
         }
+        
+        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        internal class InteropProductResponseData : ResponseData
+        {
+            internal IntPtr data;
+        }
 
         public enum ProductType
         {

@@ -679,6 +679,9 @@ namespace Balancy
             public static extern void balancyGetProducts(int callbackId, ResponseCallback callback);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyGetProduct(string productId, int callbackId, ResponseCallback callback);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyHardPurchaseStoreItem(IntPtr storeItemPointer, Balancy.Core.PaymentInfo paymentInfo, int callbackId, ResponseCallback callback, bool requireValidation);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
