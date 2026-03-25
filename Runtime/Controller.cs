@@ -47,6 +47,7 @@ namespace Balancy
 
             LibraryMethods.General.balancySetInvokeInMainThreadCallback(InvokeInMainThread);
             yield return UnityFileManager.InitRuntime();
+
             LibraryMethods.Models.balancySetModelOnRefresh(ModelRefreshed);
             LibraryMethods.Models.balancySetUserDataInitializedCallback(UserDataInitialized);
             Profiles.Init();

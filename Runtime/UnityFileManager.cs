@@ -87,8 +87,9 @@ namespace Balancy
             var resourcesPath = Path.Combine(Application.streamingAssetsPath, "Balancy/");
             DataObjectsManager.Init(Application.persistentDataPath, resourcesPath);
 
-            // Preload text resources from StreamingAssets into C++ memory
-            yield return PreloadAndroidTextResources(resourcesPath);
+            // Preload text resources from StreamingAssets into C++ memory using synchronous AssetManager reads
+            PreloadAndroidTextResourcesSync(streamingAssetsSubpath);
+            yield return null;
 #else
             // iOS, macOS, Windows, Editor: StreamingAssets are directly accessible on the filesystem
             var resourcesPath = Path.Combine(Application.streamingAssetsPath, "Balancy/");
@@ -147,21 +148,62 @@ namespace Balancy
             return ext == ".json" || ext == ".txt" || ext == ".xml" || ext == ".csv" || ext == ".yaml" || ext == ".yml";
         }
 
-        private static IEnumerator PreloadAndroidTextResources(string resourcesPath)
+        private static string ReadAssetAsString(AndroidJavaObject assetManager, string assetPath)
         {
-            var manifestPath = Path.Combine(resourcesPath, "balancy_files_manifest.txt");
-            var manifestRequest = UnityWebRequest.Get(manifestPath);
-            yield return manifestRequest.SendWebRequest();
-
-            if (manifestRequest.result != UnityWebRequest.Result.Success)
+            AndroidJavaObject inputStream = null;
+            AndroidJavaObject reader = null;
+            AndroidJavaObject bufferedReader = null;
+            try
             {
-                Debug.LogWarning($"[Balancy] No manifest file found in StreamingAssets, skipping Android preload: {manifestRequest.error}");
-                yield break;
+                inputStream = assetManager.Call<AndroidJavaObject>("open", assetPath);
+                reader = new AndroidJavaObject("java.io.InputStreamReader", inputStream, "UTF-8");
+                bufferedReader = new AndroidJavaObject("java.io.BufferedReader", reader);
+
+                var sb = new System.Text.StringBuilder();
+                string line;
+                while ((line = bufferedReader.Call<string>("readLine")) != null)
+                {
+                    if (sb.Length > 0)
+                        sb.Append('\n');
+                    sb.Append(line);
+                }
+                return sb.ToString();
+            }
+            finally
+            {
+                bufferedReader?.Call("close");
+                reader?.Call("close");
+                inputStream?.Call("close");
+                bufferedReader?.Dispose();
+                reader?.Dispose();
+                inputStream?.Dispose();
+            }
+        }
+
+        private static void PreloadAndroidTextResourcesSync(string streamingAssetsSubpath)
+        {
+            // Get AssetManager via JNI
+            var unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer");
+            var activity = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity");
+            var assetManager = activity.Call<AndroidJavaObject>("getAssets");
+
+            // Read manifest synchronously from AssetManager
+            var subpath = streamingAssetsSubpath.TrimEnd('/');
+            string manifestContent;
+            try
+            {
+                manifestContent = ReadAssetAsString(assetManager, subpath + "/balancy_files_manifest.txt");
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[Balancy] No manifest file found in StreamingAssets, skipping Android preload: {e.Message}");
+                assetManager.Dispose();
+                activity.Dispose();
+                unityPlayer.Dispose();
+                return;
             }
 
-            var lines = manifestRequest.downloadHandler.text.Split('\n');
-            int textFilesPreloaded = 0;
-            int binaryFilesMarked = 0;
+            var lines = manifestContent.Split('\n');
 
             foreach (var line in lines)
             {
@@ -171,30 +213,25 @@ namespace Balancy
 
                 if (IsTextFile(relativePath))
                 {
-                    // Load text files into C++ in-memory cache
-                    var fileUrl = Path.Combine(resourcesPath, relativePath);
-                    var fileRequest = UnityWebRequest.Get(fileUrl);
-                    yield return fileRequest.SendWebRequest();
-
-                    if (fileRequest.result == UnityWebRequest.Result.Success)
+                    try
                     {
-                        Balancy.LibraryMethods.General.balancyAndroidPreloadResource(relativePath, fileRequest.downloadHandler.text);
-                        textFilesPreloaded++;
+                        var content = ReadAssetAsString(assetManager, subpath + "/" + relativePath);
+                        Balancy.LibraryMethods.General.balancyAndroidPreloadResource(relativePath, content);
                     }
-                    else
+                    catch (Exception e)
                     {
-                        Debug.LogWarning($"[Balancy] Failed to preload Android text resource {relativePath}: {fileRequest.error}");
+                        Debug.LogWarning($"[Balancy] Failed to preload Android text resource {relativePath}: {e.Message}");
                     }
                 }
                 else
                 {
-                    // Mark binary files as existing (accessible via android_asset URL for WebView)
                     Balancy.LibraryMethods.General.balancyAndroidSetResourceExists(relativePath, true);
-                    binaryFilesMarked++;
                 }
             }
 
-            Debug.Log($"[Balancy] Android preload complete: {textFilesPreloaded} text files, {binaryFilesMarked} binary files");
+            assetManager.Dispose();
+            activity.Dispose();
+            unityPlayer.Dispose();
         }
 #endif
     }
