@@ -225,6 +225,7 @@ public class BalancyWebViewPlugin {
         settings.setAllowContentAccess(true);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) {
             settings.setAllowFileAccessFromFileURLs(true);
+            settings.setAllowUniversalAccessFromFileURLs(true);
         }
         settings.setMediaPlaybackRequiresUserGesture(false);
         settings.setRenderPriority(WebSettings.RenderPriority.HIGH);

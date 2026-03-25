@@ -163,7 +163,7 @@ namespace Balancy.Dictionaries
                         path = PathInResources;
                         if (!File.Exists(path))
                         {
-                            Debug.LogError("NO FILE PATH " + path);
+                            Debug.Log("NO FILE PATH " + path);
                             SetSprite(null);
                             return;
                         }

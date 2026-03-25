@@ -48,7 +48,6 @@ namespace Balancy.CheatPanel
                     var page = activePage;
                     btnWithText.Init(activePage.Page?.Name?.Value, () =>
                     {
-                        Debug.LogError("Page selected " + page?.Page?.Name.Value);
                         ShowPage(page);
                     });
                 }

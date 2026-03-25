@@ -90,8 +90,17 @@ namespace Balancy
             // Preload text resources from StreamingAssets into C++ memory using synchronous AssetManager reads
             PreloadAndroidTextResourcesSync(streamingAssetsSubpath);
             yield return null;
+#elif UNITY_IOS && !UNITY_EDITOR
+            // iOS: copy StreamingAssets to PersistentDataPath so WebView can access
+            // everything from a single directory tree (iOS sandbox prevents cross-directory file:// access)
+            var resourcesPath = Path.Combine(Application.persistentDataPath, "Balancy/Resources/");
+            yield return CopyStreamingAssetsToPath(
+                Path.Combine(Application.streamingAssetsPath, "Balancy/"),
+                resourcesPath);
+            Balancy.LibraryMethods.General.balancyInitUnityFileHelper(Application.persistentDataPath, resourcesPath, codePath);
+            DataObjectsManager.Init(Application.persistentDataPath, resourcesPath);
 #else
-            // iOS, macOS, Windows, Editor: StreamingAssets are directly accessible on the filesystem
+            // macOS, Windows, Editor: StreamingAssets are directly accessible on the filesystem
             var resourcesPath = Path.Combine(Application.streamingAssetsPath, "Balancy/");
             Balancy.LibraryMethods.General.balancyInitUnityFileHelper(Application.persistentDataPath, resourcesPath, codePath);
             DataObjectsManager.Init(Application.persistentDataPath, resourcesPath);
@@ -232,6 +241,52 @@ namespace Balancy
             assetManager.Dispose();
             activity.Dispose();
             unityPlayer.Dispose();
+        }
+#endif
+
+#if UNITY_IOS && !UNITY_EDITOR
+        private static IEnumerator CopyStreamingAssetsToPath(string sourcePath, string targetPath)
+        {
+            if (Directory.Exists(targetPath))
+                Directory.Delete(targetPath, true);
+
+            Directory.CreateDirectory(targetPath);
+
+            var manifestPath = Path.Combine(sourcePath, "balancy_files_manifest.txt");
+            if (!File.Exists(manifestPath))
+            {
+                Debug.LogWarning($"[Balancy] Manifest file not found: {manifestPath}");
+                yield break;
+            }
+
+            var lines = File.ReadAllText(manifestPath).Split('\n');
+            int filesCopied = 0;
+
+            foreach (var line in lines)
+            {
+                var relativePath = line.Trim().TrimStart('.', '/');
+                if (string.IsNullOrEmpty(relativePath) || relativePath == "balancy_files_manifest.txt")
+                    continue;
+
+                var src = Path.Combine(sourcePath, relativePath);
+                var dst = Path.Combine(targetPath, relativePath);
+                var dstDir = Path.GetDirectoryName(dst);
+
+                if (!Directory.Exists(dstDir))
+                    Directory.CreateDirectory(dstDir);
+
+                if (File.Exists(src))
+                {
+                    File.Copy(src, dst, true);
+                    filesCopied++;
+
+                    // Yield periodically to avoid blocking the main thread
+                    if (filesCopied % 50 == 0)
+                        yield return null;
+                }
+            }
+
+            Debug.Log($"[Balancy] iOS: copied {filesCopied} files from StreamingAssets");
         }
 #endif
     }

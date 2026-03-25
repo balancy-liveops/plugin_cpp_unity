@@ -12,7 +12,8 @@ extern "C" {
     void (*_cacheCompletedCallback)(bool) = NULL;
 }
 
-// Number of directory levels to go up from HTML file to reach common parent
+// Go up enough directory levels from the loaded file to cover the entire
+// app data container so the WebView can reach all local files.
 static const int kDirectoryLevelsUp = 6;
 
 @interface BalancyWebViewController ()
@@ -455,19 +456,19 @@ static const int kDirectoryLevelsUp = 6;
         NSString *filePath = [cleanUrl stringByReplacingOccurrencesOfString:@"file://" withString:@""];
 
         NSURL *fileURL = [NSURL fileURLWithPath:filePath];
-        
-        // Go up directory levels to reach common parent containing both Balancy/Models and Balancy/Resources
+
+        // Walk up the directory tree to grant broad read access within the app container
         NSString *readAccessPath = filePath;
         for (int i = 0; i < kDirectoryLevelsUp; i++) {
             readAccessPath = [readAccessPath stringByDeletingLastPathComponent];
         }
         NSURL *broadReadAccessURL = [NSURL fileURLWithPath:readAccessPath isDirectory:YES];
-        
+
         if (_debugLogging) {
             NSLog(@"[BalancyWebView] File URL: %@", fileURL);
             NSLog(@"[BalancyWebView] Read access URL: %@", broadReadAccessURL);
         }
-        
+
         [_webView loadFileURL:fileURL allowingReadAccessToURL:broadReadAccessURL];
         
         if (_debugLogging) {

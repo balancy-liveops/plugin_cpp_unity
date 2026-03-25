@@ -17,8 +17,9 @@ static MessageCallback _messageCallback = NULL;
 static LoadCompletedCallback _loadCompletedCallback = NULL;
 static CacheCompletedCallback _cacheCompletedCallback = NULL;
 
-// Number of directory levels to go up from HTML file to reach common parent
-static const int kDirectoryLevelsUp = 6;
+// Allow read access from the filesystem root so the WebView can load files
+// from both PersistentDataPath and StreamingAssets (different directory trees).
+static NSString* const kReadAccessRoot = @"/";
 
 // Unity logging function
 extern "C" void UnitySendMessage(const char* obj, const char* method, const char* msg) __attribute__((weak));
@@ -234,23 +235,17 @@ void LogToUnity(const char* message) {
     if ([url hasPrefix:@"file://"]) {
         NSString *filePath = [url stringByReplacingOccurrencesOfString:@"file://" withString:@""];
         NSURL *fileURL = [NSURL fileURLWithPath:filePath];
-        
-        // Go up directory levels to reach common parent containing both Balancy and BalancyResources
-        NSString *readAccessPath = filePath;
-        for (int i = 0; i < kDirectoryLevelsUp; i++) {
-            readAccessPath = [readAccessPath stringByDeletingLastPathComponent];
-        }
-        NSURL *broadReadAccessURL = [NSURL fileURLWithPath:readAccessPath isDirectory:YES];
-        
-        [_webView loadFileURL:fileURL allowingReadAccessToURL:broadReadAccessURL];
+        NSURL *readAccessURL = [NSURL fileURLWithPath:kReadAccessRoot isDirectory:YES];
+
+        [_webView loadFileURL:fileURL allowingReadAccessToURL:readAccessURL];
         return YES;
     }
-    
+
     NSURL *nsUrl = [NSURL URLWithString:url];
     if (!nsUrl) {
         return NO;
     }
-    
+
     [_webView loadRequest:[NSURLRequest requestWithURL:nsUrl]];
     return YES;
 }
@@ -684,23 +679,17 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
     if ([url hasPrefix:@"file://"]) {
         NSString *filePath = [url stringByReplacingOccurrencesOfString:@"file://" withString:@""];
         NSURL *fileURL = [NSURL fileURLWithPath:filePath];
-        
-        // Go up directory levels to reach common parent containing both Balancy and BalancyResources
-        NSString *readAccessPath = filePath;
-        for (int i = 0; i < kDirectoryLevelsUp; i++) {
-            readAccessPath = [readAccessPath stringByDeletingLastPathComponent];
-        }
-        NSURL *broadReadAccessURL = [NSURL fileURLWithPath:readAccessPath isDirectory:YES];
-        
-        [_webView loadFileURL:fileURL allowingReadAccessToURL:broadReadAccessURL];
+        NSURL *readAccessURL = [NSURL fileURLWithPath:kReadAccessRoot isDirectory:YES];
+
+        [_webView loadFileURL:fileURL allowingReadAccessToURL:readAccessURL];
         return YES;
     }
-    
+
     NSURL *nsUrl = [NSURL URLWithString:url];
     if (!nsUrl) {
         return NO;
     }
-    
+
     [_webView loadRequest:[NSURLRequest requestWithURL:nsUrl]];
     return YES;
 }
