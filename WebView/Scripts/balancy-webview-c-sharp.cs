@@ -709,9 +709,17 @@ namespace Balancy.WebView
             {
                 return true; // Not a local file, let WebView handle it
             }
-            
+
+            // android_asset URLs are served directly from the APK and can't be validated via File.Exists
+            #if UNITY_ANDROID && !UNITY_EDITOR
+            if (url.StartsWith("file:///android_asset/"))
+            {
+                return true;
+            }
+            #endif
+
             string filePath = url.Substring(7); // Remove "file://" prefix
-            
+
             // On Android, convert Unity path format if needed
             #if UNITY_ANDROID && !UNITY_EDITOR
             // Make sure we're using the correct path format

@@ -223,6 +223,9 @@ public class BalancyWebViewPlugin {
         settings.setDatabaseEnabled(true);
         settings.setAllowFileAccess(true);
         settings.setAllowContentAccess(true);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) {
+            settings.setAllowFileAccessFromFileURLs(true);
+        }
         settings.setMediaPlaybackRequiresUserGesture(false);
         settings.setRenderPriority(WebSettings.RenderPriority.HIGH);
         settings.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
@@ -537,7 +540,7 @@ public class BalancyWebViewPlugin {
         
         logDebug("Loading URL: " + url);
         
-        if (url.startsWith("file://")) {
+        if (url.startsWith("file://") && !url.startsWith("file:///android_asset/")) {
             String filePath = url.substring(7);
             java.io.File file = new java.io.File(filePath);
             if (!file.exists()) {

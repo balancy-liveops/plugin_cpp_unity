@@ -132,7 +132,18 @@ namespace Balancy
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyInitUnityFileHelper(string persistentDataPath, string resourcesPath, string codePath);
-            
+
+#if UNITY_ANDROID && !UNITY_EDITOR
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyInitUnityFileHelperAndroid(string persistentDataPath, string streamingAssetsSubpath, string codePath);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyAndroidPreloadResource(string fileName, string content);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyAndroidSetResourceExists(string fileName, bool exists);
+#endif
+
 #if UNITY_WEBGL && !UNITY_EDITOR
             [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
             public delegate void PreloadCompleteCallback();
