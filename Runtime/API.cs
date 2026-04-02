@@ -126,14 +126,25 @@ namespace Balancy
                         {
                             var offerInfo =
                                 Balancy.Profiles.System.SmartInfo.FindOfferInfo(productInfo.OfferInstanceId);
-                            if (offerInfo == null)
+                            if (offerInfo != null)
                             {
-                                validationCallback?.Invoke(false, false);
-                                callback?.Callback?.Invoke(false, Constants.Errors.OfferInfoNull);
+                                HardPurchaseGameOffer(offerInfo, paymentInfo, InvokeCallbacks, requireValidation);
                             }
                             else
                             {
-                                HardPurchaseGameOffer(offerInfo, paymentInfo, InvokeCallbacks, requireValidation);
+                                // Offer instance is gone (stale ID from previous session or deactivated mid-purchase).
+                                // Fall back to completing the purchase via StoreItem so the user gets what they paid for.
+                                var storeItem = productInfo.GetStoreItem();
+                                if (storeItem != null)
+                                {
+                                    Debug.LogWarning($"OfferInfo not found for InstanceId={productInfo.OfferInstanceId}, falling back to StoreItem purchase.");
+                                    HardPurchaseStoreItem(storeItem, paymentInfo, InvokeCallbacks, requireValidation);
+                                }
+                                else
+                                {
+                                    validationCallback?.Invoke(false, false);
+                                    callback?.Callback?.Invoke(false, Constants.Errors.OfferInfoNull);
+                                }
                             }
 
                             break;
@@ -142,16 +153,26 @@ namespace Balancy
                         {
                             var offerGroupInfo =
                                 Balancy.Profiles.System.SmartInfo.FindOfferGroupInfo(productInfo.OfferInstanceId);
-                            if (offerGroupInfo == null)
-                            {
-                                validationCallback?.Invoke(false, false);
-                                callback?.Callback?.Invoke(false, Constants.Errors.OfferGroupInfoNull);
-                            }
-                            else
+                            if (offerGroupInfo != null)
                             {
                                 var storeItem = productInfo.GetStoreItem();
                                 HardPurchaseGameOfferGroup(offerGroupInfo, storeItem, paymentInfo,
                                     InvokeCallbacks, requireValidation);
+                            }
+                            else
+                            {
+                                // OfferGroup instance is gone — fall back to StoreItem purchase.
+                                var storeItem = productInfo.GetStoreItem();
+                                if (storeItem != null)
+                                {
+                                    Debug.LogWarning($"OfferGroupInfo not found for InstanceId={productInfo.OfferInstanceId}, falling back to StoreItem purchase.");
+                                    HardPurchaseStoreItem(storeItem, paymentInfo, InvokeCallbacks, requireValidation);
+                                }
+                                else
+                                {
+                                    validationCallback?.Invoke(false, false);
+                                    callback?.Callback?.Invoke(false, Constants.Errors.OfferGroupInfoNull);
+                                }
                             }
 
                             break;
