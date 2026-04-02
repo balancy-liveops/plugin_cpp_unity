@@ -1,3 +1,4 @@
+using System;
 using Balancy.Core;
 using Balancy.Data.SmartObjects;
 using Balancy.Models.SmartObjects;
@@ -82,7 +83,29 @@ namespace Balancy
         public static OnShopUpdatedDelegate OnShopUpdated = null;
         public static OnNetworkDownloadStartedDelegate OnNetworkDownloadStarted = null;
         public static OnNetworkDownloadFinishedDelegate OnNetworkDownloadFinished = null;
-        public static OnPaymentIsReadyDelegate OnPaymentIsReady = null;
+        private static OnPaymentIsReadyDelegate _onPaymentIsReady;
+        private static bool _paymentIsReady;
+
+        public static OnPaymentIsReadyDelegate OnPaymentIsReady
+        {
+            get => _onPaymentIsReady;
+            set
+            {
+                var previous = _onPaymentIsReady;
+                _onPaymentIsReady = value;
+                if (_paymentIsReady && value != null)
+                {
+                    var added = (OnPaymentIsReadyDelegate)Delegate.RemoveAll(value, previous);
+                    added?.Invoke();
+                }
+            }
+        }
+
+        public static void SetPaymentIsReady()
+        {
+            _paymentIsReady = true;
+            _onPaymentIsReady?.Invoke();
+        }
         
         public static OnHardPurchasedStoreItemDelegate OnHardPurchasedStoreItem = null;
         public static OnHardPurchasedShopSlotDelegate OnHardPurchasedShopSlot = null;
@@ -206,7 +229,8 @@ namespace Balancy
             OnShopUpdated = null;
             OnNetworkDownloadStarted = null;
             OnNetworkDownloadFinished = null;
-            OnPaymentIsReady = null;
+            _onPaymentIsReady = null;
+            _paymentIsReady = false;
             
             OnHardPurchasedStoreItem = null;
             OnHardPurchasedShopSlot = null;
