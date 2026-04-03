@@ -177,10 +177,7 @@ namespace Balancy
 #if UNITY_WEBGL && !UNITY_EDITOR
         private static Core.Responses.Product ConstructProductWebGL(IntPtr dataPtr, int index)
         {
-            // InteropProductData struct layout (Pack=1):
-            // IntPtr base_id, int type, IntPtr item_id, IntPtr name, IntPtr description,
-            // IntPtr localized_name, IntPtr localized_description, float price
-            int elemSize = IntPtr.Size * 7 + 4 + 4; // 6 pointers + 1 int(type) + 1 float(price)
+            int elemSize = Marshal.SizeOf<Core.Responses.InteropProductData>();
             int pOff = 0;
             IntPtr itemPtr = IntPtr.Add(dataPtr, index * elemSize);
             IntPtr baseIdPtr = Marshal.ReadIntPtr(itemPtr, pOff); pOff += IntPtr.Size;
