@@ -76,16 +76,22 @@ namespace Balancy
                 // Other cleanup operations may trigger logging, which would crash if callback is invalid
                 LibraryMethods.General.balancySetLogCallback(null);
 
+                _isReadyToUse = false;
                 OnDataUpdated = null;
                 LibraryMethods.Models.balancySetModelOnRefresh(null);
                 LibraryMethods.Models.balancySetUserDataInitializedCallback(null);
+
+                // Stop C# bridges BEFORE destroying C++ objects.
+                // Running coroutines (web requests, unzip) can call back into C++
+                // after balancyStop() destroys the native manager, causing
+                // "mutex lock failed" and use-after-free crashes.
+                Balancy.Network.UnityWebRequestBridge.Clear();
+                UnzipBridge.Cleanup();
+
                 LibraryMethods.General.balancyStop();
                 Profiles.CleanUp();
                 CMS.CleanUp();
-                Balancy.Network.UnityWebRequestBridge.Clear();
-                UnzipBridge.Cleanup();
                 LibraryMethods.General.balancySetInvokeInMainThreadCallback(null);
-                _isReadyToUse = false;
             }
             catch (System.Exception e)
             {
