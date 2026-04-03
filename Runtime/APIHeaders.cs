@@ -174,6 +174,110 @@ namespace Balancy
                 UnityEngine.Debug.LogError($"Callback with ID {callbackId} not found");
             }
         }
+#if UNITY_WEBGL && !UNITY_EDITOR
+        private static Core.Responses.Product ConstructProductWebGL(IntPtr dataPtr, int index)
+        {
+            // InteropProductData struct layout (Pack=1):
+            // IntPtr base_id, int type, IntPtr item_id, IntPtr name, IntPtr description,
+            // IntPtr localized_name, IntPtr localized_description, float price
+            int elemSize = IntPtr.Size * 7 + 4 + 4; // 6 pointers + 1 int(type) + 1 float(price)
+            int pOff = 0;
+            IntPtr itemPtr = IntPtr.Add(dataPtr, index * elemSize);
+            IntPtr baseIdPtr = Marshal.ReadIntPtr(itemPtr, pOff); pOff += IntPtr.Size;
+            int pType = Marshal.ReadInt32(itemPtr, pOff); pOff += 4;
+            IntPtr itemIdPtr = Marshal.ReadIntPtr(itemPtr, pOff); pOff += IntPtr.Size;
+            IntPtr namePtr = Marshal.ReadIntPtr(itemPtr, pOff); pOff += IntPtr.Size;
+            IntPtr descPtr = Marshal.ReadIntPtr(itemPtr, pOff); pOff += IntPtr.Size;
+            IntPtr locNamePtr = Marshal.ReadIntPtr(itemPtr, pOff); pOff += IntPtr.Size;
+            IntPtr locDescPtr = Marshal.ReadIntPtr(itemPtr, pOff); pOff += IntPtr.Size;
+            IntPtr iconPtr = Marshal.ReadIntPtr(itemPtr, pOff); pOff += IntPtr.Size;
+            // float is 4 bytes - read as int bits and convert
+            int priceBits = Marshal.ReadInt32(itemPtr, pOff);
+            float priceVal = BitConverter.ToSingle(BitConverter.GetBytes(priceBits), 0);
+
+            return new Core.Responses.Product
+            {
+                base_id = baseIdPtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(baseIdPtr) : null,
+                type = (byte)pType,
+                item_id = itemIdPtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(itemIdPtr) : null,
+                name = namePtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(namePtr) : null,
+                description = descPtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(descPtr) : null,
+                localized_name = locNamePtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(locNamePtr) : null,
+                localized_description = locDescPtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(locDescPtr) : null,
+                icon = iconPtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(iconPtr) : null,
+                price = priceVal
+                
+            };
+        }
+#else
+        private static Core.Responses.Product ConstructProductWebGL(IntPtr dataPtr, int index)
+        {
+            int elemSize = Marshal.SizeOf<Core.Responses.InteropProductData>();
+            IntPtr itemPtr = IntPtr.Add(dataPtr, index * elemSize);
+            var interop = Marshal.PtrToStructure<Core.Responses.InteropProductData>(itemPtr);
+
+            return new Core.Responses.Product
+            {
+                base_id = Marshal.PtrToStringAnsi(interop.base_id),
+                type = (byte)interop.type,
+                item_id = Marshal.PtrToStringAnsi(interop.item_id),
+                name = Marshal.PtrToStringAnsi(interop.name),
+                description = Marshal.PtrToStringAnsi(interop.description),
+                localized_name = Marshal.PtrToStringAnsi(interop.localized_name),
+                localized_description = Marshal.PtrToStringAnsi(interop.localized_description),
+                icon =  Marshal.PtrToStringAnsi(interop.icon),
+                price = interop.price,
+            };
+        }
+#endif
+        
+        private class TypedCallbackProductResponseDataWrapper : CallbackWrapperBase
+        {
+            private readonly Balancy.Core.ResponseCallback<Core.Responses.ProductResponseData> _callback;
+
+            public TypedCallbackProductResponseDataWrapper(Balancy.Core.ResponseCallback<Core.Responses.ProductResponseData> callback)
+            {
+                _callback = callback;
+            }
+
+            public override void InvokeCallback(IntPtr responseDataPtr)
+            {
+                try
+                {
+#if UNITY_WEBGL && !UNITY_EDITOR
+                    // WebGL/Wasm workaround: manually read fields to avoid Marshal.PtrToStructure crash
+                    int offset = 0;
+                    byte success = Marshal.ReadByte(responseDataPtr, offset); offset += 1;
+                    int errorCode = Marshal.ReadInt32(responseDataPtr, offset); offset += 4;
+                    IntPtr errorMsgPtr = Marshal.ReadIntPtr(responseDataPtr, offset); offset += IntPtr.Size;
+                    string errorMessage = errorMsgPtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(errorMsgPtr) : null;
+                    // InteropProductsResponseData derived fields:
+                    IntPtr dataPtr = Marshal.ReadIntPtr(responseDataPtr, offset); offset += IntPtr.Size;
+#else
+                    var response = Marshal.PtrToStructure<Core.Responses.InteropProductResponseData>(responseDataPtr);
+                    IntPtr dataPtr = response.data;
+                    byte success = (byte)(response.Success ? 1 : 0);
+                    int errorCode = response.ErrorCode;
+                    string errorMessage = response.ErrorMessage;
+#endif
+                    Core.Responses.Product product = ConstructProductWebGL(dataPtr, 0);
+
+                    var res = new Core.Responses.ProductResponseData
+                    {
+                        Product = product,
+                        Success = success == 1,
+                        ErrorCode = errorCode,
+                        ErrorMessage = errorMessage,
+                    };
+
+                    _callback?.Invoke(res);
+                }
+                catch (Exception e)
+                {
+                    UnityEngine.Debug.LogError("Exception in TypedCallbackProductResponseDataWrapper: " + e);
+                }
+            }
+        }
         
         private class TypedCallbackProductsResponseDataWrapper : CallbackWrapperBase
         {
@@ -209,65 +313,19 @@ namespace Balancy
 
                     var products = new List<Core.Responses.Product>(count);
 #if UNITY_WEBGL && !UNITY_EDITOR
-                    // InteropProductData struct layout (Pack=1):
-                    // IntPtr base_id, int type, IntPtr item_id, IntPtr name, IntPtr description,
-                    // IntPtr localized_name, IntPtr localized_description, float price
-                    int elemSize = IntPtr.Size * 7 + 4 + 4; // 6 pointers + 1 int(type) + 1 float(price)
                     for (int i = 0; i < count; i++)
                     {
-                        int pOff = 0;
-                        IntPtr itemPtr = IntPtr.Add(dataPtr, i * elemSize);
-                        IntPtr baseIdPtr = Marshal.ReadIntPtr(itemPtr, pOff); pOff += IntPtr.Size;
-                        int pType = Marshal.ReadInt32(itemPtr, pOff); pOff += 4;
-                        IntPtr itemIdPtr = Marshal.ReadIntPtr(itemPtr, pOff); pOff += IntPtr.Size;
-                        IntPtr namePtr = Marshal.ReadIntPtr(itemPtr, pOff); pOff += IntPtr.Size;
-                        IntPtr descPtr = Marshal.ReadIntPtr(itemPtr, pOff); pOff += IntPtr.Size;
-                        IntPtr locNamePtr = Marshal.ReadIntPtr(itemPtr, pOff); pOff += IntPtr.Size;
-                        IntPtr locDescPtr = Marshal.ReadIntPtr(itemPtr, pOff); pOff += IntPtr.Size;
-                        IntPtr iconPtr = Marshal.ReadIntPtr(itemPtr, pOff); pOff += IntPtr.Size;
-                        // float is 4 bytes - read as int bits and convert
-                        int priceBits = Marshal.ReadInt32(itemPtr, pOff);
-                        float priceVal = BitConverter.ToSingle(BitConverter.GetBytes(priceBits), 0);
-
-                        var product = new Core.Responses.Product
-                        {
-                            base_id = baseIdPtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(baseIdPtr) : null,
-                            type = (byte)pType,
-                            item_id = itemIdPtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(itemIdPtr) : null,
-                            name = namePtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(namePtr) : null,
-                            description = descPtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(descPtr) : null,
-                            localized_name = locNamePtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(locNamePtr) : null,
-                            localized_description = locDescPtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(locDescPtr) : null,
-                            icon = iconPtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(iconPtr) : null,
-                            price = priceVal
-                            
-                        };
+                        var product = ConstructProductWebGL(dataPtr, i);
                         products.Add(product);
                     }
 #else
-                    int elemSize = Marshal.SizeOf<Core.Responses.InteropProductData>();
                     for (int i = 0; i < count; i++)
                     {
-                        IntPtr itemPtr = IntPtr.Add(dataPtr, i * elemSize);
-                        var interop = Marshal.PtrToStructure<Core.Responses.InteropProductData>(itemPtr);
-
-                        var product = new Core.Responses.Product
-                        {
-                            base_id = Marshal.PtrToStringAnsi(interop.base_id),
-                            type = (byte)interop.type,
-                            item_id = Marshal.PtrToStringAnsi(interop.item_id),
-                            name = Marshal.PtrToStringAnsi(interop.name),
-                            description = Marshal.PtrToStringAnsi(interop.description),
-                            localized_name = Marshal.PtrToStringAnsi(interop.localized_name),
-                            localized_description = Marshal.PtrToStringAnsi(interop.localized_description),
-                            icon =  Marshal.PtrToStringAnsi(interop.icon),
-                            price = interop.price,
-                        };
+                        var product = ConstructProductWebGL(dataPtr, i);
 
                         products.Add(product);
                     }
 #endif
-
                     var res = new Core.Responses.ProductsResponseData
                     {
                         Products = products,
@@ -365,35 +423,9 @@ namespace Balancy
 
         public static void GetProduct(string productId, Balancy.Core.ResponseCallback<Balancy.Core.Responses.ProductResponseData> callback)
         {
-            GetProducts(productsResponse =>
-            {
-                if (!productsResponse.Success)
-                {
-                    // Forward the error from GetProducts
-                    var errorResponse = new Balancy.Core.Responses.ProductResponseData
-                    {
-                        Success = false,
-                        ErrorCode = productsResponse.ErrorCode,
-                        ErrorMessage = productsResponse.ErrorMessage,
-                        Product = null
-                    };
-                    callback?.Invoke(errorResponse);
-                    return;
-                }
+            var callbackResult = ProtectedFromGCCallback(callback, responseCallback => new TypedCallbackProductResponseDataWrapper(responseCallback));
 
-                // Find the product by ID
-                var product = productsResponse.Products?.Find(p => p.ProductId == productId);
-
-                var response = new Balancy.Core.Responses.ProductResponseData
-                {
-                    Success = product != null,
-                    ErrorCode = product != null ? 0 : -1,
-                    ErrorMessage = product != null ? "" : $"Product with ID '{productId}' not found",
-                    Product = product
-                };
-
-                callback?.Invoke(response);
-            });
+            LibraryMethods.API.balancyGetProduct(productId, callbackResult.CallbackId, callbackResult.StaticCallback);
         }
 
         public static void HardPurchaseGameOffer(OfferInfo offerInfo, Balancy.Core.PaymentInfo paymentInfo,
