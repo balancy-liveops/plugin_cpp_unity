@@ -562,9 +562,18 @@ namespace Balancy
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern int balancyGetTimeOffset();
-            
+
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancySetTimeOffset(int seconds);
+
+            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+            public delegate uint CustomUTCTimeProviderDelegate();
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancySetCustomUTCTimeProvider(CustomUTCTimeProviderDelegate callback);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyResetCustomUTCTimeProvider();
 
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyNotifyAppPause(int secondsElapsed);

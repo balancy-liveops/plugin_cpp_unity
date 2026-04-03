@@ -6,6 +6,7 @@ using Balancy.Data.SmartObjects;
 using Balancy.Models;
 using Balancy.Models.SmartObjects;
 using Balancy.Models.SmartObjects.Analytics;
+using UnityEngine;
 
 namespace Balancy
 {
@@ -569,6 +570,38 @@ namespace Balancy
         //This method doesn't work in production
         public static void SetTimeCheatingOffset(int seconds) => LibraryMethods.Extra.balancySetTimeOffset(seconds);
         public static int GetTimeCheatingOffset() => LibraryMethods.Extra.balancyGetTimeOffset();
+
+        private static LibraryMethods.Extra.CustomUTCTimeProviderDelegate _customUTCTimeProviderDelegate;
+        private static Func<DateTime> _customUTCTimeProviderFunc;
+        private static readonly DateTime Epoch = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        /// <summary>
+        /// Sets a custom UTC time provider that overrides the SDK's internal server time.
+        /// The callback should return the current UTC time.
+        /// This works in all environments including production.
+        /// </summary>
+        public static void SetCustomUTCTimeProvider(Func<DateTime> provider)
+        {
+            if (provider == null)
+            {
+                ResetCustomUTCTimeProvider();
+                return;
+            }
+
+            _customUTCTimeProviderFunc = provider;
+            _customUTCTimeProviderDelegate = () => (uint)(provider().ToUniversalTime() - Epoch).TotalSeconds;
+            LibraryMethods.Extra.balancySetCustomUTCTimeProvider(_customUTCTimeProviderDelegate);
+        }
+
+        /// <summary>
+        /// Removes the custom UTC time provider and returns to the SDK's internal server time.
+        /// </summary>
+        public static void ResetCustomUTCTimeProvider()
+        {
+            _customUTCTimeProviderFunc = null;
+            _customUTCTimeProviderDelegate = null;
+            LibraryMethods.Extra.balancyResetCustomUTCTimeProvider();
+        }
 
         public static void NotifyAppPause(int secondsElapsed) => LibraryMethods.Extra.balancyNotifyAppPause(secondsElapsed);
         public static void NotifyAppResume() => LibraryMethods.Extra.balancyNotifyAppResume();
