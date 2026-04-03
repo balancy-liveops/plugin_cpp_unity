@@ -5,6 +5,9 @@ using Balancy.Core;
 using Balancy.Data.SmartObjects;
 using Balancy.Models;
 using UnityEngine;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 namespace Balancy
 {
@@ -193,8 +196,29 @@ namespace Balancy
         {
             if (originalPlatform == Constants.DevicePlatform.Unknown)
             {
+#if UNITY_EDITOR
+                var targetPlatform = EditorUserBuildSettings.activeBuildTarget;
+                switch (targetPlatform)
+                {
+                    case BuildTarget.StandaloneOSX:
+                        return Constants.DevicePlatform.OSXPlayer;
+                    case BuildTarget.StandaloneWindows:
+                        return Constants.DevicePlatform.WindowsPlayer;
+                    case BuildTarget.iOS:
+                        return Constants.DevicePlatform.IPhonePlayer;
+                    case BuildTarget.Android:
+                        return Constants.DevicePlatform.Android;
+                    case BuildTarget.StandaloneWindows64:
+                        return Constants.DevicePlatform.WindowsPlayer;
+                    case BuildTarget.WebGL:
+                        return Constants.DevicePlatform.WebGLPlayer;
+                    case BuildTarget.WSAPlayer:
+                        break;
+                    case BuildTarget.StandaloneLinux64:
+                        return Constants.DevicePlatform.LinuxPlayer;
+                }
+#endif
                 var platform = UnityEngine.Application.platform;
-
                 switch (platform)
                 {
                     case RuntimePlatform.WindowsEditor:
