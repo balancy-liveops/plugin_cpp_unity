@@ -365,11 +365,5 @@ namespace Balancy
         {
             Balancy.Actions.Purchasing.GetRestorePurchasesCallback()?.Invoke();
         }
-
-        public static string[] GetProductsIdAndType()
-        {
-            IntPtr ptr = LibraryMethods.General.balancyGetProductsIdAndType(out var size);
-            return JsonBasedObject.ReadStringArrayValues(ptr, size);
-        }
     }
 }

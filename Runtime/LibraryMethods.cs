@@ -166,10 +166,7 @@ namespace Balancy
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyWebViewRequest(IntPtr owner, string request, WebviewRequestCallback callback);
-            
-            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-            public static extern IntPtr balancyGetProductsIdAndType(out int size);
-            
+
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern IntPtr balancyGetParsedObject(IntPtr instance, int depth, bool pretty);
             

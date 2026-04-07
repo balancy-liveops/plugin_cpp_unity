@@ -173,6 +173,15 @@ namespace Balancy
         {
             if (originalBalancyPlatform == Constants.BalancyPlatform.Undefined)
             {
+#if UNITY_EDITOR
+                var targetPlatform = EditorUserBuildSettings.activeBuildTarget;
+                switch (targetPlatform)
+                {
+                    case BuildTarget.iOS:
+                        return Constants.BalancyPlatform.IosAppStore;
+                }
+                return Constants.BalancyPlatform.AndroidGooglePlay;
+#endif
                 var platform = UnityEngine.Application.platform;
 
                 switch (platform)
