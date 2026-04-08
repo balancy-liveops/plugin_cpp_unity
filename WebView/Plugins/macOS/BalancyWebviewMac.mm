@@ -60,6 +60,7 @@ void LogToUnity(const char* message) {
 - (void)setTransparentBackground:(BOOL)transparent;
 - (void)setDebugLogging:(BOOL)enabled;
 - (void)setWebInspectorEnabled:(BOOL)enabled;
+- (void)preparePersistentShellLoad;
 @end
 
 // Embedded WebView controller for rendering to texture
@@ -676,7 +677,9 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
 - (BOOL)loadURL:(NSString *)url {
     // Set window to be initially hidden BEFORE showing it
     [[self window] setAlphaValue:0.0f];
-    [[self window] makeKeyAndOrderFront:nil];
+    if (!_suppressNextAnimation) {
+        [[self window] makeKeyAndOrderFront:nil];
+    }
     
     if ([url hasPrefix:@"file://"]) {
         NSString *filePath = [url stringByReplacingOccurrencesOfString:@"file://" withString:@""];
@@ -916,8 +919,14 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
     }
 }
 
+- (void)preparePersistentShellLoad {
+    _suppressNextAnimation = YES;
+}
+
 - (void)startShowAnimation {
-    // Window is already hidden (alpha = 0.0f) from loadURL
+    // Bring the persistent window back on screen before animating it in.
+    [[self window] setAlphaValue:0.0f];
+    [[self window] makeKeyAndOrderFront:nil];
     
     if (_debugLogging) {
         LogToUnity([[NSString stringWithFormat:@"Starting show animation with delay: %.3fs, duration: %.3fs", _showDelay, _animationDuration] UTF8String]);
@@ -1064,7 +1073,7 @@ bool _balancyPrepareWebView(const char* shellUrl) {
             _sharedController = [[BalancyWebViewController alloc] init];
         }
         // Mark the next didFinishNavigation as a shell load (no animation, stay hidden)
-        _sharedController->_suppressNextAnimation = YES;
+        [_sharedController preparePersistentShellLoad];
         NSString* nsUrl = [NSString stringWithUTF8String:shellUrl];
         return [_sharedController loadURL:nsUrl];
     }
@@ -1084,6 +1093,7 @@ void _balancyHideWebView() {
     @autoreleasepool {
         if (_sharedController != nil) {
             [[_sharedController window] setAlphaValue:0.0f];
+            [[_sharedController window] orderOut:nil];
         }
     }
 }

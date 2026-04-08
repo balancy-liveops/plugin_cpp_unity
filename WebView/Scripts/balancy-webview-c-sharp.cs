@@ -929,9 +929,17 @@ namespace Balancy.WebView
         public void PrepareWebView(Action onReady = null)
         {
 #if UNITY_EDITOR_OSX || (!UNITY_EDITOR && (UNITY_IOS || UNITY_ANDROID))
-            if (_isPersistentMode || _isPreparing)
+            if (_isPersistentMode)
             {
-                Debug.LogWarning("[BalancyWebView] PrepareWebView already called.");
+                Debug.Log("[BalancyWebView] PrepareWebView: already prepared, invoking callback immediately");
+                onReady?.Invoke();
+                return;
+            }
+
+            if (_isPreparing)
+            {
+                Debug.Log("[BalancyWebView] PrepareWebView: shell is already loading, queueing callback");
+                _onShellReady += onReady;
                 return;
             }
 
@@ -941,12 +949,15 @@ namespace Balancy.WebView
             string shellPath = System.IO.Path.Combine(Application.streamingAssetsPath, "Balancy", "balancy-shell.html");
             string shellUrl = "file://" + shellPath;
 
+            Debug.Log($"[BalancyWebView] PrepareWebView: starting shell load. Path={shellPath}");
+
             ApplySettings();
             SetTransparentBackground(true);
             SetGameUIMode(_gameUIMode);
             SetDebugLogging(_debugLogging);
 
-            _balancyPrepareWebView(shellUrl);
+            bool started = _balancyPrepareWebView(shellUrl);
+            Debug.Log($"[BalancyWebView] PrepareWebView: native prepare returned {started}");
 #else
             Debug.LogWarning("[BalancyWebView] PrepareWebView is not yet supported on this platform.");
             onReady?.Invoke();
@@ -966,18 +977,43 @@ namespace Balancy.WebView
                 return;
             }
 
+            if (_currentViewId != null)
+            {
+                Debug.LogWarning($"[BalancyWebView] A persistent view is already active or loading. Close it before showing another one. CurrentViewId={_currentViewId} IsOpen={_isWebViewOpen}");
+                return;
+            }
+
             _ownerJson = ownerJson;
             _additionalInfo = additionalInfo;
             _onViewReady = onViewReady;
             _currentViewId = System.Guid.NewGuid().ToString("N");
 
-            _balancyShowWebView();
-            _isWebViewOpen = true;
-
             // HTML is base64-encoded to safely pass through the native string-injection layer
             string htmlBase64 = System.Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(html));
-            string message = $"{{\"type\":\"loadView\",\"viewId\":\"{_currentViewId}\",\"htmlBase64\":\"{htmlBase64}\"}}";
-            _balancySendMessage(message);
+            string ownerJsonBase64 = string.IsNullOrEmpty(ownerJson)
+                ? ""
+                : System.Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(ownerJson));
+            string additionalInfoBase64 = string.IsNullOrEmpty(additionalInfo)
+                ? ""
+                : System.Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(additionalInfo));
+            string message =
+                $"{{\"type\":\"loadView\",\"viewId\":\"{_currentViewId}\",\"htmlBase64\":\"{htmlBase64}\",\"ownerJsonBase64\":\"{ownerJsonBase64}\",\"additionalInfoBase64\":\"{additionalInfoBase64}\"}}";
+            Debug.Log($"[BalancyWebView] ShowView: sending loadView. ViewId={_currentViewId} HtmlLength={html.Length} OwnerLength={(ownerJson ?? string.Empty).Length} AdditionalInfoLength={(additionalInfo ?? string.Empty).Length}");
+            bool sent = _balancySendMessage(message);
+            Debug.Log($"[BalancyWebView] ShowView: loadView sent={sent} ViewId={_currentViewId}");
+        }
+
+        /// <summary>
+        /// Persistent-mode: show the existing WebView without changing its content.
+        /// </summary>
+        public void ShowWebView()
+        {
+            if (!_isPersistentMode || _isWebViewOpen)
+                return;
+
+            Debug.Log("[BalancyWebView] ShowWebView: making persistent WebView visible");
+            _balancyShowWebView();
+            _isWebViewOpen = true;
         }
 
         /// <summary>
@@ -989,9 +1025,9 @@ namespace Balancy.WebView
             if (!_isPersistentMode || !_isWebViewOpen)
                 return;
 
+            Debug.Log("[BalancyWebView] HideWebView: hiding persistent WebView");
             _balancyHideWebView();
             _isWebViewOpen = false;
-            OnClosed?.Invoke();
         }
 
         /// <summary>
@@ -1006,17 +1042,23 @@ namespace Balancy.WebView
                 return;
             }
 
-            if (!_isWebViewOpen)
+            if (!_isWebViewOpen && _currentViewId == null)
                 return;
+
+            _onViewReady = null;
 
             if (_currentViewId != null)
             {
                 string message = $"{{\"type\":\"clearView\",\"viewId\":\"{_currentViewId}\"}}";
-                _balancySendMessage(message);
+                Debug.Log($"[BalancyWebView] CloseView: sending clearView for ViewId={_currentViewId}");
+                bool sent = _balancySendMessage(message);
+                Debug.Log($"[BalancyWebView] CloseView: clearView sent={sent} ViewId={_currentViewId}");
                 _currentViewId = null;
             }
 
-            _balancyHideWebView();
+            if (_isWebViewOpen)
+                _balancyHideWebView();
+
             _isWebViewOpen = false;
             OnClosed?.Invoke();
         }
@@ -1052,7 +1094,9 @@ namespace Balancy.WebView
             if (string.IsNullOrEmpty(message))
                 return false;
             
-            if (!_isWebViewOpen && !_isWebViewEmbedded)
+            bool canUsePersistentWebView = _isPersistentMode && (_isPreparing || _currentViewId != null || _isWebViewOpen);
+
+            if (!_isWebViewOpen && !_isWebViewEmbedded && !canUsePersistentWebView)
             {
                 // Silently return false without logging - this is normal during WebView closure
                 return false;
@@ -1270,6 +1314,11 @@ namespace Balancy.WebView
         public bool IsWebViewOpen()
         {
             return _isWebViewOpen;
+        }
+
+        public bool IsPersistentModeEnabled()
+        {
+            return _isPersistentMode;
         }
         
         /// <summary>
@@ -1498,10 +1547,26 @@ namespace Balancy.WebView
         
         private void OnMessageReceivedPrivate(string message)
         {
+            string preview = message;
+            if (!string.IsNullOrEmpty(preview) && preview.Length > 240)
+                preview = preview.Substring(0, 240) + "...";
+            Debug.Log($"[BalancyWebView] Message received: {preview}");
+
+            if (_isPersistentMode && message.Contains("\"viewLoadError\""))
+            {
+                Debug.LogError($"[BalancyWebView] Persistent view load failed: {message}");
+                _onViewReady = null;
+                return;
+            }
+
             // Intercept viewReady ACK from the bridge (persistent mode only)
             if (_isPersistentMode && message.Contains("\"viewReady\"") && _currentViewId != null
                 && message.Contains(_currentViewId))
             {
+                Debug.Log($"[BalancyWebView] viewReady received for ViewId={_currentViewId}");
+                _balancyShowWebView();
+                _isWebViewOpen = true;
+
                 var callback = _onViewReady;
                 _onViewReady = null;
                 callback?.Invoke();
@@ -1528,6 +1593,7 @@ namespace Balancy.WebView
         [AOT.MonoPInvokeCallback(typeof(LoadCompletedDelegate))]
         private static void OnLoadCompletedReceived(bool success)
         {
+            Debug.Log($"[BalancyWebView] OnLoadCompletedReceived: success={success} isPreparing={_instance?._isPreparing} isPersistent={_instance?._isPersistentMode}");
             if (success)
             {
                 Debug.Log($"[BalancyWebView] Load completed: {success}");
@@ -1589,6 +1655,8 @@ namespace Balancy.WebView
                 _instance._isPreparing = false;
                 if (success)
                     _instance._isPersistentMode = true;
+
+                Debug.Log($"[BalancyWebView] Shell load completed. Persistent mode enabled={_instance._isPersistentMode}");
 
                 var shellReady = _instance._onShellReady;
                 _instance._onShellReady = null;

@@ -269,8 +269,7 @@ namespace Balancy.Models
 
             Balancy.Dictionaries.DataObjectsManager.GetObjectView(id, url =>
             {
-                Balancy.RenderViewsManager.OpenLocalView(url, owner);
-                onShown?.Invoke();
+                Balancy.RenderViewsManager.OpenLocalView(url, owner, onShown);
             });
         }
     }
