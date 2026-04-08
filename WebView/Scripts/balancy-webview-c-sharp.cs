@@ -972,6 +972,9 @@ namespace Balancy.WebView
 
             string shellPath = System.IO.Path.Combine(Application.streamingAssetsPath, "Balancy", "balancy-shell.html");
             string shellUrl = "file://" + shellPath;
+#if UNITY_ANDROID && !UNITY_EDITOR
+            shellUrl = "file:///android_asset/Balancy/balancy-shell.html";
+#endif
 
             Debug.Log($"[BalancyWebView] PrepareWebView: starting shell load. Path={shellPath}");
 
@@ -1679,6 +1682,14 @@ namespace Balancy.WebView
                 _instance._isPreparing = false;
                 if (success)
                     _instance._isPersistentMode = true;
+                else
+                {
+                    _instance._isPersistentMode = false;
+                    _instance._currentViewId = null;
+                    _instance._onViewReady = null;
+                    _instance._isWebViewOpen = false;
+                    _balancyCloseWebView();
+                }
 
                 Debug.Log($"[BalancyWebView] Shell load completed. Persistent mode enabled={_instance._isPersistentMode}");
 
