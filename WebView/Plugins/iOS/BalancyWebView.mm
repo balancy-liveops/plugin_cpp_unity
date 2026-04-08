@@ -18,6 +18,44 @@ static const int kDirectoryLevelsUp = 6;
 static BalancyWebViewController* _sharedController = nil;
 static UIViewController* GetRootViewController(void);
 
+static NSURL* CreatePersistentShellURL(NSString* sourcePath) {
+    if (sourcePath == nil || sourcePath.length == 0) {
+        return nil;
+    }
+
+    NSFileManager* fileManager = [NSFileManager defaultManager];
+    NSArray<NSString*>* documentDirectories = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
+    NSString* documentsDirectory = documentDirectories.firstObject;
+    if (documentsDirectory == nil) {
+        return nil;
+    }
+
+    NSString* persistentDirectory = [documentsDirectory stringByAppendingPathComponent:@"Balancy/PersistentWebView"];
+    NSError* directoryError = nil;
+    if (![fileManager createDirectoryAtPath:persistentDirectory withIntermediateDirectories:YES attributes:nil error:&directoryError]) {
+        NSLog(@"[BalancyWebView] Failed to create persistent shell directory: %@", directoryError.localizedDescription);
+        return nil;
+    }
+
+    NSString* targetPath = [persistentDirectory stringByAppendingPathComponent:@"balancy-shell.html"];
+    NSURL* targetURL = [NSURL fileURLWithPath:targetPath];
+    NSURL* sourceURL = [NSURL fileURLWithPath:sourcePath];
+
+    NSError* removeError = nil;
+    if ([fileManager fileExistsAtPath:targetPath] && ![fileManager removeItemAtURL:targetURL error:&removeError]) {
+        NSLog(@"[BalancyWebView] Failed to replace persistent shell file: %@", removeError.localizedDescription);
+        return nil;
+    }
+
+    NSError* copyError = nil;
+    if (![fileManager copyItemAtURL:sourceURL toURL:targetURL error:&copyError]) {
+        NSLog(@"[BalancyWebView] Failed to copy persistent shell file: %@", copyError.localizedDescription);
+        return nil;
+    }
+
+    return targetURL;
+}
+
 static BalancyWebViewController* GetExistingWebViewController(void) {
     if (_sharedController != nil) {
         return _sharedController;
@@ -1421,7 +1459,9 @@ bool _balancyPrepareWebView(const char* shellUrl) {
 
         [webViewController preparePersistentShellLoad];
 
-        NSString* nsUrl = [NSString stringWithUTF8String:shellUrl];
+        NSString* sourcePath = [[NSString stringWithUTF8String:shellUrl] stringByReplacingOccurrencesOfString:@"file://" withString:@""];
+        NSURL* persistentShellURL = CreatePersistentShellURL(sourcePath);
+        NSString* nsUrl = persistentShellURL != nil ? persistentShellURL.absoluteString : [NSString stringWithUTF8String:shellUrl];
         return [webViewController loadURL:nsUrl];
     }
 }
