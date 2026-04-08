@@ -573,18 +573,42 @@ namespace Balancy.WebView
         // Android persistent-mode stubs (not yet implemented)
         private static bool _balancyPrepareWebView(string shellUrl)
         {
-            Debug.LogWarning("[BalancyWebView Android] PrepareWebView not yet implemented for Android");
-            return false;
+            try
+            {
+                var plugin = GetPluginInstance();
+                return plugin.Call<bool>("prepareWebView", shellUrl);
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"Android _balancyPrepareWebView failed: {e.Message}");
+                return false;
+            }
         }
 
         private static void _balancyShowWebView()
         {
-            Debug.LogWarning("[BalancyWebView Android] ShowWebView not yet implemented for Android");
+            try
+            {
+                var plugin = GetPluginInstance();
+                plugin.Call("showWebView");
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"Android _balancyShowWebView failed: {e.Message}");
+            }
         }
 
         private static void _balancyHideWebView()
         {
-            Debug.LogWarning("[BalancyWebView Android] HideWebView not yet implemented for Android");
+            try
+            {
+                var plugin = GetPluginInstance();
+                plugin.Call("hideWebView");
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"Android _balancyHideWebView failed: {e.Message}");
+            }
         }
 
         // Android callbacks - NO-OP implementations (using Unity messaging instead)
