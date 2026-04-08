@@ -15,6 +15,55 @@ extern "C" {
 // Go up enough directory levels from the loaded file to cover the entire
 // app data container so the WebView can reach all local files.
 static const int kDirectoryLevelsUp = 6;
+static BalancyWebViewController* _sharedController = nil;
+static UIViewController* GetRootViewController(void);
+
+static BalancyWebViewController* GetExistingWebViewController(void) {
+    if (_sharedController != nil) {
+        return _sharedController;
+    }
+
+    UIViewController* rootViewController = GetRootViewController();
+    if (!rootViewController) {
+        return nil;
+    }
+
+    for (UIViewController* childVC in rootViewController.childViewControllers) {
+        if ([childVC isKindOfClass:[BalancyWebViewController class]]) {
+            _sharedController = (BalancyWebViewController*)childVC;
+            return _sharedController;
+        }
+    }
+
+    return nil;
+}
+
+static BalancyWebViewController* CreateOrGetWebViewController(void (*messageCallback)(const char*),
+                                                              void (*loadCompletedCallback)(bool),
+                                                              void (*cacheCompletedCallback)(bool)) {
+    BalancyWebViewController* existingController = GetExistingWebViewController();
+    if (existingController != nil) {
+        return existingController;
+    }
+
+    UIViewController* rootViewController = GetRootViewController();
+    if (!rootViewController) {
+        return nil;
+    }
+
+    BalancyWebViewController* webViewController = [[BalancyWebViewController alloc] initWithMessageCallback:messageCallback
+                                                                                       loadCompletedCallback:loadCompletedCallback
+                                                                                      cacheCompletedCallback:cacheCompletedCallback];
+
+    [rootViewController addChildViewController:webViewController];
+    webViewController.view.frame = rootViewController.view.bounds;
+    webViewController.view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    [rootViewController.view addSubview:webViewController.view];
+    [webViewController didMoveToParentViewController:rootViewController];
+
+    _sharedController = webViewController;
+    return webViewController;
+}
 
 @interface BalancyWebViewController ()
 
@@ -26,6 +75,8 @@ static const int kDirectoryLevelsUp = 6;
 @property (nonatomic, assign) BOOL transparentBackground;
 @property (nonatomic, strong) NSTimer *emergencyExitHideTimer;
 @property (nonatomic, assign) BOOL emergencyExitEnabled;
+@property (nonatomic, assign, readwrite) BOOL persistentMode;
+@property (nonatomic, assign) BOOL suppressNextAnimation;
 
 @end
 
@@ -56,6 +107,8 @@ static const int kDirectoryLevelsUp = 6;
 
         // Emergency exit enabled by default
         _emergencyExitEnabled = YES;
+        _persistentMode = NO;
+        _suppressNextAnimation = NO;
         
         // Setup WebView configuration
         [self setupWebView];
@@ -387,8 +440,9 @@ static const int kDirectoryLevelsUp = 6;
     if (_debugLogging) {
         NSLog(@"[BalancyWebView] Starting show animation with delay: %.3f, duration: %.3f", _showDelay, _animationDuration);
     }
-    
-    // Ensure webview starts completely transparent
+
+    self.view.hidden = NO;
+    self.view.userInteractionEnabled = YES;
     _webView.alpha = 0.0;
     
     // Wait for the delay, then animate
@@ -405,6 +459,26 @@ static const int kDirectoryLevelsUp = 6;
                              }
                          }];
     });
+}
+
+- (void)hideForPersistentMode {
+    self.view.hidden = YES;
+    self.view.userInteractionEnabled = NO;
+    _webView.alpha = 0.0;
+
+    if (_debugLogging) {
+        NSLog(@"[BalancyWebView] Persistent WebView hidden");
+    }
+}
+
+- (void)preparePersistentShellLoad {
+    _persistentMode = YES;
+    _suppressNextAnimation = YES;
+    [self hideForPersistentMode];
+
+    if (_debugLogging) {
+        NSLog(@"[BalancyWebView] Preparing persistent shell load");
+    }
 }
 
 #pragma mark - View Lifecycle
@@ -498,6 +572,9 @@ static const int kDirectoryLevelsUp = 6;
 }
 
 - (void)close {
+    _persistentMode = NO;
+    _suppressNextAnimation = NO;
+
     // Remove emergency exit button and timer
     [_emergencyExitHideTimer invalidate];
     _emergencyExitHideTimer = nil;
@@ -1158,7 +1235,23 @@ static const int kDirectoryLevelsUp = 6;
     if (_debugLogging) {
         NSLog(@"[BalancyWebView] Page loaded successfully");
     }
-    
+
+    NSString *initScript = @"if (window.BalancyWebView && typeof window.BalancyWebView.initResponseHandler === 'function') { window.BalancyWebView.initResponseHandler(); }";
+    [_webView evaluateJavaScript:initScript completionHandler:nil];
+
+    if (_suppressNextAnimation) {
+        _suppressNextAnimation = NO;
+
+        if (_debugLogging) {
+            NSLog(@"[BalancyWebView] Persistent shell loaded, staying hidden");
+        }
+
+        if (_loadCompletedCallback != NULL) {
+            _loadCompletedCallback(true);
+        }
+        return;
+    }
+
     // Start the show animation instead of immediately showing
     [self startShowAnimation];
     
@@ -1261,24 +1354,17 @@ extern "C" {
 // Open a WebView with the specified URL
 bool _balancyOpenWebView(const char* url) {
     @autoreleasepool {
-        // Get the top-most view controller
-        UIViewController* rootViewController = GetRootViewController();
-        if (!rootViewController) {
+        BalancyWebViewController* webViewController = CreateOrGetWebViewController(_messageCallback,
+                                                                                   _loadCompletedCallback,
+                                                                                   _cacheCompletedCallback);
+        if (!webViewController) {
             NSLog(@"[BalancyWebView] Failed to get root view controller");
             return false;
         }
-        
-        // Create a WebView controller
-        BalancyWebViewController* webViewController = [[BalancyWebViewController alloc] initWithMessageCallback:_messageCallback
-                                                                                           loadCompletedCallback:_loadCompletedCallback
-                                                                                          cacheCompletedCallback:_cacheCompletedCallback];
-        
-        // Add as a child view controller - always full screen
-        [rootViewController addChildViewController:webViewController];
-        webViewController.view.frame = rootViewController.view.bounds;
-        webViewController.view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-        [rootViewController.view addSubview:webViewController.view];
-        [webViewController didMoveToParentViewController:rootViewController];
+
+        webViewController.persistentMode = NO;
+        webViewController.view.hidden = NO;
+        webViewController.view.userInteractionEnabled = YES;
 
         // Load the URL
         NSString* nsUrl = [NSString stringWithUTF8String:url];
@@ -1289,25 +1375,20 @@ bool _balancyOpenWebView(const char* url) {
 // Open a WebView with the specified URL and custom size
 bool _balancyOpenWebViewWithSize(const char* url, int width, int height) {
     @autoreleasepool {
-        // Get the top-most view controller
-        UIViewController* rootViewController = GetRootViewController();
-        if (!rootViewController) {
+        (void)width;
+        (void)height;
+
+        BalancyWebViewController* webViewController = CreateOrGetWebViewController(_messageCallback,
+                                                                                   _loadCompletedCallback,
+                                                                                   _cacheCompletedCallback);
+        if (!webViewController) {
             NSLog(@"[BalancyWebView] Failed to get root view controller");
             return false;
         }
 
-        // Create a WebView controller
-        BalancyWebViewController* webViewController = [[BalancyWebViewController alloc] initWithMessageCallback:_messageCallback
-                                                                                           loadCompletedCallback:_loadCompletedCallback
-                                                                                          cacheCompletedCallback:_cacheCompletedCallback];
-
-        // Add as a child view controller - always full screen
-        // Auto Layout constraints on the WKWebView (set in viewDidLoad) handle sizing
-        [rootViewController addChildViewController:webViewController];
-        webViewController.view.frame = rootViewController.view.bounds;
-        webViewController.view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-        [rootViewController.view addSubview:webViewController.view];
-        [webViewController didMoveToParentViewController:rootViewController];
+        webViewController.persistentMode = NO;
+        webViewController.view.hidden = NO;
+        webViewController.view.userInteractionEnabled = YES;
 
         // Load the URL
         NSString* nsUrl = [NSString stringWithUTF8String:url];
@@ -1318,14 +1399,47 @@ bool _balancyOpenWebViewWithSize(const char* url, int width, int height) {
 // Close the WebView
 void _balancyCloseWebView() {
     @autoreleasepool {
-        // Find the BalancyWebViewController
-        UIViewController* rootViewController = GetRootViewController();
-        for (UIViewController* childVC in rootViewController.childViewControllers) {
-            if ([childVC isKindOfClass:[BalancyWebViewController class]]) {
-                BalancyWebViewController* webViewController = (BalancyWebViewController*)childVC;
-                [webViewController close];
-                break;
+        BalancyWebViewController* webViewController = GetExistingWebViewController();
+        if (webViewController != nil) {
+            [webViewController close];
+            if (_sharedController == webViewController) {
+                _sharedController = nil;
             }
+        }
+    }
+}
+
+bool _balancyPrepareWebView(const char* shellUrl) {
+    @autoreleasepool {
+        BalancyWebViewController* webViewController = CreateOrGetWebViewController(_messageCallback,
+                                                                                   _loadCompletedCallback,
+                                                                                   _cacheCompletedCallback);
+        if (!webViewController) {
+            NSLog(@"[BalancyWebView] Failed to create persistent WebView controller");
+            return false;
+        }
+
+        [webViewController preparePersistentShellLoad];
+
+        NSString* nsUrl = [NSString stringWithUTF8String:shellUrl];
+        return [webViewController loadURL:nsUrl];
+    }
+}
+
+void _balancyShowWebView() {
+    @autoreleasepool {
+        BalancyWebViewController* webViewController = GetExistingWebViewController();
+        if (webViewController != nil) {
+            [webViewController startShowAnimation];
+        }
+    }
+}
+
+void _balancyHideWebView() {
+    @autoreleasepool {
+        BalancyWebViewController* webViewController = GetExistingWebViewController();
+        if (webViewController != nil) {
+            [webViewController hideForPersistentMode];
         }
     }
 }
@@ -1333,14 +1447,10 @@ void _balancyCloseWebView() {
 // Send a message to the WebView
 bool _balancySendMessage(const char* message) {
     @autoreleasepool {
-        // Find the BalancyWebViewController
-        UIViewController* rootViewController = GetRootViewController();
-        for (UIViewController* childVC in rootViewController.childViewControllers) {
-            if ([childVC isKindOfClass:[BalancyWebViewController class]]) {
-                BalancyWebViewController* webViewController = (BalancyWebViewController*)childVC;
-                NSString* nsMessage = [NSString stringWithUTF8String:message];
-                return [webViewController sendMessage:nsMessage];
-            }
+        BalancyWebViewController* webViewController = GetExistingWebViewController();
+        if (webViewController != nil) {
+            NSString* nsMessage = [NSString stringWithUTF8String:message];
+            return [webViewController sendMessage:nsMessage];
         }
         return false;
     }
@@ -1349,32 +1459,24 @@ bool _balancySendMessage(const char* message) {
 // Call a JavaScript function in the WebView
 const char* _balancyCallJavaScript(const char* function, const char** args, int argsCount) {
     @autoreleasepool {
-        // Find the BalancyWebViewController
-        UIViewController* rootViewController = GetRootViewController();
-        for (UIViewController* childVC in rootViewController.childViewControllers) {
-            if ([childVC isKindOfClass:[BalancyWebViewController class]]) {
-                BalancyWebViewController* webViewController = (BalancyWebViewController*)childVC;
-                
-                // Convert C strings to NSString array
-                NSString* nsFunction = [NSString stringWithUTF8String:function];
-                NSMutableArray<NSString*>* nsArgs = [NSMutableArray arrayWithCapacity:argsCount];
-                
-                for (int i = 0; i < argsCount; i++) {
-                    NSString* arg = [NSString stringWithUTF8String:args[i]];
-                    [nsArgs addObject:arg];
-                }
-                
-                // Call JavaScript
-                NSString* result = [webViewController callJavaScript:nsFunction arguments:nsArgs];
-                
-                // Return the result as a C string
-                const char* cResult = [result UTF8String];
-                char* resultCopy = (char*)malloc(strlen(cResult) + 1);
-                strcpy(resultCopy, cResult);
-                return resultCopy;
+        BalancyWebViewController* webViewController = GetExistingWebViewController();
+        if (webViewController != nil) {
+            NSString* nsFunction = [NSString stringWithUTF8String:function];
+            NSMutableArray<NSString*>* nsArgs = [NSMutableArray arrayWithCapacity:argsCount];
+
+            for (int i = 0; i < argsCount; i++) {
+                NSString* arg = [NSString stringWithUTF8String:args[i]];
+                [nsArgs addObject:arg];
             }
+
+            NSString* result = [webViewController callJavaScript:nsFunction arguments:nsArgs];
+
+            const char* cResult = [result UTF8String];
+            char* resultCopy = (char*)malloc(strlen(cResult) + 1);
+            strcpy(resultCopy, cResult);
+            return resultCopy;
         }
-        
+
         return strdup("{\"error\": \"WebView not found\"}");
     }
 }
@@ -1382,14 +1484,9 @@ const char* _balancyCallJavaScript(const char* function, const char** args, int 
 // Set the viewport rectangle for the WebView
 void _balancySetViewportRect(float x, float y, float width, float height) {
     @autoreleasepool {
-        // Find the BalancyWebViewController
-        UIViewController* rootViewController = GetRootViewController();
-        for (UIViewController* childVC in rootViewController.childViewControllers) {
-            if ([childVC isKindOfClass:[BalancyWebViewController class]]) {
-                BalancyWebViewController* webViewController = (BalancyWebViewController*)childVC;
-                [webViewController setViewportRect:x y:y width:width height:height];
-                break;
-            }
+        BalancyWebViewController* webViewController = GetExistingWebViewController();
+        if (webViewController != nil) {
+            [webViewController setViewportRect:x y:y width:width height:height];
         }
     }
 }
@@ -1397,14 +1494,9 @@ void _balancySetViewportRect(float x, float y, float width, float height) {
 // Set transparent background for the WebView
 void _balancySetTransparentBackground(bool transparent) {
     @autoreleasepool {
-        // Find the BalancyWebViewController
-        UIViewController* rootViewController = GetRootViewController();
-        for (UIViewController* childVC in rootViewController.childViewControllers) {
-            if ([childVC isKindOfClass:[BalancyWebViewController class]]) {
-                BalancyWebViewController* webViewController = (BalancyWebViewController*)childVC;
-                [webViewController setTransparentBackground:transparent];
-                break;
-            }
+        BalancyWebViewController* webViewController = GetExistingWebViewController();
+        if (webViewController != nil) {
+            [webViewController setTransparentBackground:transparent];
         }
     }
 }
@@ -1412,14 +1504,9 @@ void _balancySetTransparentBackground(bool transparent) {
 // Enable or disable offline caching
 void _balancySetOfflineCacheEnabled(bool enabled) {
     @autoreleasepool {
-        // Find the BalancyWebViewController
-        UIViewController* rootViewController = GetRootViewController();
-        for (UIViewController* childVC in rootViewController.childViewControllers) {
-            if ([childVC isKindOfClass:[BalancyWebViewController class]]) {
-                BalancyWebViewController* webViewController = (BalancyWebViewController*)childVC;
-                [webViewController setOfflineCacheEnabled:enabled];
-                break;
-            }
+        BalancyWebViewController* webViewController = GetExistingWebViewController();
+        if (webViewController != nil) {
+            [webViewController setOfflineCacheEnabled:enabled];
         }
     }
 }
@@ -1427,14 +1514,9 @@ void _balancySetOfflineCacheEnabled(bool enabled) {
 // Enable or disable debug logging
 void _balancySetDebugLogging(bool enabled) {
     @autoreleasepool {
-        // Find the BalancyWebViewController
-        UIViewController* rootViewController = GetRootViewController();
-        for (UIViewController* childVC in rootViewController.childViewControllers) {
-            if ([childVC isKindOfClass:[BalancyWebViewController class]]) {
-                BalancyWebViewController* webViewController = (BalancyWebViewController*)childVC;
-                [webViewController setDebugLogging:enabled];
-                break;
-            }
+        BalancyWebViewController* webViewController = GetExistingWebViewController();
+        if (webViewController != nil) {
+            [webViewController setDebugLogging:enabled];
         }
     }
 }
@@ -1442,14 +1524,9 @@ void _balancySetDebugLogging(bool enabled) {
 // Enable or disable game UI mode
 void _balancySetGameUIMode(bool enabled) {
     @autoreleasepool {
-        // Find the BalancyWebViewController
-        UIViewController* rootViewController = GetRootViewController();
-        for (UIViewController* childVC in rootViewController.childViewControllers) {
-            if ([childVC isKindOfClass:[BalancyWebViewController class]]) {
-                BalancyWebViewController* webViewController = (BalancyWebViewController*)childVC;
-                [webViewController setGameUIMode:enabled];
-                break;
-            }
+        BalancyWebViewController* webViewController = GetExistingWebViewController();
+        if (webViewController != nil) {
+            [webViewController setGameUIMode:enabled];
         }
     }
 }
@@ -1457,14 +1534,9 @@ void _balancySetGameUIMode(bool enabled) {
 // Enable or disable emergency exit
 void _balancySetEmergencyExitEnabled(bool enabled) {
     @autoreleasepool {
-        // Find the BalancyWebViewController
-        UIViewController* rootViewController = GetRootViewController();
-        for (UIViewController* childVC in rootViewController.childViewControllers) {
-            if ([childVC isKindOfClass:[BalancyWebViewController class]]) {
-                BalancyWebViewController* webViewController = (BalancyWebViewController*)childVC;
-                [webViewController setEmergencyExitEnabled:enabled];
-                break;
-            }
+        BalancyWebViewController* webViewController = GetExistingWebViewController();
+        if (webViewController != nil) {
+            [webViewController setEmergencyExitEnabled:enabled];
         }
     }
 }

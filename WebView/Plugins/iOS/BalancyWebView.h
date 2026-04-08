@@ -20,6 +20,7 @@ NS_ASSUME_NONNULL_BEGIN
 // Animation properties
 @property (nonatomic, assign, readwrite) float showDelay; // Delay before showing webview (in seconds)
 @property (nonatomic, assign, readwrite) float animationDuration; // Animation duration (in seconds)
+@property (nonatomic, assign, readonly) BOOL persistentMode;
 
 // Initialize with context and callbacks
 - (instancetype)initWithMessageCallback:(void (*)(const char*))messageCallback
@@ -42,6 +43,9 @@ NS_ASSUME_NONNULL_BEGIN
 // Animation configuration
 - (void)setShowDelay:(float)delaySeconds;
 - (void)setAnimationDuration:(float)durationSeconds;
+- (void)startShowAnimation;
+- (void)hideForPersistentMode;
+- (void)preparePersistentShellLoad;
 
 // Emergency Exit functionality
 - (void)setEmergencyExitEnabled:(BOOL)enabled;
