@@ -132,7 +132,18 @@ namespace Balancy
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyInitUnityFileHelper(string persistentDataPath, string resourcesPath, string codePath);
-            
+
+#if UNITY_ANDROID && !UNITY_EDITOR
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyInitUnityFileHelperAndroid(string persistentDataPath, string streamingAssetsSubpath, string codePath);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyAndroidPreloadResource(string fileName, string content);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyAndroidSetResourceExists(string fileName, bool exists);
+#endif
+
 #if UNITY_WEBGL && !UNITY_EDITOR
             [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
             public delegate void PreloadCompleteCallback();
@@ -155,10 +166,7 @@ namespace Balancy
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyWebViewRequest(IntPtr owner, string request, WebviewRequestCallback callback);
-            
-            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-            public static extern IntPtr balancyGetProductsIdAndType(out int size);
-            
+
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern IntPtr balancyGetParsedObject(IntPtr instance, int depth, bool pretty);
             
@@ -381,7 +389,10 @@ namespace Balancy
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyResetAllProfiles();
-            
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyForceSaveSmartObjects();
+
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern IntPtr balancyGetBaseDataParam(IntPtr instance, string paramName, string fileName);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
@@ -548,9 +559,18 @@ namespace Balancy
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern int balancyGetTimeOffset();
-            
+
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancySetTimeOffset(int seconds);
+
+            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+            public delegate uint CustomUTCTimeProviderDelegate();
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancySetCustomUTCTimeProvider(CustomUTCTimeProviderDelegate callback);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyResetCustomUTCTimeProvider();
 
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyNotifyAppPause(int secondsElapsed);
@@ -565,8 +585,12 @@ namespace Balancy
             public static extern void balancyStoreItem_AdWasWatched(IntPtr storeItemPointer);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern bool balancyStoreItem_HaveEnoughResources(IntPtr storeItemPointer);
-            
-            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern float balancyStoreItem_GetMultiplier(IntPtr storeItemPointer);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern bool balancyStoreItem_HasMultiplier(IntPtr storeItemPointer);
+
+
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern bool balancyShopSlot_IsAvailable(IntPtr shopSlotPointer);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
@@ -666,7 +690,13 @@ namespace Balancy
             public static extern bool balancySoftPurchaseGameOfferGroup(IntPtr gameOfferPointer, IntPtr storeItemPointer);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyNutakuComplete(int userId, string orderId, int callbackId, ResponseCallback callback);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyGetProducts(int callbackId, ResponseCallback callback);
+            
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyGetProduct(string productId, int callbackId, ResponseCallback callback);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyHardPurchaseStoreItem(IntPtr storeItemPointer, Balancy.Core.PaymentInfo paymentInfo, int callbackId, ResponseCallback callback, bool requireValidation);
@@ -693,12 +723,16 @@ namespace Balancy
             public static extern int balancyBattlePass_getRewardStatus(IntPtr bpLinePointer, int index);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyAuth_Nutaku(string userId, string token, int callbackId, ResponseCallback callback);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyAuth_AsGuest(int callbackId, ResponseCallback callback);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyAuth_NameAndPassword(string name, string password, int callbackId, ResponseCallback callback);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyLink_NameAndPassword(string name, string password, bool forceLink, int callbackId, ResponseCallback callback);
 
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyGenenal_LevelStarted();
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyGenenal_LevelCompleted();
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]

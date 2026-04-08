@@ -113,6 +113,15 @@ namespace Balancy
         public string AppVersion = null;
         public string BundleId = null;
         public string EngineVersion = null;
+
+        /// <summary>
+        /// Whether purchase receipts should be validated by the Balancy backend.
+        /// Default: true. Always forced to false in the Unity Editor (the editor uses
+        /// a fake store whose receipts can never pass real server-side validation).
+        /// Set to false on real platforms only for testing/sandbox scenarios where
+        /// you want to skip server-side receipt validation.
+        /// </summary>
+        public bool RequireReceiptValidation = true;
     }
     
     public enum UpdateType

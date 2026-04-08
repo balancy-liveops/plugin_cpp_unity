@@ -12,7 +12,8 @@ extern "C" {
     void (*_cacheCompletedCallback)(bool) = NULL;
 }
 
-// Number of directory levels to go up from HTML file to reach common parent
+// Go up enough directory levels from the loaded file to cover the entire
+// app data container so the WebView can reach all local files.
 static const int kDirectoryLevelsUp = 6;
 
 @interface BalancyWebViewController ()
@@ -23,6 +24,8 @@ static const int kDirectoryLevelsUp = 6;
 @property (nonatomic, assign) BOOL debugLogging;
 @property (nonatomic, assign) CGRect viewportRect;
 @property (nonatomic, assign) BOOL transparentBackground;
+@property (nonatomic, strong) NSTimer *emergencyExitHideTimer;
+@property (nonatomic, assign) BOOL emergencyExitEnabled;
 
 @end
 
@@ -50,6 +53,9 @@ static const int kDirectoryLevelsUp = 6;
         // Animation defaults
         _showDelay = 0.1f; // 100ms default delay
         _animationDuration = 0.1f; // 100ms default animation duration
+
+        // Emergency exit enabled by default
+        _emergencyExitEnabled = YES;
         
         // Setup WebView configuration
         [self setupWebView];
@@ -433,13 +439,10 @@ static const int kDirectoryLevelsUp = 6;
 
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
-    
+
     // Update the activity indicator position
     _activityIndicator.center = self.view.center;
-    
-    // Apply viewport settings
-    [self applyViewportSettings];
-    
+
     // Update emergency exit button position
     [self updateEmergencyExitButtonPosition];
 }
@@ -453,19 +456,19 @@ static const int kDirectoryLevelsUp = 6;
         NSString *filePath = [cleanUrl stringByReplacingOccurrencesOfString:@"file://" withString:@""];
 
         NSURL *fileURL = [NSURL fileURLWithPath:filePath];
-        
-        // Go up directory levels to reach common parent containing both Balancy/Models and Balancy/Resources
+
+        // Walk up the directory tree to grant broad read access within the app container
         NSString *readAccessPath = filePath;
         for (int i = 0; i < kDirectoryLevelsUp; i++) {
             readAccessPath = [readAccessPath stringByDeletingLastPathComponent];
         }
         NSURL *broadReadAccessURL = [NSURL fileURLWithPath:readAccessPath isDirectory:YES];
-        
+
         if (_debugLogging) {
             NSLog(@"[BalancyWebView] File URL: %@", fileURL);
             NSLog(@"[BalancyWebView] Read access URL: %@", broadReadAccessURL);
         }
-        
+
         [_webView loadFileURL:fileURL allowingReadAccessToURL:broadReadAccessURL];
         
         if (_debugLogging) {
@@ -495,7 +498,9 @@ static const int kDirectoryLevelsUp = 6;
 }
 
 - (void)close {
-    // Remove emergency exit button
+    // Remove emergency exit button and timer
+    [_emergencyExitHideTimer invalidate];
+    _emergencyExitHideTimer = nil;
     if (_emergencyExitButton) {
         [_emergencyExitButton removeFromSuperview];
         _emergencyExitButton = nil;
@@ -861,58 +866,130 @@ static const int kDirectoryLevelsUp = 6;
 
 #pragma mark - Emergency Exit Methods
 
-// Setup emergency exit button (10% x 10% in top-right corner)
+// Setup triple-tap detection via JavaScript injection.
+// WKWebView on iOS completely swallows UIKit touch events, so native gesture recognizers
+// and overlay views cannot reliably detect taps. Instead, we inject a JS touchstart listener
+// that counts rapid taps and sends a message to native when 3 fast taps are detected.
 - (void)setupEmergencyExitButton {
-    if (!self.isViewLoaded) return;
-    
-    // Remove existing button if any
-    if (_emergencyExitButton) {
-        [_emergencyExitButton removeFromSuperview];
-    }
-    
-    // Calculate button size (10% of view size)
-    CGFloat buttonWidth = self.view.bounds.size.width * 0.10;
-    CGFloat buttonHeight = self.view.bounds.size.height * 0.10;
-    
-    // Position in top-right corner
-    CGFloat buttonX = self.view.bounds.size.width - buttonWidth;
-    CGFloat buttonY = 0;  // Top of the view
-    
-    CGRect buttonFrame = CGRectMake(buttonX, buttonY, buttonWidth, buttonHeight);
-    
-    // Create invisible button (iOS compatible - minimal visibility for touch events)
-    _emergencyExitButton = [UIButton buttonWithType:UIButtonTypeCustom];
-    _emergencyExitButton.frame = buttonFrame;
-    
-    // Make button invisible but still touchable
-    _emergencyExitButton.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.01];  // Barely visible but not completely transparent
-    _emergencyExitButton.alpha = 1.0;  // Keep alpha at 1.0 for touch events to work
-    
-    // Add action for touch up inside
-    [_emergencyExitButton addTarget:self
-                             action:@selector(emergencyExitButtonTapped:)
-                   forControlEvents:UIControlEventTouchUpInside];
-    
-    // Ensure button can receive touch events
-    _emergencyExitButton.userInteractionEnabled = YES;
-    _emergencyExitButton.exclusiveTouch = YES;  // Prevent other touches while this button is being touched
-    
-    // Add to the view (above WebView)
-    [self.view addSubview:_emergencyExitButton];
-    [self.view bringSubviewToFront:_emergencyExitButton];
-    
+    if (!_webView) return;
+
+    // Inject JS triple-tap detector as a user script (runs at document start on every page)
+    NSString *tripleTapScript = @"\
+    (function() {\
+        var _beeLastTap = 0;\
+        var _beeCount = 0;\
+        document.addEventListener('touchstart', function(e) {\
+            var now = Date.now();\
+            if (now - _beeLastTap < 400) {\
+                _beeCount++;\
+            } else {\
+                _beeCount = 1;\
+            }\
+            _beeLastTap = now;\
+            if (_beeCount >= 3) {\
+                _beeCount = 0;\
+                window.webkit.messageHandlers.BalancyWebView.postMessage('__emergencyTripleTap__');\
+            }\
+        }, { passive: true, capture: true });\
+    })();\
+    ";
+
+    WKUserScript *tripleTapUserScript = [[WKUserScript alloc] initWithSource:tripleTapScript
+                                                                injectionTime:WKUserScriptInjectionTimeAtDocumentStart
+                                                             forMainFrameOnly:YES];
+    [_userContentController addUserScript:tripleTapUserScript];
+
     if (_debugLogging) {
-        NSLog(@"[BalancyWebView] Emergency exit button created at (%.1f, %.1f) size (%.1f x %.1f)",
-              buttonX, buttonY, buttonWidth, buttonHeight);
+        NSLog(@"[BalancyWebView] JS triple-tap emergency exit script injected");
+    }
+}
+
+- (void)showEmergencyExitButton {
+    if (!_emergencyExitEnabled) return;
+
+    // Cancel any pending hide timer
+    [_emergencyExitHideTimer invalidate];
+    _emergencyExitHideTimer = nil;
+
+    if (!_emergencyExitButton) {
+        CGFloat btnSize = 32.0;
+        _emergencyExitButton = [[UIView alloc] initWithFrame:CGRectMake(0, 0, btnSize, btnSize)];
+        _emergencyExitButton.layer.cornerRadius = btnSize / 2.0;
+        _emergencyExitButton.backgroundColor = [UIColor colorWithRed:0.9 green:0.1 blue:0.1 alpha:0.9];
+        _emergencyExitButton.layer.zPosition = 1000;
+
+        // Draw white X using CAShapeLayer
+        CGFloat inset = 10.0;
+        UIBezierPath *xPath = [UIBezierPath bezierPath];
+        [xPath moveToPoint:CGPointMake(inset, inset)];
+        [xPath addLineToPoint:CGPointMake(btnSize - inset, btnSize - inset)];
+        [xPath moveToPoint:CGPointMake(btnSize - inset, inset)];
+        [xPath addLineToPoint:CGPointMake(inset, btnSize - inset)];
+
+        CAShapeLayer *xLayer = [CAShapeLayer layer];
+        xLayer.path = xPath.CGPath;
+        xLayer.strokeColor = [UIColor whiteColor].CGColor;
+        xLayer.lineWidth = 2.5;
+        xLayer.lineCap = kCALineCapRound;
+        xLayer.fillColor = nil;
+        [_emergencyExitButton.layer addSublayer:xLayer];
+
+        // Tap handler on the button itself
+        UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(emergencyExitButtonTapped:)];
+        [_emergencyExitButton addGestureRecognizer:tap];
+        _emergencyExitButton.userInteractionEnabled = YES;
+
+        [self.view addSubview:_emergencyExitButton];
+    }
+
+    // Position top-right corner with margin
+    CGFloat margin = 12.0;
+    CGFloat safeTop = 0;
+    if (@available(iOS 11.0, *)) {
+        safeTop = self.view.safeAreaInsets.top;
+    }
+    CGRect bounds = self.view.bounds;
+    CGRect btnFrame = _emergencyExitButton.frame;
+    btnFrame.origin.x = bounds.size.width - btnFrame.size.width - margin;
+    btnFrame.origin.y = safeTop + margin;
+    _emergencyExitButton.frame = btnFrame;
+
+    [self.view bringSubviewToFront:_emergencyExitButton];
+    _emergencyExitButton.hidden = NO;
+    _emergencyExitButton.alpha = 1.0;
+
+    // Auto-hide after 3 seconds
+    _emergencyExitHideTimer = [NSTimer scheduledTimerWithTimeInterval:3.0
+                                                              target:self
+                                                            selector:@selector(hideEmergencyExitButton)
+                                                            userInfo:nil
+                                                             repeats:NO];
+
+    if (_debugLogging) {
+        NSLog(@"[BalancyWebView] Emergency exit button shown at top-right");
+    }
+}
+
+- (void)hideEmergencyExitButton {
+    _emergencyExitHideTimer = nil;
+    if (_emergencyExitButton) {
+        [UIView animateWithDuration:0.3 animations:^{
+            self->_emergencyExitButton.alpha = 0.0;
+        } completion:^(BOOL finished) {
+            self->_emergencyExitButton.hidden = YES;
+        }];
     }
 }
 
 // Emergency exit button tap handler
-- (void)emergencyExitButtonTapped:(UIButton *)sender {
+- (void)emergencyExitButtonTapped:(id)sender {
+    [_emergencyExitHideTimer invalidate];
+    _emergencyExitHideTimer = nil;
+
     if (_debugLogging) {
         NSLog(@"[BalancyWebView] Emergency exit button tapped in iOS mode");
     }
-    
+
     // Send message to Unity
     if (_messageCallback != NULL) {
         _messageCallback("{\"action\":200, \"params\":{}}");
@@ -921,30 +998,34 @@ static const int kDirectoryLevelsUp = 6;
 
 // Update emergency exit button position when view layout changes
 - (void)updateEmergencyExitButtonPosition {
-    if (!_emergencyExitButton || !self.isViewLoaded) return;
-    
-    CGFloat buttonWidth = self.view.bounds.size.width * 0.10;
-    CGFloat buttonHeight = self.view.bounds.size.height * 0.10;
-    
-    CGFloat buttonX = self.view.bounds.size.width - buttonWidth;
-    CGFloat buttonY = 0;  // Top of the view
-    
-    _emergencyExitButton.frame = CGRectMake(buttonX, buttonY, buttonWidth, buttonHeight);
+    if (!_emergencyExitButton || _emergencyExitButton.hidden || !self.isViewLoaded) return;
+
+    CGFloat margin = 12.0;
+    CGFloat safeTop = 0;
+    if (@available(iOS 11.0, *)) {
+        safeTop = self.view.safeAreaInsets.top;
+    }
+    CGRect bounds = self.view.bounds;
+    CGRect btnFrame = _emergencyExitButton.frame;
+    btnFrame.origin.x = bounds.size.width - btnFrame.size.width - margin;
+    btnFrame.origin.y = safeTop + margin;
+    _emergencyExitButton.frame = btnFrame;
 }
 
 // Enable or disable emergency exit
 - (void)setEmergencyExitEnabled:(BOOL)enabled {
-    if (enabled) {
-        if (!_emergencyExitButton) {
-            [self setupEmergencyExitButton];
-        }
-        _emergencyExitButton.hidden = NO;
-    } else {
+    _emergencyExitEnabled = enabled;
+
+    if (!enabled) {
+        [_emergencyExitHideTimer invalidate];
+        _emergencyExitHideTimer = nil;
         if (_emergencyExitButton) {
-            _emergencyExitButton.hidden = YES;
+            [_emergencyExitButton removeFromSuperview];
+            _emergencyExitButton = nil;
         }
     }
-    
+    // When enabled, the triple-tap gesture (always active on webView) handles showing the button
+
     if (_debugLogging) {
         NSLog(@"[BalancyWebView] Emergency exit %@", enabled ? @"enabled" : @"disabled");
     }
@@ -961,25 +1042,7 @@ static const int kDirectoryLevelsUp = 6;
 #pragma mark - Private Methods
 
 - (void)applyViewportSettings {
-    if (!self.isViewLoaded || !_webView) {
-        return;
-    }
-    
-    // Calculate actual pixel values from percentages
-    CGFloat screenWidth = self.view.bounds.size.width;
-    CGFloat screenHeight = self.view.bounds.size.height;
-    
-    CGFloat x = _viewportRect.origin.x * screenWidth;
-    CGFloat y = _viewportRect.origin.y * screenHeight;
-    CGFloat width = _viewportRect.size.width * screenWidth;
-    CGFloat height = _viewportRect.size.height * screenHeight;
-    
-    // Update WebView frame
-    _webView.frame = CGRectMake(x, y, width, height);
-    
-    if (_debugLogging) {
-        NSLog(@"[BalancyWebView] Viewport updated: x=%f, y=%f, width=%f, height=%f", x, y, width, height);
-    }
+    // WebView is always full screen via Auto Layout constraints - nothing to do here
 }
 
 - (void)applyTransparencySettings {
@@ -1036,10 +1099,19 @@ static const int kDirectoryLevelsUp = 6;
     if (![message.name isEqualToString:@"BalancyWebView"]) {
         return;
     }
-    
+
+    // Check for emergency triple-tap signal from JS
+    if ([message.body isKindOfClass:[NSString class]] && [message.body isEqualToString:@"__emergencyTripleTap__"]) {
+        if (_debugLogging) {
+            NSLog(@"[BalancyWebView] Triple-tap detected via JS — showing emergency exit button");
+        }
+        [self showEmergencyExitButton];
+        return;
+    }
+
     // Extract the message body (should be a string)
     NSString *messageString = nil;
-    
+
     if ([message.body isKindOfClass:[NSString class]]) {
         messageString = (NSString *)message.body;
     } else {
@@ -1201,12 +1273,13 @@ bool _balancyOpenWebView(const char* url) {
                                                                                            loadCompletedCallback:_loadCompletedCallback
                                                                                           cacheCompletedCallback:_cacheCompletedCallback];
         
-        // Add as a child view controller
+        // Add as a child view controller - always full screen
         [rootViewController addChildViewController:webViewController];
-        [rootViewController.view addSubview:webViewController.view];
         webViewController.view.frame = rootViewController.view.bounds;
+        webViewController.view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        [rootViewController.view addSubview:webViewController.view];
         [webViewController didMoveToParentViewController:rootViewController];
-        
+
         // Load the URL
         NSString* nsUrl = [NSString stringWithUTF8String:url];
         return [webViewController loadURL:nsUrl];
@@ -1222,33 +1295,20 @@ bool _balancyOpenWebViewWithSize(const char* url, int width, int height) {
             NSLog(@"[BalancyWebView] Failed to get root view controller");
             return false;
         }
-        
+
         // Create a WebView controller
         BalancyWebViewController* webViewController = [[BalancyWebViewController alloc] initWithMessageCallback:_messageCallback
                                                                                            loadCompletedCallback:_loadCompletedCallback
                                                                                           cacheCompletedCallback:_cacheCompletedCallback];
-        
-        // Convert from Unity pixels to iOS points by dividing by screen scale
-        CGFloat scale = [UIScreen mainScreen].scale;
-        CGFloat pointWidth = width / scale;
-        CGFloat pointHeight = height / scale;
-        
-        if (webViewController.debugLogging) {
-            NSLog(@"[BalancyWebView] Scale factor: %.1fx, Converting %dx%d pixels to %.1fx%.1f points", 
-                  scale, width, height, pointWidth, pointHeight);
-        }
-        
-        // Add as a child view controller
+
+        // Add as a child view controller - always full screen
+        // Auto Layout constraints on the WKWebView (set in viewDidLoad) handle sizing
         [rootViewController addChildViewController:webViewController];
+        webViewController.view.frame = rootViewController.view.bounds;
+        webViewController.view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
         [rootViewController.view addSubview:webViewController.view];
-        
-        // Set custom size using points - center the view in the parent
-        CGFloat x = (rootViewController.view.bounds.size.width - pointWidth) / 2.0;
-        CGFloat y = (rootViewController.view.bounds.size.height - pointHeight) / 2.0;
-        webViewController.view.frame = CGRectMake(x, y, pointWidth, pointHeight);
-        
         [webViewController didMoveToParentViewController:rootViewController];
-        
+
         // Load the URL
         NSString* nsUrl = [NSString stringWithUTF8String:url];
         return [webViewController loadURL:nsUrl];

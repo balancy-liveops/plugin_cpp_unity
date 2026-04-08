@@ -19,7 +19,8 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
-import android.widget.Button;
+import android.graphics.Canvas;
+import android.graphics.Paint;
 import android.widget.FrameLayout;
 
 /**
@@ -32,7 +33,11 @@ public class BalancyWebViewPlugin {
     private static BalancyWebViewPlugin instance;
     private WebView webView;
     private FrameLayout webViewContainer;
-    private Button emergencyExitButton;
+    private View emergencyExitButton;
+    private Handler emergencyExitHideHandler;
+    private Runnable emergencyExitHideRunnable;
+    private long lastTapTime = 0;
+    private int rapidTapCount = 0;
     private Activity currentActivity;
     
     private boolean isWebViewOpen = false;
@@ -218,6 +223,10 @@ public class BalancyWebViewPlugin {
         settings.setDatabaseEnabled(true);
         settings.setAllowFileAccess(true);
         settings.setAllowContentAccess(true);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) {
+            settings.setAllowFileAccessFromFileURLs(true);
+            settings.setAllowUniversalAccessFromFileURLs(true);
+        }
         settings.setMediaPlaybackRequiresUserGesture(false);
         settings.setRenderPriority(WebSettings.RenderPriority.HIGH);
         settings.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
@@ -244,8 +253,23 @@ public class BalancyWebViewPlugin {
         
         webView.setOnLongClickListener(v -> true);
         webView.setOnTouchListener((v, event) -> {
-            if (event.getAction() == android.view.MotionEvent.ACTION_DOWN || 
-                event.getAction() == android.view.MotionEvent.ACTION_UP) {
+            if (event.getAction() == android.view.MotionEvent.ACTION_DOWN) {
+                if (!v.hasFocus()) {
+                    v.requestFocus();
+                }
+                // Track rapid taps for triple-tap emergency exit
+                long now = System.currentTimeMillis();
+                if (now - lastTapTime < 400) {
+                    rapidTapCount++;
+                } else {
+                    rapidTapCount = 1;
+                }
+                lastTapTime = now;
+                if (rapidTapCount >= 3) {
+                    rapidTapCount = 0;
+                    showEmergencyExitButton();
+                }
+            } else if (event.getAction() == android.view.MotionEvent.ACTION_UP) {
                 if (!v.hasFocus()) {
                     v.requestFocus();
                 }
@@ -332,30 +356,101 @@ public class BalancyWebViewPlugin {
     }
     
     private void setupEmergencyExitButton() {
-        emergencyExitButton = new Button(currentActivity);
-        emergencyExitButton.setBackgroundColor(Color.TRANSPARENT);
-        emergencyExitButton.setAlpha(0.01f);
-        emergencyExitButton.setText("");
-        
-        int screenWidth = currentActivity.getResources().getDisplayMetrics().widthPixels;
-        int screenHeight = currentActivity.getResources().getDisplayMetrics().heightPixels;
-        int buttonSize = Math.min(screenWidth, screenHeight) / 10;
-        
-        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(buttonSize, buttonSize);
-        params.gravity = android.view.Gravity.TOP | android.view.Gravity.END;
-        emergencyExitButton.setLayoutParams(params);
-        
-        emergencyExitButton.setOnClickListener(v -> {
-            logDebug("Emergency exit button tapped");
-            sendUnityMessage("OnAndroidMessageReceived", "{\"action\":200, \"params\":{}}");
-        });
-        
-        // Set initial visibility based on emergencyExitEnabled setting
-        emergencyExitButton.setVisibility(emergencyExitEnabled ? View.VISIBLE : View.GONE);
-        
-        webViewContainer.addView(emergencyExitButton);
-        
-        logDebug("Emergency exit button created (" + (emergencyExitEnabled ? "visible" : "hidden") + ")");
+        // Emergency exit is now triggered by triple-tap on the webView.
+        // The button is created on-demand when triple-tap is detected.
+        emergencyExitHideHandler = new Handler(Looper.getMainLooper());
+        logDebug("Triple-tap emergency exit gesture installed");
+    }
+
+    private void showEmergencyExitButton() {
+        if (!emergencyExitEnabled) return;
+        if (webViewContainer == null || currentActivity == null) return;
+
+        // Cancel pending hide
+        if (emergencyExitHideHandler != null && emergencyExitHideRunnable != null) {
+            emergencyExitHideHandler.removeCallbacks(emergencyExitHideRunnable);
+            emergencyExitHideRunnable = null;
+        }
+
+        if (emergencyExitButton == null) {
+            final int btnSizeDp = 32;
+            final float density = currentActivity.getResources().getDisplayMetrics().density;
+            final int btnSizePx = (int) (btnSizeDp * density);
+            final int marginPx = (int) (12 * density);
+
+            // Custom view that draws a red circle with white X
+            emergencyExitButton = new View(currentActivity) {
+                private final Paint circlePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+                private final Paint xPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+                {
+                    circlePaint.setColor(Color.argb(230, 230, 25, 25));
+                    circlePaint.setStyle(Paint.Style.FILL);
+                    xPaint.setColor(Color.WHITE);
+                    xPaint.setStrokeWidth(2.5f * density);
+                    xPaint.setStrokeCap(Paint.Cap.ROUND);
+                    xPaint.setStyle(Paint.Style.STROKE);
+                }
+
+                @Override
+                protected void onDraw(Canvas canvas) {
+                    super.onDraw(canvas);
+                    float cx = getWidth() / 2f;
+                    float cy = getHeight() / 2f;
+                    float radius = Math.min(cx, cy);
+                    canvas.drawCircle(cx, cy, radius, circlePaint);
+
+                    float inset = radius * 0.38f;
+                    canvas.drawLine(cx - inset, cy - inset, cx + inset, cy + inset, xPaint);
+                    canvas.drawLine(cx + inset, cy - inset, cx - inset, cy + inset, xPaint);
+                }
+            };
+
+            FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(btnSizePx, btnSizePx);
+            params.gravity = android.view.Gravity.TOP | android.view.Gravity.END;
+            params.topMargin = marginPx;
+            params.rightMargin = marginPx;
+            emergencyExitButton.setLayoutParams(params);
+            emergencyExitButton.setElevation(100f);
+
+            emergencyExitButton.setOnClickListener(v -> {
+                logDebug("Emergency exit button tapped");
+                // Cancel auto-hide
+                if (emergencyExitHideHandler != null && emergencyExitHideRunnable != null) {
+                    emergencyExitHideHandler.removeCallbacks(emergencyExitHideRunnable);
+                    emergencyExitHideRunnable = null;
+                }
+                sendUnityMessage("OnAndroidMessageReceived", "{\"action\":200, \"params\":{}}");
+            });
+
+            webViewContainer.addView(emergencyExitButton);
+        }
+
+        emergencyExitButton.setVisibility(View.VISIBLE);
+        emergencyExitButton.setAlpha(1.0f);
+
+        // Auto-hide after 3 seconds
+        emergencyExitHideRunnable = this::hideEmergencyExitButton;
+        emergencyExitHideHandler.postDelayed(emergencyExitHideRunnable, 3000);
+
+        logDebug("Emergency exit button shown at top-right");
+    }
+
+    private void hideEmergencyExitButton() {
+        emergencyExitHideRunnable = null;
+        if (emergencyExitButton != null) {
+            emergencyExitButton.animate()
+                .alpha(0.0f)
+                .setDuration(300)
+                .setListener(new AnimatorListenerAdapter() {
+                    @Override
+                    public void onAnimationEnd(Animator animation) {
+                        if (emergencyExitButton != null) {
+                            emergencyExitButton.setVisibility(View.GONE);
+                        }
+                    }
+                })
+                .start();
+        }
     }
     
     private void startShowAnimation() {
@@ -412,23 +507,29 @@ public class BalancyWebViewPlugin {
     
     public void closeWebView() {
         if (!isWebViewOpen) return;
-        
+
         logDebug("closeWebView() called from thread: " + Thread.currentThread().getName());
         runOnUIThread(() -> {
+            // Clean up emergency exit
+            if (emergencyExitHideHandler != null && emergencyExitHideRunnable != null) {
+                emergencyExitHideHandler.removeCallbacks(emergencyExitHideRunnable);
+                emergencyExitHideRunnable = null;
+            }
+
             if (webViewContainer != null) {
                 webViewContainer.setVisibility(View.GONE);
                 webViewContainer.removeAllViews();
             }
-            
+
             if (webView != null) {
                 webView.destroy();
                 webView = null;
             }
-            
+
             emergencyExitButton = null;
             logDebug("WebView closed on UI thread");
         });
-        
+
         isWebViewOpen = false;
     }
     
@@ -440,7 +541,7 @@ public class BalancyWebViewPlugin {
         
         logDebug("Loading URL: " + url);
         
-        if (url.startsWith("file://")) {
+        if (url.startsWith("file://") && !url.startsWith("file:///android_asset/")) {
             String filePath = url.substring(7);
             java.io.File file = new java.io.File(filePath);
             if (!file.exists()) {
@@ -745,12 +846,21 @@ public class BalancyWebViewPlugin {
     public void setEmergencyExitEnabled(boolean enabled) {
         this.emergencyExitEnabled = enabled;
         logDebug("Emergency exit " + (enabled ? "enabled" : "disabled"));
-        
-        if (emergencyExitButton != null) {
+
+        if (!enabled) {
             runOnUIThread(() -> {
-                emergencyExitButton.setVisibility(enabled ? View.VISIBLE : View.GONE);
+                if (emergencyExitHideHandler != null && emergencyExitHideRunnable != null) {
+                    emergencyExitHideHandler.removeCallbacks(emergencyExitHideRunnable);
+                    emergencyExitHideRunnable = null;
+                }
+                if (emergencyExitButton != null) {
+                    emergencyExitButton.setVisibility(View.GONE);
+                    webViewContainer.removeView(emergencyExitButton);
+                    emergencyExitButton = null;
+                }
             });
         }
+        // When enabled, the triple-tap on webView handles showing the button
     }
     
     /**

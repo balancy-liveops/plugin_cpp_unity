@@ -93,10 +93,26 @@ namespace Balancy
 
         private static void CheckForClosing(JsonBasedObject deactivatedOwner)
         {
-            if (m_LastOpenedOwnerPtr == deactivatedOwner.GetRawPointer())
+            if (m_LastOpenedOwnerPtr != IntPtr.Zero &&
+                m_LastOpenedOwnerPtr == deactivatedOwner.GetRawPointer())
+            {
+                m_LastOpenedOwnerPtr = IntPtr.Zero;
                 CloseView();
+            }
         }
 
+        internal static void OnProfileUpdated()
+        {
+            if (m_LastOpenedOwnerPtr == IntPtr.Zero)
+                return;
+
+            // Profile was recreated — all smart object pointers (offers, events, etc.)
+            // are now invalid. Close the view (it may be showing stale data) and null
+            // the cached owner pointer so we don't send a dangling pointer to C++.
+            m_LastOpenedOwnerPtr = IntPtr.Zero;
+            CloseView();
+        }
+        
         private static void HandleWebViewClosed()
         {
             m_LastOpenedOwnerPtr = IntPtr.Zero;
@@ -225,6 +241,14 @@ namespace Balancy
                 _webView.SetAnimationDuration(transparencyAnimationDuration);
             }
         }
+
+        public static void SetEmergencyExitEnabled(bool enabled)
+        {
+            if (_webView)
+            {
+                _webView.SetEmergencyExitEnabled(enabled);
+            }
+        }
         
         public static void OpenView(string url, JsonBasedObject owner = null)
         {
@@ -344,6 +368,7 @@ namespace Balancy
 
             CloseWindow = 200,
             BalancyIsReady = 201,
+            SetEmergencyExitEnabled = 203,
 
             CustomMessage = 1000,
         }
@@ -385,6 +410,12 @@ namespace Balancy
             public int index;
             public string productId;
             public string cistom;
+        }
+
+        [System.Serializable]
+        class CommandSetEmergencyExit
+        {
+            public bool enabled;
         }
         
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.General.DataRequestedCallback))]
@@ -573,6 +604,16 @@ namespace Balancy
                         return;
                     }
 
+                    case RequestAction.SetEmergencyExitEnabled:
+                    {
+                        CommandSetEmergencyExit emergencyCmd = JsonUtility.FromJson<CommandSetEmergencyExit>(paramsJson);
+                        if (emergencyCmd != null)
+                        {
+                            _webView.SetEmergencyExitEnabled(emergencyCmd.enabled);
+                        }
+                        LibraryMethods.General.balancyDataRequestedResponse(requestId, DEFAULT_ANSWER);
+                        return;
+                    }
                     case RequestAction.CloseWindow:
                     {
                         CloseView();

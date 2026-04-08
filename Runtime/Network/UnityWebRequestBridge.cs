@@ -41,6 +41,10 @@ namespace Balancy.Network
         // Active requests tracking
         private Dictionary<int, UnityWebRequest> _activeRequests = new Dictionary<int, UnityWebRequest>();
 
+        private static volatile bool _isStopped = false;
+
+        public static bool IsStopped => _isStopped;
+
 #if UNITY_EDITOR
         // HttpClient for Editor mode - use a dictionary to manage different clients with different timeouts
         private static Dictionary<int, HttpClient> _httpClients = new Dictionary<int, HttpClient>();
@@ -53,6 +57,8 @@ namespace Balancy.Network
         public static void Initialize()
         {
             if (_instance != null) return;
+
+            _isStopped = false;
 
             var guid = Guid.NewGuid().ToString();
             var go = new GameObject("Balancy_WebRequestBridge_" + guid);
@@ -75,15 +81,18 @@ namespace Balancy.Network
 
         public static void Clear()
         {
+            _isStopped = true;
+
             if (_instance == null) return;
-            
+
+            _instance.StopAllCoroutines();
             _instance.CleanupResources();
-            
+
             if (Application.isPlaying)
                 Destroy(_instance.gameObject);
             else
                 DestroyImmediate(_instance.gameObject);
-                
+
             _instance = null;
         }
         
@@ -247,7 +256,9 @@ namespace Balancy.Network
 
                 // Send request
                 HttpResponseMessage response = await httpClient.SendAsync(request);
-                
+
+                if (_isStopped) return;
+
                 // Read response
                 byte[] data = await response.Content.ReadAsByteArrayAsync();
                 bool success = response.IsSuccessStatusCode;
@@ -280,16 +291,18 @@ namespace Balancy.Network
             }
             catch (Exception ex)
             {
+                if (_isStopped) return;
+
                 Debug.LogError($"HTTP request failed: {ex.Message}");
-                
+
                 // Create error message as byte array
                 string errorMessage = $"{{\"error\":\"{ex.Message}\"}}";
                 byte[] errorData = Encoding.UTF8.GetBytes(errorMessage);
-                
+
                 // Convert to native pointer
                 IntPtr dataPtr = Marshal.AllocHGlobal(errorData.Length);
                 Marshal.Copy(errorData, 0, dataPtr, errorData.Length);
-                
+
                 try
                 {
                     // Send failure back to native plugin
@@ -313,10 +326,13 @@ namespace Balancy.Network
             {
                 // Download the file
                 HttpResponseMessage response = await httpClient.GetAsync(url);
+
+                if (_isStopped) return;
+
                 byte[] data = await response.Content.ReadAsByteArrayAsync();
                 bool success = response.IsSuccessStatusCode;
                 int errorCode = (int)response.StatusCode;
-                
+
                 string contentType = "";
                 if (response.Content.Headers.ContentType != null)
                 {
@@ -350,8 +366,10 @@ namespace Balancy.Network
             }
             catch (Exception ex)
             {
+                if (_isStopped) return;
+
                 Debug.LogError($"File download failed: {ex.Message}");
-                
+
                 // Send failure back to native plugin
                 balancyHandleFileLoadComplete(requestId, false, 0, IntPtr.Zero, 0, "");
             }
@@ -398,6 +416,13 @@ namespace Balancy.Network
 
             // Send the request
             yield return webRequest.SendWebRequest();
+
+            if (_isStopped)
+            {
+                _activeRequests.Remove(requestId);
+                webRequest.Dispose();
+                yield break;
+            }
 
             // Process the response
             bool success = webRequest.result == UnityWebRequest.Result.Success;
@@ -475,6 +500,13 @@ namespace Balancy.Network
             // Send the request
             yield return webRequest.SendWebRequest();
 
+            if (_isStopped)
+            {
+                _activeRequests.Remove(requestId);
+                webRequest.Dispose();
+                yield break;
+            }
+
             // Process the response
             bool success = webRequest.result == UnityWebRequest.Result.Success;
             int errorCode = (int)webRequest.responseCode;
@@ -486,7 +518,7 @@ namespace Balancy.Network
             {
                 webRequest.GetResponseHeaders().TryGetValue("Content-Type", out contentType);
                 if (contentType == null) contentType = "";
-                
+
                 // Clean up content type (remove charset and other parameters)
                 int semicolonIndex = contentType.IndexOf(';');
                 if (semicolonIndex >= 0)
@@ -494,7 +526,7 @@ namespace Balancy.Network
                     contentType = contentType.Substring(0, semicolonIndex).Trim();
                 }
             }
-            
+
             // Convert data to a native pointer
             IntPtr dataPtr = IntPtr.Zero;
             int dataSize = 0;

@@ -217,8 +217,8 @@ namespace Balancy.Models
                     Debug.LogError($"You are trying to load sprite as an Object. Please use LoadSprite instead. {Id}");
                     return null;
                 case ObjectType.Asset:
-                    // if (OnLoadAssetAsObject != null)
-                    //     return OnLoadAssetAsObject?.Invoke(Name, callback);
+                    if (OnLoadAssetAsObject != null)
+                        return OnLoadAssetAsObject?.Invoke(Name, callback);
                     Debug.LogError($"Addressables plugin wasn't found. Please add it to the project. {Id}");
                     break;
             }

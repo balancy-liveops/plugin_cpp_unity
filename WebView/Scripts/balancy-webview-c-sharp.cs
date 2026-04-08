@@ -272,6 +272,7 @@ namespace Balancy.WebView
         private static extern void _balancyShowWebView();
         [DllImport("__Internal")]
         private static extern void _balancyHideWebView();
+        private static extern void _balancySetEmergencyExitEnabled(bool enabled);
 
         #elif UNITY_WEBGL && !UNITY_EDITOR
 
@@ -362,6 +363,11 @@ namespace Balancy.WebView
         private static void _balancyHideWebView()
         {
             Debug.LogWarning("[BalancyWebView WebGL] HideWebView not yet implemented for WebGL");
+        }
+
+        private static void _balancySetEmergencyExitEnabled(bool enabled)
+        {
+            // No-op for WebGL - no emergency exit button in browser
         }
 
         #elif UNITY_ANDROID && !UNITY_EDITOR
@@ -631,7 +637,9 @@ namespace Balancy.WebView
         private static extern void _balancySetShowDelay(float delaySeconds);
         [DllImport("libBalancyWebViewMac")]
         private static extern void _balancySetAnimationDuration(float durationSeconds);
-        
+        [DllImport("libBalancyWebViewMac")]
+        private static extern void _balancySetEmergencyExitEnabled(bool enabled);
+
         // Embedding-specific methods (macOS only)
         [DllImport("libBalancyWebViewMac")]
         private static extern bool _balancyOpenWebViewEmbedded(string url, int width, int height);
@@ -754,9 +762,17 @@ namespace Balancy.WebView
             {
                 return true; // Not a local file, let WebView handle it
             }
-            
+
+            // android_asset URLs are served directly from the APK and can't be validated via File.Exists
+            #if UNITY_ANDROID && !UNITY_EDITOR
+            if (url.StartsWith("file:///android_asset/"))
+            {
+                return true;
+            }
+            #endif
+
             string filePath = url.Substring(7); // Remove "file://" prefix
-            
+
             // On Android, convert Unity path format if needed
             #if UNITY_ANDROID && !UNITY_EDITOR
             // Make sure we're using the correct path format
@@ -1209,6 +1225,16 @@ namespace Balancy.WebView
         public float GetAnimationDuration()
         {
             return _animationDuration;
+        }
+
+        /// <summary>
+        /// Enables or disables the emergency exit button (triple-tap to close).
+        /// When disabled, triple-tap will not show the close button.
+        /// </summary>
+        /// <param name="enabled">True to enable emergency exit (default), false to disable</param>
+        public void SetEmergencyExitEnabled(bool enabled)
+        {
+            _balancySetEmergencyExitEnabled(enabled);
         }
 
         /// <summary>
