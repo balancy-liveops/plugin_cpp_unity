@@ -18,14 +18,24 @@ static const int kDirectoryLevelsUp = 6;
 static BalancyWebViewController* _sharedController = nil;
 static UIViewController* GetRootViewController(void);
 
+static NSURL* GetPersistentDataRootURL(void) {
+    NSArray<NSString*>* documentDirectories = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
+    NSString* documentsDirectory = documentDirectories.firstObject;
+    if (documentsDirectory == nil || documentsDirectory.length == 0) {
+        return nil;
+    }
+
+    return [NSURL fileURLWithPath:documentsDirectory isDirectory:YES];
+}
+
 static NSURL* CreatePersistentShellURL(NSString* sourcePath) {
     if (sourcePath == nil || sourcePath.length == 0) {
         return nil;
     }
 
     NSFileManager* fileManager = [NSFileManager defaultManager];
-    NSArray<NSString*>* documentDirectories = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
-    NSString* documentsDirectory = documentDirectories.firstObject;
+    NSURL* persistentDataRootURL = GetPersistentDataRootURL();
+    NSString* documentsDirectory = persistentDataRootURL.path;
     if (documentsDirectory == nil) {
         return nil;
     }
@@ -568,13 +578,16 @@ static BalancyWebViewController* CreateOrGetWebViewController(void (*messageCall
         NSString *filePath = [cleanUrl stringByReplacingOccurrencesOfString:@"file://" withString:@""];
 
         NSURL *fileURL = [NSURL fileURLWithPath:filePath];
+        NSURL *broadReadAccessURL = GetPersistentDataRootURL();
 
-        // Walk up the directory tree to grant broad read access within the app container
-        NSString *readAccessPath = filePath;
-        for (int i = 0; i < kDirectoryLevelsUp; i++) {
-            readAccessPath = [readAccessPath stringByDeletingLastPathComponent];
+        if (broadReadAccessURL == nil || ![filePath hasPrefix:broadReadAccessURL.path]) {
+            // Fallback for any local file that is not under Documents.
+            NSString *readAccessPath = filePath;
+            for (int i = 0; i < kDirectoryLevelsUp; i++) {
+                readAccessPath = [readAccessPath stringByDeletingLastPathComponent];
+            }
+            broadReadAccessURL = [NSURL fileURLWithPath:readAccessPath isDirectory:YES];
         }
-        NSURL *broadReadAccessURL = [NSURL fileURLWithPath:readAccessPath isDirectory:YES];
 
         if (_debugLogging) {
             NSLog(@"[BalancyWebView] File URL: %@", fileURL);
