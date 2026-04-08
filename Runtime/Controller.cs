@@ -5,6 +5,9 @@ using Balancy.Core;
 using Balancy.Data.SmartObjects;
 using Balancy.Models;
 using UnityEngine;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 namespace Balancy
 {
@@ -47,11 +50,13 @@ namespace Balancy
 
             LibraryMethods.General.balancySetInvokeInMainThreadCallback(InvokeInMainThread);
             yield return UnityFileManager.InitRuntime();
+
             LibraryMethods.Models.balancySetModelOnRefresh(ModelRefreshed);
             LibraryMethods.Models.balancySetUserDataInitializedCallback(UserDataInitialized);
             Profiles.Init();
             RenderViewsManager.Init();
             RunFunctionManager.Init();
+            ScriptCompletionManager.Init();
 
             CppAppConfig config = CreateConfigForCPP(appConfig);
             IntPtr configPtr = Marshal.AllocHGlobal(Marshal.SizeOf(config));
@@ -74,16 +79,22 @@ namespace Balancy
                 // Other cleanup operations may trigger logging, which would crash if callback is invalid
                 LibraryMethods.General.balancySetLogCallback(null);
 
+                _isReadyToUse = false;
                 OnDataUpdated = null;
                 LibraryMethods.Models.balancySetModelOnRefresh(null);
                 LibraryMethods.Models.balancySetUserDataInitializedCallback(null);
+
+                // Stop C# bridges BEFORE destroying C++ objects.
+                // Running coroutines (web requests, unzip) can call back into C++
+                // after balancyStop() destroys the native manager, causing
+                // "mutex lock failed" and use-after-free crashes.
+                Balancy.Network.UnityWebRequestBridge.Clear();
+                UnzipBridge.Cleanup();
+
                 LibraryMethods.General.balancyStop();
                 Profiles.CleanUp();
                 CMS.CleanUp();
-                Balancy.Network.UnityWebRequestBridge.Clear();
-                UnzipBridge.Cleanup();
                 LibraryMethods.General.balancySetInvokeInMainThreadCallback(null);
-                _isReadyToUse = false;
             }
             catch (System.Exception e)
             {
@@ -101,7 +112,10 @@ namespace Balancy
         {
             if (dictsChanged)
                 CMS.RefreshAll();
-            
+
+            if (profileChanged)
+                RenderViewsManager.OnProfileUpdated();
+
             OnDataUpdated?.Invoke(dictsChanged, profileChanged);
         }
 
@@ -159,6 +173,15 @@ namespace Balancy
         {
             if (originalBalancyPlatform == Constants.BalancyPlatform.Undefined)
             {
+#if UNITY_EDITOR
+                var targetPlatform = EditorUserBuildSettings.activeBuildTarget;
+                switch (targetPlatform)
+                {
+                    case BuildTarget.iOS:
+                        return Constants.BalancyPlatform.IosAppStore;
+                }
+                return Constants.BalancyPlatform.AndroidGooglePlay;
+#endif
                 var platform = UnityEngine.Application.platform;
 
                 switch (platform)
@@ -182,8 +205,29 @@ namespace Balancy
         {
             if (originalPlatform == Constants.DevicePlatform.Unknown)
             {
+#if UNITY_EDITOR
+                var targetPlatform = EditorUserBuildSettings.activeBuildTarget;
+                switch (targetPlatform)
+                {
+                    case BuildTarget.StandaloneOSX:
+                        return Constants.DevicePlatform.OSXPlayer;
+                    case BuildTarget.StandaloneWindows:
+                        return Constants.DevicePlatform.WindowsPlayer;
+                    case BuildTarget.iOS:
+                        return Constants.DevicePlatform.IPhonePlayer;
+                    case BuildTarget.Android:
+                        return Constants.DevicePlatform.Android;
+                    case BuildTarget.StandaloneWindows64:
+                        return Constants.DevicePlatform.WindowsPlayer;
+                    case BuildTarget.WebGL:
+                        return Constants.DevicePlatform.WebGLPlayer;
+                    case BuildTarget.WSAPlayer:
+                        break;
+                    case BuildTarget.StandaloneLinux64:
+                        return Constants.DevicePlatform.LinuxPlayer;
+                }
+#endif
                 var platform = UnityEngine.Application.platform;
-
                 switch (platform)
                 {
                     case RuntimePlatform.WindowsEditor:
@@ -240,6 +284,7 @@ namespace Balancy
                         bool isCMSUpdated = notificationDataIsReady.IsCMSUpdated;
                         bool isProfileUpdated = notificationDataIsReady.IsProfileUpdated;
 #endif
+                        RenderViewsManager.RefreshScripts();
                         DataUpdated(isCMSUpdated, isProfileUpdated);
                         _isReadyToUse = true;
                         if (isCloudSynced)
@@ -278,7 +323,8 @@ namespace Balancy
                         var liveOpsNewEvent = Marshal.PtrToStructure<Notifications.LiveOpsNotification_OnNewEventActivated>(notificationPtr);
                         var eventInfo = Profiles.System.SmartInfo.FindEventInfo(liveOpsNewEvent.EventInfo);
 #endif
-                        Balancy.Callbacks.OnNewEventActivated?.Invoke(eventInfo);
+                        if (eventInfo != null)
+                            Balancy.Callbacks.OnNewEventActivated?.Invoke(eventInfo);
                         break;
                     }
                     case Notifications.NotificationType.OnEventDeactivated: {
@@ -289,7 +335,8 @@ namespace Balancy
                         var liveOpsEvent = Marshal.PtrToStructure<Notifications.LiveOpsNotification_OnEventDeactivated>(notificationPtr);
                         var eventInfo = JsonBasedObject.CreateObject<EventInfo>(liveOpsEvent.EventInfo);
 #endif
-                        Balancy.Callbacks.OnEventDeactivated?.Invoke(eventInfo);
+                        if (eventInfo != null)
+                            Balancy.Callbacks.OnEventDeactivated?.Invoke(eventInfo);
                         break;
                     }
                     case Notifications.NotificationType.OnNewOfferActivated: {
@@ -300,7 +347,8 @@ namespace Balancy
                         var notificationTyped = Marshal.PtrToStructure<Notifications.LiveOpsNotification_OnNewOfferActivated>(notificationPtr);
                         var offerInfo = Profiles.System.SmartInfo.FindOfferInfo(notificationTyped.OfferInfo);
 #endif
-                        Balancy.Callbacks.OnNewOfferActivated?.Invoke(offerInfo);
+                        if (offerInfo != null)
+                            Balancy.Callbacks.OnNewOfferActivated?.Invoke(offerInfo);
                         break;
                     }
                     case Notifications.NotificationType.OnOfferDeactivated: {
@@ -308,11 +356,13 @@ namespace Balancy
                         IntPtr offerInfoPtr = LibraryMethods.General.balancyNotification_GetOfferInfo(notificationId);
                         bool wasPurchased = LibraryMethods.General.balancyNotification_WasPurchased(notificationId);
                         var offerInfo = JsonBasedObject.CreateObject<OfferInfo>(offerInfoPtr);
-                        Balancy.Callbacks.OnOfferDeactivated?.Invoke(offerInfo, wasPurchased);
+                        if (offerInfo != null)
+                            Balancy.Callbacks.OnOfferDeactivated?.Invoke(offerInfo, wasPurchased);
 #else
                         var notificationTyped = Marshal.PtrToStructure<Notifications.LiveOpsNotification_OnOfferDeactivated>(notificationPtr);
                         var offerInfo = JsonBasedObject.CreateObject<OfferInfo>(notificationTyped.OfferInfo);
-                        Balancy.Callbacks.OnOfferDeactivated?.Invoke(offerInfo, notificationTyped.WasPurchased);
+                        if (offerInfo != null)
+                            Balancy.Callbacks.OnOfferDeactivated?.Invoke(offerInfo, notificationTyped.WasPurchased);
 #endif
                         break;
                     }
@@ -324,7 +374,8 @@ namespace Balancy
                         var notificationTyped = Marshal.PtrToStructure<Notifications.LiveOpsNotification_OnNewOfferGroupActivated>(notificationPtr);
                         var offerInfo = Profiles.System.SmartInfo.FindOfferGroupInfo(notificationTyped.OfferInfo);
 #endif
-                        Balancy.Callbacks.OnNewOfferGroupActivated?.Invoke(offerInfo);
+                        if (offerInfo != null)
+                            Balancy.Callbacks.OnNewOfferGroupActivated?.Invoke(offerInfo);
                         break;
                     }
                     case Notifications.NotificationType.OnOfferGroupDeactivated: {
@@ -335,7 +386,8 @@ namespace Balancy
                         var notificationTyped = Marshal.PtrToStructure<Notifications.LiveOpsNotification_OnOfferGroupDeactivated>(notificationPtr);
                         var offerInfo = JsonBasedObject.CreateObject<OfferGroupInfo>(notificationTyped.OfferInfo);
 #endif
-                        Balancy.Callbacks.OnOfferGroupDeactivated?.Invoke(offerInfo);
+                        if (offerInfo != null)
+                            Balancy.Callbacks.OnOfferGroupDeactivated?.Invoke(offerInfo);
                         break;
                     }
                     case Notifications.NotificationType.OnABTestStarted: {

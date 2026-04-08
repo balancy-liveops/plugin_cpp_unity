@@ -7,27 +7,27 @@ namespace Balancy.Data
 {
     public class BaseData : JsonBasedObject
     {
-        protected void SetIntValue(string paramName, int inValue)
+        public void SetIntValue(string paramName, int inValue)
         {
             LibraryMethods.Data.balancySetIntParam(_pointer, paramName, inValue);
         }
         
-        protected void SetLongValue(string paramName, long inValue)
+        public void SetLongValue(string paramName, long inValue)
         {
             LibraryMethods.Data.balancySetLongParam(_pointer, paramName, inValue);
         }
         
-        protected void SetStringValue(string paramName, string inValue)
+        public void SetStringValue(string paramName, string inValue)
         {
             LibraryMethods.Data.balancySetStringParam(_pointer, paramName, inValue);
         }
         
-        protected void SetFloatValue(string paramName, float inValue)
+        public void SetFloatValue(string paramName, float inValue)
         {
             LibraryMethods.Data.balancySetFloatParam(_pointer, paramName, inValue);
         }
         
-        protected void SetBoolValue(string paramName, bool inValue)
+        public void SetBoolValue(string paramName, bool inValue)
         {
             LibraryMethods.Data.balancySetBoolParam(_pointer, paramName, inValue);
         }
@@ -37,28 +37,73 @@ namespace Balancy.Data
             callback();
             SubscribeForParamChange(paramName, callback);
         }
-        
-        internal void SubscribeForParamChange(string paramName, Action callback)
+
+        /// <summary>
+        /// Subscribe to changes of a specific parameter. The callback fires whenever the parameter is modified.
+        /// </summary>
+        public void SubscribeForParamChange(string paramName, Action callback)
         {
             if (TempCopy)
                 return;
-            
-            // var callbackDelegate = new LibraryMethods.Data.ParamChangedCallback(callback);
-            // var callbackHandle = GCHandle.Alloc(callbackDelegate);
-            //
-            // IntPtr callbackPtr = Marshal.GetFunctionPointerForDelegate(callbackDelegate);
-            // var callbackId = LibraryMethods.Data.balancySubscribeBaseDataParamChange(_pointer, paramName, callbackPtr);
+
             _callbacks.Add(new CallbacksHolder
             {
                 ParamName = paramName,
                 Callback = callback,
-                // Handle = callbackHandle,
-                // Id = callbackId
             });
-            
+
             Profiles.AddDataSubscription(_pointer, paramName, callback);
         }
-        
+
+        /// <summary>
+        /// Unsubscribe from changes of a specific parameter.
+        /// </summary>
+        public void UnsubscribeFromParamChange(string paramName, Action callback)
+        {
+            _callbacks.RemoveAll(c => c.ParamName == paramName && c.Callback == callback);
+            Profiles.RemoveDataSubscription(_pointer, paramName, callback);
+        }
+
+        /// <summary>
+        /// Subscribe to changes of any parameter on this object and all its children recursively.
+        /// The callback receives the full path of the changed parameter relative to this object
+        /// (e.g. "generalInfo.level" when subscribed on the profile).
+        /// </summary>
+        public void SubscribeForChanges(Action<string> callback)
+        {
+            if (TempCopy)
+                return;
+
+            _wildcardCallbacks.Add(callback);
+            Profiles.AddWildcardSubscription(_pointer, callback);
+
+            foreach (var entry in _children)
+            {
+                var childName = entry.Name;
+                Action<string> wrapped = paramName => callback(childName + "." + paramName);
+                entry.WrappedCallbacks[callback] = wrapped;
+                entry.Data.SubscribeForChanges(wrapped);
+            }
+        }
+
+        /// <summary>
+        /// Unsubscribe from changes of any parameter on this object and all its children recursively.
+        /// </summary>
+        public void UnsubscribeFromChanges(Action<string> callback)
+        {
+            _wildcardCallbacks.Remove(callback);
+            Profiles.RemoveWildcardSubscription(_pointer, callback);
+
+            foreach (var entry in _children)
+            {
+                if (entry.WrappedCallbacks.TryGetValue(callback, out var wrapped))
+                {
+                    entry.Data.UnsubscribeFromChanges(wrapped);
+                    entry.WrappedCallbacks.Remove(callback);
+                }
+            }
+        }
+
         ~BaseData()
         {
             //I commented it because it was crashing after multiple play/stop. usually BaseData is connected to the C++ class, they should be destroyed together anyway.
@@ -70,16 +115,18 @@ namespace Balancy.Data
         {
             foreach (var callback in _callbacks)
             {
-                // if (callback.Handle.IsAllocated)
-                //     callback.Handle.Free();
-                // if (!parentWasDestroyed)
-                //     LibraryMethods.Data.balancyUnsubscribeBaseDataParamChange(_pointer, callback.ParamName, callback.Id);
                 Profiles.RemoveDataSubscription(_pointer, callback.ParamName, callback.Callback);
             }
             _callbacks.Clear();
 
-            foreach (var child in _children)
-                child.CleanUp(parentWasDestroyed);
+            foreach (var callback in _wildcardCallbacks)
+            {
+                Profiles.RemoveWildcardSubscription(_pointer, callback);
+            }
+            _wildcardCallbacks.Clear();
+
+            foreach (var entry in _children)
+                entry.Data.CleanUp(parentWasDestroyed);
             _children.Clear();
             base.CleanUp(parentWasDestroyed);
         }
@@ -89,17 +136,17 @@ namespace Balancy.Data
             var className = GetDataClassName<T>();
             var ptr = GetBaseDataParamPrivate(paramName, className);
             var data = CreateObject<T>(ptr, TempCopy);
-            _children.Add(data);
+            _children.Add(new ChildEntry { Name = paramName, Data = data });
             return data;
         }
-        
+
         protected SmartList<T> GetListBaseDataParam<T>(string paramName) where T: BaseData, new()
         {
             var className = GetDataClassName<T>();
             var ptr = GetListBaseDataParamPrivate(paramName, className);
             var data = CreateObject<SmartList<T>>(ptr, TempCopy);
             data.SubscribeForUpdates(paramName, this);
-            _children.Add(data);
+            _children.Add(new ChildEntry { Name = paramName, Data = data });
             return data;
         }
 
@@ -133,7 +180,7 @@ namespace Balancy.Data
 
             var data = CreateObject<SmartListSimple<T>>(ptr, TempCopy);
             data.SubscribeForUpdates(paramName, this);
-            _children.Add(data);
+            _children.Add(new ChildEntry { Name = paramName, Data = data });
             return data;
         }
 
@@ -151,12 +198,18 @@ namespace Balancy.Data
         {
             public string ParamName;
             public Action Callback;
-            // public GCHandle Handle;
-            // public int Id;
+        }
+
+        private class ChildEntry
+        {
+            public string Name;
+            public BaseData Data;
+            public readonly Dictionary<Action<string>, Action<string>> WrappedCallbacks = new Dictionary<Action<string>, Action<string>>();
         }
 
         private readonly List<CallbacksHolder> _callbacks = new List<CallbacksHolder>();
-        private readonly List<BaseData> _children = new List<BaseData>();
+        private readonly List<Action<string>> _wildcardCallbacks = new List<Action<string>>();
+        private readonly List<ChildEntry> _children = new List<ChildEntry>();
         
         protected static T FindElementInList<T>(SmartList<T> list, IntPtr ptr) where T: BaseData, new()
         {

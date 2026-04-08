@@ -142,6 +142,9 @@ namespace Balancy.Dictionaries
 #if UNITY_WEBGL && !UNITY_EDITOR
                 // For WebGL: Use UnityWebRequest to load texture asynchronously
                 _mainThreadInstance.StartCoroutine(LoadTextureWebGL());
+#elif UNITY_ANDROID && !UNITY_EDITOR
+                // For Android: Check cache first (sync), then fall back to StreamingAssets via UnityWebRequest
+                _mainThreadInstance.StartCoroutine(LoadTextureAndroid());
 #else
                 // For native platforms: Use synchronous file loading
                 LoadTextureNative();
@@ -160,7 +163,7 @@ namespace Balancy.Dictionaries
                         path = PathInResources;
                         if (!File.Exists(path))
                         {
-                            Debug.LogError("NO FILE PATH " + path);
+                            Debug.Log("NO FILE PATH " + path);
                             SetSprite(null);
                             return;
                         }
@@ -172,6 +175,48 @@ namespace Balancy.Dictionaries
 
                 CreateSpriteFromTexture(texture);
             }
+
+#if UNITY_ANDROID && !UNITY_EDITOR
+            private IEnumerator LoadTextureAndroid()
+            {
+                // Try Unity Resources first
+                Texture2D texture = TryToLoadTextureFromResources();
+                if (texture != null)
+                {
+                    CreateSpriteFromTexture(texture);
+                    yield break;
+                }
+
+                // Try cache directory (sync file access works on Android for persistentDataPath)
+                var cachePath = PathInStorage;
+                if (File.Exists(cachePath))
+                {
+                    byte[] bytes = File.ReadAllBytes(cachePath);
+                    texture = new Texture2D(1, 1, TextureFormat.RGBA32, false);
+                    texture.LoadImage(bytes);
+                    CreateSpriteFromTexture(texture);
+                    yield break;
+                }
+
+                // Fall back to StreamingAssets via UnityWebRequest
+                var resourcesUrl = PathInResources;
+                using (UnityWebRequest request = UnityWebRequestTexture.GetTexture(resourcesUrl))
+                {
+                    yield return request.SendWebRequest();
+
+                    if (request.result == UnityWebRequest.Result.Success)
+                    {
+                        texture = DownloadHandlerTexture.GetContent(request);
+                        CreateSpriteFromTexture(texture);
+                    }
+                    else
+                    {
+                        Debug.LogError($"[Balancy] Android: Failed to load texture from {resourcesUrl}: {request.error}");
+                        SetSprite(null);
+                    }
+                }
+            }
+#endif
 
 #if UNITY_WEBGL && !UNITY_EDITOR
             private IEnumerator LoadTextureWebGL()

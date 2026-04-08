@@ -6,6 +6,7 @@ using Balancy.Data.SmartObjects;
 using Balancy.Models;
 using Balancy.Models.SmartObjects;
 using Balancy.Models.SmartObjects.Analytics;
+using UnityEngine;
 
 namespace Balancy
 {
@@ -173,7 +174,107 @@ namespace Balancy
                 UnityEngine.Debug.LogError($"Callback with ID {callbackId} not found");
             }
         }
+#if UNITY_WEBGL && !UNITY_EDITOR
+        private static Core.Responses.Product ConstructProductWebGL(IntPtr dataPtr, int index)
+        {
+            int elemSize = Marshal.SizeOf<Core.Responses.InteropProductData>();
+            int pOff = 0;
+            IntPtr itemPtr = IntPtr.Add(dataPtr, index * elemSize);
+            IntPtr baseIdPtr = Marshal.ReadIntPtr(itemPtr, pOff); pOff += IntPtr.Size;
+            int pType = Marshal.ReadInt32(itemPtr, pOff); pOff += 4;
+            IntPtr itemIdPtr = Marshal.ReadIntPtr(itemPtr, pOff); pOff += IntPtr.Size;
+            IntPtr namePtr = Marshal.ReadIntPtr(itemPtr, pOff); pOff += IntPtr.Size;
+            IntPtr descPtr = Marshal.ReadIntPtr(itemPtr, pOff); pOff += IntPtr.Size;
+            IntPtr locNamePtr = Marshal.ReadIntPtr(itemPtr, pOff); pOff += IntPtr.Size;
+            IntPtr locDescPtr = Marshal.ReadIntPtr(itemPtr, pOff); pOff += IntPtr.Size;
+            IntPtr iconPtr = Marshal.ReadIntPtr(itemPtr, pOff); pOff += IntPtr.Size;
+            // float is 4 bytes - read as int bits and convert
+            int priceBits = Marshal.ReadInt32(itemPtr, pOff);
+            float priceVal = BitConverter.ToSingle(BitConverter.GetBytes(priceBits), 0);
+
+            return new Core.Responses.Product
+            {
+                base_id = baseIdPtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(baseIdPtr) : null,
+                type = (byte)pType,
+                item_id = itemIdPtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(itemIdPtr) : null,
+                name = namePtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(namePtr) : null,
+                description = descPtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(descPtr) : null,
+                localized_name = locNamePtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(locNamePtr) : null,
+                localized_description = locDescPtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(locDescPtr) : null,
+                icon = iconPtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(iconPtr) : null,
+                price = priceVal
+                
+            };
+        }
+#else
+        private static Core.Responses.Product ConstructProductWebGL(IntPtr dataPtr, int index)
+        {
+            int elemSize = Marshal.SizeOf<Core.Responses.InteropProductData>();
+            IntPtr itemPtr = IntPtr.Add(dataPtr, index * elemSize);
+            var interop = Marshal.PtrToStructure<Core.Responses.InteropProductData>(itemPtr);
+
+            return new Core.Responses.Product
+            {
+                base_id = Marshal.PtrToStringAnsi(interop.base_id),
+                type = (byte)interop.type,
+                item_id = Marshal.PtrToStringAnsi(interop.item_id),
+                name = Marshal.PtrToStringAnsi(interop.name),
+                description = Marshal.PtrToStringAnsi(interop.description),
+                localized_name = Marshal.PtrToStringAnsi(interop.localized_name),
+                localized_description = Marshal.PtrToStringAnsi(interop.localized_description),
+                icon =  Marshal.PtrToStringAnsi(interop.icon),
+                price = interop.price,
+            };
+        }
+#endif
         
+        private class TypedCallbackProductResponseDataWrapper : CallbackWrapperBase
+        {
+            private readonly Balancy.Core.ResponseCallback<Core.Responses.ProductResponseData> _callback;
+
+            public TypedCallbackProductResponseDataWrapper(Balancy.Core.ResponseCallback<Core.Responses.ProductResponseData> callback)
+            {
+                _callback = callback;
+            }
+
+            public override void InvokeCallback(IntPtr responseDataPtr)
+            {
+                try
+                {
+#if UNITY_WEBGL && !UNITY_EDITOR
+                    // WebGL/Wasm workaround: manually read fields to avoid Marshal.PtrToStructure crash
+                    int offset = 0;
+                    byte success = Marshal.ReadByte(responseDataPtr, offset); offset += 1;
+                    int errorCode = Marshal.ReadInt32(responseDataPtr, offset); offset += 4;
+                    IntPtr errorMsgPtr = Marshal.ReadIntPtr(responseDataPtr, offset); offset += IntPtr.Size;
+                    string errorMessage = errorMsgPtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(errorMsgPtr) : null;
+                    // InteropProductsResponseData derived fields:
+                    IntPtr dataPtr = Marshal.ReadIntPtr(responseDataPtr, offset); offset += IntPtr.Size;
+#else
+                    var response = Marshal.PtrToStructure<Core.Responses.InteropProductResponseData>(responseDataPtr);
+                    IntPtr dataPtr = response.data;
+                    byte success = (byte)(response.Success ? 1 : 0);
+                    int errorCode = response.ErrorCode;
+                    string errorMessage = response.ErrorMessage;
+#endif
+                    Core.Responses.Product product = ConstructProductWebGL(dataPtr, 0);
+
+                    var res = new Core.Responses.ProductResponseData
+                    {
+                        Product = product,
+                        Success = success == 1,
+                        ErrorCode = errorCode,
+                        ErrorMessage = errorMessage,
+                    };
+
+                    _callback?.Invoke(res);
+                }
+                catch (Exception e)
+                {
+                    UnityEngine.Debug.LogError("Exception in TypedCallbackProductResponseDataWrapper: " + e);
+                }
+            }
+        }
         
         private class TypedCallbackProductsResponseDataWrapper : CallbackWrapperBase
         {
@@ -209,61 +310,19 @@ namespace Balancy
 
                     var products = new List<Core.Responses.Product>(count);
 #if UNITY_WEBGL && !UNITY_EDITOR
-                    // InteropProductData struct layout (Pack=1):
-                    // IntPtr base_id, int type, IntPtr item_id, IntPtr name, IntPtr description,
-                    // IntPtr localized_name, IntPtr localized_description, float price
-                    int elemSize = IntPtr.Size * 6 + 4 + 4; // 6 pointers + 1 int(type) + 1 float(price)
                     for (int i = 0; i < count; i++)
                     {
-                        int pOff = 0;
-                        IntPtr itemPtr = IntPtr.Add(dataPtr, i * elemSize);
-                        IntPtr baseIdPtr = Marshal.ReadIntPtr(itemPtr, pOff); pOff += IntPtr.Size;
-                        int pType = Marshal.ReadInt32(itemPtr, pOff); pOff += 4;
-                        IntPtr itemIdPtr = Marshal.ReadIntPtr(itemPtr, pOff); pOff += IntPtr.Size;
-                        IntPtr namePtr = Marshal.ReadIntPtr(itemPtr, pOff); pOff += IntPtr.Size;
-                        IntPtr descPtr = Marshal.ReadIntPtr(itemPtr, pOff); pOff += IntPtr.Size;
-                        IntPtr locNamePtr = Marshal.ReadIntPtr(itemPtr, pOff); pOff += IntPtr.Size;
-                        IntPtr locDescPtr = Marshal.ReadIntPtr(itemPtr, pOff); pOff += IntPtr.Size;
-                        // float is 4 bytes - read as int bits and convert
-                        int priceBits = Marshal.ReadInt32(itemPtr, pOff);
-                        float priceVal = BitConverter.ToSingle(BitConverter.GetBytes(priceBits), 0);
-
-                        var product = new Core.Responses.Product
-                        {
-                            base_id = baseIdPtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(baseIdPtr) : null,
-                            type = (byte)pType,
-                            item_id = itemIdPtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(itemIdPtr) : null,
-                            name = namePtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(namePtr) : null,
-                            description = descPtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(descPtr) : null,
-                            localized_name = locNamePtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(locNamePtr) : null,
-                            localized_description = locDescPtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(locDescPtr) : null,
-                            price = priceVal
-                        };
+                        var product = ConstructProductWebGL(dataPtr, i);
                         products.Add(product);
                     }
 #else
-                    int elemSize = Marshal.SizeOf<Core.Responses.InteropProductData>();
                     for (int i = 0; i < count; i++)
                     {
-                        IntPtr itemPtr = IntPtr.Add(dataPtr, i * elemSize);
-                        var interop = Marshal.PtrToStructure<Core.Responses.InteropProductData>(itemPtr);
-
-                        var product = new Core.Responses.Product
-                        {
-                            base_id = Marshal.PtrToStringAnsi(interop.base_id),
-                            type = (byte)interop.type,
-                            item_id = Marshal.PtrToStringAnsi(interop.item_id),
-                            name = Marshal.PtrToStringAnsi(interop.name),
-                            description = Marshal.PtrToStringAnsi(interop.description),
-                            localized_name = Marshal.PtrToStringAnsi(interop.localized_name),
-                            localized_description = Marshal.PtrToStringAnsi(interop.localized_description),
-                            price = interop.price
-                        };
+                        var product = ConstructProductWebGL(dataPtr, i);
 
                         products.Add(product);
                     }
 #endif
-
                     var res = new Core.Responses.ProductsResponseData
                     {
                         Products = products,
@@ -280,32 +339,8 @@ namespace Balancy
                 }
             }
         }
-
-
-        private static CallbackResult ProtectedFromGCCallback<T>(Balancy.Core.ResponseCallback<T> callback, Func<Balancy.Core.ResponseCallback<T>, CallbackWrapperBase> customWrapperCreator) where T : Balancy.Core.Responses.ResponseData
-        {
-            int callbackId;
-            lock (_callbackLock)
-            {
-                callbackId = ++_callbackIdCounter;
-            }
-            
-            var wrapper = customWrapperCreator(callback);
-            
-            lock (_callbackLock)
-            {
-                _callbackStorage[callbackId] = wrapper;
-            }
-            
-            return new CallbackResult
-            {
-                CallbackId = callbackId,
-                StaticCallback = StaticResponseHandler
-            };
-        }
         
-        private static CallbackResult ProtectedFromGCCallback<T>(Balancy.Core.ResponseCallback<T> callback) 
-            where T : Balancy.Core.Responses.ResponseData
+        private static CallbackResult ProtectedFromGCCallback<T>(Balancy.Core.ResponseCallback<T> callback, Func<Balancy.Core.ResponseCallback<T>, CallbackWrapperBase> customWrapperCreator = null)  where T : Balancy.Core.Responses.ResponseData
         {
             int callbackId;
             lock (_callbackLock)
@@ -313,7 +348,7 @@ namespace Balancy
                 callbackId = ++_callbackIdCounter;
             }
             
-            var wrapper = new TypedCallbackWrapper<T>(callback);
+            var wrapper = customWrapperCreator != null ? customWrapperCreator(callback) : new TypedCallbackWrapper<T>(callback);
             
             lock (_callbackLock)
             {
@@ -382,45 +417,12 @@ namespace Balancy
             Balancy.LibraryMethods.API.balancyHardPurchaseShopSlot(shopSlot?.GetRawPointer() ?? IntPtr.Zero, paymentInfo,
                 callbackResult.CallbackId, callbackResult.StaticCallback, requireValidation);
         }
-        
-        public static void GetProducts(Balancy.Core.ResponseCallback<Balancy.Core.Responses.ProductsResponseData> callback)
-        {
-            var callbackResult = ProtectedFromGCCallback(callback, responseCallback => new TypedCallbackProductsResponseDataWrapper(responseCallback));
-
-            LibraryMethods.API.balancyGetProducts(callbackResult.CallbackId, callbackResult.StaticCallback);
-        }
 
         public static void GetProduct(string productId, Balancy.Core.ResponseCallback<Balancy.Core.Responses.ProductResponseData> callback)
         {
-            GetProducts(productsResponse =>
-            {
-                if (!productsResponse.Success)
-                {
-                    // Forward the error from GetProducts
-                    var errorResponse = new Balancy.Core.Responses.ProductResponseData
-                    {
-                        Success = false,
-                        ErrorCode = productsResponse.ErrorCode,
-                        ErrorMessage = productsResponse.ErrorMessage,
-                        Product = null
-                    };
-                    callback?.Invoke(errorResponse);
-                    return;
-                }
+            var callbackResult = ProtectedFromGCCallback(callback, responseCallback => new TypedCallbackProductResponseDataWrapper(responseCallback));
 
-                // Find the product by ID
-                var product = productsResponse.Products?.Find(p => p.ProductId == productId);
-
-                var response = new Balancy.Core.Responses.ProductResponseData
-                {
-                    Success = product != null,
-                    ErrorCode = product != null ? 0 : -1,
-                    ErrorMessage = product != null ? "" : $"Product with ID '{productId}' not found",
-                    Product = product
-                };
-
-                callback?.Invoke(response);
-            });
+            LibraryMethods.API.balancyGetProduct(productId, callbackResult.CallbackId, callbackResult.StaticCallback);
         }
 
         public static void HardPurchaseGameOffer(OfferInfo offerInfo, Balancy.Core.PaymentInfo paymentInfo,
@@ -437,6 +439,13 @@ namespace Balancy
             var callbackResult = ProtectedFromGCCallback(callback);
             Balancy.LibraryMethods.API.balancyHardPurchaseGameOfferGroup(offerGroupInfo?.GetRawPointer() ?? IntPtr.Zero, storeItem?.GetRawPointer() ?? IntPtr.Zero, paymentInfo,
                 callbackResult.CallbackId, callbackResult.StaticCallback, requireValidation);
+        }
+
+        public static void GetProducts(Balancy.Core.ResponseCallback<Balancy.Core.Responses.ProductsResponseData> callback)
+        {
+            var callbackResult = ProtectedFromGCCallback(callback, responseCallback => new TypedCallbackProductsResponseDataWrapper(responseCallback));
+
+            LibraryMethods.API.balancyGetProducts(callbackResult.CallbackId, callbackResult.StaticCallback);
         }
 
         public static void TrackAdRevenue(AdType type, double revenue, string placement) => 
@@ -478,6 +487,11 @@ namespace Balancy
                 var callbackResult = ProtectedFromGCCallback(callback);
                 Balancy.LibraryMethods.API.balancyAuth_NameAndPassword(name, password, callbackResult.CallbackId, callbackResult.StaticCallback);
             }
+                        
+            public static void WithNutaku(string userId, string token, Balancy.Core.ResponseCallback<Balancy.Core.Responses.AuthResponseData> callback) {
+                var callbackResult = ProtectedFromGCCallback(callback);
+                Balancy.LibraryMethods.API.balancyAuth_Nutaku(userId, token, callbackResult.CallbackId, callbackResult.StaticCallback);
+            }
         }
         
         public static class Link
@@ -490,6 +504,10 @@ namespace Balancy
         
         public static class General
         {
+            public static void LevelStarted() {
+                Balancy.LibraryMethods.API.balancyGenenal_LevelStarted();
+            }
+            
             public static void LevelCompleted() {
                 Balancy.LibraryMethods.API.balancyGenenal_LevelCompleted();
             }
@@ -544,9 +562,12 @@ namespace Balancy
             /// <param name="launcherId">Optional identifier for who launched the script (e.g., a GameEvent UnnyId). Accessible inside the script via GetLauncherId().</param>
             /// <param name="inputJson">Optional JSON string with input parameters keyed by port name. Example: {"GameEvent":"unnyId123","score":100}</param>
             /// <returns>The instance ID of the running script, or empty string on failure.</returns>
-            public static string RunScriptById(string scriptId, string launcherId = null, string inputJson = null) {
-                return Marshal.PtrToStringAnsi(
+            public static string RunScriptById(string scriptId, string launcherId = null, string inputJson = null, Action<string, string> onComplete = null) {
+                var instanceId = Marshal.PtrToStringAnsi(
                     Balancy.LibraryMethods.API.balancyScripts_RunById(scriptId, launcherId ?? "", inputJson ?? ""));
+                if (onComplete != null && !string.IsNullOrEmpty(instanceId))
+                    ScriptCompletionManager.Register(instanceId, onComplete);
+                return instanceId;
             }
 
             /// <summary>
@@ -555,10 +576,14 @@ namespace Balancy
             /// <param name="scriptName">The script's name in the CMS.</param>
             /// <param name="launcherId">Optional identifier for who launched the script.</param>
             /// <param name="inputJson">Optional JSON string with input parameters keyed by port name.</param>
+            /// <param name="onComplete">Optional callback invoked when the script finishes. Receives (exitPortName, outputsJson).</param>
             /// <returns>The instance ID of the running script, or empty string on failure.</returns>
-            public static string RunScriptByName(string scriptName, string launcherId = null, string inputJson = null) {
-                return Marshal.PtrToStringAnsi(
+            public static string RunScriptByName(string scriptName, string launcherId = null, string inputJson = null, Action<string, string> onComplete = null) {
+                var instanceId = Marshal.PtrToStringAnsi(
                     Balancy.LibraryMethods.API.balancyScripts_RunByName(scriptName, launcherId ?? "", inputJson ?? ""));
+                if (onComplete != null && !string.IsNullOrEmpty(instanceId))
+                    ScriptCompletionManager.Register(instanceId, onComplete);
+                return instanceId;
             }
 
             /// <summary>
@@ -574,5 +599,40 @@ namespace Balancy
         //This method doesn't work in production
         public static void SetTimeCheatingOffset(int seconds) => LibraryMethods.Extra.balancySetTimeOffset(seconds);
         public static int GetTimeCheatingOffset() => LibraryMethods.Extra.balancyGetTimeOffset();
+
+        private static LibraryMethods.Extra.CustomUTCTimeProviderDelegate _customUTCTimeProviderDelegate;
+        private static Func<DateTime> _customUTCTimeProviderFunc;
+        private static readonly DateTime Epoch = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        /// <summary>
+        /// Sets a custom UTC time provider that overrides the SDK's internal server time.
+        /// The callback should return the current UTC time.
+        /// This works in all environments including production.
+        /// </summary>
+        public static void SetCustomUTCTimeProvider(Func<DateTime> provider)
+        {
+            if (provider == null)
+            {
+                ResetCustomUTCTimeProvider();
+                return;
+            }
+
+            _customUTCTimeProviderFunc = provider;
+            _customUTCTimeProviderDelegate = () => (uint)(provider().ToUniversalTime() - Epoch).TotalSeconds;
+            LibraryMethods.Extra.balancySetCustomUTCTimeProvider(_customUTCTimeProviderDelegate);
+        }
+
+        /// <summary>
+        /// Removes the custom UTC time provider and returns to the SDK's internal server time.
+        /// </summary>
+        public static void ResetCustomUTCTimeProvider()
+        {
+            _customUTCTimeProviderFunc = null;
+            _customUTCTimeProviderDelegate = null;
+            LibraryMethods.Extra.balancyResetCustomUTCTimeProvider();
+        }
+
+        public static void NotifyAppPause(int secondsElapsed) => LibraryMethods.Extra.balancyNotifyAppPause(secondsElapsed);
+        public static void NotifyAppResume() => LibraryMethods.Extra.balancyNotifyAppResume();
     }
 }

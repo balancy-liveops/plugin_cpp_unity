@@ -23,6 +23,9 @@ namespace Balancy
                 return profile as T;
             
             var ptr = LibraryMethods.Data.balancyGetProfile(className);
+            if (ptr == IntPtr.Zero)
+                return null;
+            
             profile = JsonBasedObject.CreateObject<T>(ptr, false);
             _cachedProfiles.Add(className, profile);
             return (T)profile;
@@ -40,6 +43,11 @@ namespace Balancy
             Balancy.Callbacks.OnProfileResetStart?.Invoke();
             LibraryMethods.Data.balancyResetAllProfiles();
             Balancy.Callbacks.OnProfileResetFinish?.Invoke();
+        }
+
+        public static void ForceSaveSmartObjects()
+        {
+            LibraryMethods.Data.balancyForceSaveSmartObjects();
         }
 
         internal static void Init()
@@ -85,6 +93,7 @@ namespace Balancy
             }
 
             private readonly Dictionary<string, ParamSubscriptions> _activeSubscriptions = new Dictionary<string, ParamSubscriptions>();
+            private event Action<string> _onAnyParamChanged;
 
             public void AddParamSubscription(string paramName, Action callback)
             {
@@ -97,10 +106,22 @@ namespace Balancy
                 subs.OnUpdated += callback;
             }
 
+            public void AddWildcardSubscription(Action<string> callback)
+            {
+                _onAnyParamChanged += callback;
+            }
+
+            public void RemoveWildcardSubscription(Action<string> callback)
+            {
+                _onAnyParamChanged -= callback;
+            }
+
             public void OnBaseDataParamChanged(string paramName)
             {
                 if (_activeSubscriptions.TryGetValue(paramName, out var subs))
                     subs.Invoke();
+
+                _onAnyParamChanged?.Invoke(paramName);
             }
 
             public void RemoveDataSubscription(string paramName, Action callback)
@@ -122,11 +143,28 @@ namespace Balancy
 
             subs.AddParamSubscription(paramName, callback);
         }
-        
+
         internal static void RemoveDataSubscription(IntPtr ptr, string paramName, Action callback)
         {
             if (AllBaseDataSubscriptions.TryGetValue(ptr, out var subs))
                 subs.RemoveDataSubscription(paramName, callback);
+        }
+
+        internal static void AddWildcardSubscription(IntPtr ptr, Action<string> callback)
+        {
+            if (!AllBaseDataSubscriptions.TryGetValue(ptr, out var subs))
+            {
+                subs = new BaseDataSubscriptions();
+                AllBaseDataSubscriptions.Add(ptr, subs);
+            }
+
+            subs.AddWildcardSubscription(callback);
+        }
+
+        internal static void RemoveWildcardSubscription(IntPtr ptr, Action<string> callback)
+        {
+            if (AllBaseDataSubscriptions.TryGetValue(ptr, out var subs))
+                subs.RemoveWildcardSubscription(callback);
         }
 
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.Data.ParamChangedCallback))]

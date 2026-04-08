@@ -10,5 +10,6 @@ namespace Balancy.Core
         [MarshalAs(UnmanagedType.LPStr)] public string ProductId;
         [MarshalAs(UnmanagedType.LPStr)] public string Currency;
         [MarshalAs(UnmanagedType.LPStr)] public string OrderId;
+        public float PriceUSD;
     }
 }

@@ -324,6 +324,9 @@ namespace Balancy
                 case "LiveOps.Tasks.TaskItem": return new Balancy.Models.LiveOps.Tasks.TaskItem();
                 case "LiveOps.Tasks.TaskCompleteLevels": return new Balancy.Models.LiveOps.Tasks.TaskCompleteLevels();
                 case "LiveOps.Tasks.TaskCompleteLevelsStreak": return new Balancy.Models.LiveOps.Tasks.TaskCompleteLevelsStreak();
+				case "SmartObjects.ItemComponent.Base": return new Balancy.Models.SmartObjects.ItemComponentBase();
+				case "SmartObjects.ItemComponent.Bundle": return new Balancy.Models.SmartObjects.ItemComponentBundle();
+				case "SmartObjects.ItemComponent.Decay": return new Balancy.Models.SmartObjects.ItemComponentDecay();
 				default:
                 {
                     var model = OnTypeRequested?.Invoke(templateName);

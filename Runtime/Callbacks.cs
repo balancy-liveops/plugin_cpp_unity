@@ -1,3 +1,4 @@
+using System;
 using Balancy.Core;
 using Balancy.Data.SmartObjects;
 using Balancy.Models.SmartObjects;
@@ -82,7 +83,29 @@ namespace Balancy
         public static OnShopUpdatedDelegate OnShopUpdated = null;
         public static OnNetworkDownloadStartedDelegate OnNetworkDownloadStarted = null;
         public static OnNetworkDownloadFinishedDelegate OnNetworkDownloadFinished = null;
-        public static OnPaymentIsReadyDelegate OnPaymentIsReady = null;
+        private static OnPaymentIsReadyDelegate _onPaymentIsReady;
+        private static bool _paymentIsReady;
+
+        public static OnPaymentIsReadyDelegate OnPaymentIsReady
+        {
+            get => _onPaymentIsReady;
+            set
+            {
+                var previous = _onPaymentIsReady;
+                _onPaymentIsReady = value;
+                if (_paymentIsReady && value != null)
+                {
+                    var added = (OnPaymentIsReadyDelegate)Delegate.RemoveAll(value, previous);
+                    added?.Invoke();
+                }
+            }
+        }
+
+        public static void SetPaymentIsReady()
+        {
+            _paymentIsReady = true;
+            _onPaymentIsReady?.Invoke();
+        }
         
         public static OnHardPurchasedStoreItemDelegate OnHardPurchasedStoreItem = null;
         public static OnHardPurchasedShopSlotDelegate OnHardPurchasedShopSlot = null;
@@ -167,10 +190,10 @@ namespace Balancy
             OnShopUpdated += () => Debug.Log(" => Balancy.OnShopUpdated");
             OnPaymentIsReady += () => Debug.Log(" => Balancy.OnPaymentIsReady");
             
-            OnHardPurchasedStoreItem += (paymentInfo, storeItem) => Debug.Log(" => Balancy.OnHardPurchasedStoreItem: " + storeItem?.Name + " UnnyId = " + storeItem?.UnnyId);
-            OnHardPurchasedShopSlot += (paymentInfo, shopSlot) => Debug.Log(" => Balancy.OnHardPurchasedShopSlot: " + shopSlot?.UnnyId);
-            OnHardPurchasedOffer += (paymentInfo, gameOffer) => Debug.Log(" => Balancy.OnHardPurchasedOffer: " + gameOffer?.Name + " UnnyId = " + gameOffer?.UnnyId);
-            OnHardPurchasedOfferGroup += (paymentInfo, gameOfferGroup, storeItem) => Debug.Log(" => Balancy.OnHardPurchasedOfferGroup: " + gameOfferGroup?.Name + " UnnyId = " + gameOfferGroup?.UnnyId);
+            OnHardPurchasedStoreItem += (paymentInfo, storeItem) => Debug.Log(" => Balancy.OnHardPurchasedStoreItem: " + storeItem?.Name + " UnnyId = " + storeItem?.UnnyId + " price = " + paymentInfo.Price + " priceUSD = " + paymentInfo.PriceUSD);
+            OnHardPurchasedShopSlot += (paymentInfo, shopSlot) => Debug.Log(" => Balancy.OnHardPurchasedShopSlot: " + shopSlot?.UnnyId + " price = " + paymentInfo.Price + " priceUSD = " + paymentInfo.PriceUSD);
+            OnHardPurchasedOffer += (paymentInfo, gameOffer) => Debug.Log(" => Balancy.OnHardPurchasedOffer: " + gameOffer?.Name + " UnnyId = " + gameOffer?.UnnyId + " price = " + paymentInfo.Price + " priceUSD = " + paymentInfo.PriceUSD);
+            OnHardPurchasedOfferGroup += (paymentInfo, gameOfferGroup, storeItem) => Debug.Log(" => Balancy.OnHardPurchasedOfferGroup: " + gameOfferGroup?.Name + " UnnyId = " + gameOfferGroup?.UnnyId + " price = " + paymentInfo.Price + " priceUSD = " + paymentInfo.PriceUSD);
             
             OnShopSlotWasPurchased += shopSlot => Debug.Log(" => Balancy.OnShopSlotWasPurchased: " + shopSlot?.Slot?.UnnyId);
             OnOfferWasPurchased += offerInfo => Debug.Log(" => Balancy.OnOfferWasPurchased: " + offerInfo?.GameOffer?.Name + " UnnyId = " + offerInfo?.GameOffer?.UnnyId);
@@ -206,7 +229,8 @@ namespace Balancy
             OnShopUpdated = null;
             OnNetworkDownloadStarted = null;
             OnNetworkDownloadFinished = null;
-            OnPaymentIsReady = null;
+            _onPaymentIsReady = null;
+            _paymentIsReady = false;
             
             OnHardPurchasedStoreItem = null;
             OnHardPurchasedShopSlot = null;

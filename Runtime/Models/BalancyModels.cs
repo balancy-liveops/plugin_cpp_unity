@@ -65,12 +65,13 @@ namespace Balancy
         /// </summary>
         /// <param name="launcherId">Optional identifier for who launched the script. Accessible inside the script via GetLauncherId().</param>
         /// <param name="inputJson">Optional JSON string with input parameters keyed by port name. Example: {"score":100,"mode":"hard"}</param>
+        /// <param name="onComplete">Optional callback invoked when the script finishes. Receives (exitPortName, outputsJson).</param>
         /// <returns>The instance ID of the running script, or empty string on failure.</returns>
-        public string Launch(string launcherId = null, string inputJson = null)
+        public string Launch(string launcherId = null, string inputJson = null, Action<string, string> onComplete = null)
         {
             if (!HasValue)
                 return "";
-            return API.VisualScripting.RunScriptById(ScriptId, launcherId, inputJson);
+            return API.VisualScripting.RunScriptById(ScriptId, launcherId, inputJson, onComplete);
         }
 
         /// <summary>
@@ -216,8 +217,8 @@ namespace Balancy.Models
                     Debug.LogError($"You are trying to load sprite as an Object. Please use LoadSprite instead. {Id}");
                     return null;
                 case ObjectType.Asset:
-                    // if (OnLoadAssetAsObject != null)
-                    //     return OnLoadAssetAsObject?.Invoke(Name, callback);
+                    if (OnLoadAssetAsObject != null)
+                        return OnLoadAssetAsObject?.Invoke(Name, callback);
                     Debug.LogError($"Addressables plugin wasn't found. Please add it to the project. {Id}");
                     break;
             }
@@ -278,15 +279,177 @@ namespace Balancy.Models
     {
         private string productId;
         public string ProductId => productId;
-        
+
         private float price;
         public float Price => price;
-        
+
         public override void InitData()
         {
             base.InitData();
             productId = GetStringParam("productId");
             price = GetFloatParam("price");
         }
+    }
+}
+
+namespace Balancy.Models.Core
+{
+    public class Vector2 : JsonBasedObject
+    {
+        private float x;
+        private float y;
+        public float X => x;
+        public float Y => y;
+
+        public override void InitData()
+        {
+            base.InitData();
+            x = GetFloatParam("x");
+            y = GetFloatParam("y");
+        }
+
+#if !BALANCY_SERVER
+        public UnityEngine.Vector2 Value => new UnityEngine.Vector2(X, Y);
+#endif
+
+        public override string ToString() => $"({X},{Y})";
+    }
+
+    public class Vector3 : JsonBasedObject
+    {
+        private float x;
+        private float y;
+        private float z;
+        public float X => x;
+        public float Y => y;
+        public float Z => z;
+
+        public override void InitData()
+        {
+            base.InitData();
+            x = GetFloatParam("x");
+            y = GetFloatParam("y");
+            z = GetFloatParam("z");
+        }
+
+#if !BALANCY_SERVER
+        public UnityEngine.Vector3 Value => new UnityEngine.Vector3(X, Y, Z);
+#endif
+
+        public override string ToString() => $"({X},{Y},{Z})";
+    }
+
+    public class Vector4 : JsonBasedObject
+    {
+        private float x;
+        private float y;
+        private float z;
+        private float w;
+        public float X => x;
+        public float Y => y;
+        public float Z => z;
+        public float W => w;
+
+        public override void InitData()
+        {
+            base.InitData();
+            x = GetFloatParam("x");
+            y = GetFloatParam("y");
+            z = GetFloatParam("z");
+            w = GetFloatParam("w");
+        }
+
+#if !BALANCY_SERVER
+        public UnityEngine.Vector4 Value => new UnityEngine.Vector4(X, Y, Z, W);
+#endif
+
+        public override string ToString() => $"({X},{Y},{Z},{W})";
+    }
+
+    public class Vector2Int : JsonBasedObject
+    {
+        private int x;
+        private int y;
+        public int X => x;
+        public int Y => y;
+
+        public override void InitData()
+        {
+            base.InitData();
+            x = GetIntParam("x");
+            y = GetIntParam("y");
+        }
+
+#if !BALANCY_SERVER
+        public UnityEngine.Vector2Int Value => new UnityEngine.Vector2Int(X, Y);
+#endif
+
+        public override string ToString() => $"({X},{Y})";
+    }
+
+    public class Vector3Int : JsonBasedObject
+    {
+        private int x;
+        private int y;
+        private int z;
+        public int X => x;
+        public int Y => y;
+        public int Z => z;
+
+        public override void InitData()
+        {
+            base.InitData();
+            x = GetIntParam("x");
+            y = GetIntParam("y");
+            z = GetIntParam("z");
+        }
+
+#if !BALANCY_SERVER
+        public UnityEngine.Vector3Int Value => new UnityEngine.Vector3Int(X, Y, Z);
+#endif
+
+        public override string ToString() => $"({X},{Y},{Z})";
+    }
+
+    public class RangeInt : JsonBasedObject
+    {
+        private int min;
+        private int max;
+        public int Min => min;
+        public int Max => max;
+
+        public override void InitData()
+        {
+            base.InitData();
+            min = GetIntParam("min");
+            max = GetIntParam("max");
+        }
+
+#if !BALANCY_SERVER
+        public int GetRandom() => UnityEngine.Random.Range(Min, Max + 1);
+#endif
+
+        public override string ToString() => $"[{Min}, {Max}]";
+    }
+
+    public class RangeFloat : JsonBasedObject
+    {
+        private float min;
+        private float max;
+        public float Min => min;
+        public float Max => max;
+
+        public override void InitData()
+        {
+            base.InitData();
+            min = GetFloatParam("min");
+            max = GetFloatParam("max");
+        }
+
+#if !BALANCY_SERVER
+        public float GetRandom() => UnityEngine.Random.Range(Min, Max);
+#endif
+
+        public override string ToString() => $"[{Min}, {Max}]";
     }
 }

@@ -17,8 +17,9 @@ static MessageCallback _messageCallback = NULL;
 static LoadCompletedCallback _loadCompletedCallback = NULL;
 static CacheCompletedCallback _cacheCompletedCallback = NULL;
 
-// Number of directory levels to go up from HTML file to reach common parent
-static const int kDirectoryLevelsUp = 6;
+// Allow read access from the filesystem root so the WebView can load files
+// from both PersistentDataPath and StreamingAssets (different directory trees).
+static NSString* const kReadAccessRoot = @"/";
 
 // Unity logging function
 extern "C" void UnitySendMessage(const char* obj, const char* method, const char* msg) __attribute__((weak));
@@ -39,9 +40,14 @@ void LogToUnity(const char* message) {
 @property (nonatomic, assign) BOOL offlineCacheEnabled;
 @property (nonatomic, assign) BOOL webInspectorEnabled;
 @property (nonatomic, assign) BOOL gameUIMode;
-@property (nonatomic, strong) NSButton *emergencyExitButton;
+@property (nonatomic, strong) NSView *emergencyExitButton;
+@property (nonatomic, strong) NSTimer *emergencyExitHideTimer;
+@property (nonatomic, assign) NSTimeInterval popupLastClickTime;
+@property (nonatomic, assign) int popupRapidClickCount;
+@property (nonatomic, strong) id clickMonitor;
 @property (nonatomic, assign) float showDelay;
 @property (nonatomic, assign) float animationDuration;
+@property (nonatomic, assign) BOOL emergencyExitEnabled;
 
 - (instancetype)init;
 - (instancetype)initWithSize:(NSSize)size;
@@ -73,6 +79,9 @@ void LogToUnity(const char* message) {
 @property (nonatomic, strong) NSWindow *offscreenWindow;
 @property (nonatomic, assign) CGContextRef persistentContext;
 @property (nonatomic, assign) BOOL hasNewFrame;
+@property (nonatomic, assign) NSTimeInterval lastClickTime;
+@property (nonatomic, assign) int rapidClickCount;
+@property (nonatomic, assign) BOOL emergencyExitEnabled;
 
 - (instancetype)initWithWidth:(int)width height:(int)height;
 - (BOOL)loadURL:(NSString *)url;
@@ -100,7 +109,10 @@ void LogToUnity(const char* message) {
         _textureHeight = height;
         _pixelDataReady = NO;
         _hasNewFrame = NO;
-        
+        _lastClickTime = 0;
+        _rapidClickCount = 0;
+        _emergencyExitEnabled = YES;
+
         // Allocate pixel buffer
         size_t bufferSize = width * height * 4; // RGBA
         _pixelBuffer = (unsigned char*)malloc(bufferSize);
@@ -223,23 +235,17 @@ void LogToUnity(const char* message) {
     if ([url hasPrefix:@"file://"]) {
         NSString *filePath = [url stringByReplacingOccurrencesOfString:@"file://" withString:@""];
         NSURL *fileURL = [NSURL fileURLWithPath:filePath];
-        
-        // Go up directory levels to reach common parent containing both Balancy and BalancyResources
-        NSString *readAccessPath = filePath;
-        for (int i = 0; i < kDirectoryLevelsUp; i++) {
-            readAccessPath = [readAccessPath stringByDeletingLastPathComponent];
-        }
-        NSURL *broadReadAccessURL = [NSURL fileURLWithPath:readAccessPath isDirectory:YES];
-        
-        [_webView loadFileURL:fileURL allowingReadAccessToURL:broadReadAccessURL];
+        NSURL *readAccessURL = [NSURL fileURLWithPath:kReadAccessRoot isDirectory:YES];
+
+        [_webView loadFileURL:fileURL allowingReadAccessToURL:readAccessURL];
         return YES;
     }
-    
+
     NSURL *nsUrl = [NSURL URLWithString:url];
     if (!nsUrl) {
         return NO;
     }
-    
+
     [_webView loadRequest:[NSURLRequest requestWithURL:nsUrl]];
     return YES;
 }
@@ -329,16 +335,6 @@ void LogToUnity(const char* message) {
     }
 }
 
-- (BOOL)isPointInEmergencyExitZone:(CGPoint)point {
-    CGFloat exitZoneWidth = _textureWidth * 0.10;
-    CGFloat exitZoneHeight = _textureHeight * 0.10;
-    CGFloat exitZoneX = _textureWidth - exitZoneWidth;
-    CGFloat exitZoneY = _textureHeight - exitZoneHeight;
-    
-    return (point.x >= exitZoneX && point.x <= _textureWidth &&
-            point.y >= exitZoneY && point.y <= _textureHeight);
-}
-
 - (void)triggerEmergencyExit {
     if (_messageCallback) {
         _messageCallback("{\"action\":200, \"params\":{}}");
@@ -347,14 +343,28 @@ void LogToUnity(const char* message) {
 
 - (void)handleMouseEvent:(int)x y:(int)y eventType:(NSString*)eventType {
     if (!_webView) return;
-    
+
     NSPoint point = NSMakePoint(x, _textureHeight - y);
-    
-    if ([eventType isEqualToString:@"down"] && [self isPointInEmergencyExitZone:point]) {
-        [self triggerEmergencyExit];
-        return;
+
+    // Track rapid clicks for triple-click emergency exit
+    if ([eventType isEqualToString:@"down"]) {
+        NSTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
+        if (now - _lastClickTime < 0.4) {
+            _rapidClickCount++;
+        } else {
+            _rapidClickCount = 1;
+        }
+        _lastClickTime = now;
+
+        if (_rapidClickCount >= 3) {
+            _rapidClickCount = 0;
+            if (_emergencyExitEnabled) {
+                [self triggerEmergencyExit];
+            }
+            return;
+        }
     }
-    
+
     if ([eventType isEqualToString:@"down"]) {
         NSEvent *mouseDown = [NSEvent mouseEventWithType:NSEventTypeLeftMouseDown
                                                  location:point
@@ -580,6 +590,7 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
         _offlineCacheEnabled = NO;
         _webInspectorEnabled = NO;
         _gameUIMode = YES;
+        _emergencyExitEnabled = YES;
         _showDelay = 0.1f;
         _animationDuration = 0.1f;
         _viewportRect = NSMakeRect(0, 0, 1, 1);
@@ -627,9 +638,31 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
         }
         
         [[window contentView] addSubview:_webView];
-        
-        [self setupEmergencyExitButton];
-        
+
+        // Monitor clicks in this window for triple-click emergency exit
+        _popupLastClickTime = 0;
+        _popupRapidClickCount = 0;
+        // Safe to capture self: monitor is removed in -close before dealloc
+        __unsafe_unretained BalancyWebViewController *unsafeSelf = self;
+        _clickMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskLeftMouseDown handler:^NSEvent*(NSEvent *event) {
+            if (event.window == unsafeSelf.window) {
+                NSTimeInterval now = [NSDate timeIntervalSinceReferenceDate];
+                if (now - unsafeSelf.popupLastClickTime < 0.4) {
+                    unsafeSelf.popupRapidClickCount++;
+                } else {
+                    unsafeSelf.popupRapidClickCount = 1;
+                }
+                unsafeSelf.popupLastClickTime = now;
+                if (unsafeSelf.popupRapidClickCount >= 3) {
+                    unsafeSelf.popupRapidClickCount = 0;
+                    if (unsafeSelf.emergencyExitEnabled) {
+                        [unsafeSelf showEmergencyExitButton];
+                    }
+                }
+            }
+            return event;
+        }];
+
         [[NSNotificationCenter defaultCenter] addObserver:self
                                                  selector:@selector(windowDidResize:)
                                                      name:NSWindowDidResizeNotification
@@ -646,79 +679,119 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
     if ([url hasPrefix:@"file://"]) {
         NSString *filePath = [url stringByReplacingOccurrencesOfString:@"file://" withString:@""];
         NSURL *fileURL = [NSURL fileURLWithPath:filePath];
-        
-        // Go up directory levels to reach common parent containing both Balancy and BalancyResources
-        NSString *readAccessPath = filePath;
-        for (int i = 0; i < kDirectoryLevelsUp; i++) {
-            readAccessPath = [readAccessPath stringByDeletingLastPathComponent];
-        }
-        NSURL *broadReadAccessURL = [NSURL fileURLWithPath:readAccessPath isDirectory:YES];
-        
-        [_webView loadFileURL:fileURL allowingReadAccessToURL:broadReadAccessURL];
+        NSURL *readAccessURL = [NSURL fileURLWithPath:kReadAccessRoot isDirectory:YES];
+
+        [_webView loadFileURL:fileURL allowingReadAccessToURL:readAccessURL];
         return YES;
     }
-    
+
     NSURL *nsUrl = [NSURL URLWithString:url];
     if (!nsUrl) {
         return NO;
     }
-    
+
     [_webView loadRequest:[NSURLRequest requestWithURL:nsUrl]];
     return YES;
 }
 
-- (void)setupEmergencyExitButton {
-    if (!_webView) return;
-    
-    CGRect webViewFrame = _webView.frame;
-    CGFloat buttonWidth = webViewFrame.size.width * 0.10;
-    CGFloat buttonHeight = webViewFrame.size.height * 0.10;
-    CGFloat buttonX = webViewFrame.origin.x + webViewFrame.size.width - buttonWidth;
-    CGFloat buttonY = webViewFrame.origin.y + webViewFrame.size.height - buttonHeight;
-    
-    NSRect buttonFrame = NSMakeRect(buttonX, buttonY, buttonWidth, buttonHeight);
-    
-    if (_emergencyExitButton) {
-        [_emergencyExitButton removeFromSuperview];
+- (void)showEmergencyExitButton {
+    if (!_emergencyExitEnabled) return;
+
+    // Cancel any pending hide timer
+    [_emergencyExitHideTimer invalidate];
+    _emergencyExitHideTimer = nil;
+
+    if (!_emergencyExitButton) {
+        CGFloat btnSize = 32.0;
+        _emergencyExitButton = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, btnSize, btnSize)];
+        _emergencyExitButton.wantsLayer = YES;
+        _emergencyExitButton.layer.cornerRadius = btnSize / 2.0;
+        _emergencyExitButton.layer.backgroundColor = [[NSColor colorWithRed:0.9 green:0.1 blue:0.1 alpha:0.9] CGColor];
+        _emergencyExitButton.layer.zPosition = 1000;
+
+        // Draw white X using two crossing lines
+        CGFloat inset = 10.0;
+        CGMutablePathRef xPath = CGPathCreateMutable();
+        CGPathMoveToPoint(xPath, NULL, inset, inset);
+        CGPathAddLineToPoint(xPath, NULL, btnSize - inset, btnSize - inset);
+        CGPathMoveToPoint(xPath, NULL, btnSize - inset, inset);
+        CGPathAddLineToPoint(xPath, NULL, inset, btnSize - inset);
+
+        CAShapeLayer *xLayer = [CAShapeLayer layer];
+        xLayer.path = xPath;
+        xLayer.strokeColor = [[NSColor whiteColor] CGColor];
+        xLayer.lineWidth = 2.5;
+        xLayer.lineCap = kCALineCapRound;
+        xLayer.fillColor = nil;
+        [_emergencyExitButton.layer addSublayer:xLayer];
+        CGPathRelease(xPath);
+
+        // Click handler via gesture recognizer on the button itself
+        NSClickGestureRecognizer *click = [[NSClickGestureRecognizer alloc] initWithTarget:self action:@selector(emergencyExitButtonClicked:)];
+        [_emergencyExitButton addGestureRecognizer:click];
+
+        [[[self window] contentView] addSubview:_emergencyExitButton positioned:NSWindowAbove relativeTo:_webView];
     }
-    
-    _emergencyExitButton = [[NSButton alloc] initWithFrame:buttonFrame];
-    [_emergencyExitButton setTarget:self];
-    [_emergencyExitButton setAction:@selector(emergencyExitButtonClicked:)];
-    [_emergencyExitButton setButtonType:NSButtonTypeMomentaryChange];
-    [_emergencyExitButton setBordered:NO];
-    [_emergencyExitButton setTransparent:YES];
-    [_emergencyExitButton setTitle:@""];
-    [_emergencyExitButton setAlphaValue:0.0];
-    
-    [[[self window] contentView] addSubview:_emergencyExitButton positioned:NSWindowAbove relativeTo:_webView];
+
+    // Position top-right corner with margin
+    CGFloat margin = 12.0;
+    NSRect contentFrame = [[[self window] contentView] bounds];
+    NSRect btnFrame = _emergencyExitButton.frame;
+    btnFrame.origin.x = contentFrame.size.width - btnFrame.size.width - margin;
+    btnFrame.origin.y = contentFrame.size.height - btnFrame.size.height - margin;
+    [_emergencyExitButton setFrame:btnFrame];
+
+    [_emergencyExitButton setHidden:NO];
+    [_emergencyExitButton setAlphaValue:1.0];
+
+    // Auto-hide after 3 seconds
+    _emergencyExitHideTimer = [NSTimer scheduledTimerWithTimeInterval:3.0
+                                                              target:self
+                                                            selector:@selector(hideEmergencyExitButton)
+                                                            userInfo:nil
+                                                             repeats:NO];
 }
 
-- (void)emergencyExitButtonClicked:(NSButton *)sender {
+- (void)hideEmergencyExitButton {
+    _emergencyExitHideTimer = nil;
+    if (_emergencyExitButton) {
+        [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+            context.duration = 0.3;
+            _emergencyExitButton.animator.alphaValue = 0.0;
+        } completionHandler:^{
+            [_emergencyExitButton setHidden:YES];
+        }];
+    }
+}
+
+- (void)emergencyExitButtonClicked:(id)sender {
+    [_emergencyExitHideTimer invalidate];
+    _emergencyExitHideTimer = nil;
     if (_messageCallback) {
         _messageCallback("{\"action\":200, \"params\":{}}");
     }
 }
 
-- (void)updateEmergencyExitButtonPosition {
-    if (!_emergencyExitButton || !_webView) return;
-    
-    CGRect webViewFrame = _webView.frame;
-    CGFloat buttonWidth = webViewFrame.size.width * 0.10;
-    CGFloat buttonHeight = webViewFrame.size.height * 0.10;
-    CGFloat buttonX = webViewFrame.origin.x + webViewFrame.size.width - buttonWidth;
-    CGFloat buttonY = webViewFrame.origin.y + webViewFrame.size.height - buttonHeight;
-    
-    NSRect buttonFrame = NSMakeRect(buttonX, buttonY, buttonWidth, buttonHeight);
-    [_emergencyExitButton setFrame:buttonFrame];
-}
-
 - (void)windowDidResize:(NSNotification *)notification {
-    [self updateEmergencyExitButtonPosition];
+    // Reposition the button to top-right if it's visible
+    if (_emergencyExitButton && ![_emergencyExitButton isHidden]) {
+        CGFloat margin = 12.0;
+        NSRect contentFrame = [[[self window] contentView] bounds];
+        NSRect btnFrame = _emergencyExitButton.frame;
+        btnFrame.origin.x = contentFrame.size.width - btnFrame.size.width - margin;
+        btnFrame.origin.y = contentFrame.size.height - btnFrame.size.height - margin;
+        [_emergencyExitButton setFrame:btnFrame];
+    }
 }
 
 - (void)close {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
+    if (_clickMonitor) {
+        [NSEvent removeMonitor:_clickMonitor];
+        _clickMonitor = nil;
+    }
+    [_emergencyExitHideTimer invalidate];
+    _emergencyExitHideTimer = nil;
     if (_emergencyExitButton) {
         [_emergencyExitButton removeFromSuperview];
         _emergencyExitButton = nil;
@@ -1186,12 +1259,19 @@ bool _balancyGetEmbeddedPixelData(unsigned char* buffer, int bufferSize) {
 void _balancySetEmergencyExitEnabled(bool enabled) {
    @autoreleasepool {
        if (_sharedController != nil) {
-           if (enabled) {
-               [_sharedController setupEmergencyExitButton];
-           } else if (_sharedController.emergencyExitButton) {
-               [_sharedController.emergencyExitButton removeFromSuperview];
-               _sharedController.emergencyExitButton = nil;
+           _sharedController.emergencyExitEnabled = enabled;
+           if (!enabled) {
+               // Hide the button if currently shown
+               [_sharedController.emergencyExitHideTimer invalidate];
+               _sharedController.emergencyExitHideTimer = nil;
+               if (_sharedController.emergencyExitButton) {
+                   [_sharedController.emergencyExitButton removeFromSuperview];
+                   _sharedController.emergencyExitButton = nil;
+               }
            }
+       }
+       if (_embeddedController != nil) {
+           _embeddedController.emergencyExitEnabled = enabled;
        }
    }
 }

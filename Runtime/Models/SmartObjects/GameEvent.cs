@@ -43,5 +43,6 @@ namespace Balancy.Models.SmartObjects
         
         public int GetSecondsLeftBeforeDeactivation() => LibraryMethods.Extra.balancyGameEvent_GetSecondsLeftBeforeDeactivation(GetRawPointer());
         public int GetSecondsBeforeActivation(bool ignoreTriggers = true) => LibraryMethods.Extra.balancyGameEvent_GetSecondsBeforeActivation(GetRawPointer(), ignoreTriggers);
+        public void StopEventManually(int cooldown) => LibraryMethods.Extra.balancyGameEvent_StopEventManually(GetRawPointer(), cooldown);
     }
 }

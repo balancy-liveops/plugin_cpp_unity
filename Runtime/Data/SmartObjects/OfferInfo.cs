@@ -10,9 +10,8 @@ namespace Balancy.Data.SmartObjects
 		private string _price;
 		private int _purchasesCount;
 		private string _unnyIdGameOffer;
-		private float _priceUSD;
-        
-        
+
+
 		public int Discount
 		{
 			get => _discount;
@@ -40,12 +39,6 @@ namespace Balancy.Data.SmartObjects
 		}
 		
 		public Balancy.Models.SmartObjects.GameOffer GameOffer => GetModelByUnnyId<Balancy.Models.SmartObjects.GameOffer>(_unnyIdGameOffer);
-		
-		public float PriceUSD
-		{
-			get => _priceUSD;
-			// set => SetFloatValue("priceUSD", value);
-		}
         
         public override void InitData()
         {
@@ -57,7 +50,6 @@ namespace Balancy.Data.SmartObjects
 			InitAndSubscribeForParamChange("price", Update_price);
 			InitAndSubscribeForParamChange("purchasesCount", Update_purchasesCount);
 			InitAndSubscribeForParamChange("unnyIdGameOffer", Update_unnyIdGameOffer);
-			InitAndSubscribeForParamChange("priceUSD", Update_priceUSD);
         }
         
 		private void Update_discount() { _discount = GetIntParam("discount"); }
@@ -66,6 +58,5 @@ namespace Balancy.Data.SmartObjects
 		private void Update_price() { _price = GetStringParam("price"); }
 		private void Update_purchasesCount() { _purchasesCount = GetIntParam("purchasesCount"); }
 		private void Update_unnyIdGameOffer() { _unnyIdGameOffer = GetStringParam("unnyIdGameOffer"); }
-		private void Update_priceUSD() { _priceUSD = GetFloatParam("priceUSD"); }
     }
 }

@@ -19,6 +19,17 @@ namespace Balancy.WebView
     /// </summary>
     public class BalancyWebView : MonoBehaviour
     {
+        private string _scriptsCode = "";
+
+        /// <summary>
+        /// Store compiled scripts code for injection into WebView.
+        /// Called from RenderViewsManager after compiling scripts via native layer.
+        /// </summary>
+        public void SetScriptsCode(string scriptsCode)
+        {
+            _scriptsCode = scriptsCode ?? "";
+        }
+
         #region Singleton Implementation
 
         private static BalancyWebView _instance;
@@ -248,6 +259,8 @@ namespace Balancy.WebView
         private static extern void _balancySetShowDelay(float delaySeconds);
         [DllImport("__Internal")]
         private static extern void _balancySetAnimationDuration(float durationSeconds);
+        [DllImport("__Internal")]
+        private static extern void _balancySetEmergencyExitEnabled(bool enabled);
 
         #elif UNITY_WEBGL && !UNITY_EDITOR
 
@@ -322,6 +335,11 @@ namespace Balancy.WebView
         private static void _balancySetAnimationDuration(float durationSeconds)
         {
             Debug.LogWarning("[BalancyWebView WebGL] Animation duration not implemented for WebGL");
+        }
+
+        private static void _balancySetEmergencyExitEnabled(bool enabled)
+        {
+            // No-op for WebGL - no emergency exit button in browser
         }
 
         #elif UNITY_ANDROID && !UNITY_EDITOR
@@ -574,7 +592,9 @@ namespace Balancy.WebView
         private static extern void _balancySetShowDelay(float delaySeconds);
         [DllImport("libBalancyWebViewMac")]
         private static extern void _balancySetAnimationDuration(float durationSeconds);
-        
+        [DllImport("libBalancyWebViewMac")]
+        private static extern void _balancySetEmergencyExitEnabled(bool enabled);
+
         // Embedding-specific methods (macOS only)
         [DllImport("libBalancyWebViewMac")]
         private static extern bool _balancyOpenWebViewEmbedded(string url, int width, int height);
@@ -689,9 +709,17 @@ namespace Balancy.WebView
             {
                 return true; // Not a local file, let WebView handle it
             }
-            
+
+            // android_asset URLs are served directly from the APK and can't be validated via File.Exists
+            #if UNITY_ANDROID && !UNITY_EDITOR
+            if (url.StartsWith("file:///android_asset/"))
+            {
+                return true;
+            }
+            #endif
+
             string filePath = url.Substring(7); // Remove "file://" prefix
-            
+
             // On Android, convert Unity path format if needed
             #if UNITY_ANDROID && !UNITY_EDITOR
             // Make sure we're using the correct path format
@@ -1046,6 +1074,16 @@ namespace Balancy.WebView
         }
 
         /// <summary>
+        /// Enables or disables the emergency exit button (triple-tap to close).
+        /// When disabled, triple-tap will not show the close button.
+        /// </summary>
+        /// <param name="enabled">True to enable emergency exit (default), false to disable</param>
+        public void SetEmergencyExitEnabled(bool enabled)
+        {
+            _balancySetEmergencyExitEnabled(enabled);
+        }
+
+        /// <summary>
         /// Injects CSS into the WebView
         /// </summary>
         /// <param name="cssCode">The CSS code to inject</param>
@@ -1328,7 +1366,7 @@ namespace Balancy.WebView
         {
             if (success)
             {
-                Debug.Log($"[BalancyWebView] Load completed: {success}: ");
+                Debug.Log($"[BalancyWebView] Load completed: {success}");
 
                 #if !(UNITY_WEBGL && !UNITY_EDITOR)
                 // For WebGL, bridge injection is handled by TypeScript (unity-entry.ts)
@@ -1344,41 +1382,36 @@ namespace Balancy.WebView
                                     : "") +
                                 $"        window.balancyViewOwner = JSON.parse('{_instance._ownerJson}');\n" +
                                 "    } catch (error) {\n" +
-                                "        console.error('Error parsing button params JSON:', error);\n" +
+                                "        console.error('Error parsing owner JSON:', error);\n" +
                                 "        window.balancyViewOwner = null;\n" +
                                 "    }\n" +
-                                "    return true; // Return explicit value to avoid iOS error code 5\n" +
+                                "    return true;\n" +
                                 "})();";
                 }
 
-                // InjectFileFromResources("balancy-webview-performance");
-                // InjectFileFromResources("balancy-webview-styles");
-                // InjectFileFromResources("balancy-webview-bridge");
                 var bridgeCode = Resources.Load<TextAsset>("balancy-webview-bridge");
-                
-                // const fullCode = `
-                //     // #1 Owner Info
-                //     ${ownerInfo}
-                //
-                // // #2 Bridge
-                // ${bridgeCode}
-                //
-                // // #3 Scripts
-                // ${this._scriptsCode}
-                //
-                // // #4 Initialize
-                // balancy.initResponseHandler();
-                // console.log('Balancy fully initialized!');
-                // // Return explicit value to avoid iOS error code 5
-                // true;
-                //     `;
-                //Rewrite the commented code above to C#:
+                var scriptsCode = _instance._scriptsCode;
+
+                // Build full injection code with all 4 sections, wrapped in try/catch
                 var fullCode =
-                    $"{ownerInfo} {bridgeCode} balancy.initResponseHandler(); console.log('Balancy fully initialized!'); true";
-                
+                    "try {\n" +
+                    // #1 Owner Info
+                    $"  {ownerInfo}\n" +
+                    // #2 Bridge
+                    $"  {bridgeCode}\n" +
+                    // #3 Scripts
+                    $"  {scriptsCode}\n" +
+                    // #4 Initialize
+                    "  window.balancy.initResponseHandler();\n" +
+                    "  console.log('Balancy fully initialized!');\n" +
+                    "} catch (error) {\n" +
+                    "  console.error('***Balancy Injection Error***', error);\n" +
+                    "  console.error('Error message:', error.message);\n" +
+                    "  console.error('Error stack:', error.stack);\n" +
+                    "}\n" +
+                    "true;";
+
                 _balancyInjectJSCode(fullCode);
-                // InjectFileFromResources("balancy-webview-css-animations");
-                // InjectFileFromResources("balancy-webview-js-animations");
                 #else
                 Debug.Log("[BalancyWebView] WebGL: Bridge injection handled by TypeScript");
                 #endif

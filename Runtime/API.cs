@@ -45,6 +45,25 @@ namespace Balancy
             return null;
         }
 
+        public static void NutakuCompletePurchase(int userId, string orderId, Balancy.Core.ResponseCallback<Balancy.Core.Responses.CompletePurchaseResponseData> callback)
+        {
+            Balancy.Core.ResponseCallback<Balancy.Core.Responses.InteropCompletePurchaseResponseData> resCallback = data =>
+            {
+                var resData = new Balancy.Core.Responses.CompletePurchaseResponseData
+                {
+                    Success = data.Success,
+                    ErrorCode = data.ErrorCode,
+                    ErrorMessage = data.ErrorMessage,
+                    Data = JsonUtility.FromJson<Balancy.Core.Responses.CompletePurchaseData>(data.data)
+                };
+                callback?.Invoke(resData);
+            };
+                
+            var callbackResult = ProtectedFromGCCallback(resCallback);
+
+            LibraryMethods.API.balancyNutakuComplete(userId, orderId, callbackResult.CallbackId, callbackResult.StaticCallback);
+        }
+
         public static void FinalizedHardPurchase(Actions.PurchaseResult result,
             Balancy.Actions.BalancyProductInfo productInfo, Core.PaymentInfo paymentInfo,
             Action<bool, bool> validationCallback, bool requireReceiptValidation = true)
@@ -76,7 +95,10 @@ namespace Balancy
                         callback?.Callback?.Invoke(responseData.Success, responseData.ErrorMessage);
 
                         if (responseData.Success)
+                        {
+                            paymentInfo.PriceUSD = responseData.PriceUSD;
                             productInfo.ReportThePurchase(paymentInfo);
+                        }
                     }
 
                     switch (productInfo.Type)
@@ -104,14 +126,25 @@ namespace Balancy
                         {
                             var offerInfo =
                                 Balancy.Profiles.System.SmartInfo.FindOfferInfo(productInfo.OfferInstanceId);
-                            if (offerInfo == null)
+                            if (offerInfo != null)
                             {
-                                validationCallback?.Invoke(false, false);
-                                callback?.Callback?.Invoke(false, Constants.Errors.OfferInfoNull);
+                                HardPurchaseGameOffer(offerInfo, paymentInfo, InvokeCallbacks, requireValidation);
                             }
                             else
                             {
-                                HardPurchaseGameOffer(offerInfo, paymentInfo, InvokeCallbacks, requireValidation);
+                                // Offer instance is gone (stale ID from previous session or deactivated mid-purchase).
+                                // Fall back to completing the purchase via StoreItem so the user gets what they paid for.
+                                var storeItem = productInfo.GetStoreItem();
+                                if (storeItem != null)
+                                {
+                                    Debug.LogWarning($"OfferInfo not found for InstanceId={productInfo.OfferInstanceId}, falling back to StoreItem purchase.");
+                                    HardPurchaseStoreItem(storeItem, paymentInfo, InvokeCallbacks, requireValidation);
+                                }
+                                else
+                                {
+                                    validationCallback?.Invoke(false, false);
+                                    callback?.Callback?.Invoke(false, Constants.Errors.OfferInfoNull);
+                                }
                             }
 
                             break;
@@ -120,16 +153,26 @@ namespace Balancy
                         {
                             var offerGroupInfo =
                                 Balancy.Profiles.System.SmartInfo.FindOfferGroupInfo(productInfo.OfferInstanceId);
-                            if (offerGroupInfo == null)
-                            {
-                                validationCallback?.Invoke(false, false);
-                                callback?.Callback?.Invoke(false, Constants.Errors.OfferGroupInfoNull);
-                            }
-                            else
+                            if (offerGroupInfo != null)
                             {
                                 var storeItem = productInfo.GetStoreItem();
                                 HardPurchaseGameOfferGroup(offerGroupInfo, storeItem, paymentInfo,
                                     InvokeCallbacks, requireValidation);
+                            }
+                            else
+                            {
+                                // OfferGroup instance is gone — fall back to StoreItem purchase.
+                                var storeItem = productInfo.GetStoreItem();
+                                if (storeItem != null)
+                                {
+                                    Debug.LogWarning($"OfferGroupInfo not found for InstanceId={productInfo.OfferInstanceId}, falling back to StoreItem purchase.");
+                                    HardPurchaseStoreItem(storeItem, paymentInfo, InvokeCallbacks, requireValidation);
+                                }
+                                else
+                                {
+                                    validationCallback?.Invoke(false, false);
+                                    callback?.Callback?.Invoke(false, Constants.Errors.OfferGroupInfoNull);
+                                }
                             }
 
                             break;
@@ -321,12 +364,6 @@ namespace Balancy
         public static void RestorePurchases()
         {
             Balancy.Actions.Purchasing.GetRestorePurchasesCallback()?.Invoke();
-        }
-
-        public static string[] GetProductsIdAndType()
-        {
-            IntPtr ptr = LibraryMethods.General.balancyGetProductsIdAndType(out var size);
-            return JsonBasedObject.ReadStringArrayValues(ptr, size);
         }
     }
 }

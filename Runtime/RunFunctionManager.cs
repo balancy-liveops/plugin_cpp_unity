@@ -280,30 +280,52 @@ namespace Balancy
         {
             try
             {
-                var response = new RunFunctionResponse
+                RunFunctionResponse response;
+
+                if (returnType == typeof(NodeRunFunctionReturnType) && result is NodeRunFunctionReturnType nrfrt)
                 {
-                    exitPort = "Success",
-                    outputs = new OutputData[0]
-                };
-                
-                // Add result to outputs if method has return value
-                if (returnType != typeof(void) && result != null)
-                {
-                    response.outputs = new OutputData[]
+                    // Full contract: user controls exit port and all named outputs
+                    var outputList = new System.Collections.Generic.List<OutputData>();
+                    if (nrfrt.Outputs != null)
                     {
-                        new OutputData
+                        foreach (var kvp in nrfrt.Outputs)
                         {
-                            key = "result",
-                            value = result.ToString(),
-                            valueType = GetTypeString(returnType)
+                            outputList.Add(new OutputData
+                            {
+                                key = kvp.Key,
+                                value = kvp.Value?.ToString() ?? "",
+                                valueType = GetTypeString(kvp.Value?.GetType() ?? typeof(string))
+                            });
                         }
+                    }
+                    response = new RunFunctionResponse
+                    {
+                        exitPort = nrfrt.ExitPort,
+                        outputs = outputList.ToArray()
                     };
                 }
-                
+                else
+                {
+                    // Simple return value: always exits via "Success", result exposed as "result" port
+                    response = new RunFunctionResponse
+                    {
+                        exitPort = "Success",
+                        outputs = (returnType != typeof(void) && result != null)
+                            ? new OutputData[]
+                            {
+                                new OutputData
+                                {
+                                    key = "result",
+                                    value = result.ToString(),
+                                    valueType = GetTypeString(returnType)
+                                }
+                            }
+                            : new OutputData[0]
+                    };
+                }
+
                 string responseJson = JsonUtility.ToJson(response);
                 LibraryMethods.General.balancyRunFunctionResponse(responseCallbackId, responseJson);
-                
-                // Remove from pending callbacks
                 _pendingCallbacks.Remove(responseCallbackId);
             }
             catch (Exception ex)

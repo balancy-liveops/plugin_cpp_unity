@@ -15,7 +15,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong, readonly) WKWebView *webView;
 @property (nonatomic, assign) BOOL offlineCacheEnabled;
 @property (nonatomic, assign) BOOL gameUIMode; // New property for game UI mode
-@property (nonatomic, strong) UIButton *emergencyExitButton;  // Emergency Exit button
+@property (nonatomic, strong) UIView *emergencyExitButton;  // Emergency Exit button (red X, shown on triple-tap)
 
 // Animation properties
 @property (nonatomic, assign, readwrite) float showDelay; // Delay before showing webview (in seconds)
@@ -43,7 +43,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)setShowDelay:(float)delaySeconds;
 - (void)setAnimationDuration:(float)durationSeconds;
 
-// Emergency Exit functionality (10% x 10% invisible button in top-right corner)
+// Emergency Exit functionality
 - (void)setEmergencyExitEnabled:(BOOL)enabled;
 
 @end

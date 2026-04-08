@@ -21,6 +21,7 @@ namespace Balancy
 
         private static readonly Dictionary<string, Action<string>> _pendingRequests = new Dictionary<string, Action<string>>();
         private static UnityMainThreadDispatcher _dispatcher;
+        private static volatile bool _isStopped = false;
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         // WebGL: DllImport to JavaScript unzip function
@@ -33,6 +34,7 @@ namespace Balancy
         /// </summary>
         public static void Initialize()
         {
+            _isStopped = false;
             _dispatcher = UnityMainThreadDispatcher.Instance();
             LibraryMethods.General.balancySetUnzipCallback(OnUnzipRequest);
             LibraryMethods.General.balancySetExtractZipFromMemoryCallback(OnExtractZipFromMemory);
@@ -311,6 +313,8 @@ namespace Balancy
         /// </summary>
         private static void NotifyUnzipCompleted(string id, string extractedFolderPath)
         {
+            if (_isStopped) return;
+
             try
             {
                 LibraryMethods.General.balancyUnzipCompleted(id, extractedFolderPath);
@@ -389,6 +393,7 @@ namespace Balancy
         /// </summary>
         public static void Cleanup()
         {
+            _isStopped = true;
             _pendingRequests.Clear();
         }
     }
