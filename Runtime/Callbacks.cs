@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using Balancy.Core;
 using Balancy.Data.SmartObjects;
 using Balancy.Models.SmartObjects;
+using Balancy.Runtime.Core;
 using UnityEngine;
 
 namespace Balancy
@@ -51,6 +53,7 @@ namespace Balancy
         public delegate void OnNetworkDownloadStartedDelegate(NetworkDownloadInfo info);
         public delegate void OnNetworkDownloadFinishedDelegate(NetworkDownloadCompletedInfo info);
         
+        public delegate void OnPurchasesRestoredDelegate(List<PurchaseResult> items);
         public delegate void OnHardPurchasedStoreItemDelegate(PaymentInfo paymentInfo, StoreItem storeItem);
         public delegate void OnHardPurchasedShopSlotDelegate(PaymentInfo paymentInfo, Balancy.Models.LiveOps.Store.Slot shopSlot);
         public delegate void OnHardPurchasedOfferDelegate(PaymentInfo paymentInfo, GameOffer gameOffer);
@@ -107,6 +110,7 @@ namespace Balancy
             _onPaymentIsReady?.Invoke();
         }
         
+        public static OnPurchasesRestoredDelegate OnPurchasesRestored = null;
         public static OnHardPurchasedStoreItemDelegate OnHardPurchasedStoreItem = null;
         public static OnHardPurchasedShopSlotDelegate OnHardPurchasedShopSlot = null;
         public static OnHardPurchasedOfferDelegate OnHardPurchasedOffer = null;
