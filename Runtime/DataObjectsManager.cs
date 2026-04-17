@@ -14,6 +14,11 @@ namespace Balancy.Dictionaries
         private static string CACHE_PATH;
         private static string RESOURCES_PATH;
 
+        // Rooted delegate instances — prevent GC from collecting the P/Invoke wrapper
+        // while native code still holds the function pointer.
+        private static readonly LibraryMethods.Models.DataObjectWasCachedCallback s_DataObjectLoadedCb = DataObjectLoaded;
+        private static readonly LibraryMethods.Models.DataObjectViewWasCachedCallback s_DataObjectViewLoadedCb = DataObjectViewLoaded;
+
         enum Status
         {
             None = 0,
@@ -562,7 +567,7 @@ namespace Balancy.Dictionaries
             if (oneObject.Status == Status.None && !handler.IsFinished())
             {
                 oneObject.Status = Status.Loading;
-                LibraryMethods.Models.balancyDataObjectLoad(id, DataObjectLoaded);
+                LibraryMethods.Models.balancyDataObjectLoad(id, s_DataObjectLoadedCb);
             }
 
             return handler;
@@ -604,7 +609,7 @@ namespace Balancy.Dictionaries
             if (oneObject.Status == Status.None && !handler.IsFinished())
             {
                 oneObject.Status = Status.Loading;
-                LibraryMethods.Models.balancyDataObjectLoad(id, DataObjectLoaded);
+                LibraryMethods.Models.balancyDataObjectLoad(id, s_DataObjectLoadedCb);
             }
 
             return handler;
@@ -632,7 +637,7 @@ namespace Balancy.Dictionaries
                 oneObjectView.AddCallback(handler, callback);
                 AllViews.Add(id, oneObjectView);
                 
-                LibraryMethods.Models.balancyDataObjectViewPreload(id, DataObjectViewLoaded);
+                LibraryMethods.Models.balancyDataObjectViewPreload(id, s_DataObjectViewLoadedCb);
             }
             else
             {

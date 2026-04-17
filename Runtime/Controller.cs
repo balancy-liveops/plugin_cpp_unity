@@ -21,23 +21,30 @@ namespace Balancy
         
         public static AppConfig Config => _originalConfig;
         
-        private static UnityMainThreadDispatcher _mainThreadInstance; 
-        
+        private static UnityMainThreadDispatcher _mainThreadInstance;
+
         public static event Action OnCloudSynced;
         public static event Action<bool, bool> OnDataUpdated;
-        
+
+        // Rooted delegate instances — prevent GC from collecting the P/Invoke wrapper
+        // while native code still holds the function pointer.
+        private static readonly LibraryMethods.General.LogCallback s_LogCb = LogMessage;
+        private static readonly LibraryMethods.General.InvokeInMainThreadCallback s_InvokeInMainThreadCb = InvokeInMainThread;
+        private static readonly LibraryMethods.ModelRefreshedCallback s_ModelRefreshedCb = ModelRefreshed;
+        private static readonly LibraryMethods.UserDataInitializedCallback s_UserDataInitializedCb = UserDataInitialized;
+
         public static void Init(AppConfig appConfig)
         {
             if (!CheckConfig(appConfig))
                 return;
-            
+
             if (!CheckCallbacks())
                 return;
-            
+
             _isReadyToUse = false;
             CMS.SetIsReady(false);
 
-            LibraryMethods.General.balancySetLogCallback(LogMessage);
+            LibraryMethods.General.balancySetLogCallback(s_LogCb);
             _mainThreadInstance = UnityMainThreadDispatcher.Instance();
             _mainThreadInstance.StartCoroutine(InitCoroutine(appConfig));
         }
@@ -48,11 +55,11 @@ namespace Balancy
             Balancy.Network.UnityWebSocketBridge.Initialize();//temporary turn it off
             Balancy.UnzipBridge.Initialize(); // Initialize Unity ZIP bridge for all platforms
 
-            LibraryMethods.General.balancySetInvokeInMainThreadCallback(InvokeInMainThread);
+            LibraryMethods.General.balancySetInvokeInMainThreadCallback(s_InvokeInMainThreadCb);
             yield return UnityFileManager.InitRuntime();
 
-            LibraryMethods.Models.balancySetModelOnRefresh(ModelRefreshed);
-            LibraryMethods.Models.balancySetUserDataInitializedCallback(UserDataInitialized);
+            LibraryMethods.Models.balancySetModelOnRefresh(s_ModelRefreshedCb);
+            LibraryMethods.Models.balancySetUserDataInitializedCallback(s_UserDataInitializedCb);
             Profiles.Init();
             RenderViewsManager.Init();
             RunFunctionManager.Init();

@@ -10,6 +10,12 @@ namespace Balancy
     {
         private static readonly Dictionary<string, ParentBaseData> _cachedProfiles = new Dictionary<string, ParentBaseData>();
 
+        // Rooted delegate instances — prevent GC from collecting the P/Invoke wrapper
+        // while native code still holds the function pointer.
+        private static readonly LibraryMethods.ModelRefreshedCallback s_ProfileResetCb = ProfileReset;
+        private static readonly LibraryMethods.Data.ParamChangedCallback s_ParamChangedCb = OnBaseDataParamChanged;
+        private static readonly LibraryMethods.Data.DataDestroyedCallback s_DataDestroyedCb = OnBaseDataDestroyed;
+
         public static UnnyProfile System => Get<UnnyProfile>();
         
         public static T Get<T>() where T : Data.ParentBaseData, new()
@@ -52,9 +58,9 @@ namespace Balancy
 
         internal static void Init()
         {
-            LibraryMethods.Data.balancySetProfileOnReset(ProfileReset);
-            LibraryMethods.Data.balancySetBaseDataParamChanged(OnBaseDataParamChanged);
-            LibraryMethods.Data.balancySetBaseDataDestroyed(OnBaseDataDestroyed);
+            LibraryMethods.Data.balancySetProfileOnReset(s_ProfileResetCb);
+            LibraryMethods.Data.balancySetBaseDataParamChanged(s_ParamChangedCb);
+            LibraryMethods.Data.balancySetBaseDataDestroyed(s_DataDestroyedCb);
         }
 
         internal static void CleanUp()

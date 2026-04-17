@@ -9,16 +9,20 @@ namespace Balancy
     public static class RunFunctionManager
     {
         private static readonly Dictionary<string, PendingCallback> _pendingCallbacks = new Dictionary<string, PendingCallback>();
-        
+
+        // Rooted delegate instance — prevent GC from collecting the P/Invoke wrapper
+        // while native code still holds the function pointer.
+        private static readonly LibraryMethods.RunFunctionCallback s_RunFunctionCb = OnRunFunctionRequested;
+
         private struct PendingCallback
         {
             public string CallbackId;
             public DateTime Timestamp;
         }
-        
+
         internal static void Init()
         {
-            LibraryMethods.General.balancySetRunFunctionCallback(OnRunFunctionRequested);
+            LibraryMethods.General.balancySetRunFunctionCallback(s_RunFunctionCb);
         }
         
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.RunFunctionCallback))]

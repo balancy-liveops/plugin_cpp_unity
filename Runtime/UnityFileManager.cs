@@ -12,6 +12,10 @@ namespace Balancy
 #if UNITY_WEBGL && !UNITY_EDITOR
         private static bool _preloadComplete = false;
 
+        // Rooted delegate instance — prevent GC from collecting the P/Invoke wrapper
+        // while native code still holds the function pointer.
+        private static readonly LibraryMethods.General.PreloadCompleteCallback s_PreloadCompleteCb = OnPreloadComplete;
+
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.General.PreloadCompleteCallback))]
         private static void OnPreloadComplete()
         {
@@ -67,7 +71,7 @@ namespace Balancy
             // Preload files from IndexedDB on WebGL
             Debug.Log("[Balancy] Preloading files from IndexedDB...");
             _preloadComplete = false;
-            Balancy.LibraryMethods.General.balancyPreloadFromIndexedDB(OnPreloadComplete);
+            Balancy.LibraryMethods.General.balancyPreloadFromIndexedDB(s_PreloadCompleteCb);
 
             // Wait for IndexedDB preload to complete
             while (!_preloadComplete)

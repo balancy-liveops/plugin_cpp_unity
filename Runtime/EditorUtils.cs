@@ -52,13 +52,22 @@ namespace Balancy.Editor
         private static DownloadCompleteCallback _downloadCompleteCallback;
         private static ProgressUpdateCallback _progressUpdateCallback;
 
+        // Rooted delegate instances — prevent GC from collecting the P/Invoke wrapper
+        // while native code still holds the function pointer.
+        private static readonly LibraryMethods.General.LogCallback s_LogCb = LogMessage;
+        private static readonly LibraryMethods.Editor.AuthCallback s_AuthDoneCb = AuthDone;
+        private static readonly LibraryMethods.Editor.StringArrayCallback s_GamesLoadedCb = GamesLoaded;
+        private static readonly LibraryMethods.Editor.StringArrayCallback s_BranchesLoadedCb = BranchesLoaded;
+        private static readonly Balancy.DownloadCompleteCallback s_DownloadCompletedCb = OnDownloadCompleted;
+        private static readonly Balancy.ProgressUpdateCallback s_ProgressUpdateCb = OnProgressUpdate;
+
         public static void Launch()
         {
             if (_isInitialized)
                 return;
 
             _isInitialized = true;
-            LibraryMethods.General.balancySetLogCallback(LogMessage);
+            LibraryMethods.General.balancySetLogCallback(s_LogCb);
             UnityFileManager.Init();
             
             LibraryMethods.Editor.balancyConfigLaunch(LibraryMethods.Editor.Language.CSharp);
@@ -91,7 +100,7 @@ namespace Balancy.Editor
         {
             Launch();
             _authCallback = callback;
-            LibraryMethods.Editor.balancyConfigAuth(email, password, AuthDone);
+            LibraryMethods.Editor.balancyConfigAuth(email, password, s_AuthDoneCb);
         }
         
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.Editor.AuthCallback))]
@@ -114,7 +123,7 @@ namespace Balancy.Editor
         public static void LoadGames(Action<List<GameInfo>> callback)
         {
             getGamesCallback = callback;
-            LibraryMethods.Editor.balancyConfigLoadListOfGames(GamesLoaded);
+            LibraryMethods.Editor.balancyConfigLoadListOfGames(s_GamesLoadedCb);
         }
         
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.Editor.StringArrayCallback))]
@@ -139,7 +148,7 @@ namespace Balancy.Editor
         public static void LoadBranches(Action<List<BranchInfo>> callback)
         {
             getBranchesCallback = callback;
-            LibraryMethods.Editor.balancyConfigLoadBranches(BranchesLoaded);
+            LibraryMethods.Editor.balancyConfigLoadBranches(s_BranchesLoadedCb);
         }
         
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.Editor.StringArrayCallback))]
@@ -189,14 +198,14 @@ namespace Balancy.Editor
             Launch();
             _downloadCompleteCallback = onReadyCallback;
             _progressUpdateCallback = onProgressCallback;
-            LibraryMethods.Editor.balancyConfigDownloadContentToResources(OnDownloadCompleted, OnProgressUpdate);
+            LibraryMethods.Editor.balancyConfigDownloadContentToResources(s_DownloadCompletedCb, s_ProgressUpdateCb);
         }
         
         public static void GenerateCode(DownloadCompleteCallback onReadyCallback)
         {
             Launch();
             _downloadCompleteCallback = onReadyCallback;
-            LibraryMethods.Editor.balancyConfigGenerateCode(OnDownloadCompleted);
+            LibraryMethods.Editor.balancyConfigGenerateCode(s_DownloadCompletedCb);
         }
 
         [AOT.MonoPInvokeCallback(typeof(Balancy.DownloadCompleteCallback))]

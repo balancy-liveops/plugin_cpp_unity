@@ -8,9 +8,13 @@ namespace Balancy
         private static readonly Dictionary<string, Action<string, string>> _pendingCallbacks =
             new Dictionary<string, Action<string, string>>();
 
+        // Rooted delegate instance — prevent GC from collecting the P/Invoke wrapper
+        // while native code still holds the function pointer.
+        private static readonly LibraryMethods.ScriptCompletionCallback s_ScriptCompletionCb = OnScriptCompleted;
+
         internal static void Init()
         {
-            LibraryMethods.General.balancySetScriptCompletionCallback(OnScriptCompleted);
+            LibraryMethods.General.balancySetScriptCompletionCallback(s_ScriptCompletionCb);
         }
 
         /// <summary>

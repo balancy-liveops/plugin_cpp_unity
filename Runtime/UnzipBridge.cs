@@ -23,6 +23,11 @@ namespace Balancy
         private static UnityMainThreadDispatcher _dispatcher;
         private static volatile bool _isStopped = false;
 
+        // Rooted delegate instances — prevent GC from collecting the P/Invoke wrapper
+        // while native code still holds the function pointer.
+        private static readonly LibraryMethods.General.OnUnzipCallback s_UnzipCb = OnUnzipRequest;
+        private static readonly LibraryMethods.General.ExtractZipFromMemoryCallback s_ExtractZipCb = OnExtractZipFromMemory;
+
 #if UNITY_WEBGL && !UNITY_EDITOR
         // WebGL: DllImport to JavaScript unzip function
         [DllImport("__Internal")]
@@ -36,8 +41,8 @@ namespace Balancy
         {
             _isStopped = false;
             _dispatcher = UnityMainThreadDispatcher.Instance();
-            LibraryMethods.General.balancySetUnzipCallback(OnUnzipRequest);
-            LibraryMethods.General.balancySetExtractZipFromMemoryCallback(OnExtractZipFromMemory);
+            LibraryMethods.General.balancySetUnzipCallback(s_UnzipCb);
+            LibraryMethods.General.balancySetExtractZipFromMemoryCallback(s_ExtractZipCb);
 
 #if UNITY_WEBGL && !UNITY_EDITOR
             Debug.Log("[Balancy] UnzipBridge initialized - using JavaScript JSZip for WebGL");

@@ -22,11 +22,19 @@ namespace Balancy
 
         private static BalancyWebView _webView;
 
+        // Rooted delegate instances — prevent GC from collecting the P/Invoke wrapper
+        // while native code still holds the function pointer. `s_MessageResponseCb`
+        // is reused every time `balancyWebViewRequest` is called with the same static
+        // handler, so rooting it removes the per-call allocation too.
+        private static readonly LibraryMethods.General.DataRequestedCallback s_DataRequestedCb = DataRequested;
+        private static readonly LibraryMethods.General.WebviewRequestCallback s_NotificationCb = OnNotificationReceived;
+        private static readonly LibraryMethods.General.WebviewRequestCallback s_MessageResponseCb = OnMessageResponseReceived;
+
         internal static void Init()
         {
-            LibraryMethods.General.balancySetDataRequestedCallback(DataRequested);
+            LibraryMethods.General.balancySetDataRequestedCallback(s_DataRequestedCb);
             LibraryMethods.General.balancyViewAllowOptimization(true);
-            LibraryMethods.General.balancySetViewNotificationsCallback(OnNotificationReceived);
+            LibraryMethods.General.balancySetViewNotificationsCallback(s_NotificationCb);
             PrepareCallbacks();
 
             BalancyWebView.Instance.OnMessage = OnMessageReceived;
@@ -341,7 +349,7 @@ namespace Balancy
                 }
             }
 
-            RunRequestInTheCorePlugin(msg, OnMessageResponseReceived);
+            RunRequestInTheCorePlugin(msg, s_MessageResponseCb);
         }
 
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.General.WebviewRequestCallback))]

@@ -57,6 +57,14 @@ namespace Balancy.Network
         private Dictionary<int, WebSocketConnection> _activeConnections = new Dictionary<int, WebSocketConnection>();
         private static UnityMainThreadDispatcher _mainThreadInstance;
 
+        // Rooted delegate instances — prevent GC from collecting the P/Invoke wrapper
+        // while native code still holds the function pointer.
+        private static readonly Balancy.LibraryMethods.WebSocket.ConnectRequestDelegate s_ConnectCb = StaticOnConnectRequest;
+        private static readonly Balancy.LibraryMethods.WebSocket.DisconnectRequestDelegate s_DisconnectCb = StaticOnDisconnectRequest;
+        private static readonly Balancy.LibraryMethods.WebSocket.SubscribeEventDelegate s_SubscribeCb = StaticOnSubscribeEvent;
+        private static readonly Balancy.LibraryMethods.WebSocket.SendAckDelegate s_SendAckCb = StaticOnSendAck;
+        private static readonly Balancy.LibraryMethods.WebSocket.SendMessageDelegate s_SendMessageCb = StaticOnSendMessage;
+
         public static void Initialize()
         {
             if (_instance != null) return;
@@ -76,11 +84,11 @@ namespace Balancy.Network
             _mainThreadInstance = UnityMainThreadDispatcher.Instance();
 
             // Register C# callbacks with the native plugin
-            balancyRegisterWSConnectRequestCallback(StaticOnConnectRequest);
-            balancyRegisterWSDisconnectRequestCallback(StaticOnDisconnectRequest);
-            balancyRegisterWSSubscribeEventCallback(StaticOnSubscribeEvent);
-            balancyRegisterWSSendAckCallback(StaticOnSendAck);
-            balancyRegisterWSSendMessageCallback(StaticOnSendMessage);
+            balancyRegisterWSConnectRequestCallback(s_ConnectCb);
+            balancyRegisterWSDisconnectRequestCallback(s_DisconnectCb);
+            balancyRegisterWSSubscribeEventCallback(s_SubscribeCb);
+            balancyRegisterWSSendAckCallback(s_SendAckCb);
+            balancyRegisterWSSendMessageCallback(s_SendMessageCb);
             
             Debug.Log("UnityWebSocketBridge initialized");
         }

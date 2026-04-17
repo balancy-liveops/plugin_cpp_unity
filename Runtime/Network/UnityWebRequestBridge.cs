@@ -45,6 +45,11 @@ namespace Balancy.Network
 
         public static bool IsStopped => _isStopped;
 
+        // Rooted delegate instances — prevent GC from collecting the P/Invoke wrapper
+        // while native code still holds the function pointer.
+        private static readonly WebRequestCallbackDelegate s_WebRequestCb = StaticOnWebRequestReceived;
+        private static readonly FileLoadCallbackDelegate s_FileLoadCb = StaticOnFileLoadReceived;
+
 #if UNITY_EDITOR
         // HttpClient for Editor mode - use a dictionary to manage different clients with different timeouts
         private static Dictionary<int, HttpClient> _httpClients = new Dictionary<int, HttpClient>();
@@ -75,8 +80,8 @@ namespace Balancy.Network
             _mainThreadInstance = UnityMainThreadDispatcher.Instance();
 
             // Register C# callbacks with the native plugin
-            balancyRegisterWebRequestCallback(StaticOnWebRequestReceived);
-            balancyRegisterFileLoadCallback(StaticOnFileLoadReceived);
+            balancyRegisterWebRequestCallback(s_WebRequestCb);
+            balancyRegisterFileLoadCallback(s_FileLoadCb);
         }
 
         public static void Clear()
