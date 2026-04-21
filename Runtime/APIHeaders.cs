@@ -600,9 +600,16 @@ namespace Balancy
         public static void SetTimeCheatingOffset(int seconds) => LibraryMethods.Extra.balancySetTimeOffset(seconds);
         public static int GetTimeCheatingOffset() => LibraryMethods.Extra.balancyGetTimeOffset();
 
-        private static LibraryMethods.Extra.CustomUTCTimeProviderDelegate _customUTCTimeProviderDelegate;
         private static Func<DateTime> _customUTCTimeProviderFunc;
         private static readonly DateTime Epoch = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        [AOT.MonoPInvokeCallback(typeof(LibraryMethods.Extra.CustomUTCTimeProviderDelegate))]
+        private static uint CustomUTCTimeProviderCallback()
+        {
+            if (_customUTCTimeProviderFunc == null)
+                return 0;
+            return (uint)(_customUTCTimeProviderFunc().ToUniversalTime() - Epoch).TotalSeconds;
+        }
 
         /// <summary>
         /// Sets a custom UTC time provider that overrides the SDK's internal server time.
@@ -618,8 +625,7 @@ namespace Balancy
             }
 
             _customUTCTimeProviderFunc = provider;
-            _customUTCTimeProviderDelegate = () => (uint)(provider().ToUniversalTime() - Epoch).TotalSeconds;
-            LibraryMethods.Extra.balancySetCustomUTCTimeProvider(_customUTCTimeProviderDelegate);
+            LibraryMethods.Extra.balancySetCustomUTCTimeProvider(CustomUTCTimeProviderCallback);
         }
 
         /// <summary>
@@ -628,7 +634,6 @@ namespace Balancy
         public static void ResetCustomUTCTimeProvider()
         {
             _customUTCTimeProviderFunc = null;
-            _customUTCTimeProviderDelegate = null;
             LibraryMethods.Extra.balancyResetCustomUTCTimeProvider();
         }
 
