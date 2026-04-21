@@ -259,7 +259,7 @@ namespace Balancy.Models
             Balancy.Dictionaries.DataObjectsManager.GetObject(Id, callback);
         }
 
-        public void OpenView(Action onShown, JsonBasedObject owner = null)
+        public void OpenView(Action onShown, JsonBasedObject owner)
         {
             if (type != ObjectType.View)
             {

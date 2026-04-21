@@ -272,6 +272,7 @@ namespace Balancy.WebView
         private static extern void _balancyShowWebView();
         [DllImport("__Internal")]
         private static extern void _balancyHideWebView();
+        [DllImport("__Internal")]
         private static extern void _balancySetEmergencyExitEnabled(bool enabled);
 
         #elif UNITY_WEBGL && !UNITY_EDITOR
@@ -970,11 +971,25 @@ namespace Balancy.WebView
             _isPreparing = true;
             _onShellReady = onReady;
 
-            string shellPath = System.IO.Path.Combine(Application.streamingAssetsPath, "Balancy", "balancy-shell.html");
+            // Load shell HTML from Resources and write to persistent storage
+            // so the native WebView can load it as a file:// URL
+            var shellAsset = Resources.Load<TextAsset>("balancy-shell");
+            if (shellAsset == null)
+            {
+                Debug.LogError("[BalancyWebView] PrepareWebView: balancy-shell.txt not found in Resources");
+                _isPreparing = false;
+                onReady?.Invoke();
+                return;
+            }
+
+            string shellDir = System.IO.Path.Combine(Application.persistentDataPath, "Balancy");
+            if (!System.IO.Directory.Exists(shellDir))
+                System.IO.Directory.CreateDirectory(shellDir);
+
+            string shellPath = System.IO.Path.Combine(shellDir, "balancy-shell.html");
+            System.IO.File.WriteAllText(shellPath, shellAsset.text);
+
             string shellUrl = "file://" + shellPath;
-#if UNITY_ANDROID && !UNITY_EDITOR
-            shellUrl = "file:///android_asset/Balancy/balancy-shell.html";
-#endif
 
             Debug.Log($"[BalancyWebView] PrepareWebView: starting shell load. Path={shellPath}");
 
@@ -1577,7 +1592,7 @@ namespace Balancy.WebView
             string preview = message;
             if (!string.IsNullOrEmpty(preview) && preview.Length > 240)
                 preview = preview.Substring(0, 240) + "...";
-            Debug.Log($"[BalancyWebView] Message received: {preview}");
+            // Debug.Log($"[BalancyWebView] Message received: {preview}");
 
             if (_isPersistentMode && message.Contains("\"viewLoadError\""))
             {

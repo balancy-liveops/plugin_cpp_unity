@@ -187,7 +187,7 @@ namespace Balancy
             _webView?.HideWebView();
         }
 
-        public static void OpenLocalView(string filePath, JsonBasedObject owner = null, Action onShown = null)
+        public static void OpenLocalView(string filePath, JsonBasedObject owner, Action onShown = null)
         {
             if (string.IsNullOrEmpty(filePath))
             {
@@ -732,7 +732,7 @@ namespace Balancy
         {
             if (m_LastOpenedOwnerPtr == IntPtr.Zero)
             {
-                Debug.LogWarning("[RenderViewsManager] Cannot process WebView request: owner pointer is null");
+                // Debug.LogWarning("[RenderViewsManager] Cannot process WebView request: owner pointer is null");
                 callback("{\"type\":\"response\",\"error\":\"Owner pointer is null\"}");
                 return;
             }
