@@ -154,7 +154,7 @@ namespace Balancy
         private static bool IsTextFile(string relativePath)
         {
             var ext = Path.GetExtension(relativePath).ToLowerInvariant();
-            return ext == ".json" || ext == ".txt" || ext == ".xml" || ext == ".csv" || ext == ".yaml" || ext == ".yml";
+            return ext == ".json" || ext == ".txt" || ext == ".xml" || ext == ".csv" || ext == ".yaml" || ext == ".yml" || ext == ".js";
         }
 
         private static string ReadAssetAsString(AndroidJavaObject assetManager, string assetPath)
