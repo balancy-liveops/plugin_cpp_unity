@@ -116,6 +116,11 @@ namespace Balancy
         
         private static void HandleWebViewClosed()
         {
+            // In persistent mode, keep the owner pointer alive so late requests
+            // (e.g. click sound) from the closing view can still be serviced.
+            if (UsePersistentWebViewForLocalViews())
+                return;
+
             m_LastOpenedOwnerPtr = IntPtr.Zero;
         }
 
@@ -725,6 +730,13 @@ namespace Balancy
 
         private static void RunRequestInTheCorePlugin(string requestData, LibraryMethods.General.WebviewRequestCallback callback)
         {
+            if (m_LastOpenedOwnerPtr == IntPtr.Zero)
+            {
+                Debug.LogWarning("[RenderViewsManager] Cannot process WebView request: owner pointer is null");
+                callback("{\"type\":\"response\",\"error\":\"Owner pointer is null\"}");
+                return;
+            }
+
             LibraryMethods.General.balancyWebViewRequest(m_LastOpenedOwnerPtr, requestData, callback);
         }
     }
