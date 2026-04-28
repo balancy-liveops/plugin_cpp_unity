@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Balancy.Data;
 using Balancy.Data.SmartObjects;
 using Balancy.Models;
@@ -9,6 +10,7 @@ namespace Balancy
     public static class Profiles
     {
         private static readonly Dictionary<string, ParentBaseData> _cachedProfiles = new Dictionary<string, ParentBaseData>();
+        private static int _mainThreadId;
 
         public static UnnyProfile System => Get<UnnyProfile>();
         
@@ -34,6 +36,12 @@ namespace Balancy
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.ModelRefreshedCallback))]
         internal static void ProfileReset(string profileName, IntPtr newPointer)
         {
+            if (Thread.CurrentThread.ManagedThreadId != _mainThreadId)
+            {
+                UnityMainThreadDispatcher.Instance().Enqueue(() => ProfileReset(profileName, newPointer));
+                return;
+            }
+
             if (_cachedProfiles.TryGetValue(profileName, out var profile))
                 profile.RefreshData(newPointer);
         }
@@ -52,6 +60,7 @@ namespace Balancy
 
         internal static void Init()
         {
+            _mainThreadId = Thread.CurrentThread.ManagedThreadId;
             LibraryMethods.Data.balancySetProfileOnReset(ProfileReset);
             LibraryMethods.Data.balancySetBaseDataParamChanged(OnBaseDataParamChanged);
             LibraryMethods.Data.balancySetBaseDataDestroyed(OnBaseDataDestroyed);
@@ -170,6 +179,12 @@ namespace Balancy
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.Data.ParamChangedCallback))]
         private static void OnBaseDataParamChanged(IntPtr baseData, string paramName)
         {
+            if (Thread.CurrentThread.ManagedThreadId != _mainThreadId)
+            {
+                UnityMainThreadDispatcher.Instance().Enqueue(() => OnBaseDataParamChanged(baseData, paramName));
+                return;
+            }
+
             if (AllBaseDataSubscriptions.TryGetValue(baseData, out var subs))
                 subs.OnBaseDataParamChanged(paramName);
         }
@@ -177,6 +192,12 @@ namespace Balancy
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.Data.DataDestroyedCallback))]
         private static void OnBaseDataDestroyed(IntPtr baseData)
         {
+            if (Thread.CurrentThread.ManagedThreadId != _mainThreadId)
+            {
+                UnityMainThreadDispatcher.Instance().Enqueue(() => OnBaseDataDestroyed(baseData));
+                return;
+            }
+
             AllBaseDataSubscriptions.Remove(baseData);
         }
     }
