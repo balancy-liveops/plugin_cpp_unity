@@ -21,7 +21,7 @@ namespace Balancy.Dictionaries
             Loaded = 2
         }
         
-        [StructLayout(LayoutKind.Sequential, Pack = 1, CharSet = CharSet.Ansi)]
+        [UnityEngine.Scripting.Preserve, StructLayout(LayoutKind.Sequential, Pack = 1, CharSet = CharSet.Ansi)]
         internal class SharedObjectInfo
         {
             public int PixelsPerUnit;

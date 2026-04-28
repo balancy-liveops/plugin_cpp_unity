@@ -9,7 +9,7 @@ namespace Balancy.Editor
 {
     public class EditorUtils
     {
-        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
+        [UnityEngine.Scripting.Preserve, StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
         public class ConfigStatus {
             public bool IsAuthorized;
             [MarshalAs(UnmanagedType.LPStr)]

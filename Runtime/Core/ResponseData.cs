@@ -3,21 +3,22 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Balancy.Localization;
 using UnityEngine;
+using UnityEngine.Scripting;
 
 
 namespace Balancy.Core
 {
     public delegate void ResponseCallback<T>(T responseData) where T : Responses.ResponseData;
-    
+
     public class Responses
     {
-        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        [Preserve, StructLayout(LayoutKind.Sequential, Pack = 1)]
         public class ResponseData
         {
             private byte success;
             public int ErrorCode;
             [MarshalAs(UnmanagedType.LPStr)] public string ErrorMessage;
-            
+
             public bool Success
             {
                 get { return success == 1; }
@@ -26,7 +27,7 @@ namespace Balancy.Core
         }
 
 
-        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        [Preserve, StructLayout(LayoutKind.Sequential, Pack = 1)]
         public class PurchaseProductResponseData : ResponseData
         {
             [MarshalAs(UnmanagedType.LPStr)] public string ProductId;
@@ -34,20 +35,20 @@ namespace Balancy.Core
             public float PriceUSD;
             public bool RemoveFromPending => removeFromPending == 1;
         }
-        
-        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+
+        [Preserve, StructLayout(LayoutKind.Sequential, Pack = 1)]
         public class AuthResponseData : ResponseData
         {
             [MarshalAs(UnmanagedType.LPStr)] public string UserId;
         }
-        
-        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+
+        [Preserve, StructLayout(LayoutKind.Sequential, Pack = 1)]
         public class LinkResponseData : ResponseData
         {
             [MarshalAs(UnmanagedType.LPStr)] public string UserId;
         }
-        
-        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+
+        [Preserve, StructLayout(LayoutKind.Sequential, Pack = 1)]
         public class CompletePurchaseData
         {
             private string guid;
@@ -83,7 +84,7 @@ namespace Balancy.Core
             }
         }
         
-        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        [Preserve, StructLayout(LayoutKind.Sequential, Pack = 1)]
         public class InteropCompletePurchaseResponseData : ResponseData
         {
             public string data;
@@ -113,14 +114,14 @@ namespace Balancy.Core
             public float price;
         };
         
-        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        [Preserve, StructLayout(LayoutKind.Sequential, Pack = 1)]
         internal class InteropProductsResponseData : ResponseData
         {
             internal IntPtr data;
             internal int size;
         }
-        
-        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+
+        [Preserve, StructLayout(LayoutKind.Sequential, Pack = 1)]
         internal class InteropProductResponseData : ResponseData
         {
             internal IntPtr data;

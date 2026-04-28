@@ -1,20 +1,21 @@
 using System;
 using System.Runtime.InteropServices;
 using Balancy.Core;
+using UnityEngine.Scripting;
 
 namespace Balancy
 {
-    
+
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     internal delegate void StatusUpdateCallback(IntPtr notification);
-    
+
     // public delegate void StatusUpdateNotificationCallback(Notifications.NotificationBase notification);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     public delegate void ProgressUpdateCallback(string fileName, float progress);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     public delegate void DownloadCompleteCallback(bool success, string message);
-    
-    
+
+
     [Flags]
     public enum LaunchType
     {
@@ -23,8 +24,8 @@ namespace Balancy
         Cloud = 1 << 1,
         AutoRetry = 1 << 2,
     }
-    
-    [StructLayout(LayoutKind.Sequential, Pack = 1, CharSet = CharSet.Ansi)]
+
+    [Preserve, StructLayout(LayoutKind.Sequential, Pack = 1, CharSet = CharSet.Ansi)]
     internal class CppBaseAppConfig
     {
         [MarshalAs(UnmanagedType.LPStr)]
@@ -49,7 +50,7 @@ namespace Balancy
         public int CdnRetries = 3;
     }
 
-    [StructLayout(LayoutKind.Sequential, Pack = 1, CharSet = CharSet.Ansi)]
+    [Preserve, StructLayout(LayoutKind.Sequential, Pack = 1, CharSet = CharSet.Ansi)]
     internal class CppAppConfig : CppBaseAppConfig
     {
         public int Platform;
