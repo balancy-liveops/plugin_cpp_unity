@@ -662,6 +662,20 @@ namespace Balancy.Dictionaries
                 AllObjects.Remove(id);
             }
         }
+
+        internal static void CleanUp()
+        {
+            foreach (var kvp in AllObjects)
+            {
+                if (kvp.Value is OneObjectSprite sprite && sprite.Sprite != null)
+                {
+                    Object.Destroy(sprite.Sprite.texture);
+                    Object.Destroy(sprite.Sprite);
+                }
+            }
+            AllObjects.Clear();
+            AllViews.Clear();
+        }
         
         internal static void ClearFromDisk(string id)
         {

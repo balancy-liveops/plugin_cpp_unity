@@ -129,6 +129,7 @@ namespace Balancy
                 UnzipBridge.Cleanup();
 
                 LibraryMethods.General.balancyStop();
+                Balancy.Dictionaries.DataObjectsManager.CleanUp();
                 Profiles.CleanUp();
                 CMS.CleanUp();
                 LibraryMethods.General.balancySetInvokeInMainThreadCallback(null);
