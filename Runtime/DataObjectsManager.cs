@@ -21,7 +21,7 @@ namespace Balancy.Dictionaries
             Loaded = 2
         }
         
-        [StructLayout(LayoutKind.Sequential, Pack = 1, CharSet = CharSet.Ansi)]
+        [UnityEngine.Scripting.Preserve, StructLayout(LayoutKind.Sequential, Pack = 1, CharSet = CharSet.Ansi)]
         internal class SharedObjectInfo
         {
             public int PixelsPerUnit;
@@ -661,6 +661,20 @@ namespace Balancy.Dictionaries
                 }
                 AllObjects.Remove(id);
             }
+        }
+
+        internal static void CleanUp()
+        {
+            foreach (var kvp in AllObjects)
+            {
+                if (kvp.Value is OneObjectSprite sprite && sprite.Sprite != null)
+                {
+                    Object.Destroy(sprite.Sprite.texture);
+                    Object.Destroy(sprite.Sprite);
+                }
+            }
+            AllObjects.Clear();
+            AllViews.Clear();
         }
         
         internal static void ClearFromDisk(string id)

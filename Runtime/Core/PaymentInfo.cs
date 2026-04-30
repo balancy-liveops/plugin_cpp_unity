@@ -1,8 +1,9 @@
 using System.Runtime.InteropServices;
+using UnityEngine.Scripting;
 
 namespace Balancy.Core
 {
-    [StructLayout(LayoutKind.Sequential, Pack = 1, CharSet = CharSet.Ansi)]
+    [Preserve, StructLayout(LayoutKind.Sequential, Pack = 1, CharSet = CharSet.Ansi)]
     public class PaymentInfo
     {
         public float Price;

@@ -55,6 +55,7 @@ public class BalancyWebViewPlugin {
     private boolean unityAvailable = false;
     private boolean emergencyExitEnabled = true;
     private boolean offlineCacheEnabled = false;
+    private boolean suppressNextShowAnimation = false;
     
     /**
      * Ensure code runs on UI thread - CRITICAL for Android UI operations
@@ -191,6 +192,7 @@ public class BalancyWebViewPlugin {
         }
         
         this.ownerJson = ownerJson;
+        this.suppressNextShowAnimation = startHidden;
         
         runOnUIThread(() -> {
             createWebView();
@@ -201,6 +203,9 @@ public class BalancyWebViewPlugin {
             if (!startHidden) {
                 showWebViewInternal();
             } else {
+                if (webViewContainer != null) {
+                    webViewContainer.setVisibility(View.INVISIBLE);
+                }
                 logDebug("WebView created but hidden");
             }
         });
@@ -307,7 +312,15 @@ public class BalancyWebViewPlugin {
                 }
                 
                 logDebug("WebView page loading completed");
-                startShowAnimation();
+                if (suppressNextShowAnimation) {
+                    suppressNextShowAnimation = false;
+                    if (webView != null) {
+                        webView.setAlpha(0.0f);
+                    }
+                    logDebug("Skipping auto-show animation for prepared persistent WebView");
+                } else {
+                    startShowAnimation();
+                }
                 sendUnityMessage("OnAndroidLoadCompleted", "true");
             }
             
@@ -486,6 +499,7 @@ public class BalancyWebViewPlugin {
             if (webViewContainer != null) {
                 webViewContainer.setVisibility(View.VISIBLE);
                 webViewContainer.bringToFront();
+                startShowAnimation();
                 logDebug("WebView shown on UI thread");
             } else {
                 logDebug("WebView container is null");
@@ -496,6 +510,10 @@ public class BalancyWebViewPlugin {
     public void hideWebView() {
         logDebug("hideWebView() called from thread: " + Thread.currentThread().getName());
         runOnUIThread(() -> {
+            if (webView != null) {
+                webView.animate().cancel();
+                webView.setAlpha(0.0f);
+            }
             if (webViewContainer != null) {
                 webViewContainer.setVisibility(View.INVISIBLE);
                 logDebug("WebView hidden on UI thread");
@@ -531,6 +549,12 @@ public class BalancyWebViewPlugin {
         });
 
         isWebViewOpen = false;
+        suppressNextShowAnimation = false;
+    }
+
+    public boolean prepareWebView(String shellUrl) {
+        logDebug("prepareWebView() called with URL: " + shellUrl);
+        return openWebView(shellUrl, "", 0, 0, true);
     }
     
     private void loadUrl(String url) {

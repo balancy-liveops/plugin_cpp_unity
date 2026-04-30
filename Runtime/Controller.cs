@@ -16,31 +16,63 @@ namespace Balancy
         private static AppConfig _originalConfig;
         private static CppAppConfig _cppConfig;
         private static bool _isReadyToUse;
+        private static bool _isInitialized;
 
         public static bool IsReadyToUse => _isReadyToUse;
-        
+
         public static AppConfig Config => _originalConfig;
-        
-        private static UnityMainThreadDispatcher _mainThreadInstance; 
-        
+
+        private static UnityMainThreadDispatcher _mainThreadInstance;
+
         public static event Action OnCloudSynced;
         public static event Action<bool, bool> OnDataUpdated;
-        
+
+#if UNITY_EDITOR
+        private static bool _editorCallbackRegistered;
+#endif
+
         public static void Init(AppConfig appConfig)
         {
             if (!CheckConfig(appConfig))
                 return;
-            
+
             if (!CheckCallbacks())
                 return;
-            
+
+            // If SDK was previously initialized (e.g. re-entering Play Mode with
+            // "Do not reload Domain or Scene"), clean up the old session first.
+            // Without this, stale C++ callbacks capture dangling pointers and SEGV.
+            if (_isInitialized)
+            {
+                Stop();
+            }
+
+#if UNITY_EDITOR
+            if (!_editorCallbackRegistered)
+            {
+                EditorApplication.playModeStateChanged += OnEditorPlayModeChanged;
+                _editorCallbackRegistered = true;
+            }
+#endif
+
             _isReadyToUse = false;
+            _isInitialized = true;
             CMS.SetIsReady(false);
 
             LibraryMethods.General.balancySetLogCallback(LogMessage);
             _mainThreadInstance = UnityMainThreadDispatcher.Instance();
             _mainThreadInstance.StartCoroutine(InitCoroutine(appConfig));
         }
+
+#if UNITY_EDITOR
+        private static void OnEditorPlayModeChanged(PlayModeStateChange state)
+        {
+            if (state == PlayModeStateChange.ExitingPlayMode && _isInitialized)
+            {
+                Stop();
+            }
+        }
+#endif
 
         private static IEnumerator InitCoroutine(AppConfig appConfig)
         {
@@ -73,6 +105,11 @@ namespace Balancy
 
         public static void Stop()
         {
+            if (!_isInitialized)
+                return;
+
+            _isInitialized = false;
+
             try
             {
                 // CRITICAL: Clear log callback FIRST before any other cleanup
@@ -92,6 +129,7 @@ namespace Balancy
                 UnzipBridge.Cleanup();
 
                 LibraryMethods.General.balancyStop();
+                Balancy.Dictionaries.DataObjectsManager.CleanUp();
                 Profiles.CleanUp();
                 CMS.CleanUp();
                 LibraryMethods.General.balancySetInvokeInMainThreadCallback(null);

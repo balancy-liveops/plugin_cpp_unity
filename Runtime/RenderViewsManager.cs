@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Runtime.InteropServices;
 using Balancy.Data.SmartObjects;
 using Balancy.Models;
@@ -115,6 +116,11 @@ namespace Balancy
         
         private static void HandleWebViewClosed()
         {
+            // In persistent mode, keep the owner pointer alive so late requests
+            // (e.g. click sound) from the closing view can still be serviced.
+            if (UsePersistentWebViewForLocalViews())
+                return;
+
             m_LastOpenedOwnerPtr = IntPtr.Zero;
         }
 
@@ -134,8 +140,54 @@ namespace Balancy
             if (_webView.IsWebViewOpen())
                 _webView.SendMessageToWebView(message);
         }
-        
-        public static void OpenLocalView(string filePath, JsonBasedObject owner = null)
+
+        private static bool UsePersistentWebViewForLocalViews()
+        {
+            return _webView != null && _webView.IsPersistentModeEnabled();
+        }
+
+        private static string BuildAdditionalInfo(JsonBasedObject owner)
+        {
+            long launchTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            string additionalInfo = $"{{\"launchTime\":{launchTime}}}";
+
+            if (owner is IOwnerWithTimer ownerWithTimer)
+            {
+                int secondsLeft = ownerWithTimer.GetSecondsLeftBeforeDeactivation();
+                if (secondsLeft > 0)
+                    additionalInfo = $"{{\"launchTime\":{launchTime},\"secondsLeft\":{secondsLeft}}}";
+            }
+
+            return additionalInfo;
+        }
+
+        private static string NormalizeLocalPath(string filePath)
+        {
+            if (string.IsNullOrEmpty(filePath))
+                return filePath;
+
+            return filePath.StartsWith("file://", StringComparison.OrdinalIgnoreCase)
+                ? filePath.Substring(7)
+                : filePath;
+        }
+
+        public static void PrepareWebView(Action onReady = null)
+        {
+            Debug.Log("[RenderViewsManager] PrepareWebView requested");
+            _webView?.PrepareWebView(onReady);
+        }
+
+        public static void ShowWebView()
+        {
+            _webView?.ShowWebView();
+        }
+
+        public static void HideWebView()
+        {
+            _webView?.HideWebView();
+        }
+
+        public static void OpenLocalView(string filePath, JsonBasedObject owner, Action onShown = null)
         {
             if (string.IsNullOrEmpty(filePath))
             {
@@ -143,12 +195,47 @@ namespace Balancy
                 return;
             }
 
+            Debug.Log($"[RenderViewsManager] OpenLocalView requested. Persistent={UsePersistentWebViewForLocalViews()} Path={filePath}");
+
+            if (UsePersistentWebViewForLocalViews())
+            {
+                string normalizedPath = NormalizeLocalPath(filePath);
+                if (!File.Exists(normalizedPath))
+                {
+                    Debug.LogError($"[RenderViewsManager] Persistent WebView requires a readable local HTML file: {normalizedPath}");
+                    return;
+                }
+
+                if (_webView.IsWebViewOpen())
+                {
+                    Debug.LogError("View is already opened");
+                    return;
+                }
+
+                m_LastOpenedOwnerPtr = owner?.GetRawPointer() ?? IntPtr.Zero;
+                string ownerJson = owner?.ToJsonString(DEFAULT_OWNER_DEPTH, false) ?? "";
+                string additionalInfo = BuildAdditionalInfo(owner);
+                try
+                {
+                    string htmlContent = File.ReadAllText(normalizedPath);
+                    Debug.Log($"[RenderViewsManager] Persistent OpenLocalView loaded HTML. Length={htmlContent.Length} Owner={(owner == null ? "null" : owner.GetType().Name)}");
+                    _webView.ShowView(htmlContent, ownerJson, additionalInfo, onShown);
+                }
+                catch (Exception e)
+                {
+                    Debug.LogError($"[RenderViewsManager] Failed to read local view HTML for persistent WebView: {e.Message}");
+                }
+                return;
+            }
+
 #if UNITY_WEBGL && !UNITY_EDITOR
             // WebGL: Load HTML content from cache instead of using file:// URLs
             OpenLocalViewWebGL(filePath, owner);
+            onShown?.Invoke();
 #else
             string fileUrl = "file://" + filePath;
             OpenView(fileUrl, owner);
+            onShown?.Invoke();
 #endif
         }
 
@@ -269,15 +356,7 @@ namespace Balancy
             m_LastOpenedOwnerPtr = owner?.GetRawPointer() ?? IntPtr.Zero;
             string ownerJson = owner?.ToJsonString(DEFAULT_OWNER_DEPTH, false);
 
-            long launchTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            string additionalInfo = $"{{\"launchTime\":{launchTime}}}";
-
-            if (owner is IOwnerWithTimer ownerWithTimer)
-            {
-                int secondsLeft = ownerWithTimer.GetSecondsLeftBeforeDeactivation();
-                if (secondsLeft > 0)
-                    additionalInfo = $"{{\"launchTime\":{launchTime},\"secondsLeft\":{secondsLeft}}}";
-            }
+            string additionalInfo = BuildAdditionalInfo(owner);
             
             bool success = false;
             if (UseEmbeddedWebView)
@@ -634,7 +713,12 @@ namespace Balancy
 
         public static void CloseView()
         {
-            if (UseEmbeddedWebView)
+            Debug.Log($"[RenderViewsManager] CloseView requested. Persistent={_webView != null && _webView.IsPersistentModeEnabled()} Embedded={UseEmbeddedWebView}");
+            if (_webView != null && _webView.IsPersistentModeEnabled())
+            {
+                _webView.CloseView();
+            }
+            else if (UseEmbeddedWebView)
             {
 #if UNITY_EDITOR
                 BalancyWebViewEmbedded.Instance.CloseEmbeddedWebView();
@@ -646,6 +730,13 @@ namespace Balancy
 
         private static void RunRequestInTheCorePlugin(string requestData, LibraryMethods.General.WebviewRequestCallback callback)
         {
+            if (m_LastOpenedOwnerPtr == IntPtr.Zero)
+            {
+                // Debug.LogWarning("[RenderViewsManager] Cannot process WebView request: owner pointer is null");
+                callback("{\"type\":\"response\",\"error\":\"Owner pointer is null\"}");
+                return;
+            }
+
             LibraryMethods.General.balancyWebViewRequest(m_LastOpenedOwnerPtr, requestData, callback);
         }
     }
