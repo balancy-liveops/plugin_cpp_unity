@@ -51,26 +51,26 @@ namespace Balancy.Core
         [Preserve, StructLayout(LayoutKind.Sequential, Pack = 1)]
         public class CompletePurchaseData
         {
-            private string guid;
-        
-            private long time;
+            [SerializeField] private string guid;
 
-            private List<string> items;
-        
-            private string orderId;
+            [SerializeField] private long time;
+
+            [SerializeField] private List<string> items;
+
+            [SerializeField] private string orderId;
 
             public long Time
             {
                 get { return time; }
                 set { time = value; }
             }
-        
+
             public string OrderId
             {
                 get { return orderId; }
                 set { orderId = value; }
             }
-        
+
             public string Guid
             {
                 get { return guid; }
@@ -87,7 +87,7 @@ namespace Balancy.Core
         [Preserve, StructLayout(LayoutKind.Sequential, Pack = 1)]
         public class InteropCompletePurchaseResponseData : ResponseData
         {
-            public string data;
+            [MarshalAs(UnmanagedType.LPStr)] public string data;
         }
         
         public class CompletePurchaseResponseData : ResponseData

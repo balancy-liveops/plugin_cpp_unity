@@ -54,7 +54,9 @@ namespace Balancy
                     Success = data.Success,
                     ErrorCode = data.ErrorCode,
                     ErrorMessage = data.ErrorMessage,
-                    Data = JsonUtility.FromJson<Balancy.Core.Responses.CompletePurchaseData>(data.data)
+                    Data = string.IsNullOrEmpty(data.data)
+                        ? null
+                        : JsonUtility.FromJson<Balancy.Core.Responses.CompletePurchaseData>(data.data)
                 };
                 callback?.Invoke(resData);
             };
