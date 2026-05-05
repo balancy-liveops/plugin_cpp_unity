@@ -183,9 +183,9 @@ namespace Balancy.Core
         [Preserve, StructLayout(LayoutKind.Sequential)]
         public class NetworkNotification_DownloadStarted : NetworkNotificationBase
         {
-            [MarshalAs(UnmanagedType.LPStr)] public string Url;
-            [MarshalAs(UnmanagedType.LPStr)] public string RelativePath;
-            [MarshalAs(UnmanagedType.LPStr)] public string Domain;
+            public IntPtr UrlPtr;
+            public IntPtr RelativePathPtr;
+            public IntPtr DomainPtr;
             private int isCDNRequest;
 
             public bool IsCDNRequest => isCDNRequest == 1;
@@ -194,10 +194,10 @@ namespace Balancy.Core
         [Preserve, StructLayout(LayoutKind.Sequential)]
         public class NetworkNotification_DownloadFinished : NetworkNotificationBase
         {
-            [MarshalAs(UnmanagedType.LPStr)] public string Url;
-            [MarshalAs(UnmanagedType.LPStr)] public string RelativePath;
-            [MarshalAs(UnmanagedType.LPStr)] public string Domain;
-            [MarshalAs(UnmanagedType.LPStr)] public string ErrorMessage;
+            public IntPtr UrlPtr;
+            public IntPtr RelativePathPtr;
+            public IntPtr DomainPtr;
+            public IntPtr ErrorMessagePtr;
             private int isCDNRequest;
             public float TimeMs;
             public float SpeedKBps;
