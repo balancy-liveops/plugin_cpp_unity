@@ -206,6 +206,21 @@ namespace Balancy
 
             return false;
         }
+
+        public static void PrepareWebView(Action onReady = null)
+        {
+            RenderViewsManager.PrepareWebView(onReady);
+        }
+
+        public static void ShowWebView()
+        {
+            RenderViewsManager.ShowWebView();
+        }
+
+        public static void HideWebView()
+        {
+            RenderViewsManager.HideWebView();
+        }
         
         public static void InitPurchaseShop(Balancy.Data.SmartObjects.ShopSlot shopSlot, Action<bool, string> callback)
         {

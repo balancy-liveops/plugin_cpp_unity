@@ -16,31 +16,63 @@ namespace Balancy
         private static AppConfig _originalConfig;
         private static CppAppConfig _cppConfig;
         private static bool _isReadyToUse;
+        private static bool _isInitialized;
 
         public static bool IsReadyToUse => _isReadyToUse;
-        
+
         public static AppConfig Config => _originalConfig;
-        
-        private static UnityMainThreadDispatcher _mainThreadInstance; 
-        
+
+        private static UnityMainThreadDispatcher _mainThreadInstance;
+
         public static event Action OnCloudSynced;
         public static event Action<bool, bool> OnDataUpdated;
-        
+
+#if UNITY_EDITOR
+        private static bool _editorCallbackRegistered;
+#endif
+
         public static void Init(AppConfig appConfig)
         {
             if (!CheckConfig(appConfig))
                 return;
-            
+
             if (!CheckCallbacks())
                 return;
-            
+
+            // If SDK was previously initialized (e.g. re-entering Play Mode with
+            // "Do not reload Domain or Scene"), clean up the old session first.
+            // Without this, stale C++ callbacks capture dangling pointers and SEGV.
+            if (_isInitialized)
+            {
+                Stop();
+            }
+
+#if UNITY_EDITOR
+            if (!_editorCallbackRegistered)
+            {
+                EditorApplication.playModeStateChanged += OnEditorPlayModeChanged;
+                _editorCallbackRegistered = true;
+            }
+#endif
+
             _isReadyToUse = false;
+            _isInitialized = true;
             CMS.SetIsReady(false);
 
             LibraryMethods.General.balancySetLogCallback(LogMessage);
             _mainThreadInstance = UnityMainThreadDispatcher.Instance();
             _mainThreadInstance.StartCoroutine(InitCoroutine(appConfig));
         }
+
+#if UNITY_EDITOR
+        private static void OnEditorPlayModeChanged(PlayModeStateChange state)
+        {
+            if (state == PlayModeStateChange.ExitingPlayMode && _isInitialized)
+            {
+                Stop();
+            }
+        }
+#endif
 
         private static IEnumerator InitCoroutine(AppConfig appConfig)
         {
@@ -73,6 +105,11 @@ namespace Balancy
 
         public static void Stop()
         {
+            if (!_isInitialized)
+                return;
+
+            _isInitialized = false;
+
             try
             {
                 // CRITICAL: Clear log callback FIRST before any other cleanup
@@ -92,6 +129,7 @@ namespace Balancy
                 UnzipBridge.Cleanup();
 
                 LibraryMethods.General.balancyStop();
+                Balancy.Dictionaries.DataObjectsManager.CleanUp();
                 Profiles.CleanUp();
                 CMS.CleanUp();
                 LibraryMethods.General.balancySetInvokeInMainThreadCallback(null);
@@ -447,12 +485,9 @@ namespace Balancy
 #if UNITY_WEBGL && !UNITY_EDITOR
                         // Debug.Log("[C# Notification] OnNetworkDownloadStarted - skipping in WebGL (not implemented)");
 #else
-                        var notificationTyped = Marshal.PtrToStructure<Notifications.NetworkNotification_DownloadStarted>(notificationPtr);
-                        Balancy.Callbacks.OnNetworkDownloadStarted?.Invoke(new Callbacks.NetworkDownloadInfo(
-                            notificationTyped.Url,
-                            notificationTyped.RelativePath,
-                            notificationTyped.Domain,
-                            notificationTyped.IsCDNRequest));
+                        var downloadStartedInfo = ReadNetworkDownloadStarted(notificationPtr);
+                        if (downloadStartedInfo.HasValue)
+                            Balancy.Callbacks.OnNetworkDownloadStarted?.Invoke(downloadStartedInfo.Value);
 #endif
                         break;
                     }
@@ -460,19 +495,9 @@ namespace Balancy
 #if UNITY_WEBGL && !UNITY_EDITOR
                         // Debug.Log("[C# Notification] OnNetworkDownloadFinished - skipping in WebGL (not implemented)");
 #else
-                        var notificationTyped = Marshal.PtrToStructure<Notifications.NetworkNotification_DownloadFinished>(notificationPtr);
-                        Balancy.Callbacks.OnNetworkDownloadFinished?.Invoke(new Callbacks.NetworkDownloadCompletedInfo(
-                            notificationTyped.Url,
-                            notificationTyped.RelativePath,
-                            notificationTyped.Domain,
-                            notificationTyped.IsCDNRequest,
-                            notificationTyped.TimeMs,
-                            notificationTyped.SpeedKBps,
-                            notificationTyped.DownloadedBytes,
-                            notificationTyped.Success,
-                            notificationTyped.ErrorCode,
-                            notificationTyped.ErrorMessage,
-                            notificationTyped.Attempts));
+                        var downloadFinishedInfo = ReadNetworkDownloadFinished(notificationPtr);
+                        if (downloadFinishedInfo.HasValue)
+                            Balancy.Callbacks.OnNetworkDownloadFinished?.Invoke(downloadFinishedInfo.Value);
 #endif
                         break;
                     }
@@ -654,6 +679,68 @@ namespace Balancy
                 var offset = Marshal.OffsetOf<T>(field.Name);
                 Debug.Log($"Field: {field.Name}, Offset: {offset}, Type: {field.FieldType}");
             }
+        }
+
+        // Safe string read from native char* pointer — returns null if the pointer looks invalid.
+        // Prevents SIGSEGV in strlen when pointer is corrupted (e.g. 0x00000001).
+        private static string SafePtrToStringAnsi(IntPtr strPtr)
+        {
+            if (strPtr == IntPtr.Zero || (long)strPtr < 0x1000)
+                return null;
+            return Marshal.PtrToStringAnsi(strPtr);
+        }
+
+        // Read NetworkNotification_DownloadStarted using PtrToStructure with IntPtr fields
+        // (no LPStr marshalling) to avoid native crash when string pointers are corrupted.
+        private static Callbacks.NetworkDownloadInfo? ReadNetworkDownloadStarted(IntPtr ptr)
+        {
+            if (ptr == IntPtr.Zero)
+                return null;
+
+            var n = Marshal.PtrToStructure<Notifications.NetworkNotification_DownloadStarted>(ptr);
+
+            string url = SafePtrToStringAnsi(n.UrlPtr);
+            string relativePath = SafePtrToStringAnsi(n.RelativePathPtr);
+            string domain = SafePtrToStringAnsi(n.DomainPtr);
+
+            if (url == null && relativePath == null && domain == null)
+                return null; // All pointers invalid — notification memory likely corrupted
+
+            return new Callbacks.NetworkDownloadInfo(
+                url ?? "",
+                relativePath ?? "",
+                domain ?? "",
+                n.IsCDNRequest);
+        }
+
+        // Read NetworkNotification_DownloadFinished using PtrToStructure with IntPtr fields.
+        private static Callbacks.NetworkDownloadCompletedInfo? ReadNetworkDownloadFinished(IntPtr ptr)
+        {
+            if (ptr == IntPtr.Zero)
+                return null;
+
+            var n = Marshal.PtrToStructure<Notifications.NetworkNotification_DownloadFinished>(ptr);
+
+            string url = SafePtrToStringAnsi(n.UrlPtr);
+            string relativePath = SafePtrToStringAnsi(n.RelativePathPtr);
+            string domain = SafePtrToStringAnsi(n.DomainPtr);
+            string errorMessage = SafePtrToStringAnsi(n.ErrorMessagePtr);
+
+            if (url == null && relativePath == null && domain == null)
+                return null; // All pointers invalid — notification memory likely corrupted
+
+            return new Callbacks.NetworkDownloadCompletedInfo(
+                url ?? "",
+                relativePath ?? "",
+                domain ?? "",
+                n.IsCDNRequest,
+                n.TimeMs,
+                n.SpeedKBps,
+                n.DownloadedBytes,
+                n.Success,
+                n.ErrorCode,
+                errorMessage ?? "",
+                n.Attempts);
         }
     }
 }

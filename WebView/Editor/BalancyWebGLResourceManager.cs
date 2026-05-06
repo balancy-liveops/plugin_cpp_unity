@@ -16,14 +16,6 @@ namespace Balancy.WebView.Editor
         // Build callback order (lower = earlier)
         public int callbackOrder => 0;
 
-        // Source paths (within package)
-        private const string SOURCE_DIR = "Assets/Balancy/WebView/Resources/WebGL";
-        private const string WEBVIEW_BUNDLE_SOURCE = SOURCE_DIR + "/balancy-webview.umd.js";
-        private const string WEBVIEW_SOURCEMAP_SOURCE = SOURCE_DIR + "/balancy-webview.umd.js.map";
-        private const string BRIDGE_SOURCE = "Assets/Balancy/WebView/Resources/balancy-webview-bridge.txt";
-        private const string INIT_SCRIPT_SOURCE = SOURCE_DIR + "/balancy-webgl-init.js";
-        private const string JSZIP_SOURCE = SOURCE_DIR + "/jszip.min.js.txt";
-
         // Destination paths (StreamingAssets)
         private const string DEST_DIR = "Assets/StreamingAssets/Balancy";
         private const string WEBVIEW_BUNDLE_DEST = DEST_DIR + "/balancy-webview.umd.js";
@@ -31,6 +23,19 @@ namespace Balancy.WebView.Editor
         private const string BRIDGE_DEST = DEST_DIR + "/balancy-webview-bridge.js";
         private const string INIT_SCRIPT_DEST = DEST_DIR + "/balancy-webgl-init.js";
         private const string JSZIP_DEST = DEST_DIR + "/jszip.min.js";
+
+        /// <summary>
+        /// Resolves the root path of the Balancy package, whether it's embedded in Assets or installed via UPM.
+        /// </summary>
+        private static string GetPackagePath()
+        {
+            var packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssembly(typeof(BalancyWebGLResourceManager).Assembly);
+            if (packageInfo != null)
+                return packageInfo.resolvedPath;
+
+            // Fallback for embedded/local development
+            return Path.Combine(Application.dataPath, "Balancy");
+        }
 
         /// <summary>
         /// Called before Unity build starts
@@ -43,6 +48,10 @@ namespace Balancy.WebView.Editor
 
             Debug.Log("[Balancy] Pre-build: Checking WebGL resources...");
 
+            string packagePath = GetPackagePath();
+            string sourceDir = Path.Combine(packagePath, "WebView", "Resources", "WebGL");
+            string webviewBundleSource = Path.Combine(sourceDir, "balancy-webview.umd.js");
+
             // Check if resources need to be copied
             bool needsCopy = !File.Exists(WEBVIEW_BUNDLE_DEST) ||
                            !File.Exists(BRIDGE_DEST) ||
@@ -53,7 +62,7 @@ namespace Balancy.WebView.Editor
             {
                 Debug.Log("[Balancy] WebGL resources missing in StreamingAssets, copying now...");
 
-                if (!CopyWebGLResources())
+                if (!CopyWebGLResources(packagePath))
                 {
                     throw new BuildFailedException("[Balancy] Failed to copy WebGL resources to StreamingAssets!");
                 }
@@ -63,18 +72,25 @@ namespace Balancy.WebView.Editor
             else
             {
                 // Check if source is newer than destination
-                var sourceTime = File.GetLastWriteTime(WEBVIEW_BUNDLE_SOURCE);
-                var destTime = File.GetLastWriteTime(WEBVIEW_BUNDLE_DEST);
-
-                if (sourceTime > destTime)
+                if (File.Exists(webviewBundleSource))
                 {
-                    Debug.Log("[Balancy] Source files are newer, updating StreamingAssets...");
-                    CopyWebGLResources();
-                    AssetDatabase.Refresh();
+                    var sourceTime = File.GetLastWriteTime(webviewBundleSource);
+                    var destTime = File.GetLastWriteTime(WEBVIEW_BUNDLE_DEST);
+
+                    if (sourceTime > destTime)
+                    {
+                        Debug.Log("[Balancy] Source files are newer, updating StreamingAssets...");
+                        CopyWebGLResources(packagePath);
+                        AssetDatabase.Refresh();
+                    }
+                    else
+                    {
+                        Debug.Log("[Balancy] WebGL resources are up to date");
+                    }
                 }
                 else
                 {
-                    Debug.Log("[Balancy] ✅ WebGL resources are up to date");
+                    Debug.Log("[Balancy] WebGL resources are up to date");
                 }
             }
         }
@@ -82,10 +98,17 @@ namespace Balancy.WebView.Editor
         /// <summary>
         /// Copy all WebGL resources to StreamingAssets
         /// </summary>
-        private static bool CopyWebGLResources()
+        private static bool CopyWebGLResources(string packagePath)
         {
             try
             {
+                string sourceDir = Path.Combine(packagePath, "WebView", "Resources", "WebGL");
+                string webviewBundleSource = Path.Combine(sourceDir, "balancy-webview.umd.js");
+                string webviewSourcemapSource = Path.Combine(sourceDir, "balancy-webview.umd.js.map");
+                string bridgeSource = Path.Combine(packagePath, "WebView", "Resources", "balancy-webview-bridge.txt");
+                string initScriptSource = Path.Combine(sourceDir, "balancy-webgl-init.js");
+                string jszipSource = Path.Combine(sourceDir, "jszip.min.js.txt");
+
                 // Ensure destination directory exists
                 if (!Directory.Exists(DEST_DIR))
                 {
@@ -94,58 +117,58 @@ namespace Balancy.WebView.Editor
                 }
 
                 // Copy WebView bundle
-                if (File.Exists(WEBVIEW_BUNDLE_SOURCE))
+                if (File.Exists(webviewBundleSource))
                 {
-                    File.Copy(WEBVIEW_BUNDLE_SOURCE, WEBVIEW_BUNDLE_DEST, true);
-                    Debug.Log($"[Balancy] Copied: {Path.GetFileName(WEBVIEW_BUNDLE_SOURCE)}");
+                    File.Copy(webviewBundleSource, WEBVIEW_BUNDLE_DEST, true);
+                    Debug.Log($"[Balancy] Copied: {Path.GetFileName(webviewBundleSource)}");
                 }
                 else
                 {
-                    Debug.LogError($"[Balancy] Source file not found: {WEBVIEW_BUNDLE_SOURCE}");
+                    Debug.LogError($"[Balancy] Source file not found: {webviewBundleSource}");
                     Debug.LogError("[Balancy] Please build TypeScript WebView first!");
                     return false;
                 }
 
                 // Copy source map if exists
-                if (File.Exists(WEBVIEW_SOURCEMAP_SOURCE))
+                if (File.Exists(webviewSourcemapSource))
                 {
-                    File.Copy(WEBVIEW_SOURCEMAP_SOURCE, WEBVIEW_SOURCEMAP_DEST, true);
-                    Debug.Log($"[Balancy] Copied: {Path.GetFileName(WEBVIEW_SOURCEMAP_SOURCE)}");
+                    File.Copy(webviewSourcemapSource, WEBVIEW_SOURCEMAP_DEST, true);
+                    Debug.Log($"[Balancy] Copied: {Path.GetFileName(webviewSourcemapSource)}");
                 }
 
                 // Copy bridge script (convert .txt to .js)
-                if (File.Exists(BRIDGE_SOURCE))
+                if (File.Exists(bridgeSource))
                 {
-                    File.Copy(BRIDGE_SOURCE, BRIDGE_DEST, true);
-                    Debug.Log($"[Balancy] Copied: {Path.GetFileName(BRIDGE_SOURCE)} → balancy-webview-bridge.js");
+                    File.Copy(bridgeSource, BRIDGE_DEST, true);
+                    Debug.Log($"[Balancy] Copied: {Path.GetFileName(bridgeSource)} -> balancy-webview-bridge.js");
                 }
                 else
                 {
-                    Debug.LogError($"[Balancy] Bridge source not found: {BRIDGE_SOURCE}");
+                    Debug.LogError($"[Balancy] Bridge source not found: {bridgeSource}");
                     return false;
                 }
 
                 // Copy init script
-                if (File.Exists(INIT_SCRIPT_SOURCE))
+                if (File.Exists(initScriptSource))
                 {
-                    File.Copy(INIT_SCRIPT_SOURCE, INIT_SCRIPT_DEST, true);
-                    Debug.Log($"[Balancy] Copied: {Path.GetFileName(INIT_SCRIPT_SOURCE)}");
+                    File.Copy(initScriptSource, INIT_SCRIPT_DEST, true);
+                    Debug.Log($"[Balancy] Copied: {Path.GetFileName(initScriptSource)}");
                 }
                 else
                 {
-                    Debug.LogError($"[Balancy] Init script not found: {INIT_SCRIPT_SOURCE}");
+                    Debug.LogError($"[Balancy] Init script not found: {initScriptSource}");
                     return false;
                 }
 
                 // Copy JSZip library
-                if (File.Exists(JSZIP_SOURCE))
+                if (File.Exists(jszipSource))
                 {
-                    File.Copy(JSZIP_SOURCE, JSZIP_DEST, true);
-                    Debug.Log($"[Balancy] Copied: {Path.GetFileName(JSZIP_SOURCE)}");
+                    File.Copy(jszipSource, JSZIP_DEST, true);
+                    Debug.Log($"[Balancy] Copied: {Path.GetFileName(jszipSource)}");
                 }
                 else
                 {
-                    Debug.LogError($"[Balancy] JSZip library not found: {JSZIP_SOURCE}");
+                    Debug.LogError($"[Balancy] JSZip library not found: {jszipSource}");
                     return false;
                 }
 

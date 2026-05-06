@@ -112,7 +112,8 @@ namespace Balancy.UI
 
             if (_activeElements.ContainsKey(info.GameEventUnnyId))
             {
-                Destroy(_activeElements[info.GameEventUnnyId].Element.gameObject);
+                if (_activeElements[info.GameEventUnnyId].Element)
+                    Destroy(_activeElements[info.GameEventUnnyId].Element.gameObject);
                 _activeElements.Remove(info.GameEventUnnyId);
             }
             

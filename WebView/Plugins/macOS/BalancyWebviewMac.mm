@@ -60,6 +60,7 @@ void LogToUnity(const char* message) {
 - (void)setTransparentBackground:(BOOL)transparent;
 - (void)setDebugLogging:(BOOL)enabled;
 - (void)setWebInspectorEnabled:(BOOL)enabled;
+- (void)preparePersistentShellLoad;
 @end
 
 // Embedded WebView controller for rendering to texture
@@ -576,6 +577,7 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
 
 @implementation BalancyWebViewController {
     NSRect _viewportRect;
+    BOOL _suppressNextAnimation; // Set before loading shell page to skip fade-in
 }
 
 - (instancetype)init {
@@ -594,6 +596,7 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
         _showDelay = 0.1f;
         _animationDuration = 0.1f;
         _viewportRect = NSMakeRect(0, 0, 1, 1);
+        _suppressNextAnimation = NO;
         
         NSRect windowRect = NSMakeRect(0, 0, size.width, size.height);
         NSWindow *window = [[NSWindow alloc] initWithContentRect:windowRect
@@ -674,7 +677,9 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
 - (BOOL)loadURL:(NSString *)url {
     // Set window to be initially hidden BEFORE showing it
     [[self window] setAlphaValue:0.0f];
-    [[self window] makeKeyAndOrderFront:nil];
+    if (!_suppressNextAnimation) {
+        [[self window] makeKeyAndOrderFront:nil];
+    }
     
     if ([url hasPrefix:@"file://"]) {
         NSString *filePath = [url stringByReplacingOccurrencesOfString:@"file://" withString:@""];
@@ -914,8 +919,14 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
     }
 }
 
+- (void)preparePersistentShellLoad {
+    _suppressNextAnimation = YES;
+}
+
 - (void)startShowAnimation {
-    // Window is already hidden (alpha = 0.0f) from loadURL
+    // Bring the persistent window back on screen before animating it in.
+    [[self window] setAlphaValue:0.0f];
+    [[self window] makeKeyAndOrderFront:nil];
     
     if (_debugLogging) {
         LogToUnity([[NSString stringWithFormat:@"Starting show animation with delay: %.3fs, duration: %.3fs", _showDelay, _animationDuration] UTF8String]);
@@ -959,13 +970,22 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
     if (_transparentBackground) {
         [self setTransparentBackground:YES];
     }
-    
+
     NSString *initScript = @"if (window.BalancyWebView && typeof window.BalancyWebView.initResponseHandler === 'function') { window.BalancyWebView.initResponseHandler(); }";
     [_webView evaluateJavaScript:initScript completionHandler:nil];
-    
+
+    if (_suppressNextAnimation) {
+        // Shell page loaded in persistent mode — stay hidden, notify C# so it can inject the bridge.
+        _suppressNextAnimation = NO;
+        if (_loadCompletedCallback) {
+            _loadCompletedCallback(true);
+        }
+        return;
+    }
+
     // Start the show animation instead of immediately showing
     [self startShowAnimation];
-   
+
     if (_loadCompletedCallback) {
         _loadCompletedCallback(true);
     }
@@ -1043,6 +1063,39 @@ void _balancyCloseWebView() {
            _sharedController = nil;
        }
    }
+}
+
+// Persistent-mode: create WebView, load shell page, suppress fade-in.
+// C# detects the load callback and switches to persistent mode.
+bool _balancyPrepareWebView(const char* shellUrl) {
+    @autoreleasepool {
+        if (_sharedController == nil) {
+            _sharedController = [[BalancyWebViewController alloc] init];
+        }
+        // Mark the next didFinishNavigation as a shell load (no animation, stay hidden)
+        [_sharedController preparePersistentShellLoad];
+        NSString* nsUrl = [NSString stringWithUTF8String:shellUrl];
+        return [_sharedController loadURL:nsUrl];
+    }
+}
+
+// Persistent-mode: fade the WebView window in.
+void _balancyShowWebView() {
+    @autoreleasepool {
+        if (_sharedController != nil) {
+            [_sharedController startShowAnimation];
+        }
+    }
+}
+
+// Persistent-mode: hide the WebView window instantly (keep it alive).
+void _balancyHideWebView() {
+    @autoreleasepool {
+        if (_sharedController != nil) {
+            [[_sharedController window] setAlphaValue:0.0f];
+            [[_sharedController window] orderOut:nil];
+        }
+    }
 }
 
 bool _balancySendMessage(const char* message) {

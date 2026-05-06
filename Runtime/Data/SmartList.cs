@@ -44,7 +44,9 @@ namespace Balancy.Data
 
         public void Clear()
         {
-            CleanUp(false);
+            foreach (var child in _list)
+                child.CleanUp(false);
+            _list.Clear();
             LibraryMethods.Data.balancySmartListClear(_pointer);
         }
 
