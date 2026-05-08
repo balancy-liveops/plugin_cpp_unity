@@ -54,14 +54,58 @@ namespace Balancy
                     Success = data.Success,
                     ErrorCode = data.ErrorCode,
                     ErrorMessage = data.ErrorMessage,
-                    Data = JsonUtility.FromJson<Balancy.Core.Responses.CompletePurchaseData>(data.data)
+                    Data = string.IsNullOrEmpty(data.data)
+                        ? null
+                        : JsonUtility.FromJson<Balancy.Core.Responses.CompletePurchaseData>(data.data)
                 };
                 callback?.Invoke(resData);
             };
-                
+
             var callbackResult = ProtectedFromGCCallback(resCallback);
 
             LibraryMethods.API.balancyNutakuComplete(userId, orderId, callbackResult.CallbackId, callbackResult.StaticCallback);
+        }
+
+        public static void SteamInitPurchase(string steamId, string itemId, string description, Balancy.Core.ResponseCallback<Balancy.Core.Responses.CompletePurchaseResponseData> callback)
+        {
+            Balancy.Core.ResponseCallback<Balancy.Core.Responses.InteropCompletePurchaseResponseData> resCallback = data =>
+            {
+                var resData = new Balancy.Core.Responses.CompletePurchaseResponseData
+                {
+                    Success = data.Success,
+                    ErrorCode = data.ErrorCode,
+                    ErrorMessage = data.ErrorMessage,
+                    Data = string.IsNullOrEmpty(data.data)
+                        ? null
+                        : JsonUtility.FromJson<Balancy.Core.Responses.CompletePurchaseData>(data.data)
+                };
+                callback?.Invoke(resData);
+            };
+
+            var callbackResult = ProtectedFromGCCallback(resCallback);
+
+            LibraryMethods.API.balancySteamInit(steamId, itemId, description, callbackResult.CallbackId, callbackResult.StaticCallback);
+        }
+
+        public static void SteamCompletePurchase(string orderId, Balancy.Core.ResponseCallback<Balancy.Core.Responses.CompletePurchaseResponseData> callback)
+        {
+            Balancy.Core.ResponseCallback<Balancy.Core.Responses.InteropCompletePurchaseResponseData> resCallback = data =>
+            {
+                var resData = new Balancy.Core.Responses.CompletePurchaseResponseData
+                {
+                    Success = data.Success,
+                    ErrorCode = data.ErrorCode,
+                    ErrorMessage = data.ErrorMessage,
+                    Data = string.IsNullOrEmpty(data.data)
+                        ? null
+                        : JsonUtility.FromJson<Balancy.Core.Responses.CompletePurchaseData>(data.data)
+                };
+                callback?.Invoke(resData);
+            };
+
+            var callbackResult = ProtectedFromGCCallback(resCallback);
+
+            LibraryMethods.API.balancySteamComplete(orderId, callbackResult.CallbackId, callbackResult.StaticCallback);
         }
 
         public static void FinalizedHardPurchase(Actions.PurchaseResult result,
