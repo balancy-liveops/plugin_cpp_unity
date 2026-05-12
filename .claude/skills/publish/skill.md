@@ -105,9 +105,16 @@ OpenUPM watches for new tags and automatically publishes the package.
 
 After pushing:
 
-1. Check the GitHub Actions tab to confirm the release workflow completed successfully
+1. Check the GitHub Actions tab to confirm the release workflow completed successfully:
+   ```
+   gh run list --limit 1
+   ```
 2. Check the GitHub Releases page to confirm the release was created
-3. OpenUPM typically picks up new tags within a few hours — the user can check https://openupm.com/packages/co.balancy.unity/ later
+3. Check if OpenUPM has picked up the new version by querying the registry API (cross-platform):
+   ```
+   curl -s https://package.openupm.com/co.balancy.unity | jq '."dist-tags".latest'
+   ```
+   If the returned version matches VERSION, the publish is fully complete. OpenUPM typically picks up new tags within a few hours, so if it's not there yet, inform the user and offer to check again later.
 
 Clients who installed via Git URL will need to click **Update** in Unity Package Manager, or re-add the package URL to get the new version.
 
