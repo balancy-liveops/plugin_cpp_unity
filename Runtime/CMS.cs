@@ -296,6 +296,7 @@ namespace Balancy
         {
             switch (templateName)
             {
+                case "Core.Language": return new Balancy.Models.Core.Language();
                 case "SmartObjects.Analytics.ABTest": return new ABTest();
                 case "SmartObjects.Analytics.ABTestVariant": return new ABTestVariant();
                 case "SmartObjects.SegmentOption": return new SegmentOption();
