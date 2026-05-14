@@ -40,6 +40,8 @@ namespace Balancy.Core
 
             OnInventoryUpdated = 131,
 
+            OnLocalizationChanged = 132,
+
             Unknown
         }
 
@@ -238,6 +240,12 @@ namespace Balancy.Core
             public int SlotIndex;
             public int CurrentAmount;
             public IntPtr Inventory;
+        }
+
+        [Preserve, StructLayout(LayoutKind.Sequential)]
+        public class LiveOpsNotification_OnLocalizationChanged : StatusNotificationBase
+        {
+            [MarshalAs(UnmanagedType.LPStr)] public string Code;
         }
     }
 }
