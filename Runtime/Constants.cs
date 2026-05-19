@@ -45,7 +45,8 @@ namespace Balancy
             Yoomoney = 15,
             MicrosoftStore = 16,
             Erolabs = 20,
-            Steam = 30
+            Steam = 30,
+            NutakuIOS = 41,
         }
 
         public enum DevicePlatform
