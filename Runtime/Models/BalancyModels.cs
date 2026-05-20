@@ -226,28 +226,38 @@ namespace Balancy.Models
             return null;
         }
 
-        public void Preload()
+        /// <summary>
+        /// Returns true if this data object's file is already cached on disk.
+        /// </summary>
+        public bool IsCached()
+        {
+            return DataObjectsManager.IsCached(Id);
+        }
+
+        public void Preload(Action<bool> onComplete = null)
         {
             switch (type)
             {
                 case ObjectType.Unknown:
                 case ObjectType.Sprite:
-                    //DataObjectsManager.PreloadObject(Id);
-                    Debug.LogError("Not implemented yet. PreloadObject for sprite " + Id);
+                    DataObjectsManager.GetSprite(Id, sprite =>
+                    {
+                        onComplete?.Invoke(sprite != null);
+                    });
                     break;
                 case ObjectType.Asset:
                     LoadAsset(asset =>
                     {
                         if (asset == null)
                             Debug.LogError($"Failed to preload asset {Id}");
-                        else
-                            Debug.Log("Preloaded asset " + Id);
+                        onComplete?.Invoke(asset != null);
                     });
                     break;
                 case ObjectType.View:
                 {
                     Balancy.Dictionaries.DataObjectsManager.GetObjectView(id, url =>
                     {
+                        onComplete?.Invoke(!string.IsNullOrEmpty(url));
                     });
                     break;
                 }

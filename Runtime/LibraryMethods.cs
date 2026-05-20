@@ -339,6 +339,17 @@ namespace Balancy
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyDataObjectViewPreload(string unnyId, DataObjectViewWasCachedCallback callback);
 
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern sbyte balancyDataObjectIsCached(string unnyId);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern sbyte balancyIsPreloadingInProgress();
+
+            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+            public delegate void PreloadCompleteCallback();
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyWaitForPreloading(PreloadCompleteCallback callback);
         }
 
         public static class Singletons
