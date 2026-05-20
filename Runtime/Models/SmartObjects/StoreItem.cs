@@ -30,6 +30,10 @@ namespace Balancy.Models.SmartObjects
 			_unnyView = GetObjectParam<UnnyObject>("unnyView");
         }
         
+        public bool IsFree() => Price.IsFree();
+        public bool IsInApp() => Price.IsInApp();
+        public bool IsAdsWatching() => Price.IsAdsWatching();
+
         public int GetAdsWatched() => LibraryMethods.Extra.balancyStoreItem_GetAdsWatched(GetRawPointer());
         public void AdWasWatched() => LibraryMethods.Extra.balancyStoreItem_AdWasWatched(GetRawPointer());
         public bool HaveEnoughResources() => LibraryMethods.Extra.balancyStoreItem_HaveEnoughResources(GetRawPointer());

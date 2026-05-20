@@ -29,6 +29,16 @@ namespace Balancy.Models.SmartObjects
 					return false;
 			}
 		}
+
+		public bool IsInApp()
+		{
+			return Type == PriceType.Hard && !IsFree();
+		}
+
+		public bool IsAdsWatching()
+		{
+			return Type == PriceType.Ads;
+		}
         
         public override void InitData()
         {
