@@ -800,8 +800,14 @@ namespace Balancy
             [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
             public delegate bool CustomConditionCanPassCallback([MarshalAs(UnmanagedType.LPStr)] string unnyId);
 
+            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+            public delegate void CustomConditionSubscribeCallback([MarshalAs(UnmanagedType.LPStr)] string unnyId);
+
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyCustomConditionRegisterHandler(CustomConditionCanPassCallback callback);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyCustomConditionRegisterSubscribeHandler(CustomConditionSubscribeCallback subscribeCallback, CustomConditionSubscribeCallback unsubscribeCallback);
 
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyCustomConditionUnregisterHandler();
