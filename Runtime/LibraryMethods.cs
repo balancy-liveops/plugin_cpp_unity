@@ -794,5 +794,20 @@ namespace Balancy
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern int balancyConditionGetSecondsBeforeActivation(IntPtr conditionPtr, bool ignoreTriggers);
         }
+
+        public static class CustomConditions
+        {
+            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+            public delegate bool CustomConditionCanPassCallback([MarshalAs(UnmanagedType.LPStr)] string unnyId);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyCustomConditionRegisterHandler(CustomConditionCanPassCallback callback);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyCustomConditionUnregisterHandler();
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyCustomConditionForceUpdate(string unnyId);
+        }
     }
 }

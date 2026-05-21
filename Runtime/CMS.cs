@@ -301,7 +301,9 @@ namespace Balancy
                 case "SmartObjects.SegmentOption": return new SegmentOption();
                 case "SmartObjects.Item": return new Item();
                 case "SmartObjects.Price": return new Balancy.Models.SmartObjects.Price();
+                case "SmartObjects.Conditions.Base": return new Balancy.Models.SmartObjects.Conditions.Base();
                 case "SmartObjects.Conditions.Logic": return new Balancy.Models.SmartObjects.Conditions.Logic();
+                case "SmartObjects.Conditions.Custom": return new Balancy.Models.SmartObjects.Conditions.Custom();
 				// case "SmartObjects.TimeConfig": return new Balancy.Models.SmartObjects.TimeConfig();
 				case "SmartObjects.Reward": return new Balancy.Models.SmartObjects.Reward();
 				case "SmartObjects.GameEvent": return new Balancy.Models.SmartObjects.GameEvent();
