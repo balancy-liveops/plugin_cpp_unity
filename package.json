@@ -1,7 +1,7 @@
 {
 	"name": "co.balancy.unity",
 	"displayName": "Balancy",
-	"version": "1.6.13",
+	"version": "1.6.14",
 	"unity": "2022.3",
 	"description": "LiveOps & monetization workspace for games.",
 	"keywords": [
