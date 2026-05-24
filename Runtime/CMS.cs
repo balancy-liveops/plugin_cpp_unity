@@ -296,6 +296,7 @@ namespace Balancy
         {
             switch (templateName)
             {
+                case "Core.Language": return new Balancy.Models.Core.Language();
                 case "SmartObjects.Analytics.ABTest": return new ABTest();
                 case "SmartObjects.Analytics.ABTestVariant": return new ABTestVariant();
                 case "SmartObjects.SegmentOption": return new SegmentOption();
@@ -329,7 +330,6 @@ namespace Balancy
 				case "SmartObjects.ItemComponent.Base": return new Balancy.Models.SmartObjects.ItemComponentBase();
 				case "SmartObjects.ItemComponent.Bundle": return new Balancy.Models.SmartObjects.ItemComponentBundle();
 				case "SmartObjects.ItemComponent.Decay": return new Balancy.Models.SmartObjects.ItemComponentDecay();
-                case "Core.Language": return new Balancy.Models.Core.Language();
 				default:
                 {
                     var model = OnTypeRequested?.Invoke(templateName);

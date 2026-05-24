@@ -590,6 +590,16 @@ namespace Balancy
 #endif
                         break;
                     }
+                    case Notifications.NotificationType.OnLocalizationChanged: {
+#if UNITY_WEBGL && !UNITY_EDITOR
+                        string code = Marshal.PtrToStringAnsi(LibraryMethods.General.balancyNotification_GetLocalizationCode(notificationId));
+                        Balancy.Callbacks.OnLocalizationChanged?.Invoke(code);
+#else
+                        var notificationTyped = Marshal.PtrToStructure<Notifications.LiveOpsNotification_OnLocalizationChanged>(notificationPtr);
+                        Balancy.Callbacks.OnLocalizationChanged?.Invoke(notificationTyped.Code);
+#endif
+                        break;
+                    }
                     default:
                         Debug.LogError("**==> Unknown notification type. " + notificationType);
                         break;

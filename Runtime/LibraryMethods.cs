@@ -118,6 +118,10 @@ namespace Balancy
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern int balancyNotification_GetInventoryCurrentAmount(int notificationId);
+
+            // Localization notifications
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyNotification_GetLocalizationCode(int notificationId);
 #endif
             
             //[DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]

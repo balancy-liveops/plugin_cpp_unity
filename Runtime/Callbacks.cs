@@ -63,6 +63,7 @@ namespace Balancy
         public delegate void OnOfferWasPurchasedDelegate(OfferInfo offerInfo);
         public delegate void OnOfferGroupWasPurchasedDelegate(OfferGroupInfo offerGroupInfo, StoreItem storeItem);
         public delegate void OnInventoryUpdatedDelegate(Balancy.Data.SmartObjects.Inventory inventory, Balancy.Models.SmartObjects.Item item, int count, int slotIndex, int currentAmount);
+        public delegate void OnLocalizationChangedDelegate(string code);
         
         public delegate void OnProfileResetDelegate();
         
@@ -120,6 +121,7 @@ namespace Balancy
         public static OnOfferWasPurchasedDelegate OnOfferWasPurchased = null;
         public static OnOfferGroupWasPurchasedDelegate OnOfferGroupWasPurchased = null;
         public static OnInventoryUpdatedDelegate OnInventoryUpdated = null;
+        public static OnLocalizationChangedDelegate OnLocalizationChanged = null;
         
         public static OnProfileResetDelegate OnProfileResetStart = null;
         public static OnProfileResetDelegate OnProfileResetFinish = null;
@@ -245,7 +247,8 @@ namespace Balancy
             OnOfferWasPurchased = null;
             OnOfferGroupWasPurchased = null;
             OnInventoryUpdated = null;
-            
+            OnLocalizationChanged = null;
+
             OnNetworkDownloadStarted = null;
             OnNetworkDownloadFinished = null;
 

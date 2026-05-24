@@ -474,6 +474,15 @@ namespace Balancy
                 IntPtr ptr = Balancy.LibraryMethods.Localization.balancyLocalization_GetAllLocalizationCodes(out int size);
                 return JsonBasedObject.ReadStringArrayValues(ptr, size);
             }
+
+            public static Balancy.Models.Core.Language GetSystemLanguage() {
+                var name = UnityEngine.Application.systemLanguage.ToString();
+                foreach (var language in CMS.GetModels<Balancy.Models.Core.Language>(false)) {
+                    if (language?.Name == name)
+                        return language;
+                }
+                return null;
+            }
         }
 
         public static class Auth
