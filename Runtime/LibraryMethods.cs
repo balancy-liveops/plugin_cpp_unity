@@ -339,6 +339,17 @@ namespace Balancy
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyDataObjectViewPreload(string unnyId, DataObjectViewWasCachedCallback callback);
 
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern sbyte balancyDataObjectIsCached(string unnyId);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern sbyte balancyIsPreloadingInProgress();
+
+            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+            public delegate void PreloadCompleteCallback();
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyWaitForPreloading(PreloadCompleteCallback callback);
         }
 
         public static class Singletons
@@ -782,6 +793,27 @@ namespace Balancy
 
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern int balancyConditionGetSecondsBeforeActivation(IntPtr conditionPtr, bool ignoreTriggers);
+        }
+
+        public static class CustomConditions
+        {
+            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+            public delegate bool CustomConditionCanPassCallback([MarshalAs(UnmanagedType.LPStr)] string unnyId);
+
+            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+            public delegate void CustomConditionSubscribeCallback([MarshalAs(UnmanagedType.LPStr)] string unnyId);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyCustomConditionRegisterHandler(CustomConditionCanPassCallback callback);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyCustomConditionRegisterSubscribeHandler(CustomConditionSubscribeCallback subscribeCallback, CustomConditionSubscribeCallback unsubscribeCallback);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyCustomConditionUnregisterHandler();
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyCustomConditionForceUpdate(string unnyId);
         }
     }
 }

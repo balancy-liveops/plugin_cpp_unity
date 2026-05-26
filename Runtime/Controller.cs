@@ -90,6 +90,8 @@ namespace Balancy
             RunFunctionManager.Init();
             ScriptCompletionManager.Init();
 
+            CustomConditions.Register();
+
             CppAppConfig config = CreateConfigForCPP(appConfig);
             IntPtr configPtr = Marshal.AllocHGlobal(Marshal.SizeOf(config));
             Marshal.StructureToPtr(config, configPtr, false);
@@ -128,6 +130,7 @@ namespace Balancy
                 Balancy.Network.UnityWebRequestBridge.Clear();
                 UnzipBridge.Cleanup();
 
+                CustomConditions.Unregister();
                 LibraryMethods.General.balancyStop();
                 Balancy.Dictionaries.DataObjectsManager.CleanUp();
                 Profiles.CleanUp();

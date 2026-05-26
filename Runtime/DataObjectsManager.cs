@@ -682,5 +682,42 @@ namespace Balancy.Dictionaries
             LibraryMethods.Models.balancyDataObjectDeleteFromDisk(id);
             ClearFromMemory(id);
         }
+
+        /// <summary>
+        /// Checks whether a data object's file is already cached on disk.
+        /// </summary>
+        public static bool IsCached(string id)
+        {
+            return LibraryMethods.Models.balancyDataObjectIsCached(id) != 0;
+        }
+
+        /// <summary>
+        /// Returns true if any data object downloads are currently in progress.
+        /// </summary>
+        public static bool IsPreloadingInProgress()
+        {
+            return LibraryMethods.Models.balancyIsPreloadingInProgress() != 0;
+        }
+
+        private static Action _pendingPreloadCallback;
+
+        [AOT.MonoPInvokeCallback(typeof(LibraryMethods.Models.PreloadCompleteCallback))]
+        private static void OnPreloadingComplete()
+        {
+            var cb = _pendingPreloadCallback;
+            _pendingPreloadCallback = null;
+            if (cb != null)
+                _mainThreadInstance.Enqueue(() => cb.Invoke());
+        }
+
+        /// <summary>
+        /// Invokes the callback when all pending data object downloads complete.
+        /// If nothing is pending, the callback fires immediately.
+        /// </summary>
+        public static void WaitForPreloading(Action onComplete)
+        {
+            _pendingPreloadCallback = onComplete;
+            LibraryMethods.Models.balancyWaitForPreloading(OnPreloadingComplete);
+        }
     }
 }
