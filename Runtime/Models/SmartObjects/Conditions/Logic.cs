@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 
 namespace Balancy.Models.SmartObjects.Conditions
 {
-    public class Logic : BaseModel
+    public class Logic : Base
     {
         // Static callback registry to handle callbacks from C++
         private static readonly Dictionary<string, Action<bool>> s_callbackRegistry = new Dictionary<string, Action<bool>>();

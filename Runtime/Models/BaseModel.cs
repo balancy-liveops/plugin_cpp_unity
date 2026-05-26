@@ -9,6 +9,7 @@ namespace Balancy.Models
 
         public string UnnyTemplateName => _unnyTemplateName;
         public string UnnyId => _unnyId;
+        public int IntUnnyId => int.TryParse(_unnyId, out var intId) ? intId : 0;
 
         public override int GetHashCode()
         {

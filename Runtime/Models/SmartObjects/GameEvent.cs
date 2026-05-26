@@ -13,6 +13,7 @@ namespace Balancy.Models.SmartObjects
 		private int _unnyPriority;
 		private UnnyObject _unnyView;
 		private Balancy.Models.SmartObjects.ViewPlacement _unnyPlacement;
+		private bool _manualRemove;
         
 		public string Description => _description;
 		public Balancy.Models.SmartObjects.EventFinishType FinishType => _finishType;
@@ -24,6 +25,8 @@ namespace Balancy.Models.SmartObjects
 		public int UnnyPriority => _unnyPriority;
 		public UnnyObject UnnyView => _unnyView;
 		public Balancy.Models.SmartObjects.ViewPlacement UnnyPlacement => _unnyPlacement;
+
+		public bool ManualRemove => _manualRemove;
         
         public override void InitData()
         {
@@ -39,6 +42,7 @@ namespace Balancy.Models.SmartObjects
 			_unnyPriority = GetIntParam("unnyPriority");
 			_unnyView = GetObjectParam<UnnyObject>("unnyView");
 			_unnyPlacement = (Balancy.Models.SmartObjects.ViewPlacement)GetIntParam("unnyPlacement");
+			_manualRemove = GetBoolParam("manualRemove");
         }
         
         public int GetSecondsLeftBeforeDeactivation() => LibraryMethods.Extra.balancyGameEvent_GetSecondsLeftBeforeDeactivation(GetRawPointer());

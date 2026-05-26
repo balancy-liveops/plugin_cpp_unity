@@ -301,7 +301,9 @@ namespace Balancy
                 case "SmartObjects.SegmentOption": return new SegmentOption();
                 case "SmartObjects.Item": return new Item();
                 case "SmartObjects.Price": return new Balancy.Models.SmartObjects.Price();
+                case "SmartObjects.Conditions.Base": return new Balancy.Models.SmartObjects.Conditions.Base();
                 case "SmartObjects.Conditions.Logic": return new Balancy.Models.SmartObjects.Conditions.Logic();
+                case "SmartObjects.Conditions.Custom": return new Balancy.Models.SmartObjects.Conditions.Custom();
 				// case "SmartObjects.TimeConfig": return new Balancy.Models.SmartObjects.TimeConfig();
 				case "SmartObjects.Reward": return new Balancy.Models.SmartObjects.Reward();
 				case "SmartObjects.GameEvent": return new Balancy.Models.SmartObjects.GameEvent();
@@ -327,6 +329,7 @@ namespace Balancy
 				case "SmartObjects.ItemComponent.Base": return new Balancy.Models.SmartObjects.ItemComponentBase();
 				case "SmartObjects.ItemComponent.Bundle": return new Balancy.Models.SmartObjects.ItemComponentBundle();
 				case "SmartObjects.ItemComponent.Decay": return new Balancy.Models.SmartObjects.ItemComponentDecay();
+                case "Core.Language": return new Balancy.Models.Core.Language();
 				default:
                 {
                     var model = OnTypeRequested?.Invoke(templateName);
