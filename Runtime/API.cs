@@ -66,6 +66,48 @@ namespace Balancy
             LibraryMethods.API.balancyNutakuComplete(userId, orderId, callbackResult.CallbackId, callbackResult.StaticCallback);
         }
 
+        public static void HoolipayPending(string itemId, int platform, Balancy.Core.ResponseCallback<Balancy.Core.Responses.HoolipayPendingResponseData> callback)
+        {
+            Balancy.Core.ResponseCallback<Balancy.Core.Responses.InteropCompletePurchaseResponseData> resCallback = data =>
+            {
+                var resData = new Balancy.Core.Responses.HoolipayPendingResponseData
+                {
+                    Success = data.Success,
+                    ErrorCode = data.ErrorCode,
+                    ErrorMessage = data.ErrorMessage,
+                    Data = string.IsNullOrEmpty(data.data)
+                        ? null
+                        : JsonUtility.FromJson<Balancy.Core.Responses.HoolipayPendingData>(data.data)
+                };
+                callback?.Invoke(resData);
+            };
+
+            var callbackResult = ProtectedFromGCCallback(resCallback);
+
+            LibraryMethods.API.balancyHoolipayPending(itemId, platform, callbackResult.CallbackId, callbackResult.StaticCallback);
+        }
+
+        public static void HoolipayClaim(string orderId, Balancy.Core.ResponseCallback<Balancy.Core.Responses.CompletePurchaseResponseData> callback)
+        {
+            Balancy.Core.ResponseCallback<Balancy.Core.Responses.InteropCompletePurchaseResponseData> resCallback = data =>
+            {
+                var resData = new Balancy.Core.Responses.CompletePurchaseResponseData
+                {
+                    Success = data.Success,
+                    ErrorCode = data.ErrorCode,
+                    ErrorMessage = data.ErrorMessage,
+                    Data = string.IsNullOrEmpty(data.data)
+                        ? null
+                        : JsonUtility.FromJson<Balancy.Core.Responses.CompletePurchaseData>(data.data)
+                };
+                callback?.Invoke(resData);
+            };
+
+            var callbackResult = ProtectedFromGCCallback(resCallback);
+
+            LibraryMethods.API.balancyHoolipayClaim(orderId, callbackResult.CallbackId, callbackResult.StaticCallback);
+        }
+
         public static void SteamInitPurchase(string steamId, string itemId, string description, Balancy.Core.ResponseCallback<Balancy.Core.Responses.CompletePurchaseResponseData> callback)
         {
             Balancy.Core.ResponseCallback<Balancy.Core.Responses.InteropCompletePurchaseResponseData> resCallback = data =>

@@ -693,6 +693,12 @@ namespace Balancy
             public static extern void balancyNutakuComplete(int userId, string orderId, int callbackId, ResponseCallback callback);
 
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyHoolipayPending(string itemId, int platform, int callbackId, ResponseCallback callback);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyHoolipayClaim(string orderId, int callbackId, ResponseCallback callback);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancySteamInit(string userId, string itemId, string description, int callbackId, ResponseCallback callback);
 
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
