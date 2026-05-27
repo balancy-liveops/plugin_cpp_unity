@@ -163,6 +163,31 @@ namespace Balancy
             }
         }
 
+        public static class Auth
+        {
+            /// <summary>
+            /// Callback invoked by the SDK when authentication is required (when autoLogin is false).
+            /// If set, the standard auto-auth by deviceId is NOT performed.
+            /// Developer must call a Balancy.API.Auth.* method inside the callback.
+            /// </summary>
+            public delegate void OnAuthRequiredCallback();
+
+            private static OnAuthRequiredCallback _customAuthCallback = null;
+
+            public static void SetCustomAuthCallback(OnAuthRequiredCallback callback)
+            {
+                _customAuthCallback = callback;
+            }
+
+            public static void ResetCustomAuthCallback()
+            {
+                _customAuthCallback = null;
+            }
+
+            internal static OnAuthRequiredCallback GetCustomAuthCallback() => _customAuthCallback;
+            internal static bool HasCustomAuth() => _customAuthCallback != null;
+        }
+
         public static class Purchasing
         {
             public delegate void HardPurchaseCallback(BalancyProductInfo productInfo);
