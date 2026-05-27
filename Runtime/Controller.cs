@@ -539,6 +539,11 @@ namespace Balancy
                         Balancy.Callbacks.OnDisconnected?.Invoke(Callbacks.DisconnectReason.AnotherSessionConflict);
                         break;
                     }
+                    case Notifications.NotificationType.SignedOut:
+                    {
+                        Balancy.Callbacks.OnSignedOut?.Invoke();
+                        break;
+                    }
                     case Notifications.NotificationType.OnOfferGroupWasPurchased: {
 #if UNITY_WEBGL && !UNITY_EDITOR
                         IntPtr offerGroupInfoPtr = LibraryMethods.General.balancyNotification_GetOfferGroupInfo(notificationId);

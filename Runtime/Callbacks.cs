@@ -129,6 +129,8 @@ namespace Balancy
         public static OnProfileResetDelegate OnGameRefreshed = null;
         
         public static OnDisconnectedDelegate OnDisconnected = null;
+
+        public static Action OnSignedOut = null;
         
         public struct NetworkDownloadInfo
         {
@@ -256,6 +258,7 @@ namespace Balancy
             OnProfileResetFinish = null;
             OnGameRefreshed = null;
             OnDisconnected = null;
+            OnSignedOut = null;
         }
     }
 }

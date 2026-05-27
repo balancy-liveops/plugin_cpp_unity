@@ -110,6 +110,25 @@ namespace Balancy
                 result.UserId = userId;
                 return result as T;
             }
+            else if (typeof(T) == typeof(Balancy.Core.Responses.UserInfoResponseData))
+            {
+                // const char* UserId (pointer-sized)
+                IntPtr userIdPtr = Marshal.ReadIntPtr(ptr, offset);
+                string userId = userIdPtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(userIdPtr) : null;
+                offset += IntPtr.Size;
+
+                // const char* NetworksJson (pointer-sized)
+                IntPtr networksJsonPtr = Marshal.ReadIntPtr(ptr, offset);
+                string networksJson = networksJsonPtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(networksJsonPtr) : null;
+
+                var result = new Balancy.Core.Responses.UserInfoResponseData();
+                result.Success = success == 1;
+                result.ErrorCode = errorCode;
+                result.ErrorMessage = errorMessage;
+                result.UserId = userId;
+                result.NetworksJson = networksJson;
+                return result as T;
+            }
             else if (typeof(T) == typeof(Balancy.Core.Responses.PurchaseProductResponseData))
             {
                 // const char* ProductId (pointer-sized)
@@ -506,6 +525,31 @@ namespace Balancy
                 var callbackResult = ProtectedFromGCCallback(callback);
                 Balancy.LibraryMethods.API.balancyAuth_Steam(userId, token, callbackResult.CallbackId, callbackResult.StaticCallback);
             }
+
+            public static void WithEmailAndPassword(string email, string password, Balancy.Core.ResponseCallback<Balancy.Core.Responses.AuthResponseData> callback) {
+                var callbackResult = ProtectedFromGCCallback(callback);
+                Balancy.LibraryMethods.API.balancyAuth_EmailAndPassword(email, password, callbackResult.CallbackId, callbackResult.StaticCallback);
+            }
+
+            public static void GetInfo(Balancy.Core.ResponseCallback<Balancy.Core.Responses.UserInfoResponseData> callback) {
+                var callbackResult = ProtectedFromGCCallback(callback);
+                Balancy.LibraryMethods.API.balancyAuth_GetInfo(callbackResult.CallbackId, callbackResult.StaticCallback);
+            }
+
+            public static void UnlinkName(string name, Balancy.Core.ResponseCallback<Balancy.Core.Responses.ResponseData> callback) {
+                var callbackResult = ProtectedFromGCCallback(callback);
+                Balancy.LibraryMethods.API.balancyAuth_UnlinkName(name, callbackResult.CallbackId, callbackResult.StaticCallback);
+            }
+
+            public static void UnlinkEmail(string email, Balancy.Core.ResponseCallback<Balancy.Core.Responses.ResponseData> callback) {
+                var callbackResult = ProtectedFromGCCallback(callback);
+                Balancy.LibraryMethods.API.balancyAuth_UnlinkEmail(email, callbackResult.CallbackId, callbackResult.StaticCallback);
+            }
+
+            public static void SignOut(Balancy.Core.ResponseCallback<Balancy.Core.Responses.ResponseData> callback) {
+                var callbackResult = ProtectedFromGCCallback(callback);
+                Balancy.LibraryMethods.API.balancyAuth_SignOut(callbackResult.CallbackId, callbackResult.StaticCallback);
+            }
         }
         
         public static class Link
@@ -513,6 +557,11 @@ namespace Balancy
             public static void WithNameAndPassword(string name, string password, bool forceLink, Balancy.Core.ResponseCallback<Balancy.Core.Responses.LinkResponseData> callback) {
                 var callbackResult = ProtectedFromGCCallback(callback);
                 Balancy.LibraryMethods.API.balancyLink_NameAndPassword(name, password, forceLink, callbackResult.CallbackId, callbackResult.StaticCallback);
+            }
+
+            public static void WithEmailAndPassword(string email, string password, bool forceLink, Balancy.Core.ResponseCallback<Balancy.Core.Responses.LinkResponseData> callback) {
+                var callbackResult = ProtectedFromGCCallback(callback);
+                Balancy.LibraryMethods.API.balancyLink_EmailAndPassword(email, password, forceLink, callbackResult.CallbackId, callbackResult.StaticCallback);
             }
         }
         
