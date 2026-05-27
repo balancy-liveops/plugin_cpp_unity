@@ -85,6 +85,22 @@ namespace Balancy.Core
         }
         
         [Preserve, StructLayout(LayoutKind.Sequential, Pack = 1)]
+        public class HoolipayPendingData
+        {
+            [SerializeField] private string orderId;
+            [SerializeField] private string paymentUrl;
+
+            public string OrderId { get => orderId; set => orderId = value; }
+            public string PaymentUrl { get => paymentUrl; set => paymentUrl = value; }
+        }
+
+        public class HoolipayPendingResponseData : ResponseData
+        {
+            private HoolipayPendingData data;
+            public HoolipayPendingData Data { get => data; set => data = value; }
+        }
+
+        [Preserve, StructLayout(LayoutKind.Sequential, Pack = 1)]
         public class InteropCompletePurchaseResponseData : ResponseData
         {
             [MarshalAs(UnmanagedType.LPStr)] public string data;
