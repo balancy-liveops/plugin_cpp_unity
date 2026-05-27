@@ -46,6 +46,7 @@ namespace Balancy
             MicrosoftStore = 16,
             Erolabs = 20,
             Steam = 30,
+            WebGL = 40,
             NutakuIOS = 41,
         }
 
