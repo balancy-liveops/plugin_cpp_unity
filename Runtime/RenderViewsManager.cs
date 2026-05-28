@@ -449,6 +449,15 @@ namespace Balancy
             BalancyIsReady = 201,
             SetEmergencyExitEnabled = 203,
 
+            AuthWithNameAndPassword = 403,
+            AuthWithEmailAndPassword = 404,
+
+            // Provider auth actions (409-410 forwarded here for native OAuth, 411-412 handled in C++ core)
+            AuthWithProvider = 409,
+            LinkWithProvider = 410,
+            UnlinkProvider = 411,
+            ContinueAsGuest = 412,
+
             CustomMessage = 1000,
         }
         
@@ -495,6 +504,27 @@ namespace Balancy
         class CommandSetEmergencyExit
         {
             public bool enabled;
+        }
+
+        [System.Serializable]
+        class CommandAuthName
+        {
+            public string name;
+            public string password;
+        }
+
+        [System.Serializable]
+        class CommandAuthEmail
+        {
+            public string email;
+            public string password;
+        }
+
+        [System.Serializable]
+        class CommandProvider
+        {
+            public string provider;
+            public bool forceLink;
         }
         
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.General.DataRequestedCallback))]
@@ -693,6 +723,116 @@ namespace Balancy
                         LibraryMethods.General.balancyDataRequestedResponse(requestId, DEFAULT_ANSWER);
                         return;
                     }
+                    case RequestAction.AuthWithNameAndPassword:
+                    {
+                        CommandAuthName authNameCmd = JsonUtility.FromJson<CommandAuthName>(paramsJson);
+                        if (authNameCmd == null || string.IsNullOrEmpty(authNameCmd.name))
+                        {
+                            LibraryMethods.General.balancyDataRequestedResponse(requestId, FAILED_ANSWER);
+                            return;
+                        }
+
+                        API.Auth.WithNameAndPassword(authNameCmd.name, authNameCmd.password, data =>
+                        {
+                            if (data.Success)
+                            {
+                                API.Auth.GetInfo(info =>
+                                {
+                                    var json = $"{{\"success\":true,\"userId\":\"{EscapeJson(info.UserId ?? data.UserId)}\",\"networks\":{(info.Success ? info.NetworksJson : "[]")}}}";
+                                    LibraryMethods.General.balancyDataRequestedResponse(requestId, json);
+                                });
+                            }
+                            else
+                            {
+                                LibraryMethods.General.balancyDataRequestedResponse(requestId,
+                                    $"{{\"success\":false,\"errorMessage\":\"{EscapeJson(data.ErrorMessage ?? "")}\"}}");
+                            }
+                        });
+                        return;
+                    }
+
+                    case RequestAction.AuthWithEmailAndPassword:
+                    {
+                        CommandAuthEmail authEmailCmd = JsonUtility.FromJson<CommandAuthEmail>(paramsJson);
+                        if (authEmailCmd == null || string.IsNullOrEmpty(authEmailCmd.email))
+                        {
+                            LibraryMethods.General.balancyDataRequestedResponse(requestId, FAILED_ANSWER);
+                            return;
+                        }
+
+                        API.Auth.WithEmailAndPassword(authEmailCmd.email, authEmailCmd.password, data =>
+                        {
+                            if (data.Success)
+                            {
+                                API.Auth.GetInfo(info =>
+                                {
+                                    var json = $"{{\"success\":true,\"userId\":\"{EscapeJson(info.UserId ?? data.UserId)}\",\"networks\":{(info.Success ? info.NetworksJson : "[]")}}}";
+                                    LibraryMethods.General.balancyDataRequestedResponse(requestId, json);
+                                });
+                            }
+                            else
+                            {
+                                LibraryMethods.General.balancyDataRequestedResponse(requestId,
+                                    $"{{\"success\":false,\"errorMessage\":\"{EscapeJson(data.ErrorMessage ?? "")}\"}}");
+                            }
+                        });
+                        return;
+                    }
+
+                    case RequestAction.AuthWithProvider:
+                    {
+                        CommandProvider providerCmd = JsonUtility.FromJson<CommandProvider>(paramsJson);
+                        if (providerCmd == null || string.IsNullOrEmpty(providerCmd.provider))
+                        {
+                            LibraryMethods.General.balancyDataRequestedResponse(requestId, FAILED_ANSWER);
+                            return;
+                        }
+
+                        // Provider auth requires native OAuth — the game must obtain userId+token
+                        // from the platform SDK (Sign in with Apple, Google Sign-In, Facebook Login),
+                        // then call API.Auth.WithApple/Google/Facebook with those credentials.
+                        // This case dispatches based on provider name.
+                        void OnAuthSuccess(Balancy.Core.Responses.AuthResponseData data)
+                        {
+                            if (data.Success)
+                            {
+                                API.Auth.GetInfo(info =>
+                                {
+                                    var json = $"{{\"success\":true,\"userId\":\"{EscapeJson(info.UserId ?? data.UserId)}\",\"networks\":{(info.Success ? info.NetworksJson : "[]")}}}";
+                                    LibraryMethods.General.balancyDataRequestedResponse(requestId, json);
+                                });
+                            }
+                            else
+                            {
+                                LibraryMethods.General.balancyDataRequestedResponse(requestId,
+                                    $"{{\"success\":false,\"errorMessage\":\"{EscapeJson(data.ErrorMessage ?? "")}\"}}");
+                            }
+                        }
+
+                        // Note: In a real integration, the game developer would intercept this
+                        // via a custom DataRequested callback or override, launch the native
+                        // OAuth flow, obtain userId+token, and call the appropriate API method.
+                        // For now, return an error since we don't have the native token.
+                        LibraryMethods.General.balancyDataRequestedResponse(requestId,
+                            $"{{\"success\":false,\"errorMessage\":\"Provider auth for '{EscapeJson(providerCmd.provider)}' requires native OAuth — implement a custom handler\"}}");
+                        return;
+                    }
+
+                    case RequestAction.LinkWithProvider:
+                    {
+                        CommandProvider providerCmd = JsonUtility.FromJson<CommandProvider>(paramsJson);
+                        if (providerCmd == null || string.IsNullOrEmpty(providerCmd.provider))
+                        {
+                            LibraryMethods.General.balancyDataRequestedResponse(requestId, FAILED_ANSWER);
+                            return;
+                        }
+
+                        // Same as AuthWithProvider — native OAuth token needed.
+                        LibraryMethods.General.balancyDataRequestedResponse(requestId,
+                            $"{{\"success\":false,\"errorMessage\":\"Provider link for '{EscapeJson(providerCmd.provider)}' requires native OAuth — implement a custom handler\"}}");
+                        return;
+                    }
+
                     case RequestAction.CloseWindow:
                     {
                         CloseView();
@@ -726,6 +866,14 @@ namespace Balancy
             }
             else
                 _webView.CloseWebView();
+        }
+
+        private static string EscapeJson(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return "";
+            return s.Replace("\\", "\\\\").Replace("\"", "\\\"")
+                    .Replace("\n", "\\n").Replace("\r", "\\r")
+                    .Replace("\t", "\\t");
         }
 
         private static void RunRequestInTheCorePlugin(string requestData, LibraryMethods.General.WebviewRequestCallback callback)

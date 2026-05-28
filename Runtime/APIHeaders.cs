@@ -550,8 +550,23 @@ namespace Balancy
                 var callbackResult = ProtectedFromGCCallback(callback);
                 Balancy.LibraryMethods.API.balancyAuth_SignOut(callbackResult.CallbackId, callbackResult.StaticCallback);
             }
+
+            public static void WithApple(string userId, string token, Balancy.Core.ResponseCallback<Balancy.Core.Responses.AuthResponseData> callback) {
+                var callbackResult = ProtectedFromGCCallback(callback);
+                Balancy.LibraryMethods.API.balancyAuth_Apple(userId, token, callbackResult.CallbackId, callbackResult.StaticCallback);
+            }
+
+            public static void WithGoogle(string userId, string token, Balancy.Core.ResponseCallback<Balancy.Core.Responses.AuthResponseData> callback) {
+                var callbackResult = ProtectedFromGCCallback(callback);
+                Balancy.LibraryMethods.API.balancyAuth_Google(userId, token, callbackResult.CallbackId, callbackResult.StaticCallback);
+            }
+
+            public static void WithFacebook(string userId, string token, Balancy.Core.ResponseCallback<Balancy.Core.Responses.AuthResponseData> callback) {
+                var callbackResult = ProtectedFromGCCallback(callback);
+                Balancy.LibraryMethods.API.balancyAuth_Facebook(userId, token, callbackResult.CallbackId, callbackResult.StaticCallback);
+            }
         }
-        
+
         public static class Link
         {
             public static void WithNameAndPassword(string name, string password, bool forceLink, Balancy.Core.ResponseCallback<Balancy.Core.Responses.LinkResponseData> callback) {
@@ -563,8 +578,23 @@ namespace Balancy
                 var callbackResult = ProtectedFromGCCallback(callback);
                 Balancy.LibraryMethods.API.balancyLink_EmailAndPassword(email, password, forceLink, callbackResult.CallbackId, callbackResult.StaticCallback);
             }
+
+            public static void WithApple(string userId, string token, bool forceLink, Balancy.Core.ResponseCallback<Balancy.Core.Responses.LinkResponseData> callback) {
+                var callbackResult = ProtectedFromGCCallback(callback);
+                Balancy.LibraryMethods.API.balancyLink_Apple(userId, token, forceLink, callbackResult.CallbackId, callbackResult.StaticCallback);
+            }
+
+            public static void WithGoogle(string userId, string token, bool forceLink, Balancy.Core.ResponseCallback<Balancy.Core.Responses.LinkResponseData> callback) {
+                var callbackResult = ProtectedFromGCCallback(callback);
+                Balancy.LibraryMethods.API.balancyLink_Google(userId, token, forceLink, callbackResult.CallbackId, callbackResult.StaticCallback);
+            }
+
+            public static void WithFacebook(string userId, string token, bool forceLink, Balancy.Core.ResponseCallback<Balancy.Core.Responses.LinkResponseData> callback) {
+                var callbackResult = ProtectedFromGCCallback(callback);
+                Balancy.LibraryMethods.API.balancyLink_Facebook(userId, token, forceLink, callbackResult.CallbackId, callbackResult.StaticCallback);
+            }
         }
-        
+
         public static class General
         {
             public static void LevelStarted() {
