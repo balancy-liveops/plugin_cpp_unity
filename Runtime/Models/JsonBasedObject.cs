@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Balancy.Localization;
 
@@ -9,25 +10,46 @@ namespace Balancy.Models
         public virtual void InitData()
         {
         }
-        
+
         protected IntPtr _pointer;
         protected bool TempCopy = false;//We don't subscribe for updates for such objects
+
+        // Reverse index: native pointer -> all live C# wrappers referencing it.
+        // When the C++ object is destroyed (profile recreation), we look the
+        // pointer up here and null out _pointer on every wrapper so that any
+        // reference the game code still holds (e.g. captured in a timer delegate)
+        // stops dereferencing freed memory. Multiple wrappers may share one
+        // pointer, so the value is a set.
+        private static readonly Dictionary<IntPtr, HashSet<JsonBasedObject>> _liveByPointer
+            = new Dictionary<IntPtr, HashSet<JsonBasedObject>>();
+        // Guards _liveByPointer. Wrappers can be created/refreshed from a worker
+        // thread (e.g. list refresh) while InvalidateByPointer runs on the main
+        // thread, so all index mutations must be serialized.
+        private static readonly object _liveByPointerLock = new object();
 
         public bool Equals(IntPtr ptr)
         {
             return _pointer == ptr;
         }
-        
+
         public void SetData(IntPtr p)
         {
-            _pointer = p;
+            if (_pointer == p)
+                return;
+
+            lock (_liveByPointerLock)
+            {
+                UnregisterFromLiveIndex();
+                _pointer = p;
+                RegisterInLiveIndex();
+            }
         }
 
         internal IntPtr GetRawPointer()
         {
             return _pointer;
         }
-        
+
         internal void RefreshData(IntPtr p)
         {
             CleanUp(true);
@@ -38,6 +60,58 @@ namespace Balancy.Models
         internal virtual void CleanUp(bool parentWasDestroyed)
         {
             SetData(IntPtr.Zero);
+        }
+
+        private void RegisterInLiveIndex()
+        {
+            if (_pointer == IntPtr.Zero)
+                return;
+
+            if (!_liveByPointer.TryGetValue(_pointer, out var set))
+            {
+                set = new HashSet<JsonBasedObject>();
+                _liveByPointer.Add(_pointer, set);
+            }
+            set.Add(this);
+        }
+
+        private void UnregisterFromLiveIndex()
+        {
+            if (_pointer == IntPtr.Zero)
+                return;
+
+            if (_liveByPointer.TryGetValue(_pointer, out var set))
+            {
+                set.Remove(this);
+                if (set.Count == 0)
+                    _liveByPointer.Remove(_pointer);
+            }
+        }
+
+        /// <summary>
+        /// Called when the native C++ object at <paramref name="ptr"/> has been
+        /// destroyed. Nulls _pointer on every live C# wrapper referencing it so
+        /// that subsequent calls become safe no-ops instead of use-after-free.
+        /// Must be called on the Unity main thread.
+        /// </summary>
+        internal static void InvalidateByPointer(IntPtr ptr)
+        {
+            if (ptr == IntPtr.Zero)
+                return;
+
+            List<JsonBasedObject> wrappers;
+            lock (_liveByPointerLock)
+            {
+                if (!_liveByPointer.TryGetValue(ptr, out var set))
+                    return;
+
+                // Copy first: clearing _pointer triggers UnregisterFromLiveIndex
+                // which mutates the set/dictionary we are iterating.
+                wrappers = new List<JsonBasedObject>(set);
+            }
+
+            foreach (var wrapper in wrappers)
+                wrapper.SetData(IntPtr.Zero);
         }
         
         public static string GetModelClassName<T>()

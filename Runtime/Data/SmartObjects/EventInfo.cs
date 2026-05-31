@@ -64,7 +64,17 @@ namespace Balancy.Data.SmartObjects
 		private void Update_session() { _session = GetIntParam("session"); }
 		private void Update_isFinished() { _isFinished = GetBoolParam("isFinished"); }
 		
-		public int GetSecondsLeftBeforeDeactivation() => LibraryMethods.Extra.balancyEventInfo_GetSecondsLeftBeforeDeactivation(GetRawPointer());
+		public int GetSecondsLeftBeforeDeactivation()
+		{
+			// Guard against a dangling pointer: the native EventInfo can be
+			// destroyed on profile recreation/reset while a background UI timer
+			// delegate still holds this wrapper. _pointer is nulled via
+			// JsonBasedObject.InvalidateByPointer in that case.
+			var ptr = GetRawPointer();
+			if (ptr == System.IntPtr.Zero)
+				return 0;
+			return LibraryMethods.Extra.balancyEventInfo_GetSecondsLeftBeforeDeactivation(ptr);
+		}
 		public void StopEventManually(int cooldown) => GameEvent?.StopEventManually(cooldown);
     }
 }

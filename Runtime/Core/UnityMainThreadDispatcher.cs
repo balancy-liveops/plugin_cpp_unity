@@ -16,6 +16,12 @@ namespace Balancy
 
         private bool _isDestroyed = false;
         private float _sessionStartTime = 0f;
+
+        // ManagedThreadId of the thread that drives ProcessQueue (the Unity main
+        // thread in play mode, the editor update thread in edit mode). Captured
+        // the first time the queue is pumped. Used by RunOnMainThread to decide
+        // whether a callback can run inline or must be marshalled.
+        private static volatile int _mainThreadId = -1;
         
 #if UNITY_EDITOR
         // Flag to check if EditorUpdate is registered
@@ -107,6 +113,28 @@ namespace Balancy
             }
         }
 
+        // Run an action on the Unity main thread. If we are already on the main
+        // thread, run it inline (no extra frame of latency); otherwise marshal it
+        // through the queue. Used so background-thread continuations (e.g. async
+        // Tasks.Periodic timers resuming on a thread-pool thread) never P/Invoke
+        // into native code off the main thread, which can hit dangling pointers
+        // freed concurrently by profile recreation/reset.
+        public void RunOnMainThread(Action action)
+        {
+            if (action == null) return;
+
+            // If the main thread id is not yet known, the queue has never been
+            // pumped, so we cannot be on the main thread relative to it; enqueue.
+            if (_mainThreadId != -1 &&
+                System.Threading.Thread.CurrentThread.ManagedThreadId == _mainThreadId)
+            {
+                action.Invoke();
+                return;
+            }
+
+            Enqueue(action);
+        }
+
         // Execute actions from the queue on the main thread (called in Play mode)
         private void Update()
         {
@@ -136,6 +164,12 @@ namespace Balancy
         //   - Scheduler thread holds m_ContextMutex, then tries to Enqueue (which needs _executionQueue lock)
         private void ProcessQueue()
         {
+            // ProcessQueue is only ever driven by the Unity main thread (play
+            // mode Update) or the editor update thread. Record its id so
+            // RunOnMainThread can detect when it is safe to run inline.
+            if (_mainThreadId == -1)
+                _mainThreadId = System.Threading.Thread.CurrentThread.ManagedThreadId;
+
             Action[] actions;
             lock (_executionQueue)
             {
