@@ -37,7 +37,5 @@ namespace Balancy.Models.SmartObjects
         public int GetAdsWatched() => LibraryMethods.Extra.balancyStoreItem_GetAdsWatched(GetRawPointer());
         public void AdWasWatched() => LibraryMethods.Extra.balancyStoreItem_AdWasWatched(GetRawPointer());
         public bool HaveEnoughResources() => LibraryMethods.Extra.balancyStoreItem_HaveEnoughResources(GetRawPointer());
-        public float Multiplier => LibraryMethods.Extra.balancyStoreItem_GetMultiplier(GetRawPointer());
-        public bool HasMultiplier => LibraryMethods.Extra.balancyStoreItem_HasMultiplier(GetRawPointer());
     }
 }
