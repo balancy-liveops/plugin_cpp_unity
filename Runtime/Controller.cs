@@ -311,6 +311,10 @@ namespace Balancy
                     case Notifications.NotificationType.CMSInited:
                     {
                         CMS.SetIsReady(true);
+                        break;
+                    }
+                    case Notifications.NotificationType.AuthRequired:
+                    {
                         if (Actions.Auth.HasCustomAuth())
                             Actions.Auth.GetCustomAuthCallback()?.Invoke();
                         break;

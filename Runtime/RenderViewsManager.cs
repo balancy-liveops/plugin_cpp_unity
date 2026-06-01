@@ -79,6 +79,9 @@ namespace Balancy
 
         private static void HandleEventDeactivated(EventInfo eventInfo)
         {
+            if (eventInfo.GameEvent?.ManualRemove ?? false)
+                return;
+            
             CheckForClosing(eventInfo);
         }
 

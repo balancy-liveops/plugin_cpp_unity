@@ -10,9 +10,9 @@ namespace Balancy
         [Header("Auth Methods")]
         public bool enableAuthByName = true;
         public bool enableAuthByEmail = true;
-        public bool enableApple = true;
-        public bool enableGoogle = true;
-        public bool enableFacebook = true;
+        public bool enableApple = false;
+        public bool enableGoogle = false;
+        public bool enableFacebook = false;
 
         [Header("Link Methods")]
         public bool enableLinkByName = true;
