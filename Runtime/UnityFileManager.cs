@@ -159,32 +159,36 @@ namespace Balancy
 
         private static string ReadAssetAsString(AndroidJavaObject assetManager, string assetPath)
         {
+            // Read raw bytes and decode as UTF-8 to preserve the file content exactly,
+            // including the trailing newline. A previous BufferedReader.readLine()
+            // implementation stripped the trailing newline, which corrupted the
+            // compiled script bundle: a file ending in a line comment ("// ...") would
+            // be glued onto the next file's "class X {", swallowing the declaration and
+            // producing a SyntaxError that broke the entire injected bundle.
+            // Use a Scanner with the "\A" delimiter (beginning-of-input) so the entire
+            // stream is read as a single token on the Java side and returned directly
+            // to C# as one string. This avoids round-tripping a byte[]/char[] buffer
+            // through JNI (which copies, so Java-side reads would not propagate back),
+            // and crucially keeps the file content byte-for-byte, including the
+            // trailing newline.
             AndroidJavaObject inputStream = null;
-            AndroidJavaObject reader = null;
-            AndroidJavaObject bufferedReader = null;
+            AndroidJavaObject scanner = null;
+            AndroidJavaObject delimitedScanner = null;
             try
             {
                 inputStream = assetManager.Call<AndroidJavaObject>("open", assetPath);
-                reader = new AndroidJavaObject("java.io.InputStreamReader", inputStream, "UTF-8");
-                bufferedReader = new AndroidJavaObject("java.io.BufferedReader", reader);
+                scanner = new AndroidJavaObject("java.util.Scanner", inputStream, "UTF-8");
+                delimitedScanner = scanner.Call<AndroidJavaObject>("useDelimiter", "\\A");
 
-                var sb = new System.Text.StringBuilder();
-                string line;
-                while ((line = bufferedReader.Call<string>("readLine")) != null)
-                {
-                    if (sb.Length > 0)
-                        sb.Append('\n');
-                    sb.Append(line);
-                }
-                return sb.ToString();
+                bool hasContent = delimitedScanner.Call<bool>("hasNext");
+                return hasContent ? delimitedScanner.Call<string>("next") : "";
             }
             finally
             {
-                bufferedReader?.Call("close");
-                reader?.Call("close");
+                scanner?.Call("close");
                 inputStream?.Call("close");
-                bufferedReader?.Dispose();
-                reader?.Dispose();
+                delimitedScanner?.Dispose();
+                scanner?.Dispose();
                 inputStream?.Dispose();
             }
         }

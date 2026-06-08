@@ -88,7 +88,12 @@ namespace Balancy
             try
             {
                 await Delay(delay, token);
-                callback?.Invoke();
+                // The await may resume on a thread-pool thread (Task.Delay does
+                // not capture Unity's SynchronizationContext). Run the user
+                // callback on the main thread so it never touches native objects
+                // off-thread.
+                if (callback != null)
+                    UnityMainThreadDispatcher.Instance().RunOnMainThread(callback);
             }
             catch (Exception e)
             {
@@ -122,18 +127,37 @@ namespace Balancy
             {
                 _activeTasks.Add(token);
                 float t = 0;
+                // The first tick runs synchronously on the caller (main) thread.
                 callback?.Invoke(0);
                 while (duration <= 0 || t < duration)
                 {
                     await Delay(period, token);
                     t += period;
-                    callback?.Invoke(t);
                     if (token.IsCancellationRequested)
                         break;
+                    // Delay may resume on a thread-pool thread; marshal the user
+                    // callback back to the main thread so it never P/Invokes into
+                    // native objects (which may have been freed) off-thread. Skip
+                    // it if the task was cancelled while it was queued.
+                    if (callback != null)
+                    {
+                        var elapsed = t;
+                        // Capture the CancellationToken struct (not the source):
+                        // it stays readable even after the source is disposed by
+                        // StopTaskRemotely, so the queued callback can safely
+                        // check it before firing.
+                        var cancellation = token.Token;
+                        UnityMainThreadDispatcher.Instance().RunOnMainThread(() =>
+                        {
+                            if (!cancellation.IsCancellationRequested)
+                                callback(elapsed);
+                        });
+                    }
                 }
 
                 _activeTasks.Remove(token);
-                doneCallback?.Invoke();
+                if (doneCallback != null)
+                    UnityMainThreadDispatcher.Instance().RunOnMainThread(doneCallback);
             }
             catch (Exception e)
             {

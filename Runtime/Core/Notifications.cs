@@ -15,6 +15,8 @@ namespace Balancy.Core
             UserRefreshed = 4,
             CMSInited = 5,
             DisconnectAnotherSessionConflict = 6,
+            AuthRequired = 7,
+            SignedOut = 20,
 
             OnNewEventActivated = 100,
             OnEventDeactivated = 101,
@@ -89,6 +91,11 @@ namespace Balancy.Core
 
         [Preserve, StructLayout(LayoutKind.Sequential)]
         public class NotificationDisconnectAnotherSessionConflict : StatusNotificationBase
+        {
+        }
+
+        [Preserve, StructLayout(LayoutKind.Sequential)]
+        public class NotificationSignedOut : StatusNotificationBase
         {
         }
 

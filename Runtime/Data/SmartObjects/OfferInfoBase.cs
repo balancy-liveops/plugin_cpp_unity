@@ -45,17 +45,30 @@ namespace Balancy.Data.SmartObjects
 		
 		public int GetSecondsLeftBeforeDeactivation()
 		{
-			return LibraryMethods.Extra.balancyOfferInfo_GetSecondsLeftBeforeDeactivation(GetRawPointer());
+			// The native object may have been destroyed (profile recreation /
+			// reset). _pointer is nulled via JsonBasedObject.InvalidateByPointer
+			// when that happens. Guard here so a background timer delegate still
+			// holding this wrapper does not P/Invoke a dangling pointer.
+			var ptr = GetRawPointer();
+			if (ptr == System.IntPtr.Zero)
+				return 0;
+			return LibraryMethods.Extra.balancyOfferInfo_GetSecondsLeftBeforeDeactivation(ptr);
 		}
 		
 		public void Activate()
 		{
-			LibraryMethods.Extra.balancyOfferInfo_Activate(GetRawPointer());
+			var ptr = GetRawPointer();
+			if (ptr == System.IntPtr.Zero)
+				return;
+			LibraryMethods.Extra.balancyOfferInfo_Activate(ptr);
 		}
 
 		public bool DeactivateOffer()
 		{
-			return LibraryMethods.Extra.balancyOfferInfo_DeactivateOffer(GetRawPointer());
+			var ptr = GetRawPointer();
+			if (ptr == System.IntPtr.Zero)
+				return false;
+			return LibraryMethods.Extra.balancyOfferInfo_DeactivateOffer(ptr);
 		}
     }
 }

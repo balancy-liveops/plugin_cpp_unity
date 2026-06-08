@@ -313,6 +313,12 @@ namespace Balancy
                         CMS.SetIsReady(true);
                         break;
                     }
+                    case Notifications.NotificationType.AuthRequired:
+                    {
+                        if (Actions.Auth.HasCustomAuth())
+                            Actions.Auth.GetCustomAuthCallback()?.Invoke();
+                        break;
+                    }
                     case Notifications.NotificationType.DataIsReady:
 #if UNITY_WEBGL && !UNITY_EDITOR
                         // In WebGL, use accessor functions
@@ -537,6 +543,11 @@ namespace Balancy
                     case Notifications.NotificationType.DisconnectAnotherSessionConflict:
                     {
                         Balancy.Callbacks.OnDisconnected?.Invoke(Callbacks.DisconnectReason.AnotherSessionConflict);
+                        break;
+                    }
+                    case Notifications.NotificationType.SignedOut:
+                    {
+                        Balancy.Callbacks.OnSignedOut?.Invoke();
                         break;
                     }
                     case Notifications.NotificationType.OnOfferGroupWasPurchased: {

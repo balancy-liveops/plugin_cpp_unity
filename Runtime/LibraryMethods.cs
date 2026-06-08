@@ -600,11 +600,6 @@ namespace Balancy
             public static extern void balancyStoreItem_AdWasWatched(IntPtr storeItemPointer);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern bool balancyStoreItem_HaveEnoughResources(IntPtr storeItemPointer);
-            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-            public static extern float balancyStoreItem_GetMultiplier(IntPtr storeItemPointer);
-            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-            public static extern bool balancyStoreItem_HasMultiplier(IntPtr storeItemPointer);
-
 
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern bool balancyShopSlot_IsAvailable(IntPtr shopSlotPointer);
@@ -616,6 +611,10 @@ namespace Balancy
             public static extern int balancyShopSlot_GetPurchasesLimitForCycle(IntPtr shopSlotPointer);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern int balancyShopSlot_GetPurchasesDoneDuringTheLastCycle(IntPtr shopSlotPointer);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern float balancyShopSlot_GetMultiplier(IntPtr shopSlotPointer);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern bool balancyShopSlot_HasMultiplier(IntPtr shopSlotPointer);
         }
 
         public static class Localization
@@ -759,6 +758,30 @@ namespace Balancy
             public static extern void balancyAuth_NameAndPassword(string name, string password, int callbackId, ResponseCallback callback);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyLink_NameAndPassword(string name, string password, bool forceLink, int callbackId, ResponseCallback callback);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyAuth_EmailAndPassword(string email, string password, int callbackId, ResponseCallback callback);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyLink_EmailAndPassword(string email, string password, bool forceLink, int callbackId, ResponseCallback callback);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyAuth_GetInfo(int callbackId, ResponseCallback callback);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyAuth_UnlinkName(string name, int callbackId, ResponseCallback callback);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyAuth_UnlinkEmail(string email, int callbackId, ResponseCallback callback);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyAuth_SignOut(int callbackId, ResponseCallback callback);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyAuth_Apple(string userId, string token, int callbackId, ResponseCallback callback);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyAuth_Google(string userId, string token, int callbackId, ResponseCallback callback);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyAuth_Facebook(string userId, string token, int callbackId, ResponseCallback callback);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyLink_Apple(string userId, string token, bool forceLink, int callbackId, ResponseCallback callback);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyLink_Google(string userId, string token, bool forceLink, int callbackId, ResponseCallback callback);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyLink_Facebook(string userId, string token, bool forceLink, int callbackId, ResponseCallback callback);
 
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyGenenal_LevelStarted();

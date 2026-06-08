@@ -192,9 +192,19 @@ namespace Balancy
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.Data.DataDestroyedCallback))]
         private static void OnBaseDataDestroyed(IntPtr baseData)
         {
+            // The native object at this pointer is being destroyed RIGHT NOW
+            // (this callback fires from ~BaseData, possibly on a worker thread).
+            // Null out _pointer on every live C# wrapper referencing it
+            // immediately and thread-safely, so a wrapper captured in a
+            // background timer/coroutine delegate stops dereferencing freed
+            // memory without waiting for the next main-thread frame.
+            JsonBasedObject.InvalidateByPointer(baseData);
+
+            // Subscription bookkeeping touches main-thread-only structures, so
+            // marshal just that part to the main thread.
             if (Thread.CurrentThread.ManagedThreadId != _mainThreadId)
             {
-                UnityMainThreadDispatcher.Instance().Enqueue(() => OnBaseDataDestroyed(baseData));
+                UnityMainThreadDispatcher.Instance().Enqueue(() => AllBaseDataSubscriptions.Remove(baseData));
                 return;
             }
 

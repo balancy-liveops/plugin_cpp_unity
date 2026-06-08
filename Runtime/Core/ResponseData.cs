@@ -49,6 +49,13 @@ namespace Balancy.Core
         }
 
         [Preserve, StructLayout(LayoutKind.Sequential, Pack = 1)]
+        public class UserInfoResponseData : ResponseData
+        {
+            [MarshalAs(UnmanagedType.LPStr)] public string UserId;
+            [MarshalAs(UnmanagedType.LPStr)] public string NetworksJson;
+        }
+
+        [Preserve, StructLayout(LayoutKind.Sequential, Pack = 1)]
         public class CompletePurchaseData
         {
             [SerializeField] private string guid;

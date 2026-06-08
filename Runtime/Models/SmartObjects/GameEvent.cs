@@ -45,8 +45,32 @@ namespace Balancy.Models.SmartObjects
 			_manualRemove = GetBoolParam("manualRemove");
         }
         
-        public int GetSecondsLeftBeforeDeactivation() => LibraryMethods.Extra.balancyGameEvent_GetSecondsLeftBeforeDeactivation(GetRawPointer());
-        public int GetSecondsBeforeActivation(bool ignoreTriggers = true) => LibraryMethods.Extra.balancyGameEvent_GetSecondsBeforeActivation(GetRawPointer(), ignoreTriggers);
-        public void StopEventManually(int cooldown) => LibraryMethods.Extra.balancyGameEvent_StopEventManually(GetRawPointer(), cooldown);
+        public int GetSecondsLeftBeforeDeactivation()
+        {
+            // Guard against a dangling pointer: the native GameEvent can be
+            // destroyed on profile recreation/reset while a background UI timer
+            // delegate still holds this wrapper. _pointer is nulled via
+            // JsonBasedObject.InvalidateByPointer in that case.
+            var ptr = GetRawPointer();
+            if (ptr == System.IntPtr.Zero)
+                return 0;
+            return LibraryMethods.Extra.balancyGameEvent_GetSecondsLeftBeforeDeactivation(ptr);
+        }
+
+        public int GetSecondsBeforeActivation(bool ignoreTriggers = true)
+        {
+            var ptr = GetRawPointer();
+            if (ptr == System.IntPtr.Zero)
+                return 0;
+            return LibraryMethods.Extra.balancyGameEvent_GetSecondsBeforeActivation(ptr, ignoreTriggers);
+        }
+
+        public void StopEventManually(int cooldown)
+        {
+            var ptr = GetRawPointer();
+            if (ptr == System.IntPtr.Zero)
+                return;
+            LibraryMethods.Extra.balancyGameEvent_StopEventManually(ptr, cooldown);
+        }
     }
 }
