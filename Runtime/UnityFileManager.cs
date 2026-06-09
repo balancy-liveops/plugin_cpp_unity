@@ -154,7 +154,7 @@ namespace Balancy
         private static bool IsTextFile(string relativePath)
         {
             var ext = Path.GetExtension(relativePath).ToLowerInvariant();
-            return ext == ".json" || ext == ".txt" || ext == ".xml" || ext == ".csv" || ext == ".yaml" || ext == ".yml" || ext == ".js" || ext == ".banim";
+            return ext == ".json" || ext == ".txt" || ext == ".xml" || ext == ".csv" || ext == ".yaml" || ext == ".yml" || ext == ".js" || ext == ".banim" || ext == ".html" || ext == ".css";
         }
 
         private static string ReadAssetAsString(AndroidJavaObject assetManager, string assetPath)
@@ -224,6 +224,7 @@ namespace Balancy
                 if (string.IsNullOrEmpty(relativePath) || relativePath == "balancy_files_manifest.txt")
                     continue;
 
+                // Process all files: text files get preloaded into memory, binary files are marked as existing
                 if (IsTextFile(relativePath))
                 {
                     try
