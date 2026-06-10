@@ -5,6 +5,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Runtime.InteropServices;
 using UnityEngine;
+using UnityEngine.Networking;
 
 namespace Balancy
 {
@@ -99,12 +100,8 @@ namespace Balancy
         [AOT.MonoPInvokeCallback(typeof(OnUnzipRequestDelegate))]
         private static void OnUnzipRequest(string id, string zipFilePath)
         {
-            Debug.Log($"[Balancy] Unzip request received: id={id}, zipFile={zipFilePath}");
-
 #if UNITY_WEBGL && !UNITY_EDITOR
             // WebGL: Use JavaScript-side unzipping
-            Debug.Log($"[Balancy] WebGL: Delegating unzip to JavaScript: {zipFilePath}");
-
             try
             {
                 BalancyUnzipFile(id, zipFilePath);
@@ -118,7 +115,7 @@ namespace Balancy
             // Other platforms: Use C# unzipping
             if (_dispatcher == null)
             {
-                Debug.LogError("[Balancy] UnzipBridge not initialized! Call Initialize() first.");
+                Debug.LogError("[Balancy][UnzipBridge] ERROR: UnzipBridge not initialized! Call Initialize() first.");
                 NotifyUnzipCompleted(id, string.Empty);
                 return;
             }
@@ -157,7 +154,19 @@ namespace Balancy
             string extractedFolderPath = string.Empty;
             bool success = false;
             Exception errorException = null;
-            
+
+            // Check if it's an android_asset path (resources from StreamingAssets on Android)
+            bool isAndroidAssetPath = zipFilePath.Contains("/android_asset/");
+
+#if UNITY_ANDROID && !UNITY_EDITOR
+            // On Android, StreamingAssets are inside the APK and must be read via UnityWebRequest
+            if (isAndroidAssetPath)
+            {
+                yield return UnzipFromAndroidStreamingAssets(id, zipFilePath);
+                yield break;
+            }
+#endif
+
             // Validate file exists
             if (!File.Exists(zipFilePath))
             {
@@ -165,18 +174,15 @@ namespace Balancy
                 NotifyUnzipCompleted(id, string.Empty);
                 yield break;
             }
-            
+
             // Get the folder name from the zip file (remove extension)
             string zipFileName = Path.GetFileNameWithoutExtension(zipFilePath);
             string destinationFolder = Path.GetDirectoryName(zipFilePath);
             extractedFolderPath = Path.Combine(destinationFolder, zipFileName);
-            
-            Debug.Log($"[Balancy] Extracting to: {extractedFolderPath}");
-            
+
             // Delete existing folder if it exists
             if (Directory.Exists(extractedFolderPath))
             {
-                Debug.Log($"[Balancy] Deleting existing folder: {extractedFolderPath}");
                 try
                 {
                     Directory.Delete(extractedFolderPath, true);
@@ -188,7 +194,7 @@ namespace Balancy
                     yield break;
                 }
             }
-            
+
             // Create destination directory
             try
             {
@@ -273,41 +279,200 @@ namespace Balancy
             }
             
             success = true;
-            
-            // Handle result after try-finally (no yield in try-catch)
+
+            // Handle result
             if (success)
             {
-                Debug.Log($"[Balancy] Successfully extracted {extractedFolderPath}");
-                
                 // Add trailing slash to match C++ expectations
                 if (!extractedFolderPath.EndsWith("/"))
                 {
                     extractedFolderPath += "/";
                 }
-                
+
                 NotifyUnzipCompleted(id, extractedFolderPath);
             }
             else
             {
-                Debug.LogError($"[Balancy] Failed to unzip {zipFilePath}: {errorException?.Message}\n{errorException?.StackTrace}");
-                
+                Debug.LogError($"[Balancy] Failed to unzip {zipFilePath}: {errorException?.Message}");
+
                 // Clean up failed extraction
                 if (!string.IsNullOrEmpty(extractedFolderPath) && Directory.Exists(extractedFolderPath))
                 {
-                    try
-                    {
-                        Directory.Delete(extractedFolderPath, true);
-                    }
-                    catch (Exception cleanupEx)
-                    {
-                        Debug.LogWarning($"[Balancy] Failed to clean up: {cleanupEx.Message}");
-                    }
+                    try { Directory.Delete(extractedFolderPath, true); }
+                    catch { }
                 }
-                
+
                 NotifyUnzipCompleted(id, string.Empty);
             }
         }
-        
+
+#if UNITY_ANDROID && !UNITY_EDITOR
+        /// <summary>
+        /// On Android, StreamingAssets are inside the APK (which is a ZIP file).
+        /// We must use UnityWebRequest to read the ZIP file bytes, then extract from memory.
+        /// </summary>
+        private static IEnumerator UnzipFromAndroidStreamingAssets(string id, string zipFilePath)
+        {
+            // Convert /android_asset/Balancy/... path to URL format that UnityWebRequest understands
+            string assetPath = zipFilePath;
+            if (zipFilePath.StartsWith("/android_asset/"))
+            {
+                // /android_asset/Balancy/xxx.zip -> Application.streamingAssetsPath + /xxx.zip
+                var relativePath = zipFilePath.Substring("/android_asset/".Length);
+                assetPath = Application.streamingAssetsPath + "/" + relativePath;
+            }
+
+            // Use UnityWebRequest to read the ZIP file from the APK
+            using (var request = UnityEngine.Networking.UnityWebRequest.Get(assetPath))
+            {
+                yield return request.SendWebRequest();
+
+                if (request.result != UnityEngine.Networking.UnityWebRequest.Result.Success)
+                {
+                    Debug.LogError($"[Balancy] Failed to read ZIP from APK: {request.error}, URL: {assetPath}");
+                    NotifyUnzipCompleted(id, string.Empty);
+                    yield break;
+                }
+
+                byte[] zipData = request.downloadHandler.data;
+
+                // Determine extraction destination in persistentDataPath (writable location)
+                // C++ getCachePath() uses "persistentDataPath/Balancy/Models/" as the base
+                // The relativePath from android_asset starts with "Balancy/..." so we need to
+                // extract to "persistentDataPath/Balancy/Models/..." to match C++ expectations
+                string relativePath;
+                if (zipFilePath.StartsWith("/android_asset/"))
+                {
+                    // /android_asset/Balancy/xxx_Cache/Files/12345.zip -> Balancy/xxx_Cache/Files/12345.zip
+                    relativePath = zipFilePath.Substring("/android_asset/".Length);
+
+                    // Remove the "Balancy/" prefix since we'll add "Balancy/Models/" base path
+                    if (relativePath.StartsWith("Balancy/"))
+                    {
+                        relativePath = relativePath.Substring("Balancy/".Length);
+                    }
+                }
+                else
+                {
+                    relativePath = Path.GetFileName(zipFilePath);
+                }
+
+                // Extract folder path: remove .zip extension
+                string zipFileName = Path.GetFileNameWithoutExtension(relativePath);
+                string parentDir = Path.GetDirectoryName(relativePath);
+                string extractedRelativePath = string.IsNullOrEmpty(parentDir)
+                    ? zipFileName
+                    : Path.Combine(parentDir, zipFileName);
+
+                // Full destination path in persistentDataPath/Balancy/Models/ (matches C++ getCachePath)
+                string destinationFolder = Path.Combine(Application.persistentDataPath, "Balancy", "Models", extractedRelativePath);
+
+                // Delete existing folder if it exists
+                bool setupFailed = false;
+                string setupError = null;
+
+                if (Directory.Exists(destinationFolder))
+                {
+                    try
+                    {
+                        Directory.Delete(destinationFolder, true);
+                    }
+                    catch (Exception ex)
+                    {
+                        setupError = $"Failed to delete existing folder: {ex.Message}";
+                        setupFailed = true;
+                    }
+                }
+
+                // Create destination directory
+                if (!setupFailed)
+                {
+                    try
+                    {
+                        Directory.CreateDirectory(destinationFolder);
+                    }
+                    catch (Exception ex)
+                    {
+                        setupError = $"Failed to create destination folder: {ex.Message}";
+                        setupFailed = true;
+                    }
+                }
+
+                if (setupFailed)
+                {
+                    Debug.LogError($"[Balancy][UnzipBridge] {setupError}");
+                    NotifyUnzipCompleted(id, string.Empty);
+                    yield break;
+                }
+
+                // Extract from memory - no yield inside try-catch (C# limitation)
+                bool success = false;
+                int processedEntries = 0;
+                string extractError = null;
+
+                try
+                {
+                    using (var memoryStream = new MemoryStream(zipData))
+                    using (var archive = new ZipArchive(memoryStream, ZipArchiveMode.Read))
+                    {
+                        foreach (var entry in archive.Entries)
+                        {
+                            // Skip directories
+                            if (string.IsNullOrEmpty(entry.Name) && entry.FullName.EndsWith("/"))
+                            {
+                                processedEntries++;
+                                continue;
+                            }
+
+                            string destinationPath = Path.Combine(destinationFolder, entry.FullName);
+                            string directoryPath = Path.GetDirectoryName(destinationPath);
+
+                            if (!string.IsNullOrEmpty(directoryPath) && !Directory.Exists(directoryPath))
+                            {
+                                Directory.CreateDirectory(directoryPath);
+                            }
+
+                            entry.ExtractToFile(destinationPath, overwrite: true);
+                            processedEntries++;
+                        }
+
+                        success = true;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    extractError = $"{ex.Message}\n{ex.StackTrace}";
+                    success = false;
+                }
+
+                if (!success)
+                {
+                    Debug.LogError($"[Balancy] Failed to extract ZIP from memory: {extractError}");
+                }
+
+                if (success)
+                {
+                    // Add trailing slash to match C++ expectations
+                    if (!destinationFolder.EndsWith("/"))
+                    {
+                        destinationFolder += "/";
+                    }
+                    NotifyUnzipCompleted(id, destinationFolder);
+                }
+                else
+                {
+                    // Clean up on failure
+                    if (Directory.Exists(destinationFolder))
+                    {
+                        try { Directory.Delete(destinationFolder, true); }
+                        catch { }
+                    }
+                    NotifyUnzipCompleted(id, string.Empty);
+                }
+            }
+        }
+#endif
+
         /// <summary>
         /// Notify C++ that unzipping is complete
         /// </summary>
@@ -318,7 +483,6 @@ namespace Balancy
             try
             {
                 LibraryMethods.General.balancyUnzipCompleted(id, extractedFolderPath);
-                Debug.Log($"[Balancy] Notified C++ of unzip completion: id={id}, success={!string.IsNullOrEmpty(extractedFolderPath)}");
             }
             catch (Exception ex)
             {

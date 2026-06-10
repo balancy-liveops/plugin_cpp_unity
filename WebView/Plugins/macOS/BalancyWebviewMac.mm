@@ -496,14 +496,16 @@ void LogToUnity(const char* message) {
 
 - (void)userContentController:(WKUserContentController *)userContentController didReceiveScriptMessage:(WKScriptMessage *)message {
     if (![message.name isEqualToString:@"BalancyWebView"]) return;
-    
+
     NSString *messageString;
     if ([message.body isKindOfClass:[NSString class]]) {
         messageString = (NSString *)message.body;
     } else {
         messageString = [NSString stringWithFormat:@"%@", message.body];
     }
-    
+
+    // Forward ALL messages to Unity callback (including consoleLog)
+    // C# will handle consoleLog messages separately
     if (_messageCallback) {
         _messageCallback([messageString UTF8String]);
     }
@@ -951,14 +953,16 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
 
 - (void)userContentController:(WKUserContentController *)userContentController didReceiveScriptMessage:(WKScriptMessage *)message {
     if (![message.name isEqualToString:@"BalancyWebView"]) return;
-    
+
     NSString *messageString;
     if ([message.body isKindOfClass:[NSString class]]) {
         messageString = (NSString *)message.body;
     } else {
         messageString = [NSString stringWithFormat:@"%@", message.body];
     }
-    
+
+    // Forward ALL messages to Unity callback (including consoleLog)
+    // C# will handle consoleLog messages separately
     if (_messageCallback) {
         _messageCallback([messageString UTF8String]);
     }
