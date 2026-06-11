@@ -122,8 +122,21 @@ namespace Balancy
             // Localization notifications
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern IntPtr balancyNotification_GetLocalizationCode(int notificationId);
+
+            // Shop update notifications
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancyNotification_GetShopChangeType(int notificationId);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancyNotification_GetShopPageIndex(int notificationId);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancyNotification_GetShopSlotIndex(int notificationId);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyNotification_GetShopUnnyId(int notificationId);
 #endif
-            
+
             //[DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyInit(IntPtr config);

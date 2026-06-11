@@ -11,6 +11,16 @@ namespace Balancy.Models
         public string UnnyId => _unnyId;
         public int IntUnnyId => int.TryParse(_unnyId, out var intId) ? intId : 0;
 
+        /// <summary>
+        /// Fired when this document is modified by overrides or AB tests.
+        /// </summary>
+        public event Action OnChanged;
+
+        internal void NotifyChanged()
+        {
+            OnChanged?.Invoke();
+        }
+
         public override int GetHashCode()
         {
             return _unnyId?.GetHashCode() ?? 0;

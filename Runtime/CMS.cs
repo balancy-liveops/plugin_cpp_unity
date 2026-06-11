@@ -75,7 +75,10 @@ namespace Balancy
         internal static void ModelRefreshed(string unnyId, IntPtr newPointer)
         {
             if (AllModels.TryGetValue(unnyId, out var model))
+            {
                 model.RefreshData(newPointer);
+                model.NotifyChanged();
+            }
         }
 
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.ConditionalTemplates.ConditionalTemplateChangedCallback))]

@@ -274,5 +274,11 @@ balancyLoadAndInit: function (onReadyCallback) {
   balancyGetTemplateName: function() { return Module.BalancyBridge.module._balancyGetTemplateName.apply(null, arguments); },
   balancyLocalization_GetAllLocalizationCodes: function() { return Module.BalancyBridge.module._balancyLocalization_GetAllLocalizationCodes.apply(null, arguments); },
   balancyLocalization_GetCurrentLocalizationCode: function() { return Module.BalancyBridge.module._balancyLocalization_GetCurrentLocalizationCode.apply(null, arguments); },
-  balancyLocalization_GetLocalizedValue: function() { return Module.BalancyBridge.module._balancyLocalization_GetLocalizedValue.apply(null, arguments); }
+  balancyLocalization_GetLocalizedValue: function() { return Module.BalancyBridge.module._balancyLocalization_GetLocalizedValue.apply(null, arguments); },
+
+  // Shop update notification accessors
+  balancyNotification_GetShopChangeType: function() { return Module.BalancyBridge.module._balancyNotification_GetShopChangeType.apply(null, arguments); },
+  balancyNotification_GetShopPageIndex: function() { return Module.BalancyBridge.module._balancyNotification_GetShopPageIndex.apply(null, arguments); },
+  balancyNotification_GetShopSlotIndex: function() { return Module.BalancyBridge.module._balancyNotification_GetShopSlotIndex.apply(null, arguments); },
+  balancyNotification_GetShopUnnyId: function() { return Module.BalancyBridge.module._balancyNotification_GetShopUnnyId.apply(null, arguments); }
 });

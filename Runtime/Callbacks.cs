@@ -49,7 +49,23 @@ namespace Balancy
         public delegate void OnAbTestInfoDelegate(AbTestInfo abTestInfo);
         public delegate void OnSegmentInfoDelegate(SegmentInfo segmentInfo);
         public delegate void OnDailyBonusInfoDelegate(DailyBonusInfo dailyBonusInfo);
-        public delegate void OnShopUpdatedDelegate();
+        public struct ShopUpdatedInfo
+        {
+            public readonly Core.ShopChangeType ChangeType;
+            public readonly int PageIndex;   // -1 if not applicable
+            public readonly int SlotIndex;   // -1 if not applicable
+            public readonly string ShopUnnyId;
+
+            public ShopUpdatedInfo(Core.ShopChangeType changeType, int pageIndex, int slotIndex, string shopUnnyId)
+            {
+                ChangeType = changeType;
+                PageIndex = pageIndex;
+                SlotIndex = slotIndex;
+                ShopUnnyId = shopUnnyId ?? "";
+            }
+        }
+
+        public delegate void OnShopUpdatedDelegate(ShopUpdatedInfo info);
         public delegate void OnNetworkDownloadStartedDelegate(NetworkDownloadInfo info);
         public delegate void OnNetworkDownloadFinishedDelegate(NetworkDownloadCompletedInfo info);
         
@@ -195,7 +211,7 @@ namespace Balancy
             OnAbTestEnded += abTestInfo => Debug.Log(" => Balancy.OnAbTestEnded: " + abTestInfo?.Test?.Name);
             OnSegmentInfoUpdated += segmentInfo => Debug.Log(" => Balancy.OnSegmentInfoUpdated: " + segmentInfo?.Segment?.Name + " isIn = " + segmentInfo?.IsIn);
             OnDailyBonusUpdated += dailyBonusInfo => Debug.Log(" => Balancy.OnDailyBonusUpdated: " + dailyBonusInfo?.DailyBonus?.Name);
-            OnShopUpdated += () => Debug.Log(" => Balancy.OnShopUpdated");
+            OnShopUpdated += info => Debug.Log($" => Balancy.OnShopUpdated: {info.ChangeType.ToString()}, shop={info.ShopUnnyId}, page={info.PageIndex}, slot={info.SlotIndex}");
             OnPaymentIsReady += () => Debug.Log(" => Balancy.OnPaymentIsReady");
             
             OnHardPurchasedStoreItem += (paymentInfo, storeItem) => Debug.Log(" => Balancy.OnHardPurchasedStoreItem: " + storeItem?.Name + " UnnyId = " + storeItem?.UnnyId + " price = " + paymentInfo.Price + " priceUSD = " + paymentInfo.PriceUSD);

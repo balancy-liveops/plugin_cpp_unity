@@ -4,6 +4,16 @@ using UnityEngine.Scripting;
 
 namespace Balancy.Core
 {
+    public enum ShopChangeType
+    {
+        ShopChanged = 0,      // Default shop reference changed
+        PageAdded = 1,        // Page condition passed, page added
+        PageRemoved = 2,      // Page condition failed, page removed
+        SlotAdded = 3,        // Slot condition passed, slot added
+        SlotRemoved = 4,      // Slot condition failed, slot removed
+        SlotItemChanged = 5   // Override modified a slot's StoreItem (reserved for future use)
+    }
+
     internal class Notifications
     {
         public enum NotificationType
@@ -102,6 +112,7 @@ namespace Balancy.Core
         [Preserve, StructLayout(LayoutKind.Sequential)]
         public class LiveOpsNotificationBase : NotificationBase
         {
+            private int _padding; // C++ aligns pointer m_UserData to 8-byte boundary after int32 type
             private IntPtr UserData;
         }
 
@@ -176,6 +187,13 @@ namespace Balancy.Core
         [Preserve, StructLayout(LayoutKind.Sequential)]
         public class LiveOpsNotification_ShopUpdated : LiveOpsNotificationBase
         {
+            public int ChangeType;
+            public int PageIndex;
+            public int SlotIndex;
+            private int _padding2; // C++ aligns pointer m_ShopUnnyId to 8-byte boundary after 3x int32
+            public IntPtr ShopUnnyIdPtr;
+
+            public ShopChangeType GetChangeType() => (ShopChangeType)ChangeType;
         }
 
         [Preserve, StructLayout(LayoutKind.Sequential)]
