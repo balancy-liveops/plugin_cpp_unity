@@ -420,9 +420,28 @@ namespace Balancy.Editor
                 }
 
                 string manifestPath = Path.Combine(balancyPath, "balancy_files_manifest.txt");
-                
+
+                // Get the Cache/Files directory path - we need to exclude extracted folders
+                // Only ZIP files and text files should be in the manifest
+                // Extracted folders (e.g., 12345_xxx/index.html) are created at runtime in cache
+                string cacheFilesPath = Path.Combine(balancyPath, Path.Combine("Cache", "Files"));
+
                 var files = Directory.GetFiles(balancyPath, "*", SearchOption.AllDirectories)
-                    .Where(f => !f.EndsWith(".meta") && !Path.GetFileName(f).StartsWith("."))
+                    .Where(f => {
+                        // Skip meta files and hidden files
+                        if (f.EndsWith(".meta") || Path.GetFileName(f).StartsWith("."))
+                            return false;
+
+                        // If file is inside Cache/Files, only include ZIP files
+                        // Extracted folders (directories with index.html etc.) should be excluded
+                        if (f.StartsWith(cacheFilesPath))
+                        {
+                            // Only include .zip files from Cache/Files
+                            return f.EndsWith(".zip", StringComparison.OrdinalIgnoreCase);
+                        }
+
+                        return true;
+                    })
                     .Select(f => "./" + f.Substring(balancyPath.Length + 1).Replace('\\', '/'))
                     .OrderBy(f => f)
                     .ToList();
