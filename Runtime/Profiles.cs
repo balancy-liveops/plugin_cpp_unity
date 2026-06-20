@@ -49,7 +49,12 @@ namespace Balancy
         public static void Reset()
         {
             Balancy.Callbacks.OnProfileResetStart?.Invoke();
-            LibraryMethods.Data.balancyResetAllProfiles();
+            LibraryMethods.Data.balancyResetAllProfilesWithCallback(OnResetComplete);
+        }
+
+        [AOT.MonoPInvokeCallback(typeof(LibraryMethods.Data.ResetProfilesCallback))]
+        private static void OnResetComplete()
+        {
             Balancy.Callbacks.OnProfileResetFinish?.Invoke();
         }
 

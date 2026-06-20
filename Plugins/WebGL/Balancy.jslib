@@ -225,6 +225,7 @@ balancyLoadAndInit: function (onReadyCallback) {
   balancyConfigGenerateCode: function() { return Module.BalancyBridge.module._balancyConfigGenerateCode.apply(null, arguments); },
   balancyGetProfile: function() { return Module.BalancyBridge.module._balancyGetProfile.apply(null, arguments); },
   balancyResetAllProfiles: function() { return Module.BalancyBridge.module._balancyResetAllProfiles.apply(null, arguments); },
+  balancyResetAllProfilesWithCallback: function() { return Module.BalancyBridge.module._balancyResetAllProfilesWithCallback.apply(null, arguments); },
   balancyGetBaseDataParam: function() { return Module.BalancyBridge.module._balancyGetBaseDataParam.apply(null, arguments); },
   balancyGetListBaseDataParam: function() { return Module.BalancyBridge.module._balancyGetListBaseDataParam.apply(null, arguments); },
   balancySubscribeBaseDataParamChange: function() { return Module.BalancyBridge.module._balancySubscribeBaseDataParamChange.apply(null, arguments); },
