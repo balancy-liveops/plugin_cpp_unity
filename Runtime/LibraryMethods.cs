@@ -418,6 +418,7 @@ namespace Balancy
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyResetAllProfiles();
 
+            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
             public delegate void ResetProfilesCallback();
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyResetAllProfilesWithCallback(ResetProfilesCallback onComplete);
