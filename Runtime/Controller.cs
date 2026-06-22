@@ -497,12 +497,14 @@ namespace Balancy
                             slotIndex,
                             shopUnnyId);
 #else
-                        var notificationTyped = Marshal.PtrToStructure<Notifications.LiveOpsNotification_ShopUpdated>(notificationPtr);
-                        string shopUnnyId = SafePtrToStringAnsi(notificationTyped.ShopUnnyIdPtr);
+                        int changeType = LibraryMethods.General.balancyNotificationPtr_GetShopChangeType(notificationPtr);
+                        int pageIndex = LibraryMethods.General.balancyNotificationPtr_GetShopPageIndex(notificationPtr);
+                        int slotIndex = LibraryMethods.General.balancyNotificationPtr_GetShopSlotIndex(notificationPtr);
+                        string shopUnnyId = SafePtrToStringAnsi(LibraryMethods.General.balancyNotificationPtr_GetShopUnnyId(notificationPtr));
                         var info = new Balancy.Callbacks.ShopUpdatedInfo(
-                            notificationTyped.GetChangeType(),
-                            notificationTyped.PageIndex,
-                            notificationTyped.SlotIndex,
+                            (ShopChangeType)changeType,
+                            pageIndex,
+                            slotIndex,
                             shopUnnyId);
 #endif
                         Balancy.Callbacks.OnShopUpdated?.Invoke(info);

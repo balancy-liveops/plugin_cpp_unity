@@ -137,6 +137,22 @@ namespace Balancy
             public static extern IntPtr balancyNotification_GetShopUnnyId(int notificationId);
 #endif
 
+#if !UNITY_WEBGL || UNITY_EDITOR
+            // Native notification pointer accessors. They avoid IL2CPP marshalling
+            // of C++ class layouts for notifications with native-owned strings.
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancyNotificationPtr_GetShopChangeType(IntPtr notificationPtr);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancyNotificationPtr_GetShopPageIndex(IntPtr notificationPtr);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancyNotificationPtr_GetShopSlotIndex(IntPtr notificationPtr);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyNotificationPtr_GetShopUnnyId(IntPtr notificationPtr);
+#endif
+
             //[DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyInit(IntPtr config);
