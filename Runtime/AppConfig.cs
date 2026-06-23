@@ -23,6 +23,8 @@ namespace Balancy
         Local = 1 << 0,
         Cloud = 1 << 1,
         AutoRetry = 1 << 2,
+        AsyncLocalInit = 1 << 3,
+        AsyncCloudInit = 1 << 4,
     }
 
     [Preserve, StructLayout(LayoutKind.Sequential, Pack = 1, CharSet = CharSet.Ansi)]
@@ -40,7 +42,7 @@ namespace Balancy
         public StatusUpdateCallback OnStatusUpdate = null;
         public ProgressUpdateCallback OnProgressUpdateCallback = null;
 
-        public LaunchType LaunchType = LaunchType.Local | LaunchType.Cloud | LaunchType.AutoRetry;
+        public LaunchType LaunchType = LaunchType.Local | LaunchType.Cloud | LaunchType.AutoRetry | LaunchType.AsyncCloudInit;
         [MarshalAs(UnmanagedType.LPStr)]
         public string BranchName;//If left blank, we'll use the branchConditions to find the best branch.
         
@@ -102,7 +104,7 @@ namespace Balancy
         // public StatusUpdateNotificationCallback OnStatusUpdate = null;
         public ProgressUpdateCallback OnProgressUpdateCallback = null;
 
-        public LaunchType LaunchType = LaunchType.Local | LaunchType.Cloud | LaunchType.AutoRetry;
+        public LaunchType LaunchType = LaunchType.Local | LaunchType.Cloud | LaunchType.AutoRetry | LaunchType.AsyncCloudInit;
         public string BranchName;//If left blank, we'll use the branchConditions to find the best branch.
         
         public Constants.BalancyPlatform BalancyPlatform = Constants.BalancyPlatform.Undefined;
