@@ -659,7 +659,6 @@ public class BalancyWebViewPlugin {
                 "style.innerHTML = '" +
                 "body, html { transform: translateZ(0) !important; backface-visibility: hidden !important; } " +
                 "img, canvas, video { transform: translateZ(0) !important; } " +
-                "* { text-shadow: none !important; filter: none !important; box-shadow: none !important; } " +
                 "';" +
                 "document.head.appendChild(style);";
         webView.evaluateJavascript(css, null);
