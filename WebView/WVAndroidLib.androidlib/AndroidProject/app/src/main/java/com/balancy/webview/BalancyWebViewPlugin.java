@@ -169,7 +169,7 @@ public class BalancyWebViewPlugin {
             ViewGroup.LayoutParams.MATCH_PARENT
         ));
         webViewContainer.setVisibility(View.GONE);
-        
+
         ViewGroup rootView = (ViewGroup) currentActivity.findViewById(android.R.id.content);
         if (rootView != null) {
             rootView.addView(webViewContainer);
@@ -185,21 +185,21 @@ public class BalancyWebViewPlugin {
             Log.w(TAG, "WebView is already open");
             return false;
         }
-        
+
         if (currentActivity == null) {
             Log.e(TAG, "Cannot open WebView: no activity available");
             return false;
         }
-        
+
         this.ownerJson = ownerJson;
         this.suppressNextShowAnimation = startHidden;
-        
+
         runOnUIThread(() -> {
             createWebView();
             setupEmergencyExitButton();
             applySettings();
             loadUrl(url);
-            
+
             if (!startHidden) {
                 showWebViewInternal();
             } else {
@@ -209,7 +209,7 @@ public class BalancyWebViewPlugin {
                 logDebug("WebView created but hidden");
             }
         });
-        
+
         isWebViewOpen = true;
         logDebug("Opening WebView with URL: " + url + ", startHidden: " + startHidden);
         return true;
@@ -667,11 +667,11 @@ public class BalancyWebViewPlugin {
     
     private void applySettings() {
         if (webView == null) return;
-        
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) {
             webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
         }
-        
+
         // Apply transparency settings
         if (transparentBackground) {
             webView.setBackgroundColor(Color.TRANSPARENT);
@@ -680,25 +680,23 @@ public class BalancyWebViewPlugin {
             webView.setBackgroundColor(Color.WHITE);
             webViewContainer.setBackgroundColor(Color.WHITE);
         }
-        
+
         // Apply cache settings
         WebSettings settings = webView.getSettings();
         if (offlineCacheEnabled) {
             settings.setCacheMode(WebSettings.LOAD_DEFAULT);
             settings.setDomStorageEnabled(true);
             settings.setDatabaseEnabled(true);
-            // Note: setAppCacheEnabled() is deprecated and removed in API 33+
-            // Modern caching is handled by DOM storage and regular cache
         } else {
-            settings.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK); // Keep some caching for performance
+            settings.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
             settings.setDomStorageEnabled(true);
             settings.setDatabaseEnabled(true);
         }
-        
+
         // Apply viewport settings
         applyViewportSettings();
-        
-        logDebug("Settings applied: transparent=" + transparentBackground + 
+
+        logDebug("Settings applied: transparent=" + transparentBackground +
                 ", cache=" + offlineCacheEnabled + ", gameUI=" + gameUIMode);
     }
     
@@ -755,18 +753,27 @@ public class BalancyWebViewPlugin {
      */
     private void applyViewportSettings() {
         if (webView == null || currentActivity == null) return;
-        
-        android.util.DisplayMetrics metrics = new android.util.DisplayMetrics();
-        currentActivity.getWindowManager().getDefaultDisplay().getRealMetrics(metrics);
-        
-        int screenWidth = metrics.widthPixels;
-        int screenHeight = metrics.heightPixels;
-        
+
+        // Use the content view dimensions to account for notch/display cutout and navigation bar.
+        // android.R.id.content excludes system insets (status bar, notch, nav bar),
+        // so the WebView fits exactly in the available area.
+        ViewGroup rootView = (ViewGroup) currentActivity.findViewById(android.R.id.content);
+        int screenWidth = rootView.getWidth();
+        int screenHeight = rootView.getHeight();
+
+        // Fallback to full screen metrics if the content view hasn't been laid out yet
+        if (screenWidth == 0 || screenHeight == 0) {
+            android.util.DisplayMetrics metrics = new android.util.DisplayMetrics();
+            currentActivity.getWindowManager().getDefaultDisplay().getRealMetrics(metrics);
+            screenWidth = metrics.widthPixels;
+            screenHeight = metrics.heightPixels;
+        }
+
         int x = (int)(viewportX * screenWidth);
         int y = (int)(viewportY * screenHeight);
         int width = (int)(viewportWidth * screenWidth);
         int height = (int)(viewportHeight * screenHeight);
-        
+
         FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) webView.getLayoutParams();
         if (params != null) {
             params.leftMargin = x;
@@ -774,8 +781,8 @@ public class BalancyWebViewPlugin {
             params.width = width;
             params.height = height;
             webView.setLayoutParams(params);
-            
-            logDebug(String.format("Viewport applied: x=%d, y=%d, width=%d, height=%d (screen: %dx%d)", 
+
+            logDebug(String.format("Viewport applied: x=%d, y=%d, width=%d, height=%d (contentView: %dx%d)",
                     x, y, width, height, screenWidth, screenHeight));
         }
     }
