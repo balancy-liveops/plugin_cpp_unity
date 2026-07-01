@@ -295,8 +295,6 @@ public class BalancyWebViewPlugin {
             public void onPageFinished(WebView view, String url) {
                 logDebug("Page finished loading: " + url);
                 
-                injectRenderingOptimizations();
-                
                 if (transparentBackground) {
                     injectTransparencyCSS();
                 }
@@ -652,16 +650,6 @@ public class BalancyWebViewPlugin {
                        "  console.error('Error parsing owner JSON:', error);" +
                        "}";
         webView.evaluateJavascript(script, null);
-    }
-    
-    private void injectRenderingOptimizations() {
-        String css = "var style = document.createElement('style');" +
-                "style.innerHTML = '" +
-                "body, html { transform: translateZ(0) !important; backface-visibility: hidden !important; } " +
-                "img, canvas, video { transform: translateZ(0) !important; } " +
-                "';" +
-                "document.head.appendChild(style);";
-        webView.evaluateJavascript(css, null);
     }
     
     private void applySettings() {
