@@ -11,6 +11,10 @@ namespace Balancy.Editor
     {
         [UnityEngine.Scripting.Preserve, StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
         public class ConfigStatus {
+            // The native side is a 1-byte C++ bool followed by alignment padding.
+            // Without I1 this marshals as a 4-byte BOOL and reads the padding bytes,
+            // which can turn a native 'false' into 'true'.
+            [MarshalAs(UnmanagedType.I1)]
             public bool IsAuthorized;
             [MarshalAs(UnmanagedType.LPStr)]
             public string Email;
@@ -74,16 +78,19 @@ namespace Balancy.Editor
 
         private static ConfigStatus SetStatus(IntPtr pt)
         {
-            _status = Marshal.PtrToStructure<ConfigStatus>(pt);
+            _status = pt == IntPtr.Zero ? null : Marshal.PtrToStructure<ConfigStatus>(pt);
             if (_status != null)
                 _statusString = _status.Email;
-            
+
             return _status;
         }
 
         public static ConfigStatus GetStatus()
         {
             Launch();
+            // Always re-read from the native side: the cached copy can go stale when the
+            // auth state changes outside of Auth/SignOut (e.g. cache files removed).
+            UpdateStatus();
             return _status;
         }
 
