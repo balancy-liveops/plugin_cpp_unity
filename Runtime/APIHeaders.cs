@@ -565,6 +565,11 @@ namespace Balancy
                 var callbackResult = ProtectedFromGCCallback(callback);
                 Balancy.LibraryMethods.API.balancyAuth_Facebook(userId, token, callbackResult.CallbackId, callbackResult.StaticCallback);
             }
+
+            public static void WithFirebase(string userId, string token, Balancy.Core.ResponseCallback<Balancy.Core.Responses.AuthResponseData> callback) {
+                var callbackResult = ProtectedFromGCCallback(callback);
+                Balancy.LibraryMethods.API.balancyAuth_Firebase(userId, token, callbackResult.CallbackId, callbackResult.StaticCallback);
+            }
         }
 
         public static class Link
@@ -592,6 +597,11 @@ namespace Balancy
             public static void WithFacebook(string userId, string token, bool forceLink, Balancy.Core.ResponseCallback<Balancy.Core.Responses.LinkResponseData> callback) {
                 var callbackResult = ProtectedFromGCCallback(callback);
                 Balancy.LibraryMethods.API.balancyLink_Facebook(userId, token, forceLink, callbackResult.CallbackId, callbackResult.StaticCallback);
+            }
+
+            public static void WithFirebase(string userId, string token, bool forceLink, Balancy.Core.ResponseCallback<Balancy.Core.Responses.LinkResponseData> callback) {
+                var callbackResult = ProtectedFromGCCallback(callback);
+                Balancy.LibraryMethods.API.balancyLink_Firebase(userId, token, forceLink, callbackResult.CallbackId, callbackResult.StaticCallback);
             }
         }
 

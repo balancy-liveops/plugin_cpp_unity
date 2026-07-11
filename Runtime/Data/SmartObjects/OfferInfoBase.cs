@@ -9,6 +9,7 @@ namespace Balancy.Data.SmartObjects
 		private string _instanceId;
 		private int _startTime;
 		private int _session;
+		private SmartListSimple<string> _attachments;
         
 		public Balancy.Models.SmartObjects.GameEvent GameEvent => GetModelByUnnyId<Balancy.Models.SmartObjects.GameEvent>(_unnyIdGameEvent);
 		
@@ -27,6 +28,7 @@ namespace Balancy.Data.SmartObjects
 			get => _session;
 			// set => SetIntValue("session", value);
 		}
+		public SmartListSimple<string> Attachments => _attachments;
         
         public override void InitData()
         {
@@ -36,6 +38,7 @@ namespace Balancy.Data.SmartObjects
 			InitAndSubscribeForParamChange("instanceId", Update_instanceId);
 			InitAndSubscribeForParamChange("startTime", Update_startTime);
 			InitAndSubscribeForParamChange("session", Update_session);
+			_attachments = GetListSimpleParam<string>("attachments");
         }
         
         private void Update_unnyIdGameEvent() { _unnyIdGameEvent = GetStringParam("unnyIdGameEvent"); }

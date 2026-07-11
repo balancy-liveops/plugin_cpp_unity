@@ -26,6 +26,11 @@ namespace Balancy.CheatPanel
             Balancy.Callbacks.OnShopUpdated -= Refresh;
         }
 
+        private void Refresh(Callbacks.ShopUpdatedInfo info)
+        {
+            Refresh();
+        }
+
         private void Refresh()
         {
             pagesContent.RemoveChildren();

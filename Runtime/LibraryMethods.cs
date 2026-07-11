@@ -122,8 +122,21 @@ namespace Balancy
             // Localization notifications
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern IntPtr balancyNotification_GetLocalizationCode(int notificationId);
+
+            // Shop update notifications
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancyNotification_GetShopChangeType(int notificationId);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancyNotification_GetShopPageIndex(int notificationId);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancyNotification_GetShopSlotIndex(int notificationId);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyNotification_GetShopUnnyId(int notificationId);
 #endif
-            
+
             //[DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyInit(IntPtr config);
@@ -404,6 +417,11 @@ namespace Balancy
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyResetAllProfiles();
+
+            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+            public delegate void ResetProfilesCallback();
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyResetAllProfilesWithCallback(ResetProfilesCallback onComplete);
 
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyForceSaveSmartObjects();
@@ -777,11 +795,15 @@ namespace Balancy
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyAuth_Facebook(string userId, string token, int callbackId, ResponseCallback callback);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyAuth_Firebase(string userId, string token, int callbackId, ResponseCallback callback);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyLink_Apple(string userId, string token, bool forceLink, int callbackId, ResponseCallback callback);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyLink_Google(string userId, string token, bool forceLink, int callbackId, ResponseCallback callback);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyLink_Facebook(string userId, string token, bool forceLink, int callbackId, ResponseCallback callback);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyLink_Firebase(string userId, string token, bool forceLink, int callbackId, ResponseCallback callback);
 
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyGenenal_LevelStarted();

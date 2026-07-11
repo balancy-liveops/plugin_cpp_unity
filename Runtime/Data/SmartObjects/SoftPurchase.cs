@@ -7,6 +7,7 @@ namespace Balancy.Data.SmartObjects
 		private string _price;
 		private string _item;
 		private int _time;
+		private SmartListSimple<string> _attachments;
         
         
 		public string Price
@@ -24,6 +25,17 @@ namespace Balancy.Data.SmartObjects
 			get => _time;
 			set => SetIntValue("time", value);
 		}
+		public SmartListSimple<string> Attachments => _attachments;
+
+		public bool HasAttachment(string attachment)
+		{
+			if (_attachments == null) return false;
+			for (int i = 0; i < _attachments.Count; i++)
+			{
+				if (_attachments[i] == attachment) return true;
+			}
+			return false;
+		}
         
         public override void InitData()
         {
@@ -32,6 +44,7 @@ namespace Balancy.Data.SmartObjects
 			InitAndSubscribeForParamChange("price", Update_price);
 			InitAndSubscribeForParamChange("item", Update_item);
 			InitAndSubscribeForParamChange("time", Update_time);
+			_attachments = GetListSimpleParam<string>("a");
         }
         
 		private void Update_price() { _price = GetStringParam("price"); }

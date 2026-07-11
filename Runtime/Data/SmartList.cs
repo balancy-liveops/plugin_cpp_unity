@@ -59,7 +59,8 @@ namespace Balancy.Data
             {
                 var ptr = LibraryMethods.Data.balancySmartListGetElementAt(_pointer, i);
                 var element = CreateObject<T>(ptr, TempCopy);
-                _list.Add(element);
+                if (element != null)
+                    _list.Add(element);
             }
         }
         
@@ -120,7 +121,8 @@ namespace Balancy.Data
                 if (!found)
                 {
                     var element = CreateObject<T>(ptr, TempCopy);
-                    newList.Add(element);
+                    if (element != null)
+                        newList.Add(element);
                 }
             }
             

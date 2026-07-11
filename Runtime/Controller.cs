@@ -486,8 +486,26 @@ namespace Balancy
                         break;
                     }
                     case Notifications.NotificationType.OnShopUpdated: {
-                        // var notificationTyped = Marshal.PtrToStructure<Notifications.LiveOpsNotification_ShopUpdated>(notificationPtr);
-                        Balancy.Callbacks.OnShopUpdated?.Invoke();
+#if UNITY_WEBGL && !UNITY_EDITOR
+                        int changeType = LibraryMethods.General.balancyNotification_GetShopChangeType(notificationId);
+                        int pageIndex = LibraryMethods.General.balancyNotification_GetShopPageIndex(notificationId);
+                        int slotIndex = LibraryMethods.General.balancyNotification_GetShopSlotIndex(notificationId);
+                        string shopUnnyId = Marshal.PtrToStringAnsi(LibraryMethods.General.balancyNotification_GetShopUnnyId(notificationId));
+                        var info = new Balancy.Callbacks.ShopUpdatedInfo(
+                            (ShopChangeType)changeType,
+                            pageIndex,
+                            slotIndex,
+                            shopUnnyId);
+#else
+                        var notificationTyped = Marshal.PtrToStructure<Notifications.LiveOpsNotification_ShopUpdated>(notificationPtr);
+                        string shopUnnyId = SafePtrToStringAnsi(notificationTyped.ShopUnnyIdPtr);
+                        var info = new Balancy.Callbacks.ShopUpdatedInfo(
+                            notificationTyped.GetChangeType(),
+                            notificationTyped.PageIndex,
+                            notificationTyped.SlotIndex,
+                            shopUnnyId);
+#endif
+                        Balancy.Callbacks.OnShopUpdated?.Invoke(info);
                         break;
                     }
                     case Notifications.NotificationType.OnNetworkDownloadStarted: {

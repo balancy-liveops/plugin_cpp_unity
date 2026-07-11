@@ -225,6 +225,7 @@ balancyLoadAndInit: function (onReadyCallback) {
   balancyConfigGenerateCode: function() { return Module.BalancyBridge.module._balancyConfigGenerateCode.apply(null, arguments); },
   balancyGetProfile: function() { return Module.BalancyBridge.module._balancyGetProfile.apply(null, arguments); },
   balancyResetAllProfiles: function() { return Module.BalancyBridge.module._balancyResetAllProfiles.apply(null, arguments); },
+  balancyResetAllProfilesWithCallback: function() { return Module.BalancyBridge.module._balancyResetAllProfilesWithCallback.apply(null, arguments); },
   balancyGetBaseDataParam: function() { return Module.BalancyBridge.module._balancyGetBaseDataParam.apply(null, arguments); },
   balancyGetListBaseDataParam: function() { return Module.BalancyBridge.module._balancyGetListBaseDataParam.apply(null, arguments); },
   balancySubscribeBaseDataParamChange: function() { return Module.BalancyBridge.module._balancySubscribeBaseDataParamChange.apply(null, arguments); },
@@ -274,5 +275,11 @@ balancyLoadAndInit: function (onReadyCallback) {
   balancyGetTemplateName: function() { return Module.BalancyBridge.module._balancyGetTemplateName.apply(null, arguments); },
   balancyLocalization_GetAllLocalizationCodes: function() { return Module.BalancyBridge.module._balancyLocalization_GetAllLocalizationCodes.apply(null, arguments); },
   balancyLocalization_GetCurrentLocalizationCode: function() { return Module.BalancyBridge.module._balancyLocalization_GetCurrentLocalizationCode.apply(null, arguments); },
-  balancyLocalization_GetLocalizedValue: function() { return Module.BalancyBridge.module._balancyLocalization_GetLocalizedValue.apply(null, arguments); }
+  balancyLocalization_GetLocalizedValue: function() { return Module.BalancyBridge.module._balancyLocalization_GetLocalizedValue.apply(null, arguments); },
+
+  // Shop update notification accessors
+  balancyNotification_GetShopChangeType: function() { return Module.BalancyBridge.module._balancyNotification_GetShopChangeType.apply(null, arguments); },
+  balancyNotification_GetShopPageIndex: function() { return Module.BalancyBridge.module._balancyNotification_GetShopPageIndex.apply(null, arguments); },
+  balancyNotification_GetShopSlotIndex: function() { return Module.BalancyBridge.module._balancyNotification_GetShopSlotIndex.apply(null, arguments); },
+  balancyNotification_GetShopUnnyId: function() { return Module.BalancyBridge.module._balancyNotification_GetShopUnnyId.apply(null, arguments); }
 });

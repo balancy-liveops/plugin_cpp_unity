@@ -10,6 +10,7 @@ namespace Balancy
     public static class Profiles
     {
         private static readonly Dictionary<string, ParentBaseData> _cachedProfiles = new Dictionary<string, ParentBaseData>();
+        private static readonly LibraryMethods.Data.ResetProfilesCallback _resetProfilesCallback = OnResetComplete;
         private static int _mainThreadId;
 
         public static UnnyProfile System => Get<UnnyProfile>();
@@ -49,7 +50,18 @@ namespace Balancy
         public static void Reset()
         {
             Balancy.Callbacks.OnProfileResetStart?.Invoke();
-            LibraryMethods.Data.balancyResetAllProfiles();
+            LibraryMethods.Data.balancyResetAllProfilesWithCallback(_resetProfilesCallback);
+        }
+
+        [AOT.MonoPInvokeCallback(typeof(LibraryMethods.Data.ResetProfilesCallback))]
+        private static void OnResetComplete()
+        {
+            if (Thread.CurrentThread.ManagedThreadId != _mainThreadId)
+            {
+                UnityMainThreadDispatcher.Instance().Enqueue(OnResetComplete);
+                return;
+            }
+
             Balancy.Callbacks.OnProfileResetFinish?.Invoke();
         }
 
