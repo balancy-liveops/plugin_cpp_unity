@@ -653,41 +653,76 @@ namespace Balancy.Editor
         }
         
         private bool _loadingGames;
+        private bool _loadGamesFailed;
+        private double _loadGamesStartTime;
+        private const double LoadGamesTimeout = 15; // seconds
+
         private void RenderGames()
         {
             if (!IsAuthorized)
                 return;
 
-            if (!_loadingGames)
+            if (_loadGamesFailed)
             {
-                if (_gamesInfo != null)
-                {
-                    if (_gamesInfo.Render())
-                    {
-                        m_EditorDispatcher?.Enqueue(Repaint);
-                        _needRefresh = true;
-                    }
-                }
-                else
+                EditorGUILayout.HelpBox(
+                    "Failed to load the list of games. Check your connection, retry, or sign out and log in again.",
+                    MessageType.Warning);
+                if (GUILayout.Button("Retry"))
+                    _loadGamesFailed = false;
+                return;
+            }
+
+            if (_gamesInfo == null)
+            {
+                // Keep the drawn controls identical between the Layout and Repaint
+                // events: start the actual loading outside of OnGUI via delayCall.
+                EditorGUILayout.LabelField("Loading games...");
+
+                if (!_loadingGames)
                 {
                     _loadingGames = true;
-                    EditorUtils.LoadGames((games) =>
-                    {
-                        try
-                        {
-                            var selectedGame = EditorUtils.GetSelectedGameId();
-                            _gamesInfo = new GamesInfo(games, selectedGame);
-                            _loadingGames = false;
-                            _needRefresh = true;
-                            m_EditorDispatcher?.Enqueue(Repaint);
-                        }
-                        catch (Exception e)
-                        {
-                            Debug.LogError(e);
-                        }
-                    });
+                    _loadGamesStartTime = EditorApplication.timeSinceStartup;
+                    EditorApplication.delayCall += StartLoadingGames;
                 }
+                else if (Event.current.type == EventType.Repaint &&
+                         EditorApplication.timeSinceStartup - _loadGamesStartTime > LoadGamesTimeout)
+                {
+                    // The native side never called us back (no connection, or the auth
+                    // token is broken) — unstick the UI instead of loading forever.
+                    // Only flip the state on Repaint, so the controls drawn in this
+                    // pass stay consistent with its earlier Layout event.
+                    _loadingGames = false;
+                    _loadGamesFailed = true;
+                    m_EditorDispatcher?.Enqueue(Repaint);
+                }
+
+                return;
             }
+
+            if (_gamesInfo.Render())
+            {
+                m_EditorDispatcher?.Enqueue(Repaint);
+                _needRefresh = true;
+            }
+        }
+
+        private void StartLoadingGames()
+        {
+            EditorUtils.LoadGames((games) =>
+            {
+                try
+                {
+                    var selectedGame = EditorUtils.GetSelectedGameId();
+                    _gamesInfo = new GamesInfo(games, selectedGame);
+                    _loadingGames = false;
+                    _needRefresh = true;
+                    m_EditorDispatcher?.Enqueue(Repaint);
+                }
+                catch (Exception e)
+                {
+                    Debug.LogError(e);
+                }
+            });
         }
         
         private bool _loadingBranches;
@@ -1040,6 +1075,9 @@ namespace Balancy.Editor
         {
             EditorUtils.SignOut();
             _gamesInfo = null;
+            _loadingGames = false;
+            _loadGamesFailed = false;
+            _loadingBranches = false;
             Repaint();
         }
     }
