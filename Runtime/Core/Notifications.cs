@@ -112,7 +112,13 @@ namespace Balancy.Core
         [Preserve, StructLayout(LayoutKind.Sequential)]
         public class LiveOpsNotificationBase : NotificationBase
         {
-            private int _padding; // C++ aligns pointer m_UserData to 8-byte boundary after int32 type
+            // Do NOT add manual padding here. LayoutKind.Sequential already applies the
+            // platform's natural alignment, which matches the C++ ABI on both 64-bit
+            // (pointer aligned to 8, 4 bytes of padding after the int32 Type) and 32-bit
+            // ARMv7 (pointer aligned to 4, no padding). A hardcoded pad word was a no-op on
+            // 64-bit but shifted every following field by 4 bytes on 32-bit, causing all
+            // pointer members to be read from the wrong offset (e.g. EventInfo resolved to a
+            // shared_ptr control block instead of the object -> GameEvent null on Samsung J7).
             private IntPtr UserData;
         }
 
@@ -190,7 +196,8 @@ namespace Balancy.Core
             public int ChangeType;
             public int PageIndex;
             public int SlotIndex;
-            private int _padding2; // C++ aligns pointer m_ShopUnnyId to 8-byte boundary after 3x int32
+            // No manual padding: the marshaller aligns ShopUnnyIdPtr naturally (to 8 on
+            // 64-bit, to 4 on 32-bit), matching the C++ char* m_ShopUnnyId on both.
             public IntPtr ShopUnnyIdPtr;
 
             public ShopChangeType GetChangeType() => (ShopChangeType)ChangeType;
