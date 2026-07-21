@@ -26,6 +26,7 @@ namespace Balancy.Core
             CMSInited = 5,
             DisconnectAnotherSessionConflict = 6,
             AuthRequired = 7,
+            ConfigFailed = 8,
             SignedOut = 20,
 
             OnNewEventActivated = 100,
@@ -91,6 +92,11 @@ namespace Balancy.Core
 
         [Preserve, StructLayout(LayoutKind.Sequential)]
         public class InitNotificationCloudProfileFailed : InitNotificationError
+        {
+        }
+
+        [Preserve, StructLayout(LayoutKind.Sequential)]
+        public class InitNotificationConfigFailed : InitNotificationError
         {
         }
 

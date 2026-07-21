@@ -359,6 +359,15 @@ namespace Balancy
                         Balancy.Callbacks.OnCloudProfileFailedToLoad?.Invoke(new Balancy.Callbacks.ErrorStatus(profileNotification.Message));
 #endif
                         break;
+                    case Notifications.NotificationType.ConfigFailed:
+#if UNITY_WEBGL && !UNITY_EDITOR
+                        string configMessage = Marshal.PtrToStringAnsi(LibraryMethods.General.balancyNotification_GetMessage(notificationId));
+                        Balancy.Callbacks.OnConfigFailedToLoad?.Invoke(new Balancy.Callbacks.ErrorStatus(configMessage));
+#else
+                        var configNotification = Marshal.PtrToStructure<Notifications.InitNotificationConfigFailed>(notificationPtr);
+                        Balancy.Callbacks.OnConfigFailedToLoad?.Invoke(new Balancy.Callbacks.ErrorStatus(configNotification.Message));
+#endif
+                        break;
                     case Notifications.NotificationType.UserRefreshed:
                         Balancy.Callbacks.OnGameRefreshed?.Invoke();
                         break;
