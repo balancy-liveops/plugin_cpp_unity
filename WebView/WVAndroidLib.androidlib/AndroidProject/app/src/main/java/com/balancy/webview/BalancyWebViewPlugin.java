@@ -14,6 +14,7 @@ import android.view.ViewGroup;
 import android.view.animation.DecelerateInterpolator;
 import android.webkit.ConsoleMessage;
 import android.webkit.JavascriptInterface;
+import android.webkit.RenderProcessGoneDetail;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
@@ -219,7 +220,12 @@ public class BalancyWebViewPlugin {
         webView = new WebView(currentActivity);
         
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) {
-            webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+            // LAYER_TYPE_NONE, not HARDWARE: Chromium already GPU-accelerates the page
+            // (CSS/JS animations, shadows, filters) via its own compositor. Forcing a
+            // full-view hardware layer adds a redundant off-screen FBO that, composited
+            // transparently over the Unity GL surface, segfaults some Adreno/Mali drivers
+            // (libGLESv2_adreno crashes). NONE keeps GPU-accelerated content, drops the FBO.
+            webView.setLayerType(View.LAYER_TYPE_NONE, null);
         }
         
         WebSettings settings = webView.getSettings();
@@ -331,6 +337,35 @@ public class BalancyWebViewPlugin {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 return false;
+            }
+
+            // Resilience: if the WebView's renderer process dies (out-of-process
+            // renderer killed/crashed on API 26+), returning true tells the framework
+            // we handled it so the whole app is NOT terminated. We tear down the dead
+            // WebView and notify Unity to close the view. NOTE: this does NOT catch an
+            // in-process GPU-driver segfault (e.g. libGLESv2_adreno) — that is what the
+            // LAYER_TYPE_NONE change above addresses; this is defense-in-depth.
+            @Override
+            public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {
+                boolean didCrash = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                        && detail != null && detail.didCrash();
+                Log.e(TAG, "WebView render process gone (didCrash=" + didCrash + "); recovering to avoid app kill");
+                try {
+                    if (view != null) {
+                        if (view.getParent() instanceof ViewGroup) {
+                            ((ViewGroup) view.getParent()).removeView(view);
+                        }
+                        view.destroy();
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "Error tearing down dead WebView: " + e.getMessage());
+                }
+                if (view == webView) {
+                    webView = null;
+                }
+                sendUnityMessage("OnAndroidRenderProcessGone", didCrash ? "crashed" : "killed");
+                sendUnityMessage("OnAndroidLoadCompleted", "false");
+                return true;
             }
         });
         
@@ -656,7 +691,12 @@ public class BalancyWebViewPlugin {
         if (webView == null) return;
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) {
-            webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+            // LAYER_TYPE_NONE, not HARDWARE: Chromium already GPU-accelerates the page
+            // (CSS/JS animations, shadows, filters) via its own compositor. Forcing a
+            // full-view hardware layer adds a redundant off-screen FBO that, composited
+            // transparently over the Unity GL surface, segfaults some Adreno/Mali drivers
+            // (libGLESv2_adreno crashes). NONE keeps GPU-accelerated content, drops the FBO.
+            webView.setLayerType(View.LAYER_TYPE_NONE, null);
         }
 
         // Apply transparency settings
