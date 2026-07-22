@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Reflection;
+using System.Text;
 using Balancy.Data.SmartObjects;
 using Balancy.Models;
 using Balancy.Models.SmartObjects;
@@ -147,6 +148,24 @@ namespace Balancy
                 var field = typeof(Balancy.Core.Responses.PurchaseProductResponseData)
                     .GetField("removeFromPending", BindingFlags.NonPublic | BindingFlags.Instance);
                 field?.SetValue(result, removeFromPending);
+                return result as T;
+            }
+            else if (typeof(T) == typeof(Balancy.Core.Responses.CloudDataResponseData))
+            {
+                // const char* Data (pointer-sized)
+                IntPtr dataPtr = Marshal.ReadIntPtr(ptr, offset);
+                string data = dataPtr != IntPtr.Zero ? Marshal.PtrToStringAnsi(dataPtr) : null;
+                offset += IntPtr.Size;
+
+                // int Version (4 bytes)
+                int version = Marshal.ReadInt32(ptr, offset);
+
+                var result = new Balancy.Core.Responses.CloudDataResponseData();
+                result.Success = success == 1;
+                result.ErrorCode = errorCode;
+                result.ErrorMessage = errorMessage;
+                result.Data = data;
+                result.Version = version;
                 return result as T;
             }
             else
@@ -473,6 +492,148 @@ namespace Balancy
         public static bool StartAbTestManually(ABTest abTest, ABTestVariant variant)
         {
             return Balancy.LibraryMethods.General.balancyStartAbTestManually(abTest?.GetRawPointer() ?? IntPtr.Zero, variant?.GetRawPointer() ?? IntPtr.Zero);
+        }
+
+        /// <summary>
+        /// Custom cloud storage — read and write your own key/value data in arbitrary
+        /// collections. Values are arbitrary JSON. All operations go straight to the cloud
+        /// (no local cache) and complete asynchronously via the callback.
+        /// </summary>
+        public static class CloudStorage
+        {
+            /// <summary>
+            /// Writes a single key to a collection. <paramref name="jsonValue"/> must be a valid
+            /// JSON value (e.g. "42", "true", "\"hello\"", "{\"a\":1}", "[1,2,3]"). If
+            /// <paramref name="version"/> is non-negative it is sent as an extra consistency
+            /// check — the write fails if the stored version differs (-1 = no check).
+            /// </summary>
+            public static void SetValue(string collection, string key, string jsonValue,
+                Balancy.Core.ResponseCallback<Balancy.Core.Responses.ResponseData> callback = null, int version = -1)
+            {
+                var json = new StringBuilder();
+                json.Append('{');
+                AppendJsonKeyValue(json, key, jsonValue);
+                json.Append('}');
+
+                string versionsJson = null;
+                if (version >= 0)
+                {
+                    var v = new StringBuilder();
+                    v.Append('{').Append('"');
+                    AppendEscaped(v, key);
+                    v.Append("\":").Append(version).Append('}');
+                    versionsJson = v.ToString();
+                }
+
+                Write(collection, json.ToString(), versionsJson, callback);
+            }
+
+            /// <summary>
+            /// Writes several keys to a collection at once. <paramref name="keyValues"/> maps each
+            /// key to its raw JSON value. Optionally pass <paramref name="versions"/> mapping a
+            /// subset of keys to an expected version for consistency validation.
+            /// </summary>
+            public static void SetValues(string collection, IDictionary<string, string> keyValues,
+                Balancy.Core.ResponseCallback<Balancy.Core.Responses.ResponseData> callback = null,
+                IDictionary<string, int> versions = null)
+            {
+                var json = new StringBuilder();
+                json.Append('{');
+                bool first = true;
+                if (keyValues != null)
+                {
+                    foreach (var kvp in keyValues)
+                    {
+                        if (!first)
+                            json.Append(',');
+                        AppendJsonKeyValue(json, kvp.Key, kvp.Value);
+                        first = false;
+                    }
+                }
+                json.Append('}');
+
+                string versionsJson = null;
+                if (versions != null && versions.Count > 0)
+                {
+                    var v = new StringBuilder();
+                    v.Append('{');
+                    bool firstV = true;
+                    foreach (var kvp in versions)
+                    {
+                        if (!firstV)
+                            v.Append(',');
+                        v.Append('"');
+                        AppendEscaped(v, kvp.Key);
+                        v.Append("\":").Append(kvp.Value);
+                        firstV = false;
+                    }
+                    v.Append('}');
+                    versionsJson = v.ToString();
+                }
+
+                Write(collection, json.ToString(), versionsJson, callback);
+            }
+
+            /// <summary>
+            /// Reads a single key from a collection. On success the response's Data holds the
+            /// key's JSON value (empty if the key does not exist) and Version holds its stored
+            /// version (-1 if absent).
+            /// </summary>
+            public static void GetValue(string collection, string key,
+                Balancy.Core.ResponseCallback<Balancy.Core.Responses.CloudDataResponseData> callback)
+            {
+                var callbackResult = ProtectedFromGCCallback(callback);
+                Balancy.LibraryMethods.API.balancyCloudStorage_ReadKey(collection, key, callbackResult.CallbackId, callbackResult.StaticCallback);
+            }
+
+            /// <summary>
+            /// Reads a whole collection. On success the response's Data holds a JSON object
+            /// mapping every key to its value (Version is -1 for a whole-collection read).
+            /// </summary>
+            public static void GetCollection(string collection,
+                Balancy.Core.ResponseCallback<Balancy.Core.Responses.CloudDataResponseData> callback)
+            {
+                var callbackResult = ProtectedFromGCCallback(callback);
+                Balancy.LibraryMethods.API.balancyCloudStorage_ReadCollection(collection, callbackResult.CallbackId, callbackResult.StaticCallback);
+            }
+
+            private static void Write(string collection, string keyValuesJson, string versionsJson,
+                Balancy.Core.ResponseCallback<Balancy.Core.Responses.ResponseData> callback)
+            {
+                var callbackResult = ProtectedFromGCCallback(callback ?? (_ => { }));
+                Balancy.LibraryMethods.API.balancyCloudStorage_Write(collection, keyValuesJson, versionsJson, callbackResult.CallbackId, callbackResult.StaticCallback);
+            }
+
+            private static void AppendJsonKeyValue(StringBuilder json, string key, string jsonValue)
+            {
+                json.Append('"');
+                AppendEscaped(json, key);
+                json.Append("\":");
+                json.Append(string.IsNullOrEmpty(jsonValue) ? "null" : jsonValue);
+            }
+
+            private static void AppendEscaped(StringBuilder json, string s)
+            {
+                if (string.IsNullOrEmpty(s))
+                    return;
+                foreach (char c in s)
+                {
+                    switch (c)
+                    {
+                        case '"': json.Append("\\\""); break;
+                        case '\\': json.Append("\\\\"); break;
+                        case '\n': json.Append("\\n"); break;
+                        case '\r': json.Append("\\r"); break;
+                        case '\t': json.Append("\\t"); break;
+                        default:
+                            if (c < 0x20)
+                                json.Append("\\u").Append(((int)c).ToString("x4"));
+                            else
+                                json.Append(c);
+                            break;
+                    }
+                }
+            }
         }
 
         public static class Localization

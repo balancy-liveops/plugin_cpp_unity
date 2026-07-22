@@ -757,7 +757,16 @@ namespace Balancy
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyGetProduct(string productId, int callbackId, ResponseCallback callback);
-            
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyCloudStorage_Write(string collection, string keyValuesJson, string versionsJson, int callbackId, ResponseCallback callback);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyCloudStorage_ReadKey(string collection, string key, int callbackId, ResponseCallback callback);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyCloudStorage_ReadCollection(string collection, int callbackId, ResponseCallback callback);
+
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyHardPurchaseStoreItem(IntPtr storeItemPointer, Balancy.Core.PaymentInfo paymentInfo, int callbackId, ResponseCallback callback, bool requireValidation);
             

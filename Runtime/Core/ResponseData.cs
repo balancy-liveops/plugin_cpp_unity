@@ -56,6 +56,13 @@ namespace Balancy.Core
         }
 
         [Preserve, StructLayout(LayoutKind.Sequential, Pack = 1)]
+        public class CloudDataResponseData : ResponseData
+        {
+            [MarshalAs(UnmanagedType.LPStr)] public string Data;
+            public int Version;
+        }
+
+        [Preserve, StructLayout(LayoutKind.Sequential, Pack = 1)]
         public class CompletePurchaseData
         {
             [SerializeField] private string guid;
