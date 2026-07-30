@@ -185,11 +185,12 @@ namespace Balancy
             _webView?.HideWebView();
         }
 
-        public static void OpenLocalView(string filePath, JsonBasedObject owner, Action onShown = null)
+        public static void OpenLocalView(string filePath, JsonBasedObject owner, Action onShown = null, Action<ViewOpenError> onFailed = null)
         {
             if (string.IsNullOrEmpty(filePath))
             {
                 Debug.LogError("File path is null or empty");
+                onFailed?.Invoke(ViewOpenError.ViewNotFound);
                 return;
             }
 
@@ -201,12 +202,14 @@ namespace Balancy
                 if (!File.Exists(normalizedPath))
                 {
                     Debug.LogError($"[RenderViewsManager] Persistent WebView requires a readable local HTML file: {normalizedPath}");
+                    onFailed?.Invoke(ViewOpenError.FileNotFound);
                     return;
                 }
 
                 if (_webView.IsWebViewOpen())
                 {
                     Debug.LogError("View is already opened");
+                    onFailed?.Invoke(ViewOpenError.AlreadyOpened);
                     return;
                 }
 
@@ -222,23 +225,24 @@ namespace Balancy
                 catch (Exception e)
                 {
                     Debug.LogError($"[RenderViewsManager] Failed to read local view HTML for persistent WebView: {e.Message}");
+                    onFailed?.Invoke(ViewOpenError.LoadFailed);
                 }
                 return;
             }
 
 #if UNITY_WEBGL && !UNITY_EDITOR
             // WebGL: Load HTML content from cache instead of using file:// URLs
-            OpenLocalViewWebGL(filePath, owner);
-            onShown?.Invoke();
+            if (OpenLocalViewWebGL(filePath, owner, onFailed))
+                onShown?.Invoke();
 #else
             string fileUrl = "file://" + filePath;
-            OpenView(fileUrl, owner);
-            onShown?.Invoke();
+            if (OpenView(fileUrl, owner, onFailed))
+                onShown?.Invoke();
 #endif
         }
 
 #if UNITY_WEBGL && !UNITY_EDITOR
-        private static void OpenLocalViewWebGL(string filePath, JsonBasedObject owner)
+        private static bool OpenLocalViewWebGL(string filePath, JsonBasedObject owner, Action<ViewOpenError> onFailed)
         {
             Debug.Log($"[RenderViewsManager] Loading HTML content from cache: {filePath}");
 
@@ -263,7 +267,8 @@ namespace Balancy
             if (string.IsNullOrEmpty(htmlContent))
             {
                 Debug.LogError($"[RenderViewsManager] Failed to load HTML content from cache: {relativePath}");
-                return;
+                onFailed?.Invoke(ViewOpenError.LoadFailed);
+                return false;
             }
 
             Debug.Log($"[RenderViewsManager] Loaded HTML content: {htmlContent.Length} bytes");
@@ -274,15 +279,16 @@ namespace Balancy
             string manifestContent = Marshal.PtrToStringAnsi(manifestPtr);
 
             // Open WebView with HTML content
-            OpenHtmlView(htmlContent, manifestContent, owner);
+            return OpenHtmlView(htmlContent, manifestContent, owner, onFailed);
         }
 
-        private static void OpenHtmlView(string htmlContent, string manifestContent, JsonBasedObject owner)
+        private static bool OpenHtmlView(string htmlContent, string manifestContent, JsonBasedObject owner, Action<ViewOpenError> onFailed)
         {
             if (_webView.IsWebViewOpen())
             {
                 Debug.LogError("View is already opened");
-                return;
+                onFailed?.Invoke(ViewOpenError.AlreadyOpened);
+                return false;
             }
 
             m_LastOpenedOwnerPtr = owner?.GetRawPointer() ?? IntPtr.Zero;
@@ -314,7 +320,10 @@ namespace Balancy
             if (!success)
             {
                 Debug.LogError("[RenderViewsManager] Failed to open HTML view");
+                onFailed?.Invoke(ViewOpenError.LoadFailed);
             }
+
+            return success;
         }
 #endif
 
@@ -335,18 +344,20 @@ namespace Balancy
             }
         }
         
-        public static void OpenView(string url, JsonBasedObject owner = null)
+        public static bool OpenView(string url, JsonBasedObject owner = null, Action<ViewOpenError> onFailed = null)
         {
             if (string.IsNullOrEmpty(url))
             {
                 Debug.LogError("URL is null or empty");
-                return;
+                onFailed?.Invoke(ViewOpenError.ViewNotFound);
+                return false;
             }
-            
+
             if (_webView.IsWebViewOpen())
             {
                 Debug.LogError("View is already opened");
-                return;
+                onFailed?.Invoke(ViewOpenError.AlreadyOpened);
+                return false;
             }
 
             var urlToLoad = url;// + "?timestamp=" + Guid.NewGuid().ToString();
@@ -385,7 +396,12 @@ namespace Balancy
             if (success)
                 Debug.Log("Opening View: " + urlToLoad);
             else
+            {
                 Debug.Log("Failed to open View");
+                onFailed?.Invoke(ViewOpenError.LoadFailed);
+            }
+
+            return success;
         }
 
 #if UNITY_EDITOR
