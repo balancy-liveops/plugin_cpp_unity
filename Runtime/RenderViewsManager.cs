@@ -58,8 +58,10 @@ namespace Balancy
             }
             catch (Exception e)
             {
-                Debug.LogError($"[RenderViewsManager] Failed to compile scripts: {e.Message}");
-                _webView.SetScriptsCode("");
+                // Keep the previously-compiled bundle on failure. Wiping it (SetScriptsCode(""))
+                // would open the next view with zero components (blank) — a stale-but-complete
+                // bundle is strictly better than an empty one, and this now runs before every open.
+                Debug.LogError($"[RenderViewsManager] Failed to compile scripts, keeping previous bundle: {e.Message}");
             }
         }
 
@@ -193,6 +195,13 @@ namespace Balancy
                 onFailed?.Invoke(ViewOpenError.ViewNotFound);
                 return;
             }
+
+            // Recompile scripts right before opening — the CENTRAL seam every view open funnels
+            // through (UnnyObject.OpenView and direct callers alike). Whatever preload put the
+            // view's script files on disk has finished by now, so this guarantees the injected
+            // bundle is complete. Without it, opening against a stale bundle that predates a
+            // late-arriving script throws "Can't find variable: <Class>" (black screen).
+            RefreshScripts();
 
             Debug.Log($"[RenderViewsManager] OpenLocalView requested. Persistent={UsePersistentWebViewForLocalViews()} Path={filePath}");
 
@@ -363,7 +372,10 @@ namespace Balancy
             var urlToLoad = url;// + "?timestamp=" + Guid.NewGuid().ToString();
 
             m_LastOpenedOwnerPtr = owner?.GetRawPointer() ?? IntPtr.Zero;
-            string ownerJson = owner?.ToJsonString(DEFAULT_OWNER_DEPTH, false);
+            // Guard against a null owner (e.g. opening a standalone view): a null ownerJson gets
+            // marshalled to the native OpenWebView as a null char* and crashes (SIGSEGV). The
+            // persistent branch already does this; classic mode was missing it.
+            string ownerJson = owner?.ToJsonString(DEFAULT_OWNER_DEPTH, false) ?? "";
 
             string additionalInfo = BuildAdditionalInfo(owner);
             

@@ -649,7 +649,29 @@ namespace Balancy.Dictionaries
 
             return handler;
         }
-        
+
+        /// <summary>
+        /// Drops the memoized paths of already-resolved views. Call this after a CMS /
+        /// dictionary update: GetObjectView caches resolved views in AllViews and, on a
+        /// repeat open, returns the cached path WITHOUT re-running the preload — so a
+        /// re-versioned script would never be re-downloaded and the recompile-before-open
+        /// would compile from a disk still missing it, reproducing the original crash.
+        /// Removing the completed entries forces the next open to preload again (which
+        /// re-downloads changed scripts). In-flight (not-yet-Loaded) entries are left intact
+        /// so their pending opens still complete (DataObjectViewLoaded looks them up by id).
+        /// </summary>
+        internal static void InvalidateLoadedViews()
+        {
+            var staleIds = new List<string>();
+            foreach (var kvp in AllViews)
+            {
+                if (kvp.Value.Loaded)
+                    staleIds.Add(kvp.Key);
+            }
+            foreach (var id in staleIds)
+                AllViews.Remove(id);
+        }
+
         internal static void ClearFromMemory(string id)
         {
             if (AllObjects.TryGetValue(id, out var oneObject))

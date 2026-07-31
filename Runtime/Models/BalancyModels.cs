@@ -287,6 +287,8 @@ namespace Balancy.Models
                     return;
                 }
 
+                // Recompile-before-open now lives in RenderViewsManager.OpenLocalView (the central
+                // seam), so it covers this path and direct OpenLocalView callers alike.
                 Balancy.RenderViewsManager.OpenLocalView(url, owner, onShown, onFailed);
             });
         }
