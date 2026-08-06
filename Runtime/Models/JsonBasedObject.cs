@@ -210,11 +210,24 @@ namespace Balancy.Models
                 return null;
             
             var obj = new T();
-            obj.SetData(ptr);
+            obj.SetNativeData(ptr);
             if (tempCopy)
                 obj.MarkAsTempObject();
             obj.InitData();
             return obj;
+        }
+
+        private void SetNativeData(IntPtr ptr)
+        {
+            if (this is BaseModel baseModel)
+            {
+                var unnyId = GetStringFromIntPtr(LibraryMethods.Models.balancyGetStringParam(ptr, "unnyId"));
+                var templateName = GetTemplateName(ptr);
+                baseModel.SetData(ptr, unnyId, templateName);
+                return;
+            }
+
+            SetData(ptr);
         }
         
         protected T[] GetObjectArrayParam<T>(string paramName) where T: JsonBasedObject, new()
@@ -239,7 +252,7 @@ namespace Balancy.Models
                 }
 
                 var obj = new T();
-                obj.SetData(list[i]);
+                obj.SetNativeData(list[i]);
                 obj.InitData();
 
                 result[i] = obj;
@@ -393,6 +406,9 @@ namespace Balancy.Models
         
         public string ToJsonString(int depth, bool pretty)
         {
+            if (_pointer == IntPtr.Zero)
+                return "";
+
             return GetStringFromIntPtr(LibraryMethods.General.balancyGetParsedObject(GetRawPointer(), depth, pretty));
         }
     }

@@ -1,4 +1,6 @@
 
+using System;
+
 namespace Balancy.Models.SmartObjects
 {
     public class StoreItem : Balancy.Models.BaseModel 
@@ -33,6 +35,33 @@ namespace Balancy.Models.SmartObjects
         public bool IsFree() => Price.IsFree();
         public bool IsInApp() => Price.IsInApp();
         public bool IsAdsWatching() => Price.IsAdsWatching();
+        public bool HasDynamicReward() => DynamicReward?.HasValue == true;
+
+        public void GetDynamicReward(Action<Reward> callBack)
+        {
+            var dynamicReward = DynamicReward;
+            if (dynamicReward?.HasValue != true)
+            {
+                callBack?.Invoke(null);
+                return;
+            }
+
+            var input = ToJsonString(2, false);
+            var inputJson = "{\"Input\":" + (string.IsNullOrEmpty(input) ? "null" : input) + "}";
+            var instanceId = dynamicReward.Launch(null, inputJson, (exitPort, outputsJson) =>
+            {
+                var reward = API.VisualScripting.CreateTempModelFromScriptOutput<Reward>(outputsJson, "Output");
+                callBack?.Invoke(reward);
+            });
+
+            if (string.IsNullOrEmpty(instanceId))
+                callBack?.Invoke(null);
+        }
+
+        public void GetReward(Action<Reward> callBack)
+        {
+            GetDynamicReward(reward => callBack?.Invoke(reward ?? Reward));
+        }
 
         public int GetAdsWatched() => LibraryMethods.Extra.balancyStoreItem_GetAdsWatched(GetRawPointer());
         public void AdWasWatched() => LibraryMethods.Extra.balancyStoreItem_AdWasWatched(GetRawPointer());

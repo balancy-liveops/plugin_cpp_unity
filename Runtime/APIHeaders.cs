@@ -858,6 +858,14 @@ namespace Balancy
             public static bool StopScript(string instanceId) {
                 return Balancy.LibraryMethods.API.balancyScripts_Stop(instanceId);
             }
+
+            internal static T CreateTempModelFromScriptOutput<T>(string outputsJson, string outputName) where T : JsonBasedObject, new() {
+                var ptr = Balancy.LibraryMethods.Models.balancyCreateTempModelFromJson(
+                    outputsJson ?? "",
+                    outputName ?? "",
+                    JsonBasedObject.GetModelClassName<T>());
+                return JsonBasedObject.CreateObject<T>(ptr);
+            }
         }
 
         //This method doesn't work in production

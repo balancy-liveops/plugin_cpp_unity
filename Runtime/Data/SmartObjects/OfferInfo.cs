@@ -10,6 +10,7 @@ namespace Balancy.Data.SmartObjects
 		private string _price;
 		private int _purchasesCount;
 		private string _unnyIdGameOffer;
+		private Balancy.Models.SmartObjects.Reward _reward;
 
 
 		public int Discount
@@ -37,6 +38,7 @@ namespace Balancy.Data.SmartObjects
 			get => _purchasesCount;
 			// set => SetIntValue("purchasesCount", value);
 		}
+		public Balancy.Models.SmartObjects.Reward Reward => _reward;
 		
 		public Balancy.Models.SmartObjects.GameOffer GameOffer => GetModelByUnnyId<Balancy.Models.SmartObjects.GameOffer>(_unnyIdGameOffer);
         
@@ -50,6 +52,7 @@ namespace Balancy.Data.SmartObjects
 			InitAndSubscribeForParamChange("price", Update_price);
 			InitAndSubscribeForParamChange("purchasesCount", Update_purchasesCount);
 			InitAndSubscribeForParamChange("unnyIdGameOffer", Update_unnyIdGameOffer);
+			InitAndSubscribeForParamChange("reward", Update_reward);
         }
         
 		private void Update_discount() { _discount = GetIntParam("discount"); }
@@ -58,5 +61,6 @@ namespace Balancy.Data.SmartObjects
 		private void Update_price() { _price = GetStringParam("price"); }
 		private void Update_purchasesCount() { _purchasesCount = GetIntParam("purchasesCount"); }
 		private void Update_unnyIdGameOffer() { _unnyIdGameOffer = GetStringParam("unnyIdGameOffer"); }
+		private void Update_reward() { _reward = GetObjectParam<Balancy.Models.SmartObjects.Reward>("reward"); }
     }
 }
