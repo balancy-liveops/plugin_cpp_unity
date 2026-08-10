@@ -466,6 +466,9 @@ namespace Balancy
             
             WatchRewardedAd = 40,
 
+            // Server actions — forwarded by the core to the authoritative server (room).
+            CallServerAction = 50,
+
             BuyOffer = 101,
             BuyGroupOffer = 102,
             BuyShopSlot = 103,
