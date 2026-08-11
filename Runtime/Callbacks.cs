@@ -90,6 +90,7 @@ namespace Balancy
         public static OnDataUpdatedDelegate OnDataUpdated = null;
         public static OnErrorDelegate OnAuthFailed = null;
         public static OnErrorDelegate OnCloudProfileFailedToLoad = null;
+        public static OnErrorDelegate OnConfigFailedToLoad = null;
         public static OnEventInfoDelegate OnNewEventActivated = null;
         public static OnEventInfoDelegate OnEventDeactivated = null;
         public static OnOfferInfoDelegate OnNewOfferActivated = null;
@@ -200,6 +201,7 @@ namespace Balancy
             OnDataUpdated += status => Debug.Log(" => Balancy.OnDataUpdated Cloud = " + status.IsCloudSynced + " ;CMS = " + status.IsCMSUpdated + " ;Profiles = " + status.IsProfileUpdated);
             OnAuthFailed += status => Debug.Log(" => Balancy.OnAuthFailed: " + status.Message);
             OnCloudProfileFailedToLoad += status => Debug.Log(" => Balancy.OnCloudProfileFailedToLoad: " + status.Message);
+            OnConfigFailedToLoad += status => Debug.Log(" => Balancy.OnConfigFailedToLoad: " + status.Message);
             
             OnNewEventActivated += eventInfo => Debug.Log(" => Balancy.OnNewEventActivated: " + eventInfo?.GameEvent?.Name);
             OnEventDeactivated += eventInfo => Debug.Log(" => Balancy.OnEventDeactivated: " + eventInfo?.GameEvent?.Name);
@@ -240,6 +242,7 @@ namespace Balancy
             OnDataUpdated = null;
             OnAuthFailed = null;
             OnCloudProfileFailedToLoad = null;
+            OnConfigFailedToLoad = null;
             OnNewEventActivated = null;
             OnEventDeactivated = null;
             OnNewOfferActivated = null;

@@ -56,8 +56,10 @@ namespace Balancy.Cheats
 
         private void ResetProfiles()
         {
-            Balancy.Profiles.Reset();
-            UpdateData();
+            Balancy.Profiles.Reset(()=>
+            {
+                UpdateData();
+            });
         }
 
         private void Update()

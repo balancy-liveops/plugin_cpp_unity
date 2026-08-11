@@ -269,17 +269,27 @@ namespace Balancy.Models
             Balancy.Dictionaries.DataObjectsManager.GetObject(Id, callback);
         }
 
-        public void OpenView(Action onShown, JsonBasedObject owner)
+        public void OpenView(Action onShown, JsonBasedObject owner, Action<ViewOpenError> onFailed = null)
         {
             if (type != ObjectType.View)
             {
                 Debug.LogError("You are trying to open view for object that is not a view. " + Id);
+                onFailed?.Invoke(ViewOpenError.ViewNotFound);
                 return;
             }
 
             Balancy.Dictionaries.DataObjectsManager.GetObjectView(id, url =>
             {
-                Balancy.RenderViewsManager.OpenLocalView(url, owner, onShown);
+                if (string.IsNullOrEmpty(url))
+                {
+                    Debug.LogError("Failed to resolve view content for " + Id);
+                    onFailed?.Invoke(ViewOpenError.ViewNotFound);
+                    return;
+                }
+
+                // Recompile-before-open now lives in RenderViewsManager.OpenLocalView (the central
+                // seam), so it covers this path and direct OpenLocalView callers alike.
+                Balancy.RenderViewsManager.OpenLocalView(url, owner, onShown, onFailed);
             });
         }
     }

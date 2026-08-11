@@ -6,6 +6,7 @@ namespace Balancy.Data.SmartObjects
         
 		private float _daysForPurchase;
 		private SmartList<Balancy.Data.SmartObjects.Purchase> _purchases;
+		private SmartList<Balancy.Data.SmartObjects.SoftPurchase> _softPurchases;
 		private float _totalSpend;
 		private int _lastPaymentTime;
 		private float _maxPayment;
@@ -21,6 +22,7 @@ namespace Balancy.Data.SmartObjects
 			set => SetFloatValue("daysForPurchase", value);
 		}
 		public SmartList<Balancy.Data.SmartObjects.Purchase> Purchases => _purchases;
+		public SmartList<Balancy.Data.SmartObjects.SoftPurchase> SoftPurchases => _softPurchases;
 		public float TotalSpend
 		{
 			get => _totalSpend;
@@ -63,6 +65,7 @@ namespace Balancy.Data.SmartObjects
             
 			InitAndSubscribeForParamChange("daysForPurchase", Update_daysForPurchase);
 			_purchases = GetListBaseDataParam<Balancy.Data.SmartObjects.Purchase>("purchases");
+			_softPurchases = GetListBaseDataParam<Balancy.Data.SmartObjects.SoftPurchase>("softPurchases");
 			InitAndSubscribeForParamChange("totalSpend", Update_totalSpend);
 			InitAndSubscribeForParamChange("lastPaymentTime", Update_lastPaymentTime);
 			InitAndSubscribeForParamChange("maxPayment", Update_maxPayment);

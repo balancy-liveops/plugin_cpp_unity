@@ -332,6 +332,12 @@ namespace Balancy
                         bool isProfileUpdated = notificationDataIsReady.IsProfileUpdated;
 #endif
                         RenderViewsManager.RefreshScripts();
+                        // A CMS update can re-version scripts/views. GetObjectView memoizes
+                        // resolved views and skips the preload on repeat opens, so without
+                        // this the next open would reuse a stale cached view and recompile
+                        // from a disk missing the re-versioned script (original crash).
+                        if (isCMSUpdated)
+                            Balancy.Dictionaries.DataObjectsManager.InvalidateLoadedViews();
                         DataUpdated(isCMSUpdated, isProfileUpdated);
                         _isReadyToUse = true;
                         if (isCloudSynced)
@@ -357,6 +363,15 @@ namespace Balancy
 #else
                         var profileNotification = Marshal.PtrToStructure<Notifications.InitNotificationCloudProfileFailed>(notificationPtr);
                         Balancy.Callbacks.OnCloudProfileFailedToLoad?.Invoke(new Balancy.Callbacks.ErrorStatus(profileNotification.Message));
+#endif
+                        break;
+                    case Notifications.NotificationType.ConfigFailed:
+#if UNITY_WEBGL && !UNITY_EDITOR
+                        string configMessage = Marshal.PtrToStringAnsi(LibraryMethods.General.balancyNotification_GetMessage(notificationId));
+                        Balancy.Callbacks.OnConfigFailedToLoad?.Invoke(new Balancy.Callbacks.ErrorStatus(configMessage));
+#else
+                        var configNotification = Marshal.PtrToStructure<Notifications.InitNotificationConfigFailed>(notificationPtr);
+                        Balancy.Callbacks.OnConfigFailedToLoad?.Invoke(new Balancy.Callbacks.ErrorStatus(configNotification.Message));
 #endif
                         break;
                     case Notifications.NotificationType.UserRefreshed:
@@ -497,12 +512,14 @@ namespace Balancy
                             slotIndex,
                             shopUnnyId);
 #else
-                        var notificationTyped = Marshal.PtrToStructure<Notifications.LiveOpsNotification_ShopUpdated>(notificationPtr);
-                        string shopUnnyId = SafePtrToStringAnsi(notificationTyped.ShopUnnyIdPtr);
+                        int changeType = LibraryMethods.General.balancyNotificationPtr_GetShopChangeType(notificationPtr);
+                        int pageIndex = LibraryMethods.General.balancyNotificationPtr_GetShopPageIndex(notificationPtr);
+                        int slotIndex = LibraryMethods.General.balancyNotificationPtr_GetShopSlotIndex(notificationPtr);
+                        string shopUnnyId = SafePtrToStringAnsi(LibraryMethods.General.balancyNotificationPtr_GetShopUnnyId(notificationPtr));
                         var info = new Balancy.Callbacks.ShopUpdatedInfo(
-                            notificationTyped.GetChangeType(),
-                            notificationTyped.PageIndex,
-                            notificationTyped.SlotIndex,
+                            (ShopChangeType)changeType,
+                            pageIndex,
+                            slotIndex,
                             shopUnnyId);
 #endif
                         Balancy.Callbacks.OnShopUpdated?.Invoke(info);

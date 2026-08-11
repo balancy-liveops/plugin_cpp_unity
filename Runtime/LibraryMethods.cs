@@ -137,6 +137,22 @@ namespace Balancy
             public static extern IntPtr balancyNotification_GetShopUnnyId(int notificationId);
 #endif
 
+#if !UNITY_WEBGL || UNITY_EDITOR
+            // Native notification pointer accessors. They avoid IL2CPP marshalling
+            // of C++ class layouts for notifications with native-owned strings.
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancyNotificationPtr_GetShopChangeType(IntPtr notificationPtr);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancyNotificationPtr_GetShopPageIndex(IntPtr notificationPtr);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern int balancyNotificationPtr_GetShopSlotIndex(IntPtr notificationPtr);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyNotificationPtr_GetShopUnnyId(IntPtr notificationPtr);
+#endif
+
             //[DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyInit(IntPtr config);
@@ -313,6 +329,8 @@ namespace Balancy
             public static extern IntPtr balancyGetObjectParam(IntPtr instance, string paramName, string fileName);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern IntPtr balancyGetObjectArrayParam(IntPtr instance, string paramName, string fileName, out int size);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyCreateTempModelFromJson(string json, string objectKey, string fileName);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern int balancyGetIntParam(IntPtr instance, string paramName);
@@ -741,7 +759,16 @@ namespace Balancy
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyGetProduct(string productId, int callbackId, ResponseCallback callback);
-            
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyCloudStorage_Write(string collection, string keyValuesJson, string versionsJson, int callbackId, ResponseCallback callback);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyCloudStorage_ReadKey(string collection, string key, int callbackId, ResponseCallback callback);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyCloudStorage_ReadCollection(string collection, int callbackId, ResponseCallback callback);
+
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyHardPurchaseStoreItem(IntPtr storeItemPointer, Balancy.Core.PaymentInfo paymentInfo, int callbackId, ResponseCallback callback, bool requireValidation);
             

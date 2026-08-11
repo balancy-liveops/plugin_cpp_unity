@@ -244,7 +244,7 @@ static BalancyWebViewController* CreateOrGetWebViewController(void (*messageCall
                 /* Disable default touch behaviors */\
                 * {\
                     -webkit-tap-highlight-color: transparent !important;\
-                    -webkit-text-size-adjust: none !important;\
+                    -webkit-text-size-adjust: 100% !important;\
                     touch-action: manipulation !important;\
                 }\
                 \
@@ -349,6 +349,158 @@ static BalancyWebViewController* CreateOrGetWebViewController(void (*messageCall
                                                          injectionTime:WKUserScriptInjectionTimeAtDocumentStart
                                                       forMainFrameOnly:YES];
     [_userContentController addUserScript:gameUIScript];
+
+    // === TEXT-SHADOW FIX FOR OLD WEBKIT (iOS < 16.4) ===
+    // WebKit engines before Safari 16.4 mis-composite CSS text-shadow: the shadow
+    // is painted over the glyph fill and clipped per-glyph. filter: drop-shadow()
+    // uses a different rendering path and is unaffected (verified on iPadOS 16.3),
+    // so on affected engines every computed text-shadow is converted into an
+    // equivalent drop-shadow filter. On iOS, WebKit ships with the OS, so the OS
+    // version is the engine version. Readable master copy of this script (and its
+    // test page): debug/text-shadow-fix.js in the Unity project.
+    if (![[NSProcessInfo processInfo] isOperatingSystemAtLeastVersion:(NSOperatingSystemVersion){16, 4, 0}]) {
+        NSString *shadowFixScript = @"\
+        (function() {\
+            if (window.__balancyTextShadowFix) return;\
+            window.__balancyTextShadowFix = true;\
+            function splitShadows(value) {\
+                var parts = [];\
+                var depth = 0;\
+                var current = '';\
+                for (var i = 0; i < value.length; i++) {\
+                    var ch = value.charAt(i);\
+                    if (ch === '(') depth++;\
+                    if (ch === ')') depth--;\
+                    if (ch === ',' && depth === 0) {\
+                        parts.push(current);\
+                        current = '';\
+                    } else {\
+                        current += ch;\
+                    }\
+                }\
+                if (current.trim() !== '') parts.push(current);\
+                return parts;\
+            }\
+            function parseShadow(part) {\
+                var color = '';\
+                var idx = part.indexOf('rgb');\
+                if (idx >= 0) {\
+                    var end = part.indexOf(')', idx);\
+                    color = part.substring(idx, end + 1);\
+                    part = part.substring(0, idx) + part.substring(end + 1);\
+                }\
+                var tokens = part.split(' ');\
+                var lengths = [];\
+                for (var i = 0; i < tokens.length; i++) {\
+                    var t = tokens[i].trim();\
+                    if (t === '') continue;\
+                    if (t.length > 2 && t.indexOf('px') === t.length - 2 && isFinite(parseFloat(t))) {\
+                        lengths.push(parseFloat(t));\
+                    } else if (color === '') {\
+                        color = t;\
+                    }\
+                }\
+                if (lengths.length < 2) return null;\
+                return { x: lengths[0], y: lengths[1], blur: lengths.length > 2 ? lengths[2] : 0, color: color };\
+            }\
+            function buildFilter(shadows) {\
+                var byColor = {};\
+                var order = [];\
+                for (var i = 0; i < shadows.length; i++) {\
+                    var s = shadows[i];\
+                    var mag = s.x * s.x + s.y * s.y + s.blur;\
+                    if (!byColor[s.color]) {\
+                        order.push(s.color);\
+                        byColor[s.color] = { mag: mag, s: s };\
+                    } else if (mag > byColor[s.color].mag) {\
+                        byColor[s.color] = { mag: mag, s: s };\
+                    }\
+                }\
+                var out = [];\
+                for (var j = 0; j < order.length; j++) {\
+                    var sh = byColor[order[j]].s;\
+                    var col = sh.color === '' ? '' : ' ' + sh.color;\
+                    out.push('drop-shadow(' + sh.x + 'px ' + sh.y + 'px ' + sh.blur + 'px' + col + ')');\
+                }\
+                return out.join(' ');\
+            }\
+            function hasDirectText(el) {\
+                var nodes = el.childNodes;\
+                for (var i = 0; i < nodes.length; i++) {\
+                    if (nodes[i].nodeType === 3 && nodes[i].nodeValue.trim() !== '') return true;\
+                }\
+                return false;\
+            }\
+            function convert(el) {\
+                if (!el || el.nodeType !== 1 || el.__bShadowFixed) return;\
+                var cs = window.getComputedStyle(el);\
+                var ts = cs.textShadow;\
+                if (!ts || ts === 'none') return;\
+                if (!hasDirectText(el)) return;\
+                var visibleBox = (cs.backgroundColor !== 'rgba(0, 0, 0, 0)' && cs.backgroundColor !== 'transparent') ||\
+                    cs.backgroundImage !== 'none' ||\
+                    parseFloat(cs.borderTopWidth) > 0 || parseFloat(cs.borderRightWidth) > 0 ||\
+                    parseFloat(cs.borderBottomWidth) > 0 || parseFloat(cs.borderLeftWidth) > 0;\
+                el.__bShadowFixed = true;\
+                if (visibleBox) {\
+                    el.style.setProperty('text-shadow', 'none', 'important');\
+                    return;\
+                }\
+                var parts = splitShadows(ts);\
+                var parsed = [];\
+                for (var i = 0; i < parts.length; i++) {\
+                    var p = parseShadow(parts[i]);\
+                    if (p) parsed.push(p);\
+                }\
+                if (parsed.length === 0) {\
+                    el.style.setProperty('text-shadow', 'none', 'important');\
+                    return;\
+                }\
+                var chain = buildFilter(parsed);\
+                var existing = cs.filter && cs.filter !== 'none' ? cs.filter + ' ' : '';\
+                el.style.setProperty('filter', existing + chain, 'important');\
+                el.style.setProperty('text-shadow', 'none', 'important');\
+            }\
+            function scan(root) {\
+                if (!root || root.nodeType !== 1) return;\
+                convert(root);\
+                var all = root.querySelectorAll('*');\
+                for (var i = 0; i < all.length; i++) convert(all[i]);\
+            }\
+            function start() {\
+                scan(document.documentElement);\
+                var observer = new MutationObserver(function(mutations) {\
+                    for (var i = 0; i < mutations.length; i++) {\
+                        var m = mutations[i];\
+                        if (m.type === 'childList') {\
+                            for (var j = 0; j < m.addedNodes.length; j++) scan(m.addedNodes[j]);\
+                        } else if (m.type === 'attributes') {\
+                            var inlineShadow = m.target.style ? m.target.style.textShadow : '';\
+                            if (inlineShadow !== '' && inlineShadow !== 'none') {\
+                                m.target.__bShadowFixed = false;\
+                                convert(m.target);\
+                            }\
+                        }\
+                    }\
+                });\
+                observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] });\
+                console.log('[BalancyWebView] text-shadow to drop-shadow conversion active (WebKit < 16.4)');\
+            }\
+            if (document.readyState === 'loading') {\
+                document.addEventListener('DOMContentLoaded', start);\
+            } else {\
+                start();\
+            }\
+        })();\
+        ";
+
+        WKUserScript *shadowFixUserScript = [[WKUserScript alloc] initWithSource:shadowFixScript
+                                                                    injectionTime:WKUserScriptInjectionTimeAtDocumentEnd
+                                                                 forMainFrameOnly:YES];
+        [_userContentController addUserScript:shadowFixUserScript];
+
+        NSLog(@"[BalancyWebView] text-shadow workaround enabled (iOS < 16.4)");
+    }
     
     // Create the WKWebView with the configuration
     _webView = [[WKWebView alloc] initWithFrame:CGRectZero configuration:configuration];
@@ -878,7 +1030,7 @@ static BalancyWebViewController* CreateOrGetWebViewController(void (*messageCall
             document.documentElement.style.userSelect = 'none';\
             document.documentElement.oncontextmenu = function() { return false; };\
             document.documentElement.style.webkitTouchCallout = 'none';\
-            document.documentElement.style.webkitTextSizeAdjust = 'none';\
+            document.documentElement.style.webkitTextSizeAdjust = '100%';\
             document.documentElement.style.touchAction = 'manipulation';\
             \
             // Basic styling\

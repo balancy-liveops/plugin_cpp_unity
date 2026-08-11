@@ -8,7 +8,6 @@ namespace Balancy
     {
         private const string DEVICE_UNIQUE_ID = "DEVICE_UNIQUE_ID";
         public static string _cachedDeviceId;
-        public static Func<string> OnGetDeviceIdRequested;
 
         public static string GetEngineVersion()
         {
@@ -17,9 +16,6 @@ namespace Balancy
 
         public static string GetUniqId()
         {
-            if (OnGetDeviceIdRequested != null)
-                return OnGetDeviceIdRequested();
-            
             if (_cachedDeviceId == null)
                 _cachedDeviceId = GetUniqIdPrivate();
             return _cachedDeviceId;

@@ -14,6 +14,7 @@ import android.view.ViewGroup;
 import android.view.animation.DecelerateInterpolator;
 import android.webkit.ConsoleMessage;
 import android.webkit.JavascriptInterface;
+import android.webkit.RenderProcessGoneDetail;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
@@ -169,7 +170,7 @@ public class BalancyWebViewPlugin {
             ViewGroup.LayoutParams.MATCH_PARENT
         ));
         webViewContainer.setVisibility(View.GONE);
-        
+
         ViewGroup rootView = (ViewGroup) currentActivity.findViewById(android.R.id.content);
         if (rootView != null) {
             rootView.addView(webViewContainer);
@@ -185,21 +186,21 @@ public class BalancyWebViewPlugin {
             Log.w(TAG, "WebView is already open");
             return false;
         }
-        
+
         if (currentActivity == null) {
             Log.e(TAG, "Cannot open WebView: no activity available");
             return false;
         }
-        
+
         this.ownerJson = ownerJson;
         this.suppressNextShowAnimation = startHidden;
-        
+
         runOnUIThread(() -> {
             createWebView();
             setupEmergencyExitButton();
             applySettings();
             loadUrl(url);
-            
+
             if (!startHidden) {
                 showWebViewInternal();
             } else {
@@ -209,7 +210,7 @@ public class BalancyWebViewPlugin {
                 logDebug("WebView created but hidden");
             }
         });
-        
+
         isWebViewOpen = true;
         logDebug("Opening WebView with URL: " + url + ", startHidden: " + startHidden);
         return true;
@@ -219,7 +220,12 @@ public class BalancyWebViewPlugin {
         webView = new WebView(currentActivity);
         
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) {
-            webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+            // LAYER_TYPE_NONE, not HARDWARE: Chromium already GPU-accelerates the page
+            // (CSS/JS animations, shadows, filters) via its own compositor. Forcing a
+            // full-view hardware layer adds a redundant off-screen FBO that, composited
+            // transparently over the Unity GL surface, segfaults some Adreno/Mali drivers
+            // (libGLESv2_adreno crashes). NONE keeps GPU-accelerated content, drops the FBO.
+            webView.setLayerType(View.LAYER_TYPE_NONE, null);
         }
         
         WebSettings settings = webView.getSettings();
@@ -295,8 +301,6 @@ public class BalancyWebViewPlugin {
             public void onPageFinished(WebView view, String url) {
                 logDebug("Page finished loading: " + url);
                 
-                injectRenderingOptimizations();
-                
                 if (transparentBackground) {
                     injectTransparencyCSS();
                 }
@@ -333,6 +337,35 @@ public class BalancyWebViewPlugin {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 return false;
+            }
+
+            // Resilience: if the WebView's renderer process dies (out-of-process
+            // renderer killed/crashed on API 26+), returning true tells the framework
+            // we handled it so the whole app is NOT terminated. We tear down the dead
+            // WebView and notify Unity to close the view. NOTE: this does NOT catch an
+            // in-process GPU-driver segfault (e.g. libGLESv2_adreno) — that is what the
+            // LAYER_TYPE_NONE change above addresses; this is defense-in-depth.
+            @Override
+            public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {
+                boolean didCrash = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                        && detail != null && detail.didCrash();
+                Log.e(TAG, "WebView render process gone (didCrash=" + didCrash + "); recovering to avoid app kill");
+                try {
+                    if (view != null) {
+                        if (view.getParent() instanceof ViewGroup) {
+                            ((ViewGroup) view.getParent()).removeView(view);
+                        }
+                        view.destroy();
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "Error tearing down dead WebView: " + e.getMessage());
+                }
+                if (view == webView) {
+                    webView = null;
+                }
+                sendUnityMessage("OnAndroidRenderProcessGone", didCrash ? "crashed" : "killed");
+                sendUnityMessage("OnAndroidLoadCompleted", "false");
+                return true;
             }
         });
         
@@ -654,24 +687,18 @@ public class BalancyWebViewPlugin {
         webView.evaluateJavascript(script, null);
     }
     
-    private void injectRenderingOptimizations() {
-        String css = "var style = document.createElement('style');" +
-                "style.innerHTML = '" +
-                "body, html { transform: translateZ(0) !important; backface-visibility: hidden !important; } " +
-                "img, canvas, video { transform: translateZ(0) !important; } " +
-                "* { text-shadow: none !important; filter: none !important; box-shadow: none !important; } " +
-                "';" +
-                "document.head.appendChild(style);";
-        webView.evaluateJavascript(css, null);
-    }
-    
     private void applySettings() {
         if (webView == null) return;
-        
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB) {
-            webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+            // LAYER_TYPE_NONE, not HARDWARE: Chromium already GPU-accelerates the page
+            // (CSS/JS animations, shadows, filters) via its own compositor. Forcing a
+            // full-view hardware layer adds a redundant off-screen FBO that, composited
+            // transparently over the Unity GL surface, segfaults some Adreno/Mali drivers
+            // (libGLESv2_adreno crashes). NONE keeps GPU-accelerated content, drops the FBO.
+            webView.setLayerType(View.LAYER_TYPE_NONE, null);
         }
-        
+
         // Apply transparency settings
         if (transparentBackground) {
             webView.setBackgroundColor(Color.TRANSPARENT);
@@ -680,25 +707,23 @@ public class BalancyWebViewPlugin {
             webView.setBackgroundColor(Color.WHITE);
             webViewContainer.setBackgroundColor(Color.WHITE);
         }
-        
+
         // Apply cache settings
         WebSettings settings = webView.getSettings();
         if (offlineCacheEnabled) {
             settings.setCacheMode(WebSettings.LOAD_DEFAULT);
             settings.setDomStorageEnabled(true);
             settings.setDatabaseEnabled(true);
-            // Note: setAppCacheEnabled() is deprecated and removed in API 33+
-            // Modern caching is handled by DOM storage and regular cache
         } else {
-            settings.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK); // Keep some caching for performance
+            settings.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
             settings.setDomStorageEnabled(true);
             settings.setDatabaseEnabled(true);
         }
-        
+
         // Apply viewport settings
         applyViewportSettings();
-        
-        logDebug("Settings applied: transparent=" + transparentBackground + 
+
+        logDebug("Settings applied: transparent=" + transparentBackground +
                 ", cache=" + offlineCacheEnabled + ", gameUI=" + gameUIMode);
     }
     
@@ -755,18 +780,27 @@ public class BalancyWebViewPlugin {
      */
     private void applyViewportSettings() {
         if (webView == null || currentActivity == null) return;
-        
-        android.util.DisplayMetrics metrics = new android.util.DisplayMetrics();
-        currentActivity.getWindowManager().getDefaultDisplay().getRealMetrics(metrics);
-        
-        int screenWidth = metrics.widthPixels;
-        int screenHeight = metrics.heightPixels;
-        
+
+        // Use the content view dimensions to account for notch/display cutout and navigation bar.
+        // android.R.id.content excludes system insets (status bar, notch, nav bar),
+        // so the WebView fits exactly in the available area.
+        ViewGroup rootView = (ViewGroup) currentActivity.findViewById(android.R.id.content);
+        int screenWidth = rootView.getWidth();
+        int screenHeight = rootView.getHeight();
+
+        // Fallback to full screen metrics if the content view hasn't been laid out yet
+        if (screenWidth == 0 || screenHeight == 0) {
+            android.util.DisplayMetrics metrics = new android.util.DisplayMetrics();
+            currentActivity.getWindowManager().getDefaultDisplay().getRealMetrics(metrics);
+            screenWidth = metrics.widthPixels;
+            screenHeight = metrics.heightPixels;
+        }
+
         int x = (int)(viewportX * screenWidth);
         int y = (int)(viewportY * screenHeight);
         int width = (int)(viewportWidth * screenWidth);
         int height = (int)(viewportHeight * screenHeight);
-        
+
         FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) webView.getLayoutParams();
         if (params != null) {
             params.leftMargin = x;
@@ -774,8 +808,8 @@ public class BalancyWebViewPlugin {
             params.width = width;
             params.height = height;
             webView.setLayoutParams(params);
-            
-            logDebug(String.format("Viewport applied: x=%d, y=%d, width=%d, height=%d (screen: %dx%d)", 
+
+            logDebug(String.format("Viewport applied: x=%d, y=%d, width=%d, height=%d (contentView: %dx%d)",
                     x, y, width, height, screenWidth, screenHeight));
         }
     }

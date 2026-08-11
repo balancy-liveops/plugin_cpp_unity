@@ -47,8 +47,11 @@ namespace Balancy
                 profile.RefreshData(newPointer);
         }
 
-        public static void Reset()
+        private static Action _userResetCallback;
+
+        public static void Reset(Action onComplete)
         {
+            _userResetCallback = onComplete;
             Balancy.Callbacks.OnProfileResetStart?.Invoke();
             LibraryMethods.Data.balancyResetAllProfilesWithCallback(_resetProfilesCallback);
         }
@@ -63,6 +66,9 @@ namespace Balancy
             }
 
             Balancy.Callbacks.OnProfileResetFinish?.Invoke();
+            var cb = _userResetCallback;
+            _userResetCallback = null;
+            cb?.Invoke();
         }
 
         public static void ForceSaveSmartObjects()
