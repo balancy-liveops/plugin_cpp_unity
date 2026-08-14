@@ -162,6 +162,13 @@ namespace Balancy
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyUpdate();
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            [return: MarshalAs(UnmanagedType.I1)]
+            public static extern bool balancyIsVisualScriptingAnalyticsEnabled();
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancySetVisualScriptingAnalyticsEnabled([MarshalAs(UnmanagedType.I1)] bool enabled);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyInitUnityFileHelper(string persistentDataPath, string resourcesPath, string codePath);

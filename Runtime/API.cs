@@ -466,5 +466,26 @@ namespace Balancy
         {
             Balancy.Actions.Purchasing.GetRestorePurchasesCallback()?.Invoke();
         }
+
+        /// <summary>
+        /// Per-node visual scripting analytics (vs_node_start / vs_node_finish and
+        /// vs_script_start / vs_script_finish).
+        ///
+        /// Disabled by default: these fire on every executed node — two events per
+        /// node — which a script-heavy game produces faster than they can be sent.
+        /// Enable it only while debugging script flow.
+        /// </summary>
+        public static void SetVisualScriptingAnalyticsEnabled(bool enabled)
+        {
+            LibraryMethods.General.balancySetVisualScriptingAnalyticsEnabled(enabled);
+        }
+
+        /// <summary>
+        /// Whether per-node visual scripting analytics is currently being collected.
+        /// </summary>
+        public static bool IsVisualScriptingAnalyticsEnabled()
+        {
+            return LibraryMethods.General.balancyIsVisualScriptingAnalyticsEnabled();
+        }
     }
 }
