@@ -131,7 +131,7 @@ namespace Balancy.Network
         [AOT.MonoPInvokeCallback(typeof(WebRequestCallbackDelegate))]
         private static void StaticOnWebRequestReceived(int requestId, string url, string method, string body, string headersJson, int timeoutSeconds)
         {
-            UnityMainThreadDispatcher.Instance().Enqueue(() =>
+            UnityMainThreadDispatcher.EnqueueFromAnyThread(() =>
             {
                 if (_instance != null)
                     _instance.OnWebRequestReceived(requestId, url, method, body, headersJson, timeoutSeconds);
@@ -162,7 +162,7 @@ namespace Balancy.Network
         [AOT.MonoPInvokeCallback(typeof(FileLoadCallbackDelegate))]
         private static void StaticOnFileLoadReceived(int requestId, string url, int timeoutSeconds)
         {
-            UnityMainThreadDispatcher.Instance().Enqueue(() =>
+            UnityMainThreadDispatcher.EnqueueFromAnyThread(() =>
             {
                 if (_instance != null)
                     _instance.OnFileLoadReceived(requestId, url, timeoutSeconds);

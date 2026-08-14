@@ -10,7 +10,17 @@ namespace Balancy
 {
     public class UnityMainThreadDispatcher : MonoBehaviour
     {
-        private readonly Queue<Action> _executionQueue = new Queue<Action>();
+        // Static, and deliberately NOT owned by the component: a native callback
+        // arriving on a Balancy worker thread has to be able to queue work
+        // without touching a single Unity API. Instance() cannot be used for
+        // that — it does new GameObject / AddComponent / DontDestroyOnLoad when
+        // the singleton is missing, and even the `!_instance` check is a
+        // UnityEngine.Object comparison that calls into native code. All of that
+        // is main-thread-only and takes IL2CPP down when hit from a worker.
+        //
+        // Keeping the queue static also means work queued before the dispatcher
+        // exists (or while it is being recreated) is not lost.
+        private static readonly Queue<Action> _executionQueue = new Queue<Action>();
 
         private static UnityMainThreadDispatcher _instance;
 
@@ -102,8 +112,10 @@ namespace Balancy
         }
 #endif
 
-        // Enqueue actions to be run on the main thread
-        public void Enqueue(Action action)
+        // Queue an action for the main thread from ANY thread, including native
+        // worker threads. Touches no Unity API, allocates no GameObject, and
+        // never calls Instance(). This is what P/Invoke callbacks must use.
+        public static void EnqueueFromAnyThread(Action action)
         {
             if (action == null) return;
 
@@ -111,6 +123,34 @@ namespace Balancy
             {
                 _executionQueue.Enqueue(action);
             }
+        }
+
+        // True when the caller is on the thread that pumps the queue. False
+        // before the queue has ever been pumped, which is the safe answer: the
+        // caller then marshals instead of running inline.
+        public static bool IsMainThread =>
+            _mainThreadId != -1 &&
+            System.Threading.Thread.CurrentThread.ManagedThreadId == _mainThreadId;
+
+        // Run on the main thread — inline if already there, queued otherwise.
+        // Safe from any thread; see EnqueueFromAnyThread.
+        public static void RunOnMainThreadSafe(Action action)
+        {
+            if (action == null) return;
+
+            if (IsMainThread)
+            {
+                action.Invoke();
+                return;
+            }
+
+            EnqueueFromAnyThread(action);
+        }
+
+        // Enqueue actions to be run on the main thread
+        public void Enqueue(Action action)
+        {
+            EnqueueFromAnyThread(action);
         }
 
         // Run an action on the Unity main thread. If we are already on the main
@@ -121,18 +161,7 @@ namespace Balancy
         // freed concurrently by profile recreation/reset.
         public void RunOnMainThread(Action action)
         {
-            if (action == null) return;
-
-            // If the main thread id is not yet known, the queue has never been
-            // pumped, so we cannot be on the main thread relative to it; enqueue.
-            if (_mainThreadId != -1 &&
-                System.Threading.Thread.CurrentThread.ManagedThreadId == _mainThreadId)
-            {
-                action.Invoke();
-                return;
-            }
-
-            Enqueue(action);
+            RunOnMainThreadSafe(action);
         }
 
         // Execute actions from the queue on the main thread (called in Play mode)

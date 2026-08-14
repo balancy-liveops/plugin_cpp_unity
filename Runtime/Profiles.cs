@@ -39,7 +39,7 @@ namespace Balancy
         {
             if (Thread.CurrentThread.ManagedThreadId != _mainThreadId)
             {
-                UnityMainThreadDispatcher.Instance().Enqueue(() => ProfileReset(profileName, newPointer));
+                UnityMainThreadDispatcher.EnqueueFromAnyThread(() => ProfileReset(profileName, newPointer));
                 return;
             }
 
@@ -61,7 +61,7 @@ namespace Balancy
         {
             if (Thread.CurrentThread.ManagedThreadId != _mainThreadId)
             {
-                UnityMainThreadDispatcher.Instance().Enqueue(OnResetComplete);
+                UnityMainThreadDispatcher.EnqueueFromAnyThread(OnResetComplete);
                 return;
             }
 
@@ -199,7 +199,7 @@ namespace Balancy
         {
             if (Thread.CurrentThread.ManagedThreadId != _mainThreadId)
             {
-                UnityMainThreadDispatcher.Instance().Enqueue(() => OnBaseDataParamChanged(baseData, paramName));
+                UnityMainThreadDispatcher.EnqueueFromAnyThread(() => OnBaseDataParamChanged(baseData, paramName));
                 return;
             }
 
@@ -222,7 +222,7 @@ namespace Balancy
             // marshal just that part to the main thread.
             if (Thread.CurrentThread.ManagedThreadId != _mainThreadId)
             {
-                UnityMainThreadDispatcher.Instance().Enqueue(() => AllBaseDataSubscriptions.Remove(baseData));
+                UnityMainThreadDispatcher.EnqueueFromAnyThread(() => AllBaseDataSubscriptions.Remove(baseData));
                 return;
             }
 

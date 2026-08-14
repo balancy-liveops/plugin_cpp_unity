@@ -93,7 +93,7 @@ namespace Balancy
                 // callback on the main thread so it never touches native objects
                 // off-thread.
                 if (callback != null)
-                    UnityMainThreadDispatcher.Instance().RunOnMainThread(callback);
+                    UnityMainThreadDispatcher.RunOnMainThreadSafe(callback);
             }
             catch (Exception e)
             {
@@ -147,7 +147,7 @@ namespace Balancy
                         // StopTaskRemotely, so the queued callback can safely
                         // check it before firing.
                         var cancellation = token.Token;
-                        UnityMainThreadDispatcher.Instance().RunOnMainThread(() =>
+                        UnityMainThreadDispatcher.RunOnMainThreadSafe(() =>
                         {
                             if (!cancellation.IsCancellationRequested)
                                 callback(elapsed);
@@ -157,7 +157,7 @@ namespace Balancy
 
                 _activeTasks.Remove(token);
                 if (doneCallback != null)
-                    UnityMainThreadDispatcher.Instance().RunOnMainThread(doneCallback);
+                    UnityMainThreadDispatcher.RunOnMainThreadSafe(doneCallback);
             }
             catch (Exception e)
             {
