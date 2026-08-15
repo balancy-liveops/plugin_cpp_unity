@@ -294,12 +294,17 @@ namespace Balancy
         [AOT.MonoPInvokeCallback(typeof(Balancy.StatusUpdateCallback))]
         private static void OnStatusUpdate(IntPtr notificationPtr)
         {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            // In WebGL, notificationPtr is actually a notification ID, not a memory pointer.
+            // Declared outside the try so the finally below can always release it:
+            // the native side holds a shared_ptr in s_NotificationStorage until we do,
+            // and the callbacks dispatched here are user code that may throw.
+            int notificationId = (int)notificationPtr;
+#endif
             try
             {
                 // Debug.Log($"[C# Notification] OnStatusUpdate called. Platform: {Application.platform}, notificationPtr: {notificationPtr}");
 #if UNITY_WEBGL && !UNITY_EDITOR
-                // In WebGL, notificationPtr is actually a notification ID, not a memory pointer
-                int notificationId = (int)notificationPtr;
                 var notificationType = (Notifications.NotificationType)LibraryMethods.General.balancyNotification_GetType(notificationId);
 #else
                 // On native platforms, unmarshal the notification struct from memory
@@ -650,15 +655,21 @@ namespace Balancy
                         Debug.LogError("**==> Unknown notification type. " + notificationType);
                         break;
                 }
-#if UNITY_WEBGL && !UNITY_EDITOR
-                // Release notification after processing in WebGL
-                LibraryMethods.General.balancyNotification_Release(notificationId);
-#endif
             }
             catch (Exception e)
             {
                 Debug.LogError($"{e}");
             }
+#if UNITY_WEBGL && !UNITY_EDITOR
+            finally
+            {
+                // Must run even when a callback above threw. This used to sit at the
+                // end of the try block, so any exception from game code subscribed to
+                // Balancy.Callbacks left the notification in the native
+                // s_NotificationStorage map forever — it is only ever erased from here.
+                LibraryMethods.General.balancyNotification_Release(notificationId);
+            }
+#endif
         }
 
         private static bool CheckConfig(AppConfig appConfig)

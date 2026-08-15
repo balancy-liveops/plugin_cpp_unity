@@ -372,15 +372,25 @@ namespace Balancy.Models
             if (ptr == IntPtr.Zero || size <= 0)
                 return Array.Empty<string>();
             
-            IntPtr[] ptrArray = new IntPtr[size];
-            Marshal.Copy(ptr, ptrArray, 0, size);
+            // The native side allocated this block and hands ownership over for
+            // exactly the span of this method; nothing else will ever free it.
+            // Marshalling can throw, so the release has to be in a finally —
+            // otherwise one bad read leaks the array and every string in it.
+            try
+            {
+                IntPtr[] ptrArray = new IntPtr[size];
+                Marshal.Copy(ptr, ptrArray, 0, size);
 
-            string[] result = new string[size];
-            for (int i = 0; i < size; i++)
-                result[i] = Marshal.PtrToStringAnsi(ptrArray[i]);
+                string[] result = new string[size];
+                for (int i = 0; i < size; i++)
+                    result[i] = Marshal.PtrToStringAnsi(ptrArray[i]);
 
-            LibraryMethods.Models.balancyFreeStringArray(ptr, size);
-            return result;
+                return result;
+            }
+            finally
+            {
+                LibraryMethods.Models.balancyFreeStringArray(ptr, size);
+            }
         }
         
         internal static string GetStringFromIntPtr(IntPtr ptr)
