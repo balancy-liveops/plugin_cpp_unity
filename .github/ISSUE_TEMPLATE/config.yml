@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Questions and general help
+    url: https://discord.gg/X27tuQR
+    about: Integration questions and anything that isn't a bug are answered faster on Discord.
+  - name: Documentation
+    url: https://en.docs.balancy.dev/cpp/cpp_sdk/#unity
+    about: Integration guides and API reference.
