@@ -32,6 +32,14 @@ namespace Balancy.Models
             return _pointer == ptr;
         }
 
+        /// <summary>
+        /// False when this wrapper is not bound to a live native object — either the
+        /// value does not exist in the profile yet (an inventory slot with no item),
+        /// or the native object was destroyed and the wrapper was invalidated.
+        /// Reads on an invalid wrapper are safe and return default values.
+        /// </summary>
+        public bool IsValid => _pointer != IntPtr.Zero;
+
         public void SetData(IntPtr p)
         {
             if (_pointer == p)
@@ -199,7 +207,7 @@ namespace Balancy.Models
             return CreateObject<T>(ptr, TempCopy);
         }
 
-        private void MarkAsTempObject()
+        internal void MarkAsTempObject()
         {
             TempCopy = true;
         }
