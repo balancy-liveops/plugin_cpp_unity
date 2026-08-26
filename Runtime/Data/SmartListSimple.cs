@@ -10,6 +10,9 @@ namespace Balancy.Data
 
         public void Add(T value)
         {
+            if (!EnsureAlive(nameof(Add)))
+                return;
+
             if (typeof(T) == typeof(int))
             {
                 LibraryMethods.Data.balancySmartListSimpleIntAddElement(_pointer, Convert.ToInt32(value));
@@ -41,6 +44,18 @@ namespace Balancy.Data
 
         public void RemoveAt(int index)
         {
+            TryRemoveAt(index);
+        }
+
+        /// <summary>
+        /// Removes an element when the list is alive and the index is valid.
+        /// Returns false and leaves both managed and native lists unchanged otherwise.
+        /// </summary>
+        public bool TryRemoveAt(int index)
+        {
+            if (!EnsureAlive(nameof(RemoveAt)) || !ValidateElementIndex(index, nameof(RemoveAt)))
+                return false;
+
             if (typeof(T) == typeof(int))
             {
                 LibraryMethods.Data.balancySmartListSimpleIntRemoveAt(_pointer, index);
@@ -67,10 +82,23 @@ namespace Balancy.Data
             }
 
             RefreshList();
+            return true;
         }
 
         public void Set(int index, T value)
         {
+            TrySet(index, value);
+        }
+
+        /// <summary>
+        /// Replaces an element when the list is alive and the index is valid.
+        /// Returns false and leaves both managed and native lists unchanged otherwise.
+        /// </summary>
+        public bool TrySet(int index, T value)
+        {
+            if (!EnsureAlive(nameof(Set)) || !ValidateElementIndex(index, nameof(Set)))
+                return false;
+
             if (typeof(T) == typeof(int))
             {
                 LibraryMethods.Data.balancySmartListSimpleIntSetElementAt(_pointer, index, Convert.ToInt32(value));
@@ -97,6 +125,7 @@ namespace Balancy.Data
             }
 
             RefreshList();
+            return true;
         }
 
         public int Count
@@ -116,11 +145,17 @@ namespace Balancy.Data
 
         public int FindIndex(int startIndex, Predicate<T> match)
         {
+            if (!ValidateStartIndex(startIndex, nameof(FindIndex)))
+                return -1;
+
             return _list.FindIndex(startIndex, match);
         }
 
         public void Clear()
         {
+            if (!EnsureAlive(nameof(Clear)))
+                return;
+
             if (typeof(T) == typeof(int))
             {
                 LibraryMethods.Data.balancySmartListSimpleIntClear(_pointer);
@@ -157,6 +192,21 @@ namespace Balancy.Data
 
         public T this[int index] => _list[index];
 
+        /// <summary>
+        /// Reads an element without throwing when the index is outside the list.
+        /// </summary>
+        public bool TryGet(int index, out T value)
+        {
+            if (index >= 0 && index < _list.Count)
+            {
+                value = _list[index];
+                return true;
+            }
+
+            value = default(T);
+            return false;
+        }
+
         internal void SubscribeForUpdates(string paramName, BaseData parent)
         {
             parent.SubscribeForParamChange(paramName, RefreshList);
@@ -164,6 +214,12 @@ namespace Balancy.Data
 
         private void RefreshList()
         {
+            if (_pointer == IntPtr.Zero)
+            {
+                _list.Clear();
+                return;
+            }
+
             int size = GetSize();
             _list.Clear();
 
@@ -172,6 +228,33 @@ namespace Balancy.Data
                 T value = GetElementAt(i);
                 _list.Add(value);
             }
+        }
+
+        private bool EnsureAlive(string operation)
+        {
+            if (_pointer != IntPtr.Zero)
+                return true;
+
+            UnityEngine.Debug.LogError($"[Balancy] SmartListSimple<{typeof(T).Name}>.{operation} ignored: the list is no longer valid.");
+            return false;
+        }
+
+        private bool ValidateElementIndex(int index, string operation)
+        {
+            if (index >= 0 && index < _list.Count)
+                return true;
+
+            UnityEngine.Debug.LogError($"[Balancy] SmartListSimple<{typeof(T).Name}>.{operation} ignored: index {index} is outside [0, {_list.Count}).");
+            return false;
+        }
+
+        private bool ValidateStartIndex(int startIndex, string operation)
+        {
+            if (startIndex >= 0 && startIndex <= _list.Count)
+                return true;
+
+            UnityEngine.Debug.LogError($"[Balancy] SmartListSimple<{typeof(T).Name}>.{operation} ignored: startIndex {startIndex} is outside [0, {_list.Count}].");
+            return false;
         }
 
         private int GetSize()
