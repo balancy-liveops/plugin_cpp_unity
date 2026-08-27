@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using UnityEngine;
 using System.Linq;
+using System.Globalization;
 
 namespace Balancy
 {
@@ -112,21 +113,34 @@ namespace Balancy
             {
                 case "int":
                 case "integer":
-                    return int.TryParse(value, out int intVal) ? intVal : 0;
+                    return int.Parse(value, NumberStyles.Integer, CultureInfo.InvariantCulture);
                 case "float":
                 case "single":
-                    return float.TryParse(value, out float floatVal) ? floatVal : 0f;
+                    return float.Parse(value, NumberStyles.Float, CultureInfo.InvariantCulture);
                 case "double":
-                    return double.TryParse(value, out double doubleVal) ? doubleVal : 0.0;
+                    return double.Parse(value, NumberStyles.Float, CultureInfo.InvariantCulture);
                 case "bool":
                 case "boolean":
-                    return bool.TryParse(value, out bool boolVal) ? boolVal : false;
+                    return bool.Parse(value);
                 case "long":
-                    return long.TryParse(value, out long longVal) ? longVal : 0L;
+                    return long.Parse(value, NumberStyles.Integer, CultureInfo.InvariantCulture);
+                case "ulong":
+                    return ulong.Parse(value, NumberStyles.Integer, CultureInfo.InvariantCulture);
                 case "string":
                 default:
                     return value;
             }
+        }
+
+        private static string FormatInvariant(object value)
+        {
+            if (value == null)
+                return "";
+            if (value is double doubleValue)
+                return doubleValue.ToString("R", CultureInfo.InvariantCulture);
+            if (value is float floatValue)
+                return floatValue.ToString("R", CultureInfo.InvariantCulture);
+            return Convert.ToString(value, CultureInfo.InvariantCulture);
         }
         
         private static void InvokeStaticMethod(string typeName, string methodName, Dictionary<string, object> parameters, string responseCallbackId)
@@ -271,6 +285,8 @@ namespace Balancy
                 return Convert.ToBoolean(value);
             else if (targetType == typeof(long))
                 return Convert.ToInt64(value);
+            else if (targetType == typeof(ulong))
+                return Convert.ToUInt64(value);
             
             // For complex types, try direct conversion
             try
@@ -301,7 +317,7 @@ namespace Balancy
                             outputList.Add(new OutputData
                             {
                                 key = kvp.Key,
-                                value = kvp.Value?.ToString() ?? "",
+                                value = FormatInvariant(kvp.Value),
                                 valueType = GetTypeString(kvp.Value?.GetType() ?? typeof(string))
                             });
                         }
@@ -324,7 +340,7 @@ namespace Balancy
                                 new OutputData
                                 {
                                     key = "result",
-                                    value = result.ToString(),
+                                    value = FormatInvariant(result),
                                     valueType = GetTypeString(returnType)
                                 }
                             }
@@ -380,6 +396,7 @@ namespace Balancy
             if (type == typeof(double)) return "double";
             if (type == typeof(bool)) return "bool";
             if (type == typeof(long)) return "long";
+            if (type == typeof(ulong)) return "ulong";
             if (type == typeof(string)) return "string";
             return "string"; // Default to string for complex types
         }
