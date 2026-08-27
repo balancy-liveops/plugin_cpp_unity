@@ -47,11 +47,27 @@ namespace Balancy
                 profile.RefreshData(newPointer);
         }
 
-        private static Action _userResetCallback;
+        private static readonly List<Action> _userResetCallbacks = new List<Action>();
+        private static readonly object _resetLock = new object();
+        private static bool _resetInProgress;
 
         public static void Reset(Action onComplete)
         {
-            _userResetCallback = onComplete;
+            if (!Controller.IsNativeInitialized)
+            {
+                UnityEngine.Debug.LogError("[Balancy] Profiles.Reset ignored: SDK is not initialized");
+                return;
+            }
+
+            lock (_resetLock)
+            {
+                if (onComplete != null)
+                    _userResetCallbacks.Add(onComplete);
+                if (_resetInProgress)
+                    return;
+                _resetInProgress = true;
+            }
+
             Balancy.Callbacks.OnProfileResetStart?.Invoke();
             LibraryMethods.Data.balancyResetAllProfilesWithCallback(_resetProfilesCallback);
         }
@@ -66,14 +82,31 @@ namespace Balancy
             }
 
             Balancy.Callbacks.OnProfileResetFinish?.Invoke();
-            var cb = _userResetCallback;
-            _userResetCallback = null;
-            cb?.Invoke();
+            Action[] callbacks;
+            lock (_resetLock)
+            {
+                callbacks = _userResetCallbacks.ToArray();
+                _userResetCallbacks.Clear();
+                _resetInProgress = false;
+            }
+
+            foreach (var callback in callbacks)
+            {
+                try
+                {
+                    callback.Invoke();
+                }
+                catch (Exception e)
+                {
+                    UnityEngine.Debug.LogException(e);
+                }
+            }
         }
 
         public static void ForceSaveSmartObjects()
         {
-            LibraryMethods.Data.balancyForceSaveSmartObjects();
+            if (Controller.IsNativeInitialized)
+                LibraryMethods.Data.balancyForceSaveSmartObjects();
         }
 
         internal static void Init()
@@ -100,6 +133,11 @@ namespace Balancy
                 }
                 
                 AllBaseDataSubscriptions?.Clear();
+                lock (_resetLock)
+                {
+                    _userResetCallbacks.Clear();
+                    _resetInProgress = false;
+                }
             }
             catch (System.Exception e)
             {

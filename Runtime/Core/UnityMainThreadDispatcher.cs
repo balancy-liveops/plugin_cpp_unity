@@ -147,6 +147,14 @@ namespace Balancy
             EnqueueFromAnyThread(action);
         }
 
+        internal static void ClearPendingActions()
+        {
+            lock (_executionQueue)
+            {
+                _executionQueue.Clear();
+            }
+        }
+
         // Enqueue actions to be run on the main thread
         public void Enqueue(Action action)
         {
@@ -171,8 +179,9 @@ namespace Balancy
             
 #if UNITY_WEBGL && !UNITY_EDITOR
             // Update Balancy timer on WebGL since threads are not available
-            // Only call if Controller is ready to avoid errors before initialization
-            if (Controller.IsReadyToUse)
+            // Native scheduling must run after balancyInit, including the
+            // native-before-profile-ready window used by cloud-only launch.
+            if (Controller.IsNativeInitialized)
             {
                 try
                 {

@@ -17,8 +17,12 @@ namespace Balancy
         private static CppAppConfig _cppConfig;
         private static bool _isReadyToUse;
         private static bool _isInitialized;
+        private static bool _nativeInitialized;
+        private static int _lifecycleGeneration;
+        private static Coroutine _initCoroutine;
 
         public static bool IsReadyToUse => _isReadyToUse;
+        internal static bool IsNativeInitialized => _nativeInitialized;
 
         public static AppConfig Config => _originalConfig;
 
@@ -57,11 +61,12 @@ namespace Balancy
 
             _isReadyToUse = false;
             _isInitialized = true;
+            int generation = ++_lifecycleGeneration;
             CMS.SetIsReady(false);
 
             LibraryMethods.General.balancySetLogCallback(LogMessage);
             _mainThreadInstance = UnityMainThreadDispatcher.Instance();
-            _mainThreadInstance.StartCoroutine(InitCoroutine(appConfig));
+            _initCoroutine = _mainThreadInstance.StartCoroutine(InitCoroutine(appConfig, generation));
         }
 
 #if UNITY_EDITOR
@@ -74,7 +79,7 @@ namespace Balancy
         }
 #endif
 
-        private static IEnumerator InitCoroutine(AppConfig appConfig)
+        private static IEnumerator InitCoroutine(AppConfig appConfig, int generation)
         {
             Balancy.Network.UnityWebRequestBridge.Initialize();
             Balancy.Network.UnityWebSocketBridge.Initialize();//temporary turn it off
@@ -82,6 +87,9 @@ namespace Balancy
 
             LibraryMethods.General.balancySetInvokeInMainThreadCallback(InvokeInMainThread);
             yield return UnityFileManager.InitRuntime();
+
+            if (!_isInitialized || generation != _lifecycleGeneration)
+                yield break;
 
             LibraryMethods.Models.balancySetModelOnRefresh(ModelRefreshed);
             LibraryMethods.Models.balancySetUserDataInitializedCallback(UserDataInitialized);
@@ -94,9 +102,34 @@ namespace Balancy
 
             CppAppConfig config = CreateConfigForCPP(appConfig);
             IntPtr configPtr = Marshal.AllocHGlobal(Marshal.SizeOf(config));
-            Marshal.StructureToPtr(config, configPtr, false);
-            // PrintSizeAndOffsets<CppAppConfig>();
-            LibraryMethods.General.balancyInit(configPtr);
+            bool structureInitialized = false;
+            try
+            {
+                Marshal.StructureToPtr(config, configPtr, false);
+                structureInitialized = true;
+                // Native balancyInit synchronously deep-copies every string. Keep
+                // this cleanup after that call: freeing first is a native UAF.
+                try
+                {
+                    LibraryMethods.General.balancyInit(configPtr);
+                    _nativeInitialized = true;
+                }
+                catch (Exception e)
+                {
+                    // The native call may have partially created global state.
+                    // Teardown pessimistically instead of leaving a half-session.
+                    _nativeInitialized = true;
+                    Debug.LogError($"[Balancy] Native initialization failed: {e}");
+                    Stop();
+                }
+            }
+            finally
+            {
+                if (structureInitialized)
+                    Marshal.DestroyStructure(configPtr, typeof(CppAppConfig));
+                Marshal.FreeHGlobal(configPtr);
+                _initCoroutine = null;
+            }
         }
 
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.UserDataInitializedCallback))]
@@ -111,35 +144,53 @@ namespace Balancy
                 return;
 
             _isInitialized = false;
+            ++_lifecycleGeneration;
 
+            if (_initCoroutine != null && _mainThreadInstance != null)
+            {
+                _mainThreadInstance.StopCoroutine(_initCoroutine);
+                _initCoroutine = null;
+            }
+
+            _isReadyToUse = false;
+            OnDataUpdated = null;
+            OnCloudSynced = null;
+
+            // Every step is isolated so one third-party/user callback failure
+            // cannot strand the remaining native session during teardown.
+            RunCleanupStep(() => LibraryMethods.Models.balancySetModelOnRefresh(null));
+            RunCleanupStep(() => LibraryMethods.Models.balancySetUserDataInitializedCallback(null));
+
+            // Stop C# bridges before destroying C++ objects. Running coroutines
+            // can otherwise call back into a destroyed manager.
+            RunCleanupStep(Balancy.Network.UnityWebRequestBridge.Clear);
+            RunCleanupStep(Balancy.Network.UnityWebSocketBridge.Clear);
+            RunCleanupStep(UnzipBridge.Cleanup);
+            RunCleanupStep(Tasks.StopAllTasks);
+            RunCleanupStep(API.CleanUpPendingCallbacks);
+            RunCleanupStep(Balancy.Dictionaries.DataObjectsManager.CleanUp);
+            RunCleanupStep(Profiles.CleanUp);
+            RunCleanupStep(CMS.CleanUp);
+            RunCleanupStep(CustomConditions.Unregister);
+            RunCleanupStep(UnityMainThreadDispatcher.ClearPendingActions);
+
+            if (_nativeInitialized)
+                RunCleanupStep(LibraryMethods.General.balancyStop);
+            _nativeInitialized = false;
+
+            RunCleanupStep(() => LibraryMethods.General.balancySetInvokeInMainThreadCallback(null));
+            RunCleanupStep(() => LibraryMethods.General.balancySetLogCallback(null));
+        }
+
+        private static void RunCleanupStep(Action cleanup)
+        {
             try
             {
-                // CRITICAL: Clear log callback FIRST before any other cleanup
-                // Other cleanup operations may trigger logging, which would crash if callback is invalid
-                LibraryMethods.General.balancySetLogCallback(null);
-
-                _isReadyToUse = false;
-                OnDataUpdated = null;
-                LibraryMethods.Models.balancySetModelOnRefresh(null);
-                LibraryMethods.Models.balancySetUserDataInitializedCallback(null);
-
-                // Stop C# bridges BEFORE destroying C++ objects.
-                // Running coroutines (web requests, unzip) can call back into C++
-                // after balancyStop() destroys the native manager, causing
-                // "mutex lock failed" and use-after-free crashes.
-                Balancy.Network.UnityWebRequestBridge.Clear();
-                UnzipBridge.Cleanup();
-
-                CustomConditions.Unregister();
-                LibraryMethods.General.balancyStop();
-                Balancy.Dictionaries.DataObjectsManager.CleanUp();
-                Profiles.CleanUp();
-                CMS.CleanUp();
-                LibraryMethods.General.balancySetInvokeInMainThreadCallback(null);
+                cleanup?.Invoke();
             }
-            catch (System.Exception e)
+            catch (Exception e)
             {
-                UnityEngine.Debug.LogError($"[Balancy] Error during stop: {e.Message}");
+                Debug.LogError($"[Balancy] Error during stop: {e}");
             }
         }
 
@@ -674,6 +725,12 @@ namespace Balancy
 
         private static bool CheckConfig(AppConfig appConfig)
         {
+            if (appConfig == null)
+            {
+                Debug.LogError("Balancy Init Failed. Config must not be null;");
+                return false;
+            }
+
             if (string.IsNullOrEmpty(appConfig.ApiGameId))
             {
                 Debug.LogError("Balancy Init Failed. Please provide Api Game Id in Config;");
@@ -733,9 +790,11 @@ namespace Balancy
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.General.InvokeInMainThreadCallback))]
         private static void InvokeInMainThread(int id)
         {
-            _mainThreadInstance.Enqueue(() =>
+            int generation = _lifecycleGeneration;
+            UnityMainThreadDispatcher.EnqueueFromAnyThread(() =>
             {
-                LibraryMethods.General.balancyInvokeMethodInMainThread(id);
+                if (_nativeInitialized && generation == _lifecycleGeneration)
+                    LibraryMethods.General.balancyInvokeMethodInMainThread(id);
             });
         }
         

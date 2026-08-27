@@ -102,6 +102,13 @@ namespace Balancy
 
         internal static void CleanUp()
         {
+            SetIsReady(false);
+
+            foreach (var wrapper in AllSingletons.Values)
+                (wrapper as IDisposable)?.Dispose();
+            SmartObjects.BalancySingletonDispatcher.Clear();
+            SmartObjects.BalancyConditionalTemplateRegistry.Clear();
+
             AllModels.Clear();
 
             // CRITICAL: Clear all singleton callbacks in C++ before domain reload

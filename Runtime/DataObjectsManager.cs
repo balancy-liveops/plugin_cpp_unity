@@ -697,6 +697,14 @@ namespace Balancy.Dictionaries
             }
             AllObjects.Clear();
             AllViews.Clear();
+#if UNITY_WEBGL && !UNITY_EDITOR
+            _preloadContexts.Clear();
+#endif
+            lock (_preloadLock)
+            {
+                _pendingPreloadCallbacks.Clear();
+                _preloadWaitRegistered = false;
+            }
         }
         
         internal static void ClearFromDisk(string id)
@@ -721,15 +729,35 @@ namespace Balancy.Dictionaries
             return LibraryMethods.Models.balancyIsPreloadingInProgress() != 0;
         }
 
-        private static Action _pendingPreloadCallback;
+        private static readonly List<Action> _pendingPreloadCallbacks = new List<Action>();
+        private static readonly object _preloadLock = new object();
+        private static bool _preloadWaitRegistered;
 
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.Models.PreloadCompleteCallback))]
         private static void OnPreloadingComplete()
         {
-            var cb = _pendingPreloadCallback;
-            _pendingPreloadCallback = null;
-            if (cb != null)
-                _mainThreadInstance.Enqueue(() => cb.Invoke());
+            Action[] callbacks;
+            lock (_preloadLock)
+            {
+                callbacks = _pendingPreloadCallbacks.ToArray();
+                _pendingPreloadCallbacks.Clear();
+                _preloadWaitRegistered = false;
+            }
+
+            UnityMainThreadDispatcher.EnqueueFromAnyThread(() =>
+            {
+                foreach (var callback in callbacks)
+                {
+                    try
+                    {
+                        callback?.Invoke();
+                    }
+                    catch (Exception e)
+                    {
+                        Debug.LogException(e);
+                    }
+                }
+            });
         }
 
         /// <summary>
@@ -738,7 +766,20 @@ namespace Balancy.Dictionaries
         /// </summary>
         public static void WaitForPreloading(Action onComplete)
         {
-            _pendingPreloadCallback = onComplete;
+            if (!Controller.IsNativeInitialized)
+            {
+                Debug.LogError("[Balancy] WaitForPreloading ignored: SDK is not initialized");
+                return;
+            }
+
+            lock (_preloadLock)
+            {
+                if (onComplete != null)
+                    _pendingPreloadCallbacks.Add(onComplete);
+                if (_preloadWaitRegistered)
+                    return;
+                _preloadWaitRegistered = true;
+            }
             LibraryMethods.Models.balancyWaitForPreloading(OnPreloadingComplete);
         }
     }

@@ -11,7 +11,8 @@ namespace Balancy
     {
         private const float ONE_FRAME = 1 / 60f;
 
-        private static List<CancellationTokenSource> _activeTasks = new List<CancellationTokenSource>();
+        private static readonly List<CancellationTokenSource> _activeTasks = new List<CancellationTokenSource>();
+        private static readonly object _activeTasksLock = new object();
         public static CancellationTokenSource Wait(float delaySeconds, Action callback)
         {
             if (delaySeconds <= 0.00001f)
@@ -21,8 +22,9 @@ namespace Balancy
             }
 
             var token = new CancellationTokenSource();
-            WaitForTime(delaySeconds, callback, token);
-            _activeTasks.Add(token);
+            lock (_activeTasksLock)
+                _activeTasks.Add(token);
+            _ = WaitForTime(delaySeconds, callback, token);
             return token;
         }
 
@@ -41,6 +43,8 @@ namespace Balancy
         {
             if (token != null)
             {
+                lock (_activeTasksLock)
+                    _activeTasks.Remove(token);
                 try
                 {
                     token.Cancel();
@@ -57,8 +61,6 @@ namespace Balancy
                     if (!(e is ObjectDisposedException))
                     {
                         Controller.LogMessage(Controller.Level.Error, "**Exception, StopTaskRemotely: " + e);
-
-                        throw;
                     }
                 }
             }
@@ -87,20 +89,30 @@ namespace Balancy
         {
             try
             {
+                var cancellation = token.Token;
                 await Delay(delay, token);
-                // The await may resume on a thread-pool thread (Task.Delay does
-                // not capture Unity's SynchronizationContext). Run the user
-                // callback on the main thread so it never touches native objects
-                // off-thread.
+                // The await normally captures Unity's synchronization context,
+                // but the public API may also be called from a worker thread.
                 if (callback != null)
-                    UnityMainThreadDispatcher.RunOnMainThreadSafe(callback);
+                    UnityMainThreadDispatcher.RunOnMainThreadSafe(() =>
+                    {
+                        if (!cancellation.IsCancellationRequested)
+                            callback();
+                    });
             }
             catch (Exception e)
             {
                 if (!(e is OperationCanceledException || e.InnerException is TaskCanceledException || e is ObjectDisposedException))
                     Controller.LogMessage(Controller.Level.Error, "**Exception, WaitForTime: " + e);
 
-                throw e;
+            }
+            finally
+            {
+                lock (_activeTasksLock)
+                    _activeTasks.Remove(token);
+                // The source is returned to the caller, so normal completion must
+                // not invalidate it behind their back. The caller owns disposal;
+                // StopTaskRemotely/StopAllTasks consume and dispose active sources.
             }
         }
 
@@ -117,7 +129,9 @@ namespace Balancy
         public static CancellationTokenSource Periodic(float duration, float period, Action<float> callback, Action doneCallback)
         {
             var token = new CancellationTokenSource();
-            Periodic(duration, period, callback, doneCallback, token);
+            lock (_activeTasksLock)
+                _activeTasks.Add(token);
+            _ = Periodic(duration, period, callback, doneCallback, token);
             return token;
         }
 
@@ -125,7 +139,6 @@ namespace Balancy
         {
             try
             {
-                _activeTasks.Add(token);
                 float t = 0;
                 // The first tick runs synchronously on the caller (main) thread.
                 callback?.Invoke(0);
@@ -135,10 +148,9 @@ namespace Balancy
                     t += period;
                     if (token.IsCancellationRequested)
                         break;
-                    // Delay may resume on a thread-pool thread; marshal the user
-                    // callback back to the main thread so it never P/Invokes into
-                    // native objects (which may have been freed) off-thread. Skip
-                    // it if the task was cancelled while it was queued.
+                    // A worker-thread caller may resume here off the main thread.
+                    // Always use the safe dispatcher and skip callbacks cancelled
+                    // while queued.
                     if (callback != null)
                     {
                         var elapsed = t;
@@ -155,7 +167,6 @@ namespace Balancy
                     }
                 }
 
-                _activeTasks.Remove(token);
                 if (doneCallback != null)
                     UnityMainThreadDispatcher.RunOnMainThreadSafe(doneCallback);
             }
@@ -164,13 +175,26 @@ namespace Balancy
                 if (!(e is OperationCanceledException || e.InnerException is TaskCanceledException || e is ObjectDisposedException))
                     Controller.LogMessage(Controller.Level.Error, "**Exception, Periodic: " + e);
             }
+            finally
+            {
+                lock (_activeTasksLock)
+                    _activeTasks.Remove(token);
+                // Keep a normally completed source usable by the caller. See
+                // WaitForTime: only explicit remote/SDK shutdown consumes it.
+            }
         }
 
         internal static void StopAllTasks()
         {
-            foreach (var token in _activeTasks)
+            CancellationTokenSource[] tokens;
+            lock (_activeTasksLock)
+            {
+                tokens = _activeTasks.ToArray();
+                _activeTasks.Clear();
+            }
+
+            foreach (var token in tokens)
                 StopTaskRemotely(token);
-            _activeTasks.Clear();
         }
     }
 }

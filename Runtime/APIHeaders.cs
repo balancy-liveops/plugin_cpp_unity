@@ -183,6 +183,14 @@ namespace Balancy
         private static readonly Dictionary<int, CallbackWrapperBase> _callbackStorage = new Dictionary<int, CallbackWrapperBase>();
         private static readonly object _callbackLock = new object();
         private static int _callbackIdCounter = 0;
+
+        internal static void CleanUpPendingCallbacks()
+        {
+            lock (_callbackLock)
+            {
+                _callbackStorage.Clear();
+            }
+        }
         
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.API.ResponseCallback))]
         private static void StaticResponseHandler(int callbackId, IntPtr responseDataPtr)
