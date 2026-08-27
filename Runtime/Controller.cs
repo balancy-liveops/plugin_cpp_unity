@@ -236,7 +236,7 @@ namespace Balancy
                 AutoLogin = (byte)(_originalConfig.AutoLogin ? 1 : 0),
                 OnStatusUpdate = OnStatusUpdate,
                 OnProgressUpdateCallback = OnProgressUpdate,
-                DeviceId = string.IsNullOrEmpty(_originalConfig.DeviceId) ? Balancy.UnityUtils.GetUniqId() : _originalConfig.DeviceId,
+                DeviceId = string.IsNullOrWhiteSpace(_originalConfig.DeviceId) ? Balancy.UnityUtils.GetUniqId() : _originalConfig.DeviceId,
                 AppVersion = string.IsNullOrEmpty(_originalConfig.AppVersion) ? Application.version : _originalConfig.AppVersion,
                 BundleId = string.IsNullOrEmpty(_originalConfig.BundleId) ? Application.identifier : _originalConfig.BundleId,
                 EngineVersion = string.IsNullOrEmpty(_originalConfig.EngineVersion) ? Balancy.UnityUtils.GetEngineVersion() : _originalConfig.EngineVersion,
