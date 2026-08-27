@@ -861,8 +861,9 @@ namespace Balancy
 
             /// <summary>
             /// Returns "running", "quarantined", "finished", or "not_found".
-            /// A quarantined instance remains persisted and will retry restoration
-            /// when a compatible Visual Scripting graph becomes available.
+            /// Quarantined also covers a blocked nested script, because it parks
+            /// the parent chain. "finished" is transitional and ordinary polling
+            /// usually observes running directly followed by not_found.
             /// </summary>
             public static string GetScriptStatus(string instanceId) {
                 return Marshal.PtrToStringAnsi(
