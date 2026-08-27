@@ -861,6 +861,8 @@ namespace Balancy
             public static extern IntPtr balancyScripts_RunByName(string scriptName, string launcherId, string inputJson);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern bool balancyScripts_Stop(string instanceId);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyScripts_GetStatus(string instanceId);
         }
 
         public static class Conditions

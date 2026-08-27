@@ -859,6 +859,16 @@ namespace Balancy
                 return Balancy.LibraryMethods.API.balancyScripts_Stop(instanceId);
             }
 
+            /// <summary>
+            /// Returns "running", "quarantined", "finished", or "not_found".
+            /// A quarantined instance remains persisted and will retry restoration
+            /// when a compatible Visual Scripting graph becomes available.
+            /// </summary>
+            public static string GetScriptStatus(string instanceId) {
+                return Marshal.PtrToStringAnsi(
+                    Balancy.LibraryMethods.API.balancyScripts_GetStatus(instanceId ?? "")) ?? "not_found";
+            }
+
             internal static T CreateTempModelFromScriptOutput<T>(string outputsJson, string outputName) where T : JsonBasedObject, new() {
                 var ptr = Balancy.LibraryMethods.Models.balancyCreateTempModelFromJson(
                     outputsJson ?? "",
