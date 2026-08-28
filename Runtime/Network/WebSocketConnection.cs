@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 #if !UNITY_WEBGL || UNITY_EDITOR
 using System.Net.WebSockets;
 #endif
@@ -22,6 +23,32 @@ namespace Balancy.Network
         public string deviceId;
     }
 
+#if !UNITY_WEBGL || UNITY_EDITOR
+    internal sealed class WebSocketTextMessageBuffer : IDisposable
+    {
+        internal const int MaxMessageBytes = 16 * 1024 * 1024;
+        private readonly MemoryStream _stream = new MemoryStream();
+
+        internal string Append(byte[] buffer, int count, bool endOfMessage)
+        {
+            if (count < 0 || count > buffer.Length)
+                throw new ArgumentOutOfRangeException(nameof(count));
+            if (_stream.Length + count > MaxMessageBytes)
+                throw new InvalidDataException($"WebSocket message exceeds {MaxMessageBytes} bytes");
+
+            _stream.Write(buffer, 0, count);
+            if (!endOfMessage)
+                return null;
+
+            var message = Encoding.UTF8.GetString(_stream.GetBuffer(), 0, checked((int)_stream.Length));
+            _stream.SetLength(0);
+            return message;
+        }
+
+        public void Dispose() => _stream.Dispose();
+    }
+#endif
+
     // Simple JSON array parser for Socket.IO messages
     public static class SimpleJsonParser
     {
@@ -30,7 +57,7 @@ namespace Balancy.Network
             // Parse: ["eventName", data, ackId]
             // Remove brackets and split by comma, handling nested objects
             
-            if (!jsonArray.StartsWith("[") || !jsonArray.EndsWith("]"))
+            if (string.IsNullOrEmpty(jsonArray) || !jsonArray.StartsWith("[") || !jsonArray.EndsWith("]"))
                 return null;
                 
             string content = jsonArray.Substring(1, jsonArray.Length - 2);
@@ -96,6 +123,8 @@ namespace Balancy.Network
         
         public static string UnquoteString(string quotedString)
         {
+            if (string.IsNullOrEmpty(quotedString))
+                return quotedString;
             if (quotedString.StartsWith("\"") && quotedString.EndsWith("\""))
             {
                 return quotedString.Substring(1, quotedString.Length - 2);
@@ -124,6 +153,7 @@ namespace Balancy.Network
         private bool _handshakeCompleted;
         private Task _receiveLoopTask;
         private Task _healthCheckLoopTask;
+        private readonly SemaphoreSlim _sendLock = new SemaphoreSlim(1, 1);
         
         // Socket.IO specific
         private HashSet<string> _subscribedEvents = new HashSet<string>();
@@ -328,26 +358,50 @@ namespace Balancy.Network
         {
             if (!_isConnected || _disposed) return;
 
+            Exception sendException = null;
             try
             {
-                byte[] bytes = Encoding.UTF8.GetBytes(message);
-                await _webSocket.SendAsync(
-                    new ArraySegment<byte>(bytes),
-                    WebSocketMessageType.Text,
-                    true,
-                    _cancellationTokenSource.Token
-                );
+                var cancellation = _cancellationTokenSource;
+                await _sendLock.WaitAsync(cancellation.Token);
+                try
+                {
+                    var socket = _webSocket;
+                    if (!_isConnected || _disposed || socket == null || socket.State != WebSocketState.Open)
+                        return;
+
+                    byte[] bytes = Encoding.UTF8.GetBytes(message);
+                    await socket.SendAsync(
+                        new ArraySegment<byte>(bytes),
+                        WebSocketMessageType.Text,
+                        true,
+                        cancellation.Token
+                    );
+                }
+                finally
+                {
+                    _sendLock.Release();
+                }
+            }
+            catch (OperationCanceledException) when (_disposed || !_isConnected)
+            {
+                return;
             }
             catch (Exception ex)
             {
                 Debug.LogError($"Failed to send raw message: {ex.Message}");
-                await HandleDisconnection("Send message failed: " + ex.Message);
+                sendException = ex;
             }
+
+            // Reconnect only after releasing the send lock: the new Socket.IO
+            // handshake must be able to send its CONNECT frame.
+            if (sendException != null)
+                await HandleDisconnection("Send message failed: " + sendException.Message);
         }
 
         private async Task ReceiveLoop()
         {
             var buffer = new byte[4096];
+            using (var messageBuffer = new WebSocketTextMessageBuffer())
 
             while (_isConnected && !_disposed && _webSocket.State == WebSocketState.Open)
             {
@@ -360,9 +414,12 @@ namespace Balancy.Network
 
                     if (result.MessageType == WebSocketMessageType.Text)
                     {
-                        string message = Encoding.UTF8.GetString(buffer, 0, result.Count);
-                        await ProcessMessage(message);
+                        string message = messageBuffer.Append(buffer, result.Count, result.EndOfMessage);
+                        if (message != null)
+                            await ProcessMessage(message);
                     }
+                    else if (result.MessageType == WebSocketMessageType.Binary)
+                        throw new InvalidDataException("Binary Socket.IO frame is not supported");
                     else if (result.MessageType == WebSocketMessageType.Close)
                     {
                         await HandleDisconnection("Connection closed by server");
@@ -387,7 +444,7 @@ namespace Balancy.Network
         {
             try
             {
-                Debug.Log($"Received message (ID: {_connectionId}): {message}");
+                Debug.Log($"Received WebSocket message (ID: {_connectionId}, Length={message?.Length ?? 0})");
                 
                 // Socket.IO message format parsing
                 if (message.StartsWith("0"))
@@ -452,7 +509,6 @@ namespace Balancy.Network
                         }
                     }
                     
-                    Debug.Log($"jsonPart: {jsonPart} (ID: {_connectionId})");
                     var eventParts = SimpleJsonParser.ParseSocketIOEvent(jsonPart);
                     
                     if (eventParts != null && eventParts.Length >= 1)
@@ -460,7 +516,7 @@ namespace Balancy.Network
                         string eventName = SimpleJsonParser.UnquoteString(eventParts[0]);
                         string eventData = eventParts.Length > 1 ? eventParts[1] : "{}";
                         
-                        Debug.Log($"📧 Event: {eventName}, Data: {eventData}, AckId: {(hasAckId ? ackId.ToString() : "none")} (ID: {_connectionId})");
+                        Debug.Log($"📧 Event: {eventName}, DataLength: {eventData.Length}, AckId: {(hasAckId ? ackId.ToString() : "none")} (ID: {_connectionId})");
                         
                         // Handle auth:token specially - setup subscriptions after successful auth
                         if (eventName == "auth:token" && eventData.Contains("\"success\":true"))
@@ -563,7 +619,7 @@ namespace Balancy.Network
                                 Debug.LogError($"   - gameId: '{_authData?.gameId}' (should be UUID)");
                                 Debug.LogError($"   - env: {_authData?.environment} (should be 0, 1, or 2)");
                                 Debug.LogError($"   - userId: '{_authData?.userId}'");
-                                Debug.LogError($"   - token: '{(_authData?.token?.Length > 10 ? _authData.token.Substring(0, 10) + "..." : _authData?.token)}'");
+                                Debug.LogError($"   - token present: {!string.IsNullOrEmpty(_authData?.token)}");
                             }
                         }
                     }
@@ -730,19 +786,7 @@ namespace Balancy.Network
                 // Socket.IO v4 CONNECT with auth data format: "40{\"auth\":{...}}"
                 // This matches the C++ implementation which sends auth data in the auth object
                 // Use same field names as C++ code (snake_case)
-                var authJson = "{"
-                    + $"\"game_id\":\"{_authData.gameId}\","
-                    + $"\"user_id\":\"{_authData.userId}\","
-                    + $"\"env\":{_authData.environment},"
-                    + $"\"token\":\"{_authData.token}\"";
-                
-                // Add device_id only if it's provided
-                if (!string.IsNullOrEmpty(_authData.deviceId))
-                {
-                    authJson += $",\"device_id\":\"{_authData.deviceId}\"";
-                }
-                
-                authJson += "}";
+                var authJson = BuildConnectAuthJson(_authData);
 
                 Debug.Log($"🔐 Sending connect with auth (ID: {_connectionId}, userId='{_authData.userId}')");
                 
@@ -758,6 +802,18 @@ namespace Balancy.Network
                 await SendRawMessage("40");
                 Debug.Log($"Sent fallback simple connect (ID: {_connectionId})");
             }
+        }
+
+        private static string BuildConnectAuthJson(SocketIOAuthData authData)
+        {
+            return JsonUtility.ToJson(new SocketIOConnectPayload
+            {
+                game_id = authData.gameId,
+                user_id = authData.userId,
+                env = authData.environment,
+                token = authData.token,
+                device_id = authData.deviceId
+            });
         }
 
         public void Dispose()
@@ -789,6 +845,16 @@ namespace Balancy.Network
 
             Debug.Log($"WebSocket connection disposed (ID: {_connectionId})");
         }
+    }
+
+    [Serializable]
+    internal class SocketIOConnectPayload
+    {
+        public string game_id;
+        public string user_id;
+        public int env;
+        public string token;
+        public string device_id;
     }
 
     // Helper classes for parsing Socket.IO error messages
