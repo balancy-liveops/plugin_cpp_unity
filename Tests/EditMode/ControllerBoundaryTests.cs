@@ -82,6 +82,46 @@ namespace Balancy.Tests
         }
 
         [Test]
+        public void ThrowingSignedOutSubscriberDoesNotSkipLaterSubscribers()
+        {
+            var calls = 0;
+            Callbacks.OnSignedOut += () => throw new InvalidOperationException("first signed-out subscriber failed");
+            Callbacks.OnSignedOut += () => calls++;
+
+            LogAssert.Expect(LogType.Error, new Regex("first signed-out subscriber failed"));
+            Assert.DoesNotThrow(() => DispatchNotification(20)); // SignedOut
+            Assert.That(calls, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void ThrowingUserRefreshedSubscriberDoesNotSkipLaterSubscribers()
+        {
+            var calls = 0;
+            Callbacks.OnGameRefreshed += () => throw new InvalidOperationException("first refreshed subscriber failed");
+            Callbacks.OnGameRefreshed += () => calls++;
+
+            LogAssert.Expect(LogType.Error, new Regex("first refreshed subscriber failed"));
+            Assert.DoesNotThrow(() => DispatchNotification(4)); // UserRefreshed
+            Assert.That(calls, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void ThrowingDisconnectedSubscriberDoesNotSkipLaterSubscribers()
+        {
+            var calls = 0;
+            Callbacks.OnDisconnected += _ => throw new InvalidOperationException("first disconnected subscriber failed");
+            Callbacks.OnDisconnected += reason =>
+            {
+                Assert.That(reason, Is.EqualTo(Callbacks.DisconnectReason.AnotherSessionConflict));
+                calls++;
+            };
+
+            LogAssert.Expect(LogType.Error, new Regex("first disconnected subscriber failed"));
+            Assert.DoesNotThrow(() => DispatchNotification(6)); // DisconnectAnotherSessionConflict
+            Assert.That(calls, Is.EqualTo(1));
+        }
+
+        [Test]
         public void UnknownNotificationIsReportedWithoutThrowing()
         {
             var pointer = Marshal.AllocHGlobal(sizeof(int));
@@ -90,6 +130,20 @@ namespace Balancy.Tests
                 Marshal.WriteInt32(pointer, int.MaxValue);
                 LogAssert.Expect(LogType.Error, new Regex("Unknown notification type"));
                 Assert.DoesNotThrow(() => OnStatusUpdate.Invoke(null, new object[] { pointer }));
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(pointer);
+            }
+        }
+
+        private static void DispatchNotification(int type)
+        {
+            var pointer = Marshal.AllocHGlobal(sizeof(int));
+            try
+            {
+                Marshal.WriteInt32(pointer, type);
+                OnStatusUpdate.Invoke(null, new object[] { pointer });
             }
             finally
             {

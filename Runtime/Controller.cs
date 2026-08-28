@@ -208,7 +208,7 @@ namespace Balancy
             if (profileChanged)
                 RenderViewsManager.OnProfileUpdated();
 
-            OnDataUpdated?.Invoke(dictsChanged, profileChanged);
+            InvokeSubscribersSafely(OnDataUpdated, callback => callback(dictsChanged, profileChanged));
         }
 
         public static Constants.DevicePlatform GetDevicePlatform()
@@ -397,41 +397,41 @@ namespace Balancy
                         DataUpdated(isCMSUpdated, isProfileUpdated);
                         _isReadyToUse = true;
                         if (isCloudSynced)
-                            OnCloudSynced?.Invoke();
-                        Balancy.Callbacks.OnDataUpdated?.Invoke(new Balancy.Callbacks.DataUpdatedStatus(
+                            InvokeSubscribersSafely(OnCloudSynced, callback => callback());
+                        InvokeSubscribersSafely(Balancy.Callbacks.OnDataUpdated, callback => callback(new Balancy.Callbacks.DataUpdatedStatus(
                             isCloudSynced, 
                             isCMSUpdated,
-                            isProfileUpdated));
+                            isProfileUpdated)));
                         break;
                     case Notifications.NotificationType.AuthFailed:
 #if UNITY_WEBGL && !UNITY_EDITOR
                         string authMessage = Marshal.PtrToStringAnsi(LibraryMethods.General.balancyNotification_GetMessage(notificationId));
-                        Balancy.Callbacks.OnAuthFailed?.Invoke(new Balancy.Callbacks.ErrorStatus(authMessage));
+                        InvokeSubscribersSafely(Balancy.Callbacks.OnAuthFailed, callback => callback(new Balancy.Callbacks.ErrorStatus(authMessage)));
 #else
                         var authNotification = Marshal.PtrToStructure<Notifications.InitNotificationAuthFailed>(notificationPtr);
-                        Balancy.Callbacks.OnAuthFailed?.Invoke(new Balancy.Callbacks.ErrorStatus(authNotification.Message));
+                        InvokeSubscribersSafely(Balancy.Callbacks.OnAuthFailed, callback => callback(new Balancy.Callbacks.ErrorStatus(authNotification.Message)));
 #endif
                         break;
                     case Notifications.NotificationType.CloudProfileFailed:
 #if UNITY_WEBGL && !UNITY_EDITOR
                         string profileMessage = Marshal.PtrToStringAnsi(LibraryMethods.General.balancyNotification_GetMessage(notificationId));
-                        Balancy.Callbacks.OnCloudProfileFailedToLoad?.Invoke(new Balancy.Callbacks.ErrorStatus(profileMessage));
+                        InvokeSubscribersSafely(Balancy.Callbacks.OnCloudProfileFailedToLoad, callback => callback(new Balancy.Callbacks.ErrorStatus(profileMessage)));
 #else
                         var profileNotification = Marshal.PtrToStructure<Notifications.InitNotificationCloudProfileFailed>(notificationPtr);
-                        Balancy.Callbacks.OnCloudProfileFailedToLoad?.Invoke(new Balancy.Callbacks.ErrorStatus(profileNotification.Message));
+                        InvokeSubscribersSafely(Balancy.Callbacks.OnCloudProfileFailedToLoad, callback => callback(new Balancy.Callbacks.ErrorStatus(profileNotification.Message)));
 #endif
                         break;
                     case Notifications.NotificationType.ConfigFailed:
 #if UNITY_WEBGL && !UNITY_EDITOR
                         string configMessage = Marshal.PtrToStringAnsi(LibraryMethods.General.balancyNotification_GetMessage(notificationId));
-                        Balancy.Callbacks.OnConfigFailedToLoad?.Invoke(new Balancy.Callbacks.ErrorStatus(configMessage));
+                        InvokeSubscribersSafely(Balancy.Callbacks.OnConfigFailedToLoad, callback => callback(new Balancy.Callbacks.ErrorStatus(configMessage)));
 #else
                         var configNotification = Marshal.PtrToStructure<Notifications.InitNotificationConfigFailed>(notificationPtr);
-                        Balancy.Callbacks.OnConfigFailedToLoad?.Invoke(new Balancy.Callbacks.ErrorStatus(configNotification.Message));
+                        InvokeSubscribersSafely(Balancy.Callbacks.OnConfigFailedToLoad, callback => callback(new Balancy.Callbacks.ErrorStatus(configNotification.Message)));
 #endif
                         break;
                     case Notifications.NotificationType.UserRefreshed:
-                        Balancy.Callbacks.OnGameRefreshed?.Invoke();
+                        InvokeSubscribersSafely(Balancy.Callbacks.OnGameRefreshed, callback => callback());
                         break;
                     case Notifications.NotificationType.OnNewEventActivated: {
 #if UNITY_WEBGL && !UNITY_EDITOR
@@ -442,7 +442,7 @@ namespace Balancy
                         var eventInfo = Profiles.System.SmartInfo.FindEventInfo(liveOpsNewEvent.EventInfo);
 #endif
                         if (eventInfo != null)
-                            Balancy.Callbacks.OnNewEventActivated?.Invoke(eventInfo);
+                            InvokeSubscribersSafely(Balancy.Callbacks.OnNewEventActivated, callback => callback(eventInfo));
                         break;
                     }
                     case Notifications.NotificationType.OnEventDeactivated: {
@@ -454,7 +454,7 @@ namespace Balancy
                         var eventInfo = JsonBasedObject.CreateObject<EventInfo>(liveOpsEvent.EventInfo);
 #endif
                         if (eventInfo != null)
-                            Balancy.Callbacks.OnEventDeactivated?.Invoke(eventInfo);
+                            InvokeSubscribersSafely(Balancy.Callbacks.OnEventDeactivated, callback => callback(eventInfo));
                         break;
                     }
                     case Notifications.NotificationType.OnNewOfferActivated: {
@@ -466,7 +466,7 @@ namespace Balancy
                         var offerInfo = Profiles.System.SmartInfo.FindOfferInfo(notificationTyped.OfferInfo);
 #endif
                         if (offerInfo != null)
-                            Balancy.Callbacks.OnNewOfferActivated?.Invoke(offerInfo);
+                            InvokeSubscribersSafely(Balancy.Callbacks.OnNewOfferActivated, callback => callback(offerInfo));
                         break;
                     }
                     case Notifications.NotificationType.OnOfferDeactivated: {
@@ -475,12 +475,12 @@ namespace Balancy
                         bool wasPurchased = LibraryMethods.General.balancyNotification_WasPurchased(notificationId);
                         var offerInfo = JsonBasedObject.CreateObject<OfferInfo>(offerInfoPtr);
                         if (offerInfo != null)
-                            Balancy.Callbacks.OnOfferDeactivated?.Invoke(offerInfo, wasPurchased);
+                            InvokeSubscribersSafely(Balancy.Callbacks.OnOfferDeactivated, callback => callback(offerInfo, wasPurchased));
 #else
                         var notificationTyped = Marshal.PtrToStructure<Notifications.LiveOpsNotification_OnOfferDeactivated>(notificationPtr);
                         var offerInfo = JsonBasedObject.CreateObject<OfferInfo>(notificationTyped.OfferInfo);
                         if (offerInfo != null)
-                            Balancy.Callbacks.OnOfferDeactivated?.Invoke(offerInfo, notificationTyped.WasPurchased);
+                            InvokeSubscribersSafely(Balancy.Callbacks.OnOfferDeactivated, callback => callback(offerInfo, notificationTyped.WasPurchased));
 #endif
                         break;
                     }
@@ -493,7 +493,7 @@ namespace Balancy
                         var offerInfo = Profiles.System.SmartInfo.FindOfferGroupInfo(notificationTyped.OfferInfo);
 #endif
                         if (offerInfo != null)
-                            Balancy.Callbacks.OnNewOfferGroupActivated?.Invoke(offerInfo);
+                            InvokeSubscribersSafely(Balancy.Callbacks.OnNewOfferGroupActivated, callback => callback(offerInfo));
                         break;
                     }
                     case Notifications.NotificationType.OnOfferGroupDeactivated: {
@@ -505,7 +505,7 @@ namespace Balancy
                         var offerInfo = JsonBasedObject.CreateObject<OfferGroupInfo>(notificationTyped.OfferInfo);
 #endif
                         if (offerInfo != null)
-                            Balancy.Callbacks.OnOfferGroupDeactivated?.Invoke(offerInfo);
+                            InvokeSubscribersSafely(Balancy.Callbacks.OnOfferGroupDeactivated, callback => callback(offerInfo));
                         break;
                     }
                     case Notifications.NotificationType.OnABTestStarted: {
@@ -516,7 +516,7 @@ namespace Balancy
                         var notificationTyped = Marshal.PtrToStructure<Notifications.LiveOpsNotification_ABTestStarted>(notificationPtr);
                         var abTestInfo = Profiles.System.TestsInfo.FindAbTestInfo(notificationTyped.ABTestInfo);
 #endif
-                        Balancy.Callbacks.OnNewAbTestStarted?.Invoke(abTestInfo);
+                        InvokeSubscribersSafely(Balancy.Callbacks.OnNewAbTestStarted, callback => callback(abTestInfo));
                         break;
                     }
                     case Notifications.NotificationType.OnABTestEnded: {
@@ -527,7 +527,7 @@ namespace Balancy
                         var notificationTyped = Marshal.PtrToStructure<Notifications.LiveOpsNotification_ABTestEnded>(notificationPtr);
                         var abTestInfo = Profiles.System.TestsInfo.FindAbTestInfo(notificationTyped.ABTestInfo);
 #endif
-                        Balancy.Callbacks.OnAbTestEnded?.Invoke(abTestInfo);
+                        InvokeSubscribersSafely(Balancy.Callbacks.OnAbTestEnded, callback => callback(abTestInfo));
                         break;
                     }
                     case Notifications.NotificationType.OnSegmentUpdated: {
@@ -538,7 +538,7 @@ namespace Balancy
                         var notificationTyped = Marshal.PtrToStructure<Notifications.LiveOpsNotification_SegmentUpdated>(notificationPtr);
                         var segmentInfo = Profiles.System.SegmentsInfo.FindSegmentInfo(notificationTyped.SegmentInfo);
 #endif
-                        Balancy.Callbacks.OnSegmentInfoUpdated?.Invoke(segmentInfo);
+                        InvokeSubscribersSafely(Balancy.Callbacks.OnSegmentInfoUpdated, callback => callback(segmentInfo));
                         break;
                     }
                     case Notifications.NotificationType.OnDailyBonusUpdated: {
@@ -553,7 +553,7 @@ namespace Balancy
                         if (dailyInfo == null && notificationTyped.DailyBonusInfo != IntPtr.Zero)
                             dailyInfo = JsonBasedObject.CreateObject<DailyBonusInfo>(notificationTyped.DailyBonusInfo);
 #endif
-                        Balancy.Callbacks.OnDailyBonusUpdated?.Invoke(dailyInfo);
+                        InvokeSubscribersSafely(Balancy.Callbacks.OnDailyBonusUpdated, callback => callback(dailyInfo));
                         break;
                     }
                     case Notifications.NotificationType.OnShopUpdated: {
@@ -578,7 +578,7 @@ namespace Balancy
                             slotIndex,
                             shopUnnyId);
 #endif
-                        Balancy.Callbacks.OnShopUpdated?.Invoke(info);
+                        InvokeSubscribersSafely(Balancy.Callbacks.OnShopUpdated, callback => callback(info));
                         break;
                     }
                     case Notifications.NotificationType.OnNetworkDownloadStarted: {
@@ -587,7 +587,7 @@ namespace Balancy
 #else
                         var downloadStartedInfo = ReadNetworkDownloadStarted(notificationPtr);
                         if (downloadStartedInfo.HasValue)
-                            Balancy.Callbacks.OnNetworkDownloadStarted?.Invoke(downloadStartedInfo.Value);
+                            InvokeSubscribersSafely(Balancy.Callbacks.OnNetworkDownloadStarted, callback => callback(downloadStartedInfo.Value));
 #endif
                         break;
                     }
@@ -597,7 +597,7 @@ namespace Balancy
 #else
                         var downloadFinishedInfo = ReadNetworkDownloadFinished(notificationPtr);
                         if (downloadFinishedInfo.HasValue)
-                            Balancy.Callbacks.OnNetworkDownloadFinished?.Invoke(downloadFinishedInfo.Value);
+                            InvokeSubscribersSafely(Balancy.Callbacks.OnNetworkDownloadFinished, callback => callback(downloadFinishedInfo.Value));
 #endif
                         break;
                     }
@@ -613,7 +613,7 @@ namespace Balancy
                         if (offerInfo == null)
                             offerInfo = JsonBasedObject.CreateObject<Balancy.Data.SmartObjects.ShopSlot>(notificationTyped.ShopSlot);
 #endif
-                        Balancy.Callbacks.OnShopSlotWasPurchased?.Invoke(offerInfo);
+                        InvokeSubscribersSafely(Balancy.Callbacks.OnShopSlotWasPurchased, callback => callback(offerInfo));
                         break;
                     }
                     case Notifications.NotificationType.OnOfferWasPurchased: {
@@ -628,17 +628,17 @@ namespace Balancy
                         if (offerInfo == null)
                             offerInfo = JsonBasedObject.CreateObject<OfferInfo>(notificationTyped.OfferInfo);
 #endif
-                        Balancy.Callbacks.OnOfferWasPurchased?.Invoke(offerInfo);
+                        InvokeSubscribersSafely(Balancy.Callbacks.OnOfferWasPurchased, callback => callback(offerInfo));
                         break;
                     }
                     case Notifications.NotificationType.DisconnectAnotherSessionConflict:
                     {
-                        Balancy.Callbacks.OnDisconnected?.Invoke(Callbacks.DisconnectReason.AnotherSessionConflict);
+                        InvokeSubscribersSafely(Balancy.Callbacks.OnDisconnected, callback => callback(Callbacks.DisconnectReason.AnotherSessionConflict));
                         break;
                     }
                     case Notifications.NotificationType.SignedOut:
                     {
-                        Balancy.Callbacks.OnSignedOut?.Invoke();
+                        InvokeSubscribersSafely(Balancy.Callbacks.OnSignedOut, callback => callback());
                         break;
                     }
                     case Notifications.NotificationType.OnOfferGroupWasPurchased: {
@@ -664,7 +664,7 @@ namespace Balancy
                             storeItem = offerGroupInfo.GameOfferGroup.StoreItems[storeItemIndex];
                         }
                         
-                        Balancy.Callbacks.OnOfferGroupWasPurchased?.Invoke(offerGroupInfo, storeItem);
+                        InvokeSubscribersSafely(Balancy.Callbacks.OnOfferGroupWasPurchased, callback => callback(offerGroupInfo, storeItem));
                         break;
                     }
                     case Notifications.NotificationType.OnInventoryUpdated: {
@@ -678,7 +678,7 @@ namespace Balancy
                             int slotIndex = LibraryMethods.General.balancyNotification_GetInventorySlotIndex(notificationId);
                             int currentAmount = LibraryMethods.General.balancyNotification_GetInventoryCurrentAmount(notificationId);
                             var item = !string.IsNullOrEmpty(itemId) ? CMS.GetModelByUnnyId<Balancy.Models.SmartObjects.Item>(itemId) : null;
-                            Balancy.Callbacks.OnInventoryUpdated?.Invoke(inventory, item, count, slotIndex, currentAmount);
+                            InvokeSubscribersSafely(Balancy.Callbacks.OnInventoryUpdated, callback => callback(inventory, item, count, slotIndex, currentAmount));
                         }
 #else
                         var notificationTyped = Marshal.PtrToStructure<Notifications.LiveOpsNotification_InventoryUpdated>(notificationPtr);
@@ -687,7 +687,7 @@ namespace Balancy
                         {
                             string itemId = notificationTyped.Item;
                             var item = !string.IsNullOrEmpty(itemId) ? CMS.GetModelByUnnyId<Balancy.Models.SmartObjects.Item>(itemId) : null;
-                            Balancy.Callbacks.OnInventoryUpdated?.Invoke(inventory, item, notificationTyped.Count, notificationTyped.SlotIndex, notificationTyped.CurrentAmount);
+                            InvokeSubscribersSafely(Balancy.Callbacks.OnInventoryUpdated, callback => callback(inventory, item, notificationTyped.Count, notificationTyped.SlotIndex, notificationTyped.CurrentAmount));
                         }
 #endif
                         break;
@@ -695,10 +695,10 @@ namespace Balancy
                     case Notifications.NotificationType.OnLocalizationChanged: {
 #if UNITY_WEBGL && !UNITY_EDITOR
                         string code = Marshal.PtrToStringAnsi(LibraryMethods.General.balancyNotification_GetLocalizationCode(notificationId));
-                        Balancy.Callbacks.OnLocalizationChanged?.Invoke(code);
+                        InvokeSubscribersSafely(Balancy.Callbacks.OnLocalizationChanged, callback => callback(code));
 #else
                         var notificationTyped = Marshal.PtrToStructure<Notifications.LiveOpsNotification_OnLocalizationChanged>(notificationPtr);
-                        Balancy.Callbacks.OnLocalizationChanged?.Invoke(notificationTyped.Code);
+                        InvokeSubscribersSafely(Balancy.Callbacks.OnLocalizationChanged, callback => callback(notificationTyped.Code));
 #endif
                         break;
                     }
@@ -721,6 +721,25 @@ namespace Balancy
                 LibraryMethods.General.balancyNotification_Release(notificationId);
             }
 #endif
+        }
+
+        private static void InvokeSubscribersSafely<TDelegate>(TDelegate subscribers, Action<TDelegate> invoke)
+            where TDelegate : Delegate
+        {
+            if (subscribers == null)
+                return;
+
+            foreach (var subscriber in subscribers.GetInvocationList())
+            {
+                try
+                {
+                    invoke((TDelegate)subscriber);
+                }
+                catch (Exception e)
+                {
+                    Debug.LogError($"[Balancy] Callback failed: {e}");
+                }
+            }
         }
 
         private static bool CheckConfig(AppConfig appConfig)
