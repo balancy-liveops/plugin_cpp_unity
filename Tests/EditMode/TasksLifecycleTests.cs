@@ -62,7 +62,10 @@ namespace Balancy.Tests
         public void CancellingAfterWaitWasQueuedStillSuppressesItsCallback()
         {
             var calls = 0;
-            var token = Tasks.Wait(0.01f, () => calls++);
+            CancellationTokenSource token = null;
+            var worker = new Thread(() => token = Tasks.Wait(0.01f, () => calls++));
+            worker.Start();
+            worker.Join();
             Assert.That(SpinWait.SpinUntil(() => ActiveTaskCount() == 0, 2000), Is.True,
                 "wait operation did not finish in time");
 
@@ -78,7 +81,11 @@ namespace Balancy.Tests
         {
             var tickCalls = 0;
             var doneCalls = 0;
-            var token = Tasks.Periodic(0.02f, 0.01f, _ => tickCalls++, () => doneCalls++);
+            CancellationTokenSource token = null;
+            var worker = new Thread(() => token = Tasks.Periodic(0.02f, 0.01f,
+                _ => Interlocked.Increment(ref tickCalls), () => Interlocked.Increment(ref doneCalls)));
+            worker.Start();
+            worker.Join();
             Assert.That(tickCalls, Is.EqualTo(1), "the initial tick is intentionally synchronous");
             Assert.That(SpinWait.SpinUntil(() => ActiveTaskCount() == 0, 2000), Is.True,
                 "periodic operation did not finish in time");
