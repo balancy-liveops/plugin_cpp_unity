@@ -2,7 +2,8 @@
     "name": "Balancy.EditMode.Tests",
     "rootNamespace": "Balancy.Tests",
     "references": [
-        "Balancy"
+        "Balancy",
+        "Balancy.WebView"
     ],
     "includePlatforms": [
         "Editor"

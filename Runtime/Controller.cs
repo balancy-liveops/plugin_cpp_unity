@@ -170,6 +170,7 @@ namespace Balancy
             RunCleanupStep(API.CleanUpPendingCallbacks);
             RunCleanupStep(RunFunctionManager.CleanUp);
             RunCleanupStep(ScriptCompletionManager.CleanUp);
+            RunCleanupStep(RenderViewsManager.CleanUp);
             RunCleanupStep(Balancy.Dictionaries.DataObjectsManager.CleanUp);
             RunCleanupStep(Profiles.CleanUp);
             RunCleanupStep(CMS.CleanUp);

@@ -43,6 +43,47 @@ namespace Balancy
             SetViewDelays(0.2f, 0.3f);
         }
 
+        internal static void CleanUp()
+        {
+            try
+            {
+                LibraryMethods.General.balancySetDataRequestedCallback(null);
+            }
+            catch (Exception exception)
+            {
+                Debug.LogException(exception);
+            }
+
+            try
+            {
+                LibraryMethods.General.balancySetViewNotificationsCallback(null);
+            }
+            catch (Exception exception)
+            {
+                Debug.LogException(exception);
+            }
+
+            CleanUpManagedState();
+        }
+
+        private static void CleanUpManagedState()
+        {
+            Balancy.Callbacks.OnOfferDeactivated -= HandleOfferDeactivated;
+            Balancy.Callbacks.OnOfferGroupDeactivated -= HandleOfferGroupDeactivated;
+            Balancy.Callbacks.OnEventDeactivated -= HandleEventDeactivated;
+
+            if (_webView != null)
+            {
+                _webView.OnMessage -= OnMessageReceived;
+                _webView.OnLoadCompleted -= HandleLoadCompleted;
+                _webView.OnClosed -= HandleWebViewClosed;
+            }
+
+            _onMessageReceived = null;
+            m_LastOpenedOwnerPtr = IntPtr.Zero;
+            _webView = null;
+        }
+
         /// <summary>
         /// Compile all view scripts from the native layer and pass them to BalancyWebView for injection.
         /// Called automatically during Init() and can be called again if scripts need refreshing.
@@ -132,7 +173,14 @@ namespace Balancy
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.General.WebviewRequestCallback))]
         private static void OnNotificationReceived(string notification)
         {
-            _webView.SendMessageToWebView(notification);
+            try
+            {
+                _webView?.SendMessageToWebView(notification);
+            }
+            catch (Exception exception)
+            {
+                Debug.LogException(exception);
+            }
         }
         
         internal static void SendMessageToView(string message)
@@ -452,7 +500,14 @@ namespace Balancy
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.General.WebviewRequestCallback))]
         private static void OnMessageResponseReceived(string response)
         {
-            _webView.SendMessageToWebView(response);
+            try
+            {
+                _webView?.SendMessageToWebView(response);
+            }
+            catch (Exception exception)
+            {
+                Debug.LogException(exception);
+            }
         }
         
         enum RequestAction {
