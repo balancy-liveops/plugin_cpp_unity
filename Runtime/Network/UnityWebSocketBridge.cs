@@ -127,7 +127,7 @@ namespace Balancy.Network
         [AOT.MonoPInvokeCallback(typeof(Balancy.LibraryMethods.WebSocket.ConnectRequestDelegate))]
         private static void StaticOnConnectRequest(int connectionId, string url, string authDataJson)
         {
-            _mainThreadInstance.Enqueue(() =>
+            UnityMainThreadDispatcher.EnqueueFromAnyThread(() =>
             {
                 if (_instance != null)
                     _instance.OnConnectRequest(connectionId, url, authDataJson);
@@ -139,7 +139,7 @@ namespace Balancy.Network
         [AOT.MonoPInvokeCallback(typeof(Balancy.LibraryMethods.WebSocket.DisconnectRequestDelegate))]
         private static void StaticOnDisconnectRequest(int connectionId)
         {
-            _mainThreadInstance.Enqueue(() =>
+            UnityMainThreadDispatcher.EnqueueFromAnyThread(() =>
             {
                 _instance?.OnDisconnectRequest(connectionId);
             });
@@ -148,7 +148,7 @@ namespace Balancy.Network
         [AOT.MonoPInvokeCallback(typeof(Balancy.LibraryMethods.WebSocket.SubscribeEventDelegate))]
         private static void StaticOnSubscribeEvent(int connectionId, string eventName)
         {
-            _mainThreadInstance.Enqueue(() =>
+            UnityMainThreadDispatcher.EnqueueFromAnyThread(() =>
             {
                 _instance?.OnSubscribeEvent(connectionId, eventName);
             });
@@ -157,7 +157,7 @@ namespace Balancy.Network
         [AOT.MonoPInvokeCallback(typeof(Balancy.LibraryMethods.WebSocket.SendAckDelegate))]
         private static void StaticOnSendAck(int connectionId, int ackId, string responseData)
         {
-            _mainThreadInstance.Enqueue(() =>
+            UnityMainThreadDispatcher.EnqueueFromAnyThread(() =>
             {
                 _instance?.OnSendAck(connectionId, ackId, responseData);
             });
@@ -166,7 +166,7 @@ namespace Balancy.Network
         [AOT.MonoPInvokeCallback(typeof(Balancy.LibraryMethods.WebSocket.SendMessageDelegate))]
         private static void StaticOnSendMessage(int connectionId, string eventName, string data)
         {
-            _mainThreadInstance.Enqueue(() =>
+            UnityMainThreadDispatcher.EnqueueFromAnyThread(() =>
             {
                 _instance?.OnSendMessage(connectionId, eventName, data);
             });
