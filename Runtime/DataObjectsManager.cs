@@ -124,6 +124,7 @@ namespace Balancy.Dictionaries
 
             protected abstract void OnObjectLoaded();
             protected abstract void OnObjectLoadFailed();
+            public abstract void CancelPending();
         }
 
         private class OneObjectSprite : OneObjectBase
@@ -367,15 +368,29 @@ namespace Balancy.Dictionaries
                 Sprite = sprite;
                 Status = Sprite != null ? Status.Loaded : Status.None;
 
-                foreach (var info in _callbacks)
+                var callbacks = _callbacks.ToArray();
+                _callbacks.Clear();
+                foreach (var info in callbacks)
                 {
                     if (info.LoadHandler.GetStatus() == AsyncLoadHandler.Status.Loading)
                     {
                         info.LoadHandler.Finish();
-                        info.Callback?.Invoke(Sprite);
+                        try
+                        {
+                            info.Callback?.Invoke(Sprite);
+                        }
+                        catch (Exception exception)
+                        {
+                            Debug.LogException(exception);
+                        }
                     }
                 }
-                
+            }
+
+            public override void CancelPending()
+            {
+                foreach (var info in _callbacks)
+                    info.LoadHandler.Cancel();
                 _callbacks.Clear();
             }
 
@@ -424,15 +439,29 @@ namespace Balancy.Dictionaries
                 FilePath = path;
                 Status = !string.IsNullOrEmpty(FilePath) ? Status.Loaded : Status.None;
 
-                foreach (var info in _callbacks)
+                var callbacks = _callbacks.ToArray();
+                _callbacks.Clear();
+                foreach (var info in callbacks)
                 {
                     if (info.LoadHandler.GetStatus() == AsyncLoadHandler.Status.Loading)
                     {
                         info.LoadHandler.Finish();
-                        info.Callback?.Invoke(FilePath);
+                        try
+                        {
+                            info.Callback?.Invoke(FilePath);
+                        }
+                        catch (Exception exception)
+                        {
+                            Debug.LogException(exception);
+                        }
                     }
                 }
-                
+            }
+
+            public override void CancelPending()
+            {
+                foreach (var info in _callbacks)
+                    info.LoadHandler.Cancel();
                 _callbacks.Clear();
             }
 
@@ -466,15 +495,29 @@ namespace Balancy.Dictionaries
                 Path = path;
                 Loaded = true;
 
-                foreach (var info in _callbacks)
+                var callbacks = _callbacks.ToArray();
+                _callbacks.Clear();
+                foreach (var info in callbacks)
                 {
                     if (info.LoadHandler.GetStatus() == AsyncLoadHandler.Status.Loading)
                     {
                         info.LoadHandler.Finish();
-                        info.Callback?.Invoke(PathInStorage);
+                        try
+                        {
+                            info.Callback?.Invoke(PathInStorage);
+                        }
+                        catch (Exception exception)
+                        {
+                            Debug.LogException(exception);
+                        }
                     }
                 }
-                
+            }
+
+            public void CancelPending()
+            {
+                foreach (var info in _callbacks)
+                    info.LoadHandler.Cancel();
                 _callbacks.Clear();
             }
 
@@ -676,6 +719,7 @@ namespace Balancy.Dictionaries
         {
             if (AllObjects.TryGetValue(id, out var oneObject))
             {
+                oneObject.CancelPending();
                 if (oneObject is OneObjectSprite sprite && sprite.Sprite != null)
                 {
                     Object.Destroy(sprite.Sprite.texture);
@@ -689,12 +733,15 @@ namespace Balancy.Dictionaries
         {
             foreach (var kvp in AllObjects)
             {
+                kvp.Value.CancelPending();
                 if (kvp.Value is OneObjectSprite sprite && sprite.Sprite != null)
                 {
                     Object.Destroy(sprite.Sprite.texture);
                     Object.Destroy(sprite.Sprite);
                 }
             }
+            foreach (var view in AllViews.Values)
+                view.CancelPending();
             AllObjects.Clear();
             AllViews.Clear();
 #if UNITY_WEBGL && !UNITY_EDITOR
