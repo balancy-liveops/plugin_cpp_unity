@@ -40,8 +40,10 @@ namespace Balancy.Network
 
         // Active requests tracking
         private Dictionary<int, UnityWebRequest> _activeRequests = new Dictionary<int, UnityWebRequest>();
+        private bool _resourcesCleaned;
 
         private static volatile bool _isStopped = false;
+        private static int _generation;
 
         public static bool IsStopped => _isStopped;
 
@@ -59,6 +61,7 @@ namespace Balancy.Network
             if (_instance != null) return;
 
             _isStopped = false;
+            _generation++;
 
             var guid = Guid.NewGuid().ToString();
             var go = new GameObject("Balancy_WebRequestBridge_" + guid);
@@ -82,6 +85,7 @@ namespace Balancy.Network
         public static void Clear()
         {
             _isStopped = true;
+            _generation++;
 
             if (_instance == null) return;
 
@@ -99,8 +103,11 @@ namespace Balancy.Network
         // Method to manually clean up resources
         private void CleanupResources()
         {
-            balancyRegisterWebRequestCallback(null);
-            balancyRegisterFileLoadCallback(null);
+            if (_resourcesCleaned) return;
+            _resourcesCleaned = true;
+
+            InvokeNative(() => balancyRegisterWebRequestCallback(null));
+            InvokeNative(() => balancyRegisterFileLoadCallback(null));
             
             foreach (var request in _activeRequests.Values)
             {
@@ -131,11 +138,12 @@ namespace Balancy.Network
         [AOT.MonoPInvokeCallback(typeof(WebRequestCallbackDelegate))]
         private static void StaticOnWebRequestReceived(int requestId, string url, string method, string body, string headersJson, int timeoutSeconds)
         {
+            var generation = _generation;
             UnityMainThreadDispatcher.EnqueueFromAnyThread(() =>
             {
-                if (_instance != null)
+                if (!_isStopped && generation == _generation && _instance != null)
                     _instance.OnWebRequestReceived(requestId, url, method, body, headersJson, timeoutSeconds);
-                else
+                else if (!_isStopped && generation == _generation)
                     Debug.LogError("UnityWebRequestBridge instance not initialized.");
             });
         }
@@ -162,11 +170,12 @@ namespace Balancy.Network
         [AOT.MonoPInvokeCallback(typeof(FileLoadCallbackDelegate))]
         private static void StaticOnFileLoadReceived(int requestId, string url, int timeoutSeconds)
         {
+            var generation = _generation;
             UnityMainThreadDispatcher.EnqueueFromAnyThread(() =>
             {
-                if (_instance != null)
+                if (!_isStopped && generation == _generation && _instance != null)
                     _instance.OnFileLoadReceived(requestId, url, timeoutSeconds);
-                else
+                else if (!_isStopped && generation == _generation)
                     Debug.LogError("UnityWebRequestBridge instance not initialized.");
             });
         }
@@ -192,10 +201,12 @@ namespace Balancy.Network
         // Get or create an HttpClient with the specified timeout
         private static HttpClient GetHttpClient(int timeoutSeconds)
         {
+            var normalizedTimeout = NormalizeHttpTimeout(timeoutSeconds);
+            var cacheKey = timeoutSeconds <= 0 ? 0 : timeoutSeconds;
             lock (_httpClientLock)
             {
                 // Use the timeout as a key to get a client with that timeout
-                if (_httpClients.TryGetValue(timeoutSeconds, out HttpClient client))
+                if (_httpClients.TryGetValue(cacheKey, out HttpClient client))
                 {
                     return client;
                 }
@@ -203,89 +214,71 @@ namespace Balancy.Network
                 // Create a new client with the specified timeout
                 client = new HttpClient
                 {
-                    Timeout = TimeSpan.FromSeconds(timeoutSeconds)
+                    Timeout = normalizedTimeout
                 };
                 
-                _httpClients[timeoutSeconds] = client;
+                _httpClients[cacheKey] = client;
                 return client;
             }
         }
 
+        private static TimeSpan NormalizeHttpTimeout(int timeoutSeconds) =>
+            timeoutSeconds <= 0 ? System.Threading.Timeout.InfiniteTimeSpan : TimeSpan.FromSeconds(timeoutSeconds);
+
         // Process web request with HttpClient for Editor mode
         private async void ProcessWebRequestWithHttpClient(int requestId, string url, string method, string body, string headersJson, int timeoutSeconds)
         {
-            // Get a client with the appropriate timeout
-            HttpClient httpClient = GetHttpClient(timeoutSeconds);
-
             try
             {
-                // Create request message
-                HttpMethod httpMethod = new HttpMethod(method);
-                HttpRequestMessage request = new HttpRequestMessage(httpMethod, url);
-
-                // Add request body if present
-                if (!string.IsNullOrEmpty(body) && (method == "POST" || method == "PUT" || method == "PATCH"))
+                var httpClient = GetHttpClient(timeoutSeconds);
+                using (var request = new HttpRequestMessage(new HttpMethod(method), url))
                 {
-                    request.Content = new StringContent(body, Encoding.UTF8, "application/json");
-                }
+                    if (!string.IsNullOrEmpty(body) &&
+                        (method == "POST" || method == "PUT" || method == "PATCH"))
+                        request.Content = new StringContent(body, Encoding.UTF8, "application/json");
 
-                // Add headers if present
-                if (!string.IsNullOrEmpty(headersJson))
-                {
-                    try
+                    if (!string.IsNullOrEmpty(headersJson))
                     {
                         Dictionary<string, string> headers = ParseHeaders(headersJson);
                         foreach (var header in headers)
                         {
-                            // Skip content type if we've already set it with the request body
-                            if (header.Key.ToLower() == "content-type" && request.Content != null)
+                            if (string.Equals(header.Key, "content-type",
+                                    StringComparison.OrdinalIgnoreCase) && request.Content != null)
                                 continue;
-                                
-                            // Some headers can't be set directly on the request
-                            if (!header.Key.StartsWith("Content-"))
+
+                            if (!header.Key.StartsWith("Content-", StringComparison.OrdinalIgnoreCase))
                                 request.Headers.TryAddWithoutValidation(header.Key, header.Value);
                             else if (request.Content != null)
                                 request.Content.Headers.TryAddWithoutValidation(header.Key, header.Value);
                         }
                     }
-                    catch (Exception ex)
+
+                    using (var response = await httpClient.SendAsync(request))
                     {
-                        Debug.LogError($"Error parsing headers JSON: {ex.Message}");
-                    }
-                }
+                        if (_isStopped) return;
 
-                // Send request
-                HttpResponseMessage response = await httpClient.SendAsync(request);
+                        byte[] data = await response.Content.ReadAsByteArrayAsync();
+                        bool success = response.IsSuccessStatusCode;
+                        int errorCode = (int)response.StatusCode;
+                        IntPtr dataPtr = IntPtr.Zero;
+                        int dataSize = 0;
+                        if (data != null && data.Length > 0)
+                        {
+                            dataSize = data.Length;
+                            dataPtr = Marshal.AllocHGlobal(dataSize);
+                            Marshal.Copy(data, 0, dataPtr, dataSize);
+                        }
 
-                if (_isStopped) return;
-
-                // Read response
-                byte[] data = await response.Content.ReadAsByteArrayAsync();
-                bool success = response.IsSuccessStatusCode;
-                int errorCode = (int)response.StatusCode;
-
-                // Convert data to a native pointer
-                IntPtr dataPtr = IntPtr.Zero;
-                int dataSize = 0;
-
-                if (data != null && data.Length > 0)
-                {
-                    dataSize = data.Length;
-                    dataPtr = Marshal.AllocHGlobal(dataSize);
-                    Marshal.Copy(data, 0, dataPtr, dataSize);
-                }
-
-                try
-                {
-                    // Send the result back to the native plugin
-                    balancyHandleWebRequestComplete(requestId, success, errorCode, dataPtr, dataSize);
-                }
-                finally
-                {
-                    // Clean up
-                    if (dataPtr != IntPtr.Zero)
-                    {
-                        Marshal.FreeHGlobal(dataPtr);
+                        try
+                        {
+                            if (!_isStopped)
+                                InvokeNative(() => balancyHandleWebRequestComplete(requestId, success, errorCode, dataPtr, dataSize));
+                        }
+                        finally
+                        {
+                            if (dataPtr != IntPtr.Zero)
+                                Marshal.FreeHGlobal(dataPtr);
+                        }
                     }
                 }
             }
@@ -296,7 +289,7 @@ namespace Balancy.Network
                 Debug.LogError($"HTTP request failed: {ex.Message}");
 
                 // Create error message as byte array
-                string errorMessage = $"{{\"error\":\"{ex.Message}\"}}";
+                string errorMessage = JsonUtility.ToJson(new WebRequestError { error = ex.Message });
                 byte[] errorData = Encoding.UTF8.GetBytes(errorMessage);
 
                 // Convert to native pointer
@@ -306,7 +299,8 @@ namespace Balancy.Network
                 try
                 {
                     // Send failure back to native plugin
-                    balancyHandleWebRequestComplete(requestId, false, 0, dataPtr, errorData.Length);
+                    if (!_isStopped)
+                        InvokeNative(() => balancyHandleWebRequestComplete(requestId, false, 0, dataPtr, errorData.Length));
                 }
                 finally
                 {
@@ -319,48 +313,36 @@ namespace Balancy.Network
         // Process file load with HttpClient for Editor mode
         private async void ProcessFileLoadWithHttpClient(int requestId, string url, int timeoutSeconds)
         {
-            // Get a client with the appropriate timeout
-            HttpClient httpClient = GetHttpClient(timeoutSeconds);
-
             try
             {
-                // Download the file
-                HttpResponseMessage response = await httpClient.GetAsync(url);
-
-                if (_isStopped) return;
-
-                byte[] data = await response.Content.ReadAsByteArrayAsync();
-                bool success = response.IsSuccessStatusCode;
-                int errorCode = (int)response.StatusCode;
-
-                string contentType = "";
-                if (response.Content.Headers.ContentType != null)
+                var httpClient = GetHttpClient(timeoutSeconds);
+                using (var response = await httpClient.GetAsync(url))
                 {
-                    contentType = response.Content.Headers.ContentType.MediaType ?? "";
-                }
+                    if (_isStopped) return;
 
-                // Convert data to a native pointer
-                IntPtr dataPtr = IntPtr.Zero;
-                int dataSize = 0;
-
-                if (data != null && data.Length > 0)
-                {
-                    dataSize = data.Length;
-                    dataPtr = Marshal.AllocHGlobal(dataSize);
-                    Marshal.Copy(data, 0, dataPtr, dataSize);
-                }
-
-                try
-                {
-                    // Send the result back to the native plugin
-                    balancyHandleFileLoadComplete(requestId, success, errorCode, dataPtr, dataSize, contentType);
-                }
-                finally
-                {
-                    // Clean up
-                    if (dataPtr != IntPtr.Zero)
+                    byte[] data = await response.Content.ReadAsByteArrayAsync();
+                    bool success = response.IsSuccessStatusCode;
+                    int errorCode = (int)response.StatusCode;
+                    string contentType = response.Content.Headers.ContentType?.MediaType ?? "";
+                    IntPtr dataPtr = IntPtr.Zero;
+                    int dataSize = 0;
+                    if (data != null && data.Length > 0)
                     {
-                        Marshal.FreeHGlobal(dataPtr);
+                        dataSize = data.Length;
+                        dataPtr = Marshal.AllocHGlobal(dataSize);
+                        Marshal.Copy(data, 0, dataPtr, dataSize);
+                    }
+
+                    try
+                    {
+                        if (!_isStopped)
+                            InvokeNative(() => balancyHandleFileLoadComplete(requestId, success, errorCode,
+                                dataPtr, dataSize, contentType));
+                    }
+                    finally
+                    {
+                        if (dataPtr != IntPtr.Zero)
+                            Marshal.FreeHGlobal(dataPtr);
                     }
                 }
             }
@@ -371,7 +353,8 @@ namespace Balancy.Network
                 Debug.LogError($"File download failed: {ex.Message}");
 
                 // Send failure back to native plugin
-                balancyHandleFileLoadComplete(requestId, false, 0, IntPtr.Zero, 0, "");
+                if (!_isStopped)
+                    InvokeNative(() => balancyHandleFileLoadComplete(requestId, false, 0, IntPtr.Zero, 0, ""));
             }
         }
 #endif
@@ -383,7 +366,7 @@ namespace Balancy.Network
             UnityWebRequest webRequest = new UnityWebRequest(url, method);
 
             // Set timeout
-            webRequest.timeout = timeoutSeconds;
+            webRequest.timeout = NormalizeUnityTimeout(timeoutSeconds);
 
             // Add request body if present
             if (!string.IsNullOrEmpty(body))
@@ -408,6 +391,9 @@ namespace Balancy.Network
                 catch (Exception ex)
                 {
                     Debug.LogError($"Error parsing headers JSON: {ex.Message}");
+                    webRequest.Dispose();
+                    ReportWebRequestFailure(requestId, ex.Message);
+                    yield break;
                 }
             }
 
@@ -448,7 +434,8 @@ namespace Balancy.Network
             try
             {
                 // Send the result back to the native plugin
-                balancyHandleWebRequestComplete(requestId, success, errorCode, dataPtr, dataSize);
+                if (!_isStopped)
+                    InvokeNative(() => balancyHandleWebRequestComplete(requestId, success, errorCode, dataPtr, dataSize));
             }
             finally
             {
@@ -463,27 +450,96 @@ namespace Balancy.Network
             }
         }
         
-        private Dictionary<string, string> ParseHeaders(string json)
+        private static Dictionary<string, string> ParseHeaders(string json)
         {
-            Dictionary<string, string> headers = new Dictionary<string, string>();
+            var headers = new Dictionary<string, string>();
             if (string.IsNullOrEmpty(json)) return headers;
 
-            string trimmed = json.Trim('{', '}');
-            var pairs = trimmed.Split(',');
+            var index = 0;
+            SkipWhitespace(json, ref index);
+            Expect(json, ref index, '{');
+            SkipWhitespace(json, ref index);
+            if (TryConsume(json, ref index, '}'))
+                return headers;
 
-            foreach (var pair in pairs)
+            while (true)
             {
-                var keyValue = pair.Split(':');
-                if (keyValue.Length == 2)
-                {
-                    string key = keyValue[0].Trim().Trim('"');
-                    string value = keyValue[1].Trim().Trim('"');
-                    headers[key] = value;
-                }
+                var key = ParseJsonString(json, ref index);
+                SkipWhitespace(json, ref index);
+                Expect(json, ref index, ':');
+                SkipWhitespace(json, ref index);
+                var value = ParseJsonString(json, ref index);
+                headers[key] = value;
+                SkipWhitespace(json, ref index);
+                if (TryConsume(json, ref index, '}')) break;
+                Expect(json, ref index, ',');
+                SkipWhitespace(json, ref index);
             }
 
+            SkipWhitespace(json, ref index);
+            if (index != json.Length)
+                throw new FormatException("Unexpected data after headers JSON object");
             return headers;
         }
+
+        private static string ParseJsonString(string json, ref int index)
+        {
+            Expect(json, ref index, '"');
+            var value = new StringBuilder();
+            while (index < json.Length)
+            {
+                var character = json[index++];
+                if (character == '"') return value.ToString();
+                if (character != '\\')
+                {
+                    value.Append(character);
+                    continue;
+                }
+
+                if (index >= json.Length) throw new FormatException("Incomplete JSON escape");
+                switch (json[index++])
+                {
+                    case '"': value.Append('"'); break;
+                    case '\\': value.Append('\\'); break;
+                    case '/': value.Append('/'); break;
+                    case 'b': value.Append('\b'); break;
+                    case 'f': value.Append('\f'); break;
+                    case 'n': value.Append('\n'); break;
+                    case 'r': value.Append('\r'); break;
+                    case 't': value.Append('\t'); break;
+                    case 'u':
+                        if (index + 4 > json.Length) throw new FormatException("Incomplete Unicode escape");
+                        if (!ushort.TryParse(json.Substring(index, 4),
+                                System.Globalization.NumberStyles.HexNumber, null, out var codePoint))
+                            throw new FormatException("Invalid Unicode escape");
+                        value.Append((char)codePoint);
+                        index += 4;
+                        break;
+                    default: throw new FormatException("Invalid JSON escape");
+                }
+            }
+            throw new FormatException("Unterminated JSON string");
+        }
+
+        private static void SkipWhitespace(string json, ref int index)
+        {
+            while (index < json.Length && char.IsWhiteSpace(json[index])) index++;
+        }
+
+        private static bool TryConsume(string json, ref int index, char expected)
+        {
+            if (index >= json.Length || json[index] != expected) return false;
+            index++;
+            return true;
+        }
+
+        private static void Expect(string json, ref int index, char expected)
+        {
+            if (!TryConsume(json, ref index, expected))
+                throw new FormatException($"Expected '{expected}' at offset {index}");
+        }
+
+        private static int NormalizeUnityTimeout(int timeoutSeconds) => Math.Max(0, timeoutSeconds);
 
         // Coroutine to handle a file load (for runtime)
         private IEnumerator ProcessFileLoad(int requestId, string url, int timeoutSeconds)
@@ -492,7 +548,7 @@ namespace Balancy.Network
             UnityWebRequest webRequest = UnityWebRequest.Get(url);
             
             // Set timeout
-            webRequest.timeout = timeoutSeconds;
+            webRequest.timeout = NormalizeUnityTimeout(timeoutSeconds);
 
             // Track the request
             _activeRequests[requestId] = webRequest;
@@ -546,7 +602,8 @@ namespace Balancy.Network
             try
             {
                 // Send the result back to the native plugin
-                balancyHandleFileLoadComplete(requestId, success, errorCode, dataPtr, dataSize, contentType);
+                if (!_isStopped)
+                    InvokeNative(() => balancyHandleFileLoadComplete(requestId, success, errorCode, dataPtr, dataSize, contentType));
             }
             finally
             {
@@ -570,6 +627,37 @@ namespace Balancy.Network
                 _instance._activeRequests.Remove(requestId);
                 request.Dispose();
             }
+        }
+
+        private static void InvokeNative(Action callback)
+        {
+            try { callback(); }
+            catch (Exception exception) { Debug.LogException(exception); }
+        }
+
+        private static void ReportWebRequestFailure(int requestId, string message)
+        {
+            if (_isStopped) return;
+            var errorData = Encoding.UTF8.GetBytes(JsonUtility.ToJson(
+                new WebRequestError { error = message ?? "Request failed" }));
+            var dataPtr = Marshal.AllocHGlobal(errorData.Length);
+            try
+            {
+                Marshal.Copy(errorData, 0, dataPtr, errorData.Length);
+                if (!_isStopped)
+                    InvokeNative(() => balancyHandleWebRequestComplete(
+                        requestId, false, 0, dataPtr, errorData.Length));
+            }
+            finally
+            {
+                Marshal.FreeHGlobal(dataPtr);
+            }
+        }
+
+        [Serializable]
+        private class WebRequestError
+        {
+            public string error;
         }
     }
 }

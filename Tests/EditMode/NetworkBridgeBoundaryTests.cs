@@ -54,6 +54,49 @@ namespace Balancy.Tests
         }
 
         [Test]
+        public void WebRequestHeadersPreserveJsonEscapesCommasAndColons()
+        {
+            var parseHeaders = typeof(UnityWebRequestBridge)
+                .GetMethod("ParseHeaders", BindingFlags.Static | BindingFlags.NonPublic);
+            const string json = "{\"Authorization\":\"Bearer a:b,c\",\"X-Weird\":\"quote\\\" slash\\\\ line\\n unicode\\u263A\"}";
+
+            var headers = (Dictionary<string, string>)parseHeaders.Invoke(null, new object[] { json });
+
+            Assert.That(headers["Authorization"], Is.EqualTo("Bearer a:b,c"));
+            Assert.That(headers["X-Weird"], Is.EqualTo("quote\" slash\\ line\n unicode☺"));
+        }
+
+        [TestCase("{\"Authorization\":\"unterminated}")]
+        [TestCase("{\"Authorization\":123}")]
+        [TestCase("{\"A\":\"B\"} trailing")]
+        public void MalformedWebRequestHeadersAreRejected(string json)
+        {
+            var parseHeaders = typeof(UnityWebRequestBridge)
+                .GetMethod("ParseHeaders", BindingFlags.Static | BindingFlags.NonPublic);
+
+            var exception = Assert.Throws<TargetInvocationException>(() =>
+                parseHeaders.Invoke(null, new object[] { json }));
+            Assert.That(exception.InnerException, Is.TypeOf<FormatException>());
+        }
+
+        [Test]
+        public void NonPositiveNetworkTimeoutsHaveDefinedSemantics()
+        {
+            var normalizeEditor = typeof(UnityWebRequestBridge)
+                .GetMethod("NormalizeHttpTimeout", BindingFlags.Static | BindingFlags.NonPublic);
+            var normalizeRuntime = typeof(UnityWebRequestBridge)
+                .GetMethod("NormalizeUnityTimeout", BindingFlags.Static | BindingFlags.NonPublic);
+
+            Assert.That(normalizeEditor.Invoke(null, new object[] { 0 }),
+                Is.EqualTo(System.Threading.Timeout.InfiniteTimeSpan));
+            Assert.That(normalizeEditor.Invoke(null, new object[] { -10 }),
+                Is.EqualTo(System.Threading.Timeout.InfiniteTimeSpan));
+            Assert.That(normalizeEditor.Invoke(null, new object[] { 7 }), Is.EqualTo(TimeSpan.FromSeconds(7)));
+            Assert.That(normalizeRuntime.Invoke(null, new object[] { -10 }), Is.EqualTo(0));
+            Assert.That(normalizeRuntime.Invoke(null, new object[] { 7 }), Is.EqualTo(7));
+        }
+
+        [Test]
         public void WebSocketCallbacksOnlyBelongToTheCurrentLiveConnection()
         {
             var canForward = typeof(UnityWebSocketBridge)
