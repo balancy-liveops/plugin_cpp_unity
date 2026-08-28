@@ -199,7 +199,14 @@ namespace Balancy
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.ModelRefreshedCallback))]
         private static void ModelRefreshed(string unnyId, IntPtr newPointer)
         {
-            CMS.ModelRefreshed(unnyId, newPointer);
+            try
+            {
+                CMS.ModelRefreshed(unnyId, newPointer);
+            }
+            catch (Exception exception)
+            {
+                Debug.LogException(exception);
+            }
         }
 
         private static void DataUpdated(bool dictsChanged, bool profileChanged)

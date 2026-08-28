@@ -84,19 +84,37 @@ namespace Balancy
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.ConditionalTemplates.ConditionalTemplateChangedCallback))]
         private static void OnConditionalTemplateChangedStatic(string templateName, string unnyId, bool passed)
         {
-            if (string.IsNullOrEmpty(unnyId))
-                return;
-
-            BaseModel model = null;
-            foreach (var kvp in AllConditionalTemplateSubscriptions)
+            try
             {
-                if (kvp.Value.TemplateName == templateName)
+                if (string.IsNullOrEmpty(unnyId))
+                    return;
+
+                BaseModel model = null;
+                var subscriptions = new List<ConditionalTemplateSubscription>(
+                    AllConditionalTemplateSubscriptions.Values);
+                foreach (var subscription in subscriptions)
                 {
+                    if (subscription.TemplateName != templateName)
+                        continue;
+
                     if (model == null)
                         model = GetModelByUnnyId<BaseModel>(unnyId);
-                    if (model != null)
-                        kvp.Value.Callback?.Invoke(model, passed);
+                    if (model == null)
+                        continue;
+
+                    try
+                    {
+                        subscription.Callback?.Invoke(model, passed);
+                    }
+                    catch (Exception exception)
+                    {
+                        UnityEngine.Debug.LogException(exception);
+                    }
                 }
+            }
+            catch (Exception exception)
+            {
+                UnityEngine.Debug.LogException(exception);
             }
         }
 
