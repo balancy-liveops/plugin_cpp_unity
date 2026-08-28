@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Reflection;
 using Balancy.Network;
 using NUnit.Framework;
@@ -48,6 +49,23 @@ namespace Balancy.Tests
                 8, "https://example.invalid/file", 10);
 
             Assert.That(QueueCount(), Is.EqualTo(2));
+        }
+
+        [Test]
+        public void WebSocketCallbacksOnlyBelongToTheCurrentLiveConnection()
+        {
+            var canForward = typeof(UnityWebSocketBridge)
+                .GetMethod("CanForwardForState", BindingFlags.Static | BindingFlags.NonPublic);
+            var previous = new WebSocketConnection(17, null);
+            var current = new WebSocketConnection(17, null);
+            var active = new Dictionary<int, WebSocketConnection> { [17] = current };
+
+            Assert.That(canForward.Invoke(null, new object[] { true, active, 17, current }), Is.True);
+            Assert.That(canForward.Invoke(null, new object[] { true, active, 17, previous }), Is.False);
+            Assert.That(canForward.Invoke(null, new object[] { false, active, 17, current }), Is.False);
+
+            previous.Dispose();
+            current.Dispose();
         }
 
         private static void AssertNativeCallbackQueues(Type type, string methodName, params object[] arguments)

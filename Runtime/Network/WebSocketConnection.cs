@@ -143,14 +143,6 @@ namespace Balancy.Network
             _bridge = bridge;
         }
 
-        public static void TEST()
-        {
-            var wsServerUrl = "wss://wss.balancy.dev";
-            var rawJson = "{\"token\":\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyIjp7Il9pZCI6MTIwODQ5Mjg1LCJkYXRlIjoxNzUxNjMxMzQ3ODE3fSwiZ2FtZSI6eyJfaWQiOjM0OTAsImJpbmRUeXBlIjo3LCJ1c2VyVmFsdWUiOiJERTIzMDlFQS0wRTgxLTUzMUMtQkREQy1EMzVCQTRDOUZBMTYifSwiaWF0IjoxNzUxNjMxMzQ3LCJleHAiOjE3NTQyMjMzNDd9.3Q249aW0zeZjiblmZ3apFm6GgVIyEHiQ2-PVH0Cvi0U\",\"userId\":\"2bc08ca4-501e-11f0-b88f-1fec53a055ba\",\"gameId\":\"65133930-4d25-11f0-b843-1fec53a055ba\",\"environment\":0,\"deviceId\":\"DE2309EA-0E81-531C-BDDC-D35BA4C9FA16\"}";
-            var connection = new WebSocketConnection(1, null);
-            connection.ConnectAsync(wsServerUrl, rawJson);
-        }
-
         public async Task ConnectAsync(string url, string authDataJson)
         {
             if (_disposed) return;
@@ -209,21 +201,20 @@ namespace Balancy.Network
                 {
                     try
                     {
-                        Debug.Log($"🔍 Raw auth JSON from C++: {authDataJson}");
                         _authData = JsonUtility.FromJson<SocketIOAuthData>(authDataJson);
-                        Debug.Log($"🔍 Parsed auth data: gameId='{_authData.gameId}', env={_authData.environment}, userId='{_authData.userId}', token='{_authData.token}'");
+                        Debug.Log($"🔍 Parsed auth data: gameId='{_authData.gameId}', env={_authData.environment}, userId='{_authData.userId}', hasToken={!string.IsNullOrEmpty(_authData.token)}");
                         
                         // Validate UUID format
                         if (string.IsNullOrEmpty(_authData.gameId))
                         {
                             Debug.LogError("🚨 gameId is empty!");
-                            _bridge?.NotifyConnectionStatusChanged(_connectionId, false, "gameId is empty");
+                            _bridge?.NotifyConnectionStatusChanged(_connectionId, false, "gameId is empty", this);
                             return;
                         }
                         else if (_authData.gameId.Length != 36 || !_authData.gameId.Contains("-"))
                         {
                             Debug.LogError($"🚨 gameId '{_authData.gameId}' is not a valid UUID format (should be 36 chars with dashes)!");
-                            _bridge?.NotifyConnectionStatusChanged(_connectionId, false, $"gameId '{_authData.gameId}' is not a valid UUID format");
+                            _bridge?.NotifyConnectionStatusChanged(_connectionId, false, $"gameId '{_authData.gameId}' is not a valid UUID format", this);
                             return;
                         }
                         
@@ -231,14 +222,14 @@ namespace Balancy.Network
                         if (_authData.environment < 0 || _authData.environment > 2)
                         {
                             Debug.LogError($"🚨 environment '{_authData.environment}' is invalid (should be 0, 1, or 2)!");
-                            _bridge?.NotifyConnectionStatusChanged(_connectionId, false, $"environment '{_authData.environment}' is invalid");
+                            _bridge?.NotifyConnectionStatusChanged(_connectionId, false, $"environment '{_authData.environment}' is invalid", this);
                             return;
                         }
                     }
                     catch (Exception ex)
                     {
                         Debug.LogError($"Failed to parse auth data: {ex.Message}");
-                        _bridge?.NotifyConnectionStatusChanged(_connectionId, false, "Invalid auth data: " + ex.Message);
+                        _bridge?.NotifyConnectionStatusChanged(_connectionId, false, "Invalid auth data: " + ex.Message, this);
                         return;
                     }
                 }
@@ -266,7 +257,7 @@ namespace Balancy.Network
                 
                 _isConnected = true;
                 _reconnectAttempts = 0; // Reset reconnection counter on successful connection
-                _bridge?.NotifyConnectionStatusChanged(_connectionId, true);
+                _bridge?.NotifyConnectionStatusChanged(_connectionId, true, "", this);
 
                 // Start background tasks and track them
                 _receiveLoopTask = Task.Run(ReceiveLoop);
@@ -277,7 +268,7 @@ namespace Balancy.Network
             catch (Exception ex)
             {
                 Debug.LogError($"WebSocket connection failed (ID: {_connectionId}): {ex.Message}");
-                _bridge?.NotifyConnectionStatusChanged(_connectionId, false, ex.Message);
+                _bridge?.NotifyConnectionStatusChanged(_connectionId, false, ex.Message, this);
                 
                 // Only attempt to reconnect if not already in reconnection loop
                 if (!_isReconnecting)
@@ -385,7 +376,7 @@ namespace Balancy.Network
                 catch (Exception ex)
                 {
                     Debug.LogError($"WebSocket receive error (ID: {_connectionId}): {ex.Message}");
-                    _bridge?.NotifySocketIOError(_connectionId, -1, ex.Message);
+                    _bridge?.NotifySocketIOError(_connectionId, -1, ex.Message, this);
                     await HandleDisconnection("Receive error: " + ex.Message);
                     break;
                 }
@@ -513,14 +504,14 @@ namespace Balancy.Network
                             }
                             
                             // Now notify C++ WITHOUT ack requirement (needsAck=false, ackId=0)
-                            _bridge?.NotifySocketIOEvent(_connectionId, eventName, eventData, false, 0);
+                            _bridge?.NotifySocketIOEvent(_connectionId, eventName, eventData, false, 0, this);
                             return;
                         }
                         
                         // For other events, check subscription
                         if (_subscribedEvents.Contains(eventName) || _subscribedEvents.Count == 0)
                         {
-                            _bridge?.NotifySocketIOEvent(_connectionId, eventName, eventData, hasAckId, ackId);
+                            _bridge?.NotifySocketIOEvent(_connectionId, eventName, eventData, hasAckId, ackId, this);
                         }
                         else
                         {
@@ -547,7 +538,7 @@ namespace Balancy.Network
                         if (SimpleJsonParser.TryParseInt(ackParts[0], out int ackId))
                         {
                             string responseData = ackParts[1];
-                            _bridge?.NotifyAckResponse(_connectionId, ackId, responseData);
+                            _bridge?.NotifyAckResponse(_connectionId, ackId, responseData, this);
                         }
                     }
                 }
@@ -582,7 +573,7 @@ namespace Balancy.Network
                     }
                     
                     // Notify bridge about the error
-                    _bridge?.NotifySocketIOError(_connectionId, 44, errorJson);
+                    _bridge?.NotifySocketIOError(_connectionId, 44, errorJson, this);
                     await HandleDisconnection("Socket.IO Error: " + errorJson);
                     return;
                 }
@@ -646,7 +637,7 @@ namespace Balancy.Network
             _isConnected = false;
             _handshakeCompleted = false;
             Debug.Log($"WebSocket disconnected (ID: {_connectionId}): {reason}");
-            _bridge?.NotifyConnectionStatusChanged(_connectionId, false, reason);
+            _bridge?.NotifyConnectionStatusChanged(_connectionId, false, reason, this);
 
             // FIXED: Properly cleanup before reconnecting
             try
@@ -715,7 +706,7 @@ namespace Balancy.Network
                 if (_reconnectAttempts >= MAX_RECONNECT_ATTEMPTS)
                 {
                     Debug.LogError($"Max reconnection attempts ({MAX_RECONNECT_ATTEMPTS}) reached. Giving up (ID: {_connectionId})");
-                    _bridge?.NotifyConnectionStatusChanged(_connectionId, false, $"Max reconnection attempts reached: {reason}");
+                    _bridge?.NotifyConnectionStatusChanged(_connectionId, false, $"Max reconnection attempts reached: {reason}", this);
                 }
             }
             finally
@@ -753,7 +744,7 @@ namespace Balancy.Network
                 
                 authJson += "}";
 
-                Debug.Log($"🔐 Sending connect with auth (ID: {_connectionId}): {authJson}");
+                Debug.Log($"🔐 Sending connect with auth (ID: {_connectionId}, userId='{_authData.userId}')");
                 
                 // Try both formats - first without "auth" wrapper
                 string connectMessage = $"40{authJson}";
@@ -783,10 +774,7 @@ namespace Balancy.Network
             
             try
             {
-                if (_webSocket?.State == WebSocketState.Open)
-                {
-                    _webSocket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Disposing", CancellationToken.None);
-                }
+                _webSocket?.Abort();
             }
             catch (Exception ex)
             {

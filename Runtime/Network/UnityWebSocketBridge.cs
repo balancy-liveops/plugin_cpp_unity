@@ -56,6 +56,7 @@ namespace Balancy.Network
         // Active connections tracking
         private Dictionary<int, WebSocketConnection> _activeConnections = new Dictionary<int, WebSocketConnection>();
         private static UnityMainThreadDispatcher _mainThreadInstance;
+        private bool _acceptingCallbacks;
 
         public static void Initialize()
         {
@@ -73,6 +74,7 @@ namespace Balancy.Network
                 go.hideFlags = HideFlags.HideAndDontSave;
             
             _instance = go.AddComponent<UnityWebSocketBridge>();
+            _instance._acceptingCallbacks = true;
             _mainThreadInstance = UnityMainThreadDispatcher.Instance();
 
             // Register C# callbacks with the native plugin
@@ -104,6 +106,7 @@ namespace Balancy.Network
         // Method to manually clean up resources
         private void CleanupResources()
         {
+            _acceptingCallbacks = false;
             balancyRegisterWSConnectRequestCallback(null);
             balancyRegisterWSDisconnectRequestCallback(null);
             balancyRegisterWSSubscribeEventCallback(null);
@@ -175,11 +178,18 @@ namespace Balancy.Network
         // Implementation methods
         private async void OnConnectRequest(int connectionId, string url, string authDataJson)
         {
+            WebSocketConnection connection = null;
             try
             {
                 Debug.Log($"WebSocket connect request: ID={connectionId}, URL={url}");
-                
-                var connection = new WebSocketConnection(connectionId, this);
+
+                if (_activeConnections.TryGetValue(connectionId, out var previous))
+                {
+                    previous.Dispose();
+                    _activeConnections.Remove(connectionId);
+                }
+
+                connection = new WebSocketConnection(connectionId, this);
                 _activeConnections[connectionId] = connection;
                 
                 await connection.ConnectAsync(url, authDataJson);
@@ -187,7 +197,7 @@ namespace Balancy.Network
             catch (Exception ex)
             {
                 Debug.LogError($"WebSocket connect failed: {ex.Message}");
-                balancyHandleWSConnectionStatusChanged(connectionId, false, ex.Message);
+                NotifyConnectionStatusChanged(connectionId, false, ex.Message, connection);
             }
         }
 
@@ -233,24 +243,53 @@ namespace Balancy.Network
         }
 
         // Methods to notify C++ (called by WebSocketConnection)
-        public void NotifyConnectionStatusChanged(int connectionId, bool connected, string errorMessage = "")
+        public void NotifyConnectionStatusChanged(int connectionId, bool connected, string errorMessage = "", WebSocketConnection source = null)
         {
-            balancyHandleWSConnectionStatusChanged(connectionId, connected, errorMessage);
+            if (!CanForward(connectionId, source)) return;
+            InvokeNative(() => balancyHandleWSConnectionStatusChanged(connectionId, connected, errorMessage));
         }
 
-        public void NotifySocketIOEvent(int connectionId, string eventName, string eventData, bool needsAck, int ackId)
+        public void NotifySocketIOEvent(int connectionId, string eventName, string eventData, bool needsAck, int ackId, WebSocketConnection source = null)
         {
-            balancyHandleWSSocketIOEvent(connectionId, eventName, eventData, needsAck, ackId);
+            if (!CanForward(connectionId, source)) return;
+            InvokeNative(() => balancyHandleWSSocketIOEvent(connectionId, eventName, eventData, needsAck, ackId));
         }
 
-        public void NotifyAckResponse(int connectionId, int ackId, string responseData)
+        public void NotifyAckResponse(int connectionId, int ackId, string responseData, WebSocketConnection source = null)
         {
-            balancyHandleWSAckResponse(connectionId, ackId, responseData);
+            if (!CanForward(connectionId, source)) return;
+            InvokeNative(() => balancyHandleWSAckResponse(connectionId, ackId, responseData));
         }
 
-        public void NotifySocketIOError(int connectionId, int errorCode, string errorMessage)
+        public void NotifySocketIOError(int connectionId, int errorCode, string errorMessage, WebSocketConnection source = null)
         {
-            balancyHandleWSSocketIOError(connectionId, errorCode, errorMessage);
+            if (!CanForward(connectionId, source)) return;
+            InvokeNative(() => balancyHandleWSSocketIOError(connectionId, errorCode, errorMessage));
+        }
+
+        private bool CanForward(int connectionId, WebSocketConnection source)
+        {
+            return CanForwardForState(_acceptingCallbacks, _activeConnections, connectionId, source);
+        }
+
+        private static bool CanForwardForState(bool acceptingCallbacks,
+            IDictionary<int, WebSocketConnection> activeConnections, int connectionId, WebSocketConnection source)
+        {
+            if (!acceptingCallbacks) return false;
+            return source == null || (activeConnections.TryGetValue(connectionId, out var current) &&
+                                      ReferenceEquals(current, source));
+        }
+
+        private static void InvokeNative(Action callback)
+        {
+            try
+            {
+                callback();
+            }
+            catch (Exception exception)
+            {
+                Debug.LogException(exception);
+            }
         }
     }
 #else
