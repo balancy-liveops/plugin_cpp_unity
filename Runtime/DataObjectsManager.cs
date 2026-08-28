@@ -62,6 +62,9 @@ namespace Balancy.Dictionaries
         private static extern void _balancyPreloadFileAsBlobUrl(string directory, string fileName,
             PreloadCallback callback, IntPtr userData);
 
+        [DllImport("__Internal")]
+        private static extern void _balancyClearBlobUrlCache();
+
         private static string ReadFileAsBlobUrl(string path)
         {
             IntPtr ptr = _balancyReadFileAsBlobUrl(path);
@@ -572,6 +575,13 @@ namespace Balancy.Dictionaries
         public static AsyncLoadHandler GetSprite(string id, Action<UnityEngine.Sprite> callback)
         {
             var handler = AsyncLoadHandler.CreateHandler();
+            if (string.IsNullOrEmpty(id))
+            {
+                Debug.LogError("[Balancy] Cannot load a sprite with an empty data-object ID");
+                handler.Finish();
+                InvokeCallbackSafely(callback, null);
+                return handler;
+            }
             if (!AllObjects.TryGetValue(id, out var oneObject))
             {
                 var oneObjectSprite = new OneObjectSprite();
@@ -586,7 +596,7 @@ namespace Balancy.Dictionaries
                     if (sprite.Status == Status.Loaded)
                     {
                         handler.Finish();
-                        callback?.Invoke(sprite.Sprite);
+                        InvokeCallbackSafely(callback, sprite.Sprite);
                     }
                     else
                     {
@@ -597,7 +607,7 @@ namespace Balancy.Dictionaries
                 {
                     Debug.LogError($"Object {id} is not a sprite type");
                     handler.Finish();
-                    callback?.Invoke(null);
+                    InvokeCallbackSafely(callback, null);
                     return handler;
                 }
             }
@@ -614,6 +624,13 @@ namespace Balancy.Dictionaries
         public static AsyncLoadHandler GetObject(string id, Action<string> callback)
         {
             var handler = AsyncLoadHandler.CreateHandler();
+            if (string.IsNullOrEmpty(id))
+            {
+                Debug.LogError("[Balancy] Cannot load a file with an empty data-object ID");
+                handler.Finish();
+                InvokeCallbackSafely(callback, null);
+                return handler;
+            }
             if (!AllObjects.TryGetValue(id, out var oneObject))
             {
                 var oneObjectPath = new OneObjectPath();
@@ -628,7 +645,7 @@ namespace Balancy.Dictionaries
                     if (pathObject.Status == Status.Loaded)
                     {
                         handler.Finish();
-                        callback?.Invoke(pathObject.FilePath);
+                        InvokeCallbackSafely(callback, pathObject.FilePath);
                     }
                     else
                     {
@@ -639,7 +656,7 @@ namespace Balancy.Dictionaries
                 {
                     Debug.LogError($"Object {id} is not a path type");
                     handler.Finish();
-                    callback?.Invoke(null);
+                    InvokeCallbackSafely(callback, null);
                     return handler;
                 }
             }
@@ -669,6 +686,13 @@ namespace Balancy.Dictionaries
         public static AsyncLoadHandler GetObjectView(string id, Action<string> callback)
         {
             var handler = AsyncLoadHandler.CreateHandler();
+            if (string.IsNullOrEmpty(id))
+            {
+                Debug.LogError("[Balancy] Cannot load a view with an empty data-object ID");
+                handler.Finish();
+                InvokeCallbackSafely(callback, null);
+                return handler;
+            }
             if (!AllViews.TryGetValue(id, out var oneObjectView))
             {
                 oneObjectView = new OneObjectView();
@@ -682,7 +706,7 @@ namespace Balancy.Dictionaries
                 if (oneObjectView.Loaded)
                 {
                     handler.Finish();
-                    callback?.Invoke(oneObjectView.PathInStorage);
+                    InvokeCallbackSafely(callback, oneObjectView.PathInStorage);
                 }
                 else
                 {
@@ -713,6 +737,9 @@ namespace Balancy.Dictionaries
             }
             foreach (var id in staleIds)
                 AllViews.Remove(id);
+#if UNITY_WEBGL && !UNITY_EDITOR
+            ClearBlobUrlCache();
+#endif
         }
 
         internal static void ClearFromMemory(string id)
@@ -746,12 +773,17 @@ namespace Balancy.Dictionaries
             AllViews.Clear();
 #if UNITY_WEBGL && !UNITY_EDITOR
             _preloadContexts.Clear();
+            ClearBlobUrlCache();
 #endif
+            Action[] preloadCallbacks;
             lock (_preloadLock)
             {
+                preloadCallbacks = _pendingPreloadCallbacks.ToArray();
                 _pendingPreloadCallbacks.Clear();
                 _preloadWaitRegistered = false;
             }
+            foreach (var callback in preloadCallbacks)
+                InvokeCallbackSafely(callback);
         }
         
         internal static void ClearFromDisk(string id)
@@ -816,6 +848,7 @@ namespace Balancy.Dictionaries
             if (!Controller.IsNativeInitialized)
             {
                 Debug.LogError("[Balancy] WaitForPreloading ignored: SDK is not initialized");
+                InvokeCallbackSafely(onComplete);
                 return;
             }
 
@@ -827,7 +860,43 @@ namespace Balancy.Dictionaries
                     return;
                 _preloadWaitRegistered = true;
             }
-            LibraryMethods.Models.balancyWaitForPreloading(OnPreloadingComplete);
+            try
+            {
+                LibraryMethods.Models.balancyWaitForPreloading(OnPreloadingComplete);
+            }
+            catch (Exception exception)
+            {
+                Debug.LogException(exception);
+                Action[] callbacks;
+                lock (_preloadLock)
+                {
+                    callbacks = _pendingPreloadCallbacks.ToArray();
+                    _pendingPreloadCallbacks.Clear();
+                    _preloadWaitRegistered = false;
+                }
+                foreach (var callback in callbacks)
+                    InvokeCallbackSafely(callback);
+            }
         }
+
+        private static void InvokeCallbackSafely(Action callback)
+        {
+            try { callback?.Invoke(); }
+            catch (Exception exception) { Debug.LogException(exception); }
+        }
+
+        private static void InvokeCallbackSafely<T>(Action<T> callback, T value)
+        {
+            try { callback?.Invoke(value); }
+            catch (Exception exception) { Debug.LogException(exception); }
+        }
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        private static void ClearBlobUrlCache()
+        {
+            try { _balancyClearBlobUrlCache(); }
+            catch (Exception exception) { Debug.LogException(exception); }
+        }
+#endif
     }
 }

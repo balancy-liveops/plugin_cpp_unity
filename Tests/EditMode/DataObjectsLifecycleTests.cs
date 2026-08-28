@@ -26,6 +26,8 @@ namespace Balancy.Tests
             .GetValue(null);
         private static readonly MethodInfo CleanUp = ManagerType
             .GetMethod("CleanUp", BindingFlags.Static | BindingFlags.NonPublic);
+        private static readonly FieldInfo ObjectStatus = PathType.BaseType.GetField("Status");
+        private static readonly FieldInfo ObjectFilePath = PathType.GetField("FilePath");
 
         [SetUp]
         public void SetUp() => CleanUp.Invoke(null, null);
@@ -116,6 +118,62 @@ namespace Balancy.Tests
 
             Assert.That(handler.GetStatus(), Is.EqualTo(AsyncLoadHandler.Status.Cancelled));
             Assert.That(calls, Is.Zero);
+        }
+
+        [Test]
+        public void CachedFileCallbackFailureCannotEscape()
+        {
+            var pathObject = Activator.CreateInstance(PathType, true);
+            ObjectFilePath.SetValue(pathObject, "cached/file.json");
+            ObjectStatus.SetValue(pathObject, Enum.ToObject(ObjectStatus.FieldType, 2));
+            AllObjects.Add("cached", pathObject);
+            LogAssert.Expect(LogType.Exception, new Regex("cached callback failed"));
+
+            AsyncLoadHandler handler = null;
+            Assert.DoesNotThrow(() => handler = DataObjectsManager.GetObject("cached",
+                _ => throw new InvalidOperationException("cached callback failed")));
+            Assert.That(handler.GetStatus(), Is.EqualTo(AsyncLoadHandler.Status.Finished));
+        }
+
+        [TestCase(null)]
+        [TestCase("")]
+        public void EmptyDataObjectIdCompletesWithoutCrossingNativeBoundary(string id)
+        {
+            LogAssert.Expect(LogType.Error, new Regex("empty data-object ID"));
+            string result = "not-called";
+
+            var handler = DataObjectsManager.GetObject(id, value => result = value);
+
+            Assert.That(handler.GetStatus(), Is.EqualTo(AsyncLoadHandler.Status.Finished));
+            Assert.That(result, Is.Null);
+        }
+
+        [Test]
+        public void WaitForPreloadingBeforeInitializationStillCompletes()
+        {
+            var calls = 0;
+            LogAssert.Expect(LogType.Error, new Regex("SDK is not initialized"));
+
+            Assert.DoesNotThrow(() => DataObjectsManager.WaitForPreloading(() => calls++));
+
+            Assert.That(calls, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void CleanupCompletesPendingPreloadWaitersAndIsolatesFailures()
+        {
+            var pending = (IList)ManagerType
+                .GetField("_pendingPreloadCallbacks", BindingFlags.Static | BindingFlags.NonPublic)
+                .GetValue(null);
+            var laterCalls = 0;
+            pending.Add(new Action(() => throw new InvalidOperationException("preload waiter failed")));
+            pending.Add(new Action(() => laterCalls++));
+            LogAssert.Expect(LogType.Exception, new Regex("preload waiter failed"));
+
+            Assert.DoesNotThrow(() => CleanUp.Invoke(null, null));
+
+            Assert.That(laterCalls, Is.EqualTo(1));
+            Assert.That(pending.Count, Is.Zero);
         }
     }
 }
