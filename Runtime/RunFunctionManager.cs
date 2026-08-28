@@ -18,20 +18,39 @@ namespace Balancy
         }
         
         private static UnityMainThreadDispatcher _mainThreadDispatcher;
+        private static bool _isInitialized;
 
         internal static void Init()
         {
+            _pendingCallbacks.Clear();
             _mainThreadDispatcher = UnityMainThreadDispatcher.Instance();
+            _isInitialized = true;
             LibraryMethods.General.balancySetRunFunctionCallback(OnRunFunctionRequested);
+        }
+
+        internal static void CleanUp()
+        {
+            _isInitialized = false;
+            _pendingCallbacks.Clear();
+            _mainThreadDispatcher = null;
+            if (Controller.IsNativeInitialized)
+                LibraryMethods.General.balancySetRunFunctionCallback(null);
         }
         
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.RunFunctionCallback))]
         private static void OnRunFunctionRequested(string callbackDataJson, string responseCallbackId)
         {
+            var dispatcher = _mainThreadDispatcher;
+            if (!_isInitialized || dispatcher == null)
+                return;
+
             // Marshal everything onto the Unity main thread so user code
             // invoked via InvokeStaticMethod always runs on the main thread.
-            _mainThreadDispatcher.Enqueue(() =>
+            dispatcher.Enqueue(() =>
             {
+                if (!_isInitialized)
+                    return;
+
                 try
                 {
                     Debug.Log($"[RunFunctionManager] Received function call request: {callbackDataJson}");
