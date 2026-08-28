@@ -25,7 +25,16 @@ namespace Balancy.SmartObjects
         {
             var snapshot = Instances.ToArray();
             foreach (var instance in snapshot)
-                instance.Dispose();
+            {
+                try
+                {
+                    instance.Dispose();
+                }
+                catch (Exception exception)
+                {
+                    Debug.LogException(exception);
+                }
+            }
             Instances.Clear();
         }
     }
@@ -80,14 +89,35 @@ namespace Balancy.SmartObjects
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.ConditionalTemplates.ConditionalTemplateChangedCallback))]
         private static void OnConditionalTemplateChangedStatic(string templateName, string unnyId, bool passed)
         {
-            if (_instances.TryGetValue(templateName, out var instance))
+            try
             {
-                var conditionalTemplate = instance as BalancyConditionalTemplate<T>;
-                if (conditionalTemplate != null && !string.IsNullOrEmpty(unnyId))
+                if (_instances.TryGetValue(templateName, out var instance))
                 {
-                    var model = CMS.GetModelByUnnyId<T>(unnyId);
-                    conditionalTemplate.OnStatusChanged?.Invoke(model, passed);
+                    var conditionalTemplate = instance as BalancyConditionalTemplate<T>;
+                    if (conditionalTemplate != null && !string.IsNullOrEmpty(unnyId))
+                    {
+                        var model = CMS.GetModelByUnnyId<T>(unnyId);
+                        var callbacks = conditionalTemplate.OnStatusChanged;
+                        if (callbacks == null)
+                            return;
+
+                        foreach (Action<T, bool> callback in callbacks.GetInvocationList())
+                        {
+                            try
+                            {
+                                callback(model, passed);
+                            }
+                            catch (Exception exception)
+                            {
+                                Debug.LogException(exception);
+                            }
+                        }
+                    }
                 }
+            }
+            catch (Exception exception)
+            {
+                Debug.LogException(exception);
             }
         }
 

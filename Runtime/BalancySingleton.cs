@@ -31,8 +31,15 @@ namespace Balancy.SmartObjects
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.Singletons.SingletonChangedCallback))]
         internal static void OnSingletonChangedStatic(string templateName, string unnyId)
         {
-            if (_handlers.TryGetValue(templateName, out var handler))
-                handler(unnyId);
+            try
+            {
+                if (_handlers.TryGetValue(templateName, out var handler))
+                    handler(unnyId);
+            }
+            catch (Exception exception)
+            {
+                Debug.LogException(exception);
+            }
         }
     }
 
@@ -79,7 +86,21 @@ namespace Balancy.SmartObjects
             if (!string.IsNullOrEmpty(unnyId))
             {
                 var model = CMS.GetModelByUnnyId<T>(unnyId);
-                OnChanged?.Invoke(model);
+                var callbacks = OnChanged;
+                if (callbacks == null)
+                    return;
+
+                foreach (Action<T> callback in callbacks.GetInvocationList())
+                {
+                    try
+                    {
+                        callback(model);
+                    }
+                    catch (Exception exception)
+                    {
+                        Debug.LogException(exception);
+                    }
+                }
             }
         }
 
