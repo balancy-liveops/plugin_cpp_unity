@@ -44,7 +44,18 @@ namespace Balancy
             }
 
             if (_cachedProfiles.TryGetValue(profileName, out var profile))
-                profile.RefreshData(newPointer);
+            {
+                try
+                {
+                    profile.RefreshData(newPointer);
+                }
+                catch (Exception exception)
+                {
+                    // This method is a native callback. Generated InitData() may
+                    // execute game code, so never let it unwind through P/Invoke.
+                    UnityEngine.Debug.LogException(exception);
+                }
+            }
         }
 
         private static readonly List<Action> _userResetCallbacks = new List<Action>();
@@ -68,8 +79,20 @@ namespace Balancy
                 _resetInProgress = true;
             }
 
-            Balancy.Callbacks.OnProfileResetStart?.Invoke();
-            LibraryMethods.Data.balancyResetAllProfilesWithCallback(_resetProfilesCallback);
+            InvokeResetSubscribersSafely(Balancy.Callbacks.OnProfileResetStart);
+            try
+            {
+                LibraryMethods.Data.balancyResetAllProfilesWithCallback(_resetProfilesCallback);
+            }
+            catch (Exception exception)
+            {
+                lock (_resetLock)
+                {
+                    _userResetCallbacks.Clear();
+                    _resetInProgress = false;
+                }
+                UnityEngine.Debug.LogException(exception);
+            }
         }
 
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.Data.ResetProfilesCallback))]
@@ -81,7 +104,6 @@ namespace Balancy
                 return;
             }
 
-            Balancy.Callbacks.OnProfileResetFinish?.Invoke();
             Action[] callbacks;
             lock (_resetLock)
             {
@@ -89,6 +111,10 @@ namespace Balancy
                 _userResetCallbacks.Clear();
                 _resetInProgress = false;
             }
+
+            // Clear the state before invoking game code. A throwing subscriber
+            // must not strand every future reset behind _resetInProgress=true.
+            InvokeResetSubscribersSafely(Balancy.Callbacks.OnProfileResetFinish);
 
             foreach (var callback in callbacks)
             {
@@ -99,6 +125,24 @@ namespace Balancy
                 catch (Exception e)
                 {
                     UnityEngine.Debug.LogException(e);
+                }
+            }
+        }
+
+        private static void InvokeResetSubscribersSafely(Callbacks.OnProfileResetDelegate subscribers)
+        {
+            if (subscribers == null)
+                return;
+
+            foreach (Callbacks.OnProfileResetDelegate subscriber in subscribers.GetInvocationList())
+            {
+                try
+                {
+                    subscriber.Invoke();
+                }
+                catch (Exception exception)
+                {
+                    UnityEngine.Debug.LogException(exception);
                 }
             }
         }
@@ -153,7 +197,20 @@ namespace Balancy
 
                 public void Invoke()
                 {
-                    OnUpdated?.Invoke();
+                    if (OnUpdated == null)
+                        return;
+
+                    foreach (Action callback in OnUpdated.GetInvocationList())
+                    {
+                        try
+                        {
+                            callback.Invoke();
+                        }
+                        catch (Exception exception)
+                        {
+                            UnityEngine.Debug.LogException(exception);
+                        }
+                    }
                 }
             }
 
@@ -186,7 +243,20 @@ namespace Balancy
                 if (_activeSubscriptions.TryGetValue(paramName, out var subs))
                     subs.Invoke();
 
-                _onAnyParamChanged?.Invoke(paramName);
+                if (_onAnyParamChanged == null)
+                    return;
+
+                foreach (Action<string> callback in _onAnyParamChanged.GetInvocationList())
+                {
+                    try
+                    {
+                        callback.Invoke(paramName);
+                    }
+                    catch (Exception exception)
+                    {
+                        UnityEngine.Debug.LogException(exception);
+                    }
+                }
             }
 
             public void RemoveDataSubscription(string paramName, Action callback)
