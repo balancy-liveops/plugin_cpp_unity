@@ -13,9 +13,22 @@ namespace Balancy.Tests
             .GetMethod("OnScriptCompleted", BindingFlags.Static | BindingFlags.NonPublic);
         private static readonly MethodInfo CleanUp = typeof(ScriptCompletionManager)
             .GetMethod("CleanUp", BindingFlags.Static | BindingFlags.NonPublic);
+        private static readonly FieldInfo IsInitialized = typeof(ScriptCompletionManager)
+            .GetField("_isInitialized", BindingFlags.Static | BindingFlags.NonPublic);
+        private static readonly FieldInfo MainThreadId = typeof(ScriptCompletionManager)
+            .GetField("_mainThreadId", BindingFlags.Static | BindingFlags.NonPublic);
+        private static readonly FieldInfo Generation = typeof(ScriptCompletionManager)
+            .GetField("_generation", BindingFlags.Static | BindingFlags.NonPublic);
+        private static readonly MethodInfo DeliverCompletion = typeof(ScriptCompletionManager)
+            .GetMethod("DeliverCompletion", BindingFlags.Static | BindingFlags.NonPublic);
 
         [SetUp]
-        public void SetUp() => CleanUp?.Invoke(null, null);
+        public void SetUp()
+        {
+            CleanUp?.Invoke(null, null);
+            IsInitialized.SetValue(null, true);
+            MainThreadId.SetValue(null, System.Threading.Thread.CurrentThread.ManagedThreadId);
+        }
 
         [TearDown]
         public void TearDown() => CleanUp?.Invoke(null, null);
@@ -77,6 +90,26 @@ namespace Balancy.Tests
             Dispatch("old-session-script", "LateNativeCompletion", "{}");
 
             Assert.That(calls, Is.Zero);
+        }
+
+        [Test]
+        public void CompletionQueuedByOldSessionCannotConsumeReusedInstanceId()
+        {
+            var oldGeneration = (int)Generation.GetValue(null);
+            ScriptCompletionManager.Register("reused", (_, __) => Assert.Fail("old callback must be cleared"));
+            CleanUp.Invoke(null, null);
+            IsInitialized.SetValue(null, true); // simulate the next Init without crossing native
+            var newCalls = 0;
+            ScriptCompletionManager.Register("reused", (_, __) => newCalls++);
+
+            DeliverCompletion.Invoke(null, new object[] { "reused", "Late", "{}", oldGeneration });
+            Assert.That(newCalls, Is.Zero);
+
+            DeliverCompletion.Invoke(null, new object[]
+            {
+                "reused", "Current", "{}", (int)Generation.GetValue(null)
+            });
+            Assert.That(newCalls, Is.EqualTo(1));
         }
 
         [Test]

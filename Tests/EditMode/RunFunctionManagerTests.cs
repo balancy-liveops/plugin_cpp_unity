@@ -8,6 +8,7 @@ namespace Balancy.Tests
 {
     public class RunFunctionManagerTests
     {
+        private static int _executions;
         private static readonly Type Manager = typeof(RunFunctionManager);
         private static readonly MethodInfo OnRunFunctionRequested = Manager.GetMethod(
             "OnRunFunctionRequested", BindingFlags.Static | BindingFlags.NonPublic);
@@ -19,6 +20,14 @@ namespace Balancy.Tests
             "FormatInvariant", BindingFlags.Static | BindingFlags.NonPublic);
         private static readonly FieldInfo PendingCallbacks = Manager.GetField(
             "_pendingCallbacks", BindingFlags.Static | BindingFlags.NonPublic);
+        private static readonly FieldInfo IsInitialized = Manager.GetField(
+            "_isInitialized", BindingFlags.Static | BindingFlags.NonPublic);
+        private static readonly FieldInfo Dispatcher = Manager.GetField(
+            "_mainThreadDispatcher", BindingFlags.Static | BindingFlags.NonPublic);
+        private static readonly MethodInfo ProcessQueue = typeof(UnityMainThreadDispatcher)
+            .GetMethod("ProcessQueue", BindingFlags.Instance | BindingFlags.NonPublic);
+        private static readonly MethodInfo ClearPendingActions = typeof(UnityMainThreadDispatcher)
+            .GetMethod("ClearPendingActions", BindingFlags.Static | BindingFlags.NonPublic);
 
         [SetUp]
         public void SetUp() => CleanUp?.Invoke(null, null);
@@ -48,6 +57,39 @@ namespace Balancy.Tests
 
             Assert.That(pending.Count, Is.Zero);
         }
+
+        [Test]
+        public void RequestQueuedByOldSessionCannotRunAfterReinitialization()
+        {
+            _executions = 0;
+            ClearPendingActions.Invoke(null, null);
+            var gameObject = new UnityEngine.GameObject("RunFunction generation test");
+            try
+            {
+                var dispatcher = gameObject.AddComponent<UnityMainThreadDispatcher>();
+                Dispatcher.SetValue(null, dispatcher);
+                IsInitialized.SetValue(null, true);
+                OnRunFunctionRequested.Invoke(null, new object[]
+                {
+                    "{\"path\":\"Balancy.Tests.RunFunctionManagerTests.MarkExecuted\",\"parameters\":[]}", "old-session"
+                });
+
+                CleanUp.Invoke(null, null);
+                Dispatcher.SetValue(null, dispatcher);
+                IsInitialized.SetValue(null, true); // simulate the next Init without native calls
+
+                Assert.DoesNotThrow(() => ProcessQueue.Invoke(dispatcher, null));
+                Assert.That(_executions, Is.Zero);
+                Assert.That(((IDictionary)PendingCallbacks.GetValue(null)).Count, Is.Zero);
+            }
+            finally
+            {
+                ClearPendingActions.Invoke(null, null);
+                UnityEngine.Object.DestroyImmediate(gameObject);
+            }
+        }
+
+        public static void MarkExecuted() => _executions++;
 
         [Test]
         public void NumericParametersUseInvariantCulture()

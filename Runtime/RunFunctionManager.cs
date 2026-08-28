@@ -19,17 +19,32 @@ namespace Balancy
         
         private static UnityMainThreadDispatcher _mainThreadDispatcher;
         private static bool _isInitialized;
+        private static int _generation;
 
         internal static void Init()
         {
+            var generation = ++_generation;
             _pendingCallbacks.Clear();
             _mainThreadDispatcher = UnityMainThreadDispatcher.Instance();
             _isInitialized = true;
-            LibraryMethods.General.balancySetRunFunctionCallback(OnRunFunctionRequested);
+            try
+            {
+                LibraryMethods.General.balancySetRunFunctionCallback(OnRunFunctionRequested);
+            }
+            catch
+            {
+                if (_generation == generation)
+                {
+                    _isInitialized = false;
+                    _mainThreadDispatcher = null;
+                }
+                throw;
+            }
         }
 
         internal static void CleanUp()
         {
+            ++_generation;
             _isInitialized = false;
             _pendingCallbacks.Clear();
             _mainThreadDispatcher = null;
@@ -41,66 +56,76 @@ namespace Balancy
         private static void OnRunFunctionRequested(string callbackDataJson, string responseCallbackId)
         {
             var dispatcher = _mainThreadDispatcher;
+            var generation = _generation;
             if (!_isInitialized || dispatcher == null)
                 return;
 
             // Marshal everything onto the Unity main thread so user code
             // invoked via InvokeStaticMethod always runs on the main thread.
-            dispatcher.Enqueue(() =>
+            try
             {
-                if (!_isInitialized)
-                    return;
-
-                try
+                dispatcher.Enqueue(() =>
                 {
-                    Debug.Log($"[RunFunctionManager] Received function call request: {callbackDataJson}");
-
-                    // Parse the callback data using JsonUtility
-                    var callbackData = JsonUtility.FromJson<RunFunctionCallbackData>(callbackDataJson);
-
-                    if (callbackData == null || string.IsNullOrEmpty(callbackData.path))
-                    {
-                        Debug.LogError("[RunFunctionManager] Invalid callback data received");
-                        SendErrorResponse(responseCallbackId, "Invalid callback data");
+                    if (!_isInitialized || generation != _generation)
                         return;
-                    }
 
-                    // Store the pending callback
-                    _pendingCallbacks[responseCallbackId] = new PendingCallback
+                    try
                     {
-                        CallbackId = responseCallbackId,
-                        Timestamp = DateTime.UtcNow
-                    };
+                        Debug.Log($"[RunFunctionManager] Received function call request: {callbackDataJson}");
 
-                    // Parse the path (namespace.method)
-                    var pathParts = callbackData.path.Split('.');
-                    if (pathParts.Length < 2)
-                    {
-                        Debug.LogError($"[RunFunctionManager] Invalid path format: {callbackData.path}. Expected 'Namespace.Class.Method' or 'Class.Method'");
-                        SendErrorResponse(responseCallbackId, "Invalid path format");
-                        return;
+                        // Parse the callback data using JsonUtility
+                        var callbackData = JsonUtility.FromJson<RunFunctionCallbackData>(callbackDataJson);
+
+                        if (callbackData == null || string.IsNullOrEmpty(callbackData.path))
+                        {
+                            Debug.LogError("[RunFunctionManager] Invalid callback data received");
+                            SendErrorResponse(responseCallbackId, "Invalid callback data");
+                            return;
+                        }
+
+                        // Store the pending callback
+                        _pendingCallbacks[responseCallbackId] = new PendingCallback
+                        {
+                            CallbackId = responseCallbackId,
+                            Timestamp = DateTime.UtcNow
+                        };
+
+                        // Parse the path (namespace.method)
+                        var pathParts = callbackData.path.Split('.');
+                        if (pathParts.Length < 2)
+                        {
+                            Debug.LogError($"[RunFunctionManager] Invalid path format: {callbackData.path}. Expected 'Namespace.Class.Method' or 'Class.Method'");
+                            SendErrorResponse(responseCallbackId, "Invalid path format");
+                            return;
+                        }
+
+                        // The last part is always the method name
+                        string methodName = pathParts[pathParts.Length - 1];
+
+                        // Everything before the last part is the type name (could include namespace)
+                        string typeName = string.Join(".", pathParts, 0, pathParts.Length - 1);
+
+                        Debug.Log($"[RunFunctionManager] Parsed path - typeName: '{typeName}', methodName: '{methodName}'");
+
+                        // Convert parameters from JsonUtility format
+                        Dictionary<string, object> parameters = ConvertParametersFromJson(callbackData.parameters);
+
+                        // Invoke the method
+                        InvokeStaticMethod(typeName, methodName, parameters, responseCallbackId);
                     }
-
-                    // The last part is always the method name
-                    string methodName = pathParts[pathParts.Length - 1];
-
-                    // Everything before the last part is the type name (could include namespace)
-                    string typeName = string.Join(".", pathParts, 0, pathParts.Length - 1);
-
-                    Debug.Log($"[RunFunctionManager] Parsed path - typeName: '{typeName}', methodName: '{methodName}'");
-
-                    // Convert parameters from JsonUtility format
-                    Dictionary<string, object> parameters = ConvertParametersFromJson(callbackData.parameters);
-
-                    // Invoke the method
-                    InvokeStaticMethod(typeName, methodName, parameters, responseCallbackId);
-                }
-                catch (Exception ex)
-                {
-                    Debug.LogError($"[RunFunctionManager] Error processing function call: {ex.Message}");
-                    SendErrorResponse(responseCallbackId, ex.Message);
-                }
-            });
+                    catch (Exception ex)
+                    {
+                        Debug.LogError($"[RunFunctionManager] Error processing function call: {ex.Message}");
+                        SendErrorResponse(responseCallbackId, ex.Message);
+                    }
+                });
+            }
+            catch (Exception exception)
+            {
+                // Enqueue itself is part of a reverse P/Invoke callback. It must
+                // never unwind into native code during dispatcher teardown.
+                Debug.LogException(exception);
+            }
         }
         
         private static Dictionary<string, object> ConvertParametersFromJson(ParameterData[] parameterArray)
