@@ -190,6 +190,7 @@ namespace Balancy
             {
                 _callbackStorage.Clear();
             }
+            CleanUpPendingPurchaseCallbacks();
         }
         
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.API.ResponseCallback))]

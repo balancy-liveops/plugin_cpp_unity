@@ -23,26 +23,84 @@ namespace Balancy
         }
 
         private static List<CallbacksData> _callbacks = new List<CallbacksData>();
+        private static readonly object _purchaseCallbacksLock = new object();
 
         private static void HardPurchase(Actions.BalancyProductInfo productInfo, Action<bool, string> callback)
         {
-            _callbacks.Add(new CallbacksData(productInfo, callback));
-            Balancy.Actions.Purchasing.GetHardPurchaseCallback()(productInfo);
+            if (productInfo == null)
+            {
+                InvokePurchaseCallback(callback, false, "Product info is null");
+                return;
+            }
+
+            var pending = new CallbacksData(productInfo, callback);
+            lock (_purchaseCallbacksLock)
+                _callbacks.Add(pending);
+            try
+            {
+                Balancy.Actions.Purchasing.GetHardPurchaseCallback()(productInfo);
+            }
+            catch (Exception exception)
+            {
+                lock (_purchaseCallbacksLock)
+                    _callbacks.Remove(pending);
+                Debug.LogException(exception);
+                InvokePurchaseCallback(callback, false, exception.Message);
+            }
         }
 
         private static CallbacksData GetCallbackData(Actions.BalancyProductInfo productInfo)
         {
-            for (int i = _callbacks.Count - 1; i >= 0; i--)
+            lock (_purchaseCallbacksLock)
             {
-                if (_callbacks[i].ProductInfo.Equals(productInfo))
+                // Prefer exact identity. If a platform plugin serializes and rebuilds
+                // the descriptor, fall back to FIFO value matching.
+                for (int i = 0; i < _callbacks.Count; i++)
                 {
-                    var data = _callbacks[i];
-                    _callbacks.RemoveAt(i);
-                    return data;
+                    if (ReferenceEquals(_callbacks[i].ProductInfo, productInfo))
+                    {
+                        var exact = _callbacks[i];
+                        _callbacks.RemoveAt(i);
+                        return exact;
+                    }
+                }
+                for (int i = 0; i < _callbacks.Count; i++)
+                {
+                    if (_callbacks[i].ProductInfo?.Equals(productInfo) == true)
+                    {
+                        var equivalent = _callbacks[i];
+                        _callbacks.RemoveAt(i);
+                        return equivalent;
+                    }
                 }
             }
 
             return null;
+        }
+
+        private static void CleanUpPendingPurchaseCallbacks()
+        {
+            CallbacksData[] pending;
+            lock (_purchaseCallbacksLock)
+            {
+                pending = _callbacks.ToArray();
+                _callbacks.Clear();
+            }
+
+            foreach (var item in pending)
+                InvokePurchaseCallback(item.Callback, false, "SDK stopped");
+        }
+
+        private static void InvokePurchaseCallback(Action<bool, string> callback, bool success, string error)
+        {
+            try { callback?.Invoke(success, error); }
+            catch (Exception exception) { Debug.LogException(exception); }
+        }
+
+        private static void InvokeValidationCallback(Action<bool, bool> callback, bool success, bool removeFromPending)
+        {
+            try { callback?.Invoke(success, removeFromPending); }
+            catch (Exception exception) { Debug.LogException(exception); }
         }
 
         public static void NutakuCompletePurchase(int userId, string orderId, Balancy.Core.ResponseCallback<Balancy.Core.Responses.CompletePurchaseResponseData> callback)
@@ -155,7 +213,7 @@ namespace Balancy
             Action<bool, bool> validationCallback, bool requireReceiptValidation = true)
         {
             Debug.Log("HardPurchase result: " + result);
-            Debug.Log("HardPurchase Receipt: " + paymentInfo.Receipt);
+            Debug.Log("HardPurchase has receipt: " + !string.IsNullOrEmpty(paymentInfo?.Receipt));
 
 // #if UNITY_EDITOR
 //             bool requireValidation = false;
@@ -172,18 +230,25 @@ namespace Balancy
 
                 if (result == Actions.PurchaseResult.Success)
                 {
+                    if (paymentInfo == null)
+                    {
+                        InvokePurchaseCallback(callback?.Callback, false, "Payment info is null");
+                        return;
+                    }
+
                     void InvokeCallbacks(Balancy.Core.Responses.PurchaseProductResponseData responseData)
                     {
                         Debug.Log(
                             $"Response: {responseData.Success} ErrorCode = {responseData.ErrorCode} Message = {responseData.ErrorMessage} Product = {responseData.ProductId}");
 
-                        validationCallback?.Invoke(responseData.Success, responseData.RemoveFromPending);
-                        callback?.Callback?.Invoke(responseData.Success, responseData.ErrorMessage);
+                        InvokeValidationCallback(validationCallback, responseData.Success, responseData.RemoveFromPending);
+                        InvokePurchaseCallback(callback?.Callback, responseData.Success, responseData.ErrorMessage);
 
                         if (responseData.Success)
                         {
                             paymentInfo.PriceUSD = responseData.PriceUSD;
-                            productInfo.ReportThePurchase(paymentInfo);
+                            try { productInfo.ReportThePurchase(paymentInfo); }
+                            catch (Exception exception) { Debug.LogException(exception); }
                         }
                     }
 
@@ -228,8 +293,8 @@ namespace Balancy
                                 }
                                 else
                                 {
-                                    validationCallback?.Invoke(false, false);
-                                    callback?.Callback?.Invoke(false, Constants.Errors.OfferInfoNull);
+                                    InvokeValidationCallback(validationCallback, false, false);
+                                    InvokePurchaseCallback(callback?.Callback, false, Constants.Errors.OfferInfoNull);
                                 }
                             }
 
@@ -256,20 +321,22 @@ namespace Balancy
                                 }
                                 else
                                 {
-                                    validationCallback?.Invoke(false, false);
-                                    callback?.Callback?.Invoke(false, Constants.Errors.OfferGroupInfoNull);
+                                    InvokeValidationCallback(validationCallback, false, false);
+                                    InvokePurchaseCallback(callback?.Callback, false, Constants.Errors.OfferGroupInfoNull);
                                 }
                             }
 
                             break;
                         }
                         default:
-                            throw new ArgumentOutOfRangeException();
+                            InvokeValidationCallback(validationCallback, false, false);
+                            InvokePurchaseCallback(callback?.Callback, false, "Unsupported purchase type");
+                            break;
                     }
                 }
                 else
                 {
-                    callback?.Callback?.Invoke(false, "");
+                    InvokePurchaseCallback(callback?.Callback, false, "");
                 }
             }
             else
