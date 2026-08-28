@@ -168,7 +168,14 @@ namespace Balancy
                 }
 
                 if (doneCallback != null)
-                    UnityMainThreadDispatcher.RunOnMainThreadSafe(doneCallback);
+                {
+                    var cancellation = token.Token;
+                    UnityMainThreadDispatcher.RunOnMainThreadSafe(() =>
+                    {
+                        if (!cancellation.IsCancellationRequested)
+                            doneCallback();
+                    });
+                }
             }
             catch (Exception e)
             {
