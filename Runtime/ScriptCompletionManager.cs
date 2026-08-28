@@ -10,7 +10,15 @@ namespace Balancy
 
         internal static void Init()
         {
+            _pendingCallbacks.Clear();
             LibraryMethods.General.balancySetScriptCompletionCallback(OnScriptCompleted);
+        }
+
+        internal static void CleanUp()
+        {
+            _pendingCallbacks.Clear();
+            if (Controller.IsNativeInitialized)
+                LibraryMethods.General.balancySetScriptCompletionCallback(null);
         }
 
         /// <summary>
@@ -26,10 +34,20 @@ namespace Balancy
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.ScriptCompletionCallback))]
         private static void OnScriptCompleted(string instanceId, string exitPort, string outputsJson)
         {
+            if (string.IsNullOrEmpty(instanceId))
+                return;
+
             if (_pendingCallbacks.TryGetValue(instanceId, out var callback))
             {
                 _pendingCallbacks.Remove(instanceId);
-                callback?.Invoke(exitPort, outputsJson);
+                try
+                {
+                    callback?.Invoke(exitPort, outputsJson);
+                }
+                catch (Exception e)
+                {
+                    UnityEngine.Debug.LogError($"[Balancy] Script completion callback failed: {e}");
+                }
             }
         }
     }

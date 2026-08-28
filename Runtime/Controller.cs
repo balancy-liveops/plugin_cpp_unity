@@ -168,6 +168,7 @@ namespace Balancy
             RunCleanupStep(UnzipBridge.Cleanup);
             RunCleanupStep(Tasks.StopAllTasks);
             RunCleanupStep(API.CleanUpPendingCallbacks);
+            RunCleanupStep(ScriptCompletionManager.CleanUp);
             RunCleanupStep(Balancy.Dictionaries.DataObjectsManager.CleanUp);
             RunCleanupStep(Profiles.CleanUp);
             RunCleanupStep(CMS.CleanUp);
