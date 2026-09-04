@@ -389,6 +389,15 @@ namespace Balancy
                 return;
             }
 
+            // Fail before opening a platform purchase or rewarded ad flow. The
+            // native core validates the slot again immediately before granting
+            // the purchase to protect against stale state and direct callers.
+            if (!shopSlot.IsAvailable())
+            {
+                callback?.Invoke(false, Constants.Errors.ShopSlotNotAvailable);
+                return;
+            }
+
             if (shopSlot.Slot.StoreItem.Price.Type == PriceType.Hard &&
                 !shopSlot.Slot.StoreItem.Price.IsFree())
             {

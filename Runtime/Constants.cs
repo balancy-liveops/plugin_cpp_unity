@@ -19,6 +19,7 @@ namespace Balancy
             public const string StoreItemNull = "Store item cannot be null.";
             public const string GameOfferNull = "Game offer cannot be null.";
             public const string ShopSlotNull = "Shop Slot cannot be null.";
+            public const string ShopSlotNotAvailable = "Shop slot is not available";
             public const string GameOfferGroupNull = "Game offer group cannot be null.";
             public const string OfferInfoNull = "Offer info cannot be null.";
             public const string OfferGroupInfoNull = "Offer group info cannot be null.";
