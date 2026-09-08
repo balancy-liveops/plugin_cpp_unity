@@ -154,7 +154,12 @@ namespace Balancy
         private static bool IsTextFile(string relativePath)
         {
             var ext = Path.GetExtension(relativePath).ToLowerInvariant();
-            return ext == ".json" || ext == ".txt" || ext == ".xml" || ext == ".csv" || ext == ".yaml" || ext == ".yml" || ext == ".js" || ext == ".banim" || ext == ".html" || ext == ".css";
+            // Only these extensions get their content preloaded from the StreamingAssets bundle;
+            // any other bundled file is merely marked as existing in resources, so native
+            // getFileContent returns an empty string for it. .lottie (JSON) and .svg (XML) were
+            // missing, which broke every view with a Lottie particle on Android. Keep this list
+            // text-only: entries are read into memory as strings; binaries are served by URL.
+            return ext == ".json" || ext == ".txt" || ext == ".xml" || ext == ".csv" || ext == ".yaml" || ext == ".yml" || ext == ".js" || ext == ".banim" || ext == ".html" || ext == ".css" || ext == ".lottie" || ext == ".svg";
         }
 
         private static string ReadAssetAsString(AndroidJavaObject assetManager, string assetPath)
