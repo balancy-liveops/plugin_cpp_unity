@@ -43,7 +43,11 @@ namespace Balancy.Data
         /// </summary>
         public void SubscribeForParamChange(string paramName, Action callback)
         {
-            if (TempCopy)
+            // An unbound wrapper has nothing to subscribe to, and registering under
+            // IntPtr.Zero would collide with every other unbound object. Binding the
+            // wrapper re-runs InitData(), which subscribes again with the real
+            // pointer, so nothing is lost.
+            if (TempCopy || _pointer == IntPtr.Zero)
                 return;
 
             _callbacks.Add(new CallbacksHolder
@@ -71,7 +75,7 @@ namespace Balancy.Data
         /// </summary>
         public void SubscribeForChanges(Action<string> callback)
         {
-            if (TempCopy)
+            if (TempCopy || _pointer == IntPtr.Zero)
                 return;
 
             _wildcardCallbacks.Add(callback);
@@ -134,10 +138,52 @@ namespace Balancy.Data
         protected T GetBaseDataParam<T>(string paramName) where T: BaseData, new()
         {
             var className = GetDataClassName<T>();
-            var ptr = GetBaseDataParamPrivate(paramName, className);
-            var data = CreateObject<T>(ptr, TempCopy);
-            _children.Add(new ChildEntry { Name = paramName, Data = data });
+
+            // The native child can be destroyed and recreated while this object stays
+            // at the same address: InventorySlot.deleteItem() + setItem() does exactly
+            // that on every RemoveItems/AddItems round trip. A wrapper resolved once in
+            // InitData() would keep pointing at the freed object — the reported "the
+            // slot has no item". So the wrapper is created unconditionally (it may
+            // start out unbound, e.g. an inventory slot with no item — check IsValid)
+            // and re-bound whenever the parameter changes, which is the same contract
+            // GetListBaseDataParam already gives lists.
+            var data = new T();
+            if (TempCopy)
+                data.MarkAsTempObject();
+
+            var entry = new ChildEntry { Name = paramName, Data = data };
+            _children.Add(entry);
+
+            RebindChild(entry, className);
+            SubscribeForParamChange(paramName, () => RebindChild(entry, className));
             return data;
+        }
+
+        private void RebindChild(ChildEntry entry, string className)
+        {
+            var ptr = _pointer == IntPtr.Zero
+                ? IntPtr.Zero
+                : GetBaseDataParamPrivate(entry.Name, className);
+
+            if (entry.Data.Equals(ptr))
+                return;
+
+            if (ptr == IntPtr.Zero)
+            {
+                // Nothing to bind to any more. Unbind so reads return defaults instead
+                // of reaching into a destroyed native object; do NOT run InitData() on
+                // a null pointer.
+                entry.Data.CleanUp(true);
+                return;
+            }
+
+            entry.Data.RefreshData(ptr);
+
+            // RefreshData() clears the child's subscriptions, including the wrappers a
+            // parent-level SubscribeForChanges() installed on it. Re-arm them so a
+            // recursive subscription keeps working across a rebind.
+            foreach (var wrapped in entry.WrappedCallbacks.Values)
+                entry.Data.SubscribeForChanges(wrapped);
         }
 
         protected SmartList<T> GetListBaseDataParam<T>(string paramName) where T: BaseData, new()

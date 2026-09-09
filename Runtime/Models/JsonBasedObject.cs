@@ -32,6 +32,14 @@ namespace Balancy.Models
             return _pointer == ptr;
         }
 
+        /// <summary>
+        /// False when this wrapper is not bound to a live native object — either the
+        /// value does not exist in the profile yet (an inventory slot with no item),
+        /// or the native object was destroyed and the wrapper was invalidated.
+        /// Reads on an invalid wrapper are safe and return default values.
+        /// </summary>
+        public bool IsValid => _pointer != IntPtr.Zero;
+
         public void SetData(IntPtr p)
         {
             if (_pointer == p)
@@ -199,7 +207,7 @@ namespace Balancy.Models
             return CreateObject<T>(ptr, TempCopy);
         }
 
-        private void MarkAsTempObject()
+        internal void MarkAsTempObject()
         {
             TempCopy = true;
         }
@@ -372,15 +380,25 @@ namespace Balancy.Models
             if (ptr == IntPtr.Zero || size <= 0)
                 return Array.Empty<string>();
             
-            IntPtr[] ptrArray = new IntPtr[size];
-            Marshal.Copy(ptr, ptrArray, 0, size);
+            // The native side allocated this block and hands ownership over for
+            // exactly the span of this method; nothing else will ever free it.
+            // Marshalling can throw, so the release has to be in a finally —
+            // otherwise one bad read leaks the array and every string in it.
+            try
+            {
+                IntPtr[] ptrArray = new IntPtr[size];
+                Marshal.Copy(ptr, ptrArray, 0, size);
 
-            string[] result = new string[size];
-            for (int i = 0; i < size; i++)
-                result[i] = Marshal.PtrToStringAnsi(ptrArray[i]);
+                string[] result = new string[size];
+                for (int i = 0; i < size; i++)
+                    result[i] = Marshal.PtrToStringAnsi(ptrArray[i]);
 
-            LibraryMethods.Models.balancyFreeStringArray(ptr, size);
-            return result;
+                return result;
+            }
+            finally
+            {
+                LibraryMethods.Models.balancyFreeStringArray(ptr, size);
+            }
         }
         
         internal static string GetStringFromIntPtr(IntPtr ptr)

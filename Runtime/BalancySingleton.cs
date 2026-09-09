@@ -17,16 +17,29 @@ namespace Balancy.SmartObjects
             _handlers[templateName] = handler;
         }
 
-        internal static void Unregister(string templateName)
+        internal static void Unregister(string templateName, Action<string> handler)
         {
-            _handlers.Remove(templateName);
+            if (_handlers.TryGetValue(templateName, out var current) && current == handler)
+                _handlers.Remove(templateName);
+        }
+
+        internal static void Clear()
+        {
+            _handlers.Clear();
         }
 
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.Singletons.SingletonChangedCallback))]
         internal static void OnSingletonChangedStatic(string templateName, string unnyId)
         {
-            if (_handlers.TryGetValue(templateName, out var handler))
-                handler(unnyId);
+            try
+            {
+                if (_handlers.TryGetValue(templateName, out var handler))
+                    handler(unnyId);
+            }
+            catch (Exception exception)
+            {
+                Debug.LogException(exception);
+            }
         }
     }
 
@@ -35,7 +48,7 @@ namespace Balancy.SmartObjects
     /// ConditionalTemplate singletons automatically update based on user conditions and priority.
     /// </summary>
     /// <typeparam name="T">Singleton model type (must be a BaseModel)</typeparam>
-    public class BalancySingleton<T> where T : BaseModel
+    public class BalancySingleton<T> : IDisposable where T : BaseModel
     {
         /// <summary>
         /// Event fired when singleton value changes (primarily for ConditionalTemplate singletons)
@@ -44,6 +57,7 @@ namespace Balancy.SmartObjects
 
         private readonly int _callbackId;
         private readonly string _templateName;
+        private bool _disposed;
 
         internal BalancySingleton()
         {
@@ -55,10 +69,16 @@ namespace Balancy.SmartObjects
             );
         }
 
-        ~BalancySingleton()
+        public void Dispose()
         {
-            BalancySingletonDispatcher.Unregister(_templateName);
-            LibraryMethods.Singletons.balancyUnsubscribeSingletonChanged(_templateName, _callbackId);
+            if (_disposed)
+                return;
+
+            _disposed = true;
+            BalancySingletonDispatcher.Unregister(_templateName, OnSingletonChanged);
+            if (_callbackId >= 0 && Controller.IsNativeInitialized)
+                LibraryMethods.Singletons.balancyUnsubscribeSingletonChanged(_templateName, _callbackId);
+            OnChanged = null;
         }
 
         private void OnSingletonChanged(string unnyId)
@@ -66,7 +86,21 @@ namespace Balancy.SmartObjects
             if (!string.IsNullOrEmpty(unnyId))
             {
                 var model = CMS.GetModelByUnnyId<T>(unnyId);
-                OnChanged?.Invoke(model);
+                var callbacks = OnChanged;
+                if (callbacks == null)
+                    return;
+
+                foreach (Action<T> callback in callbacks.GetInvocationList())
+                {
+                    try
+                    {
+                        callback(model);
+                    }
+                    catch (Exception exception)
+                    {
+                        Debug.LogException(exception);
+                    }
+                }
             }
         }
 
@@ -77,6 +111,9 @@ namespace Balancy.SmartObjects
         /// <returns>Current singleton instance or null if not available</returns>
         public T Get()
         {
+            if (_disposed || !Controller.IsNativeInitialized)
+                return null;
+
             var ptr = LibraryMethods.Singletons.balancyGetSingleton(_templateName);
             if (ptr == IntPtr.Zero)
                 return null;

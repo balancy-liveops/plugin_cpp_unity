@@ -64,9 +64,9 @@ For detailed documentation and guides, visit:
 ## Support
 
 If you encounter any issues or have questions:
-- [GitHub Issues](https://github.com/balancy-liveops/plugin_cpp_unity/issues)
+- [GitHub Issues](https://github.com/balancy-liveops/plugin_cpp_unity/issues) — bug reports and feature requests
+- [Discord Community](https://discord.gg/X27tuQR) — questions and general help
 - Email: [contact@balancy.co](mailto:contact@balancy.co)
-- [Discord Community](https://discord.gg/balancy) (replace with your actual Discord link)
 
 ## License
 

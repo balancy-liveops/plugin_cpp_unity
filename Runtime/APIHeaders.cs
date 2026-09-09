@@ -183,6 +183,15 @@ namespace Balancy
         private static readonly Dictionary<int, CallbackWrapperBase> _callbackStorage = new Dictionary<int, CallbackWrapperBase>();
         private static readonly object _callbackLock = new object();
         private static int _callbackIdCounter = 0;
+
+        internal static void CleanUpPendingCallbacks()
+        {
+            lock (_callbackLock)
+            {
+                _callbackStorage.Clear();
+            }
+            CleanUpPendingPurchaseCallbacks();
+        }
         
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.API.ResponseCallback))]
         private static void StaticResponseHandler(int callbackId, IntPtr responseDataPtr)
@@ -857,6 +866,17 @@ namespace Balancy
             /// <returns>True if the script was found and stopped.</returns>
             public static bool StopScript(string instanceId) {
                 return Balancy.LibraryMethods.API.balancyScripts_Stop(instanceId);
+            }
+
+            /// <summary>
+            /// Returns "running", "quarantined", "finished", or "not_found".
+            /// Quarantined also covers a blocked nested script, because it parks
+            /// the parent chain. "finished" is transitional and ordinary polling
+            /// usually observes running directly followed by not_found.
+            /// </summary>
+            public static string GetScriptStatus(string instanceId) {
+                return Marshal.PtrToStringAnsi(
+                    Balancy.LibraryMethods.API.balancyScripts_GetStatus(instanceId ?? "")) ?? "not_found";
             }
 
             internal static T CreateTempModelFromScriptOutput<T>(string outputsJson, string outputName) where T : JsonBasedObject, new() {

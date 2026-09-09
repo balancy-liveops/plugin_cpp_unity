@@ -22,6 +22,14 @@ namespace Balancy
         /// </summary>
         internal static void Register()
         {
+            RegisterCore(
+                () => LibraryMethods.CustomConditions.balancyCustomConditionRegisterHandler(_canPassCallback),
+                () => LibraryMethods.CustomConditions.balancyCustomConditionRegisterSubscribeHandler(_subscribeCallback, _unsubscribeCallback),
+                LibraryMethods.CustomConditions.balancyCustomConditionUnregisterHandler);
+        }
+
+        private static void RegisterCore(Action registerCanPass, Action registerSubscriptions, Action rollback)
+        {
             if (_registered)
                 return;
 
@@ -32,9 +40,21 @@ namespace Balancy
             if (!_unsubscribeHandle.IsAllocated)
                 _unsubscribeHandle = GCHandle.Alloc(_unsubscribeCallback);
 
-            LibraryMethods.CustomConditions.balancyCustomConditionRegisterHandler(_canPassCallback);
-            LibraryMethods.CustomConditions.balancyCustomConditionRegisterSubscribeHandler(_subscribeCallback, _unsubscribeCallback);
-            _registered = true;
+            try
+            {
+                registerCanPass();
+                registerSubscriptions();
+                _registered = true;
+            }
+            catch
+            {
+                // Registration is two native calls. If the second one fails, the
+                // first handler must not survive and point back into a failed init.
+                try { rollback(); }
+                catch (Exception rollbackException) { UnityEngine.Debug.LogException(rollbackException); }
+                _registered = false;
+                throw;
+            }
         }
 
         /// <summary>
@@ -42,11 +62,21 @@ namespace Balancy
         /// </summary>
         internal static void Unregister()
         {
+            UnregisterCore(LibraryMethods.CustomConditions.balancyCustomConditionUnregisterHandler);
+        }
+
+        private static void UnregisterCore(Action unregister)
+        {
             if (!_registered)
                 return;
 
-            LibraryMethods.CustomConditions.balancyCustomConditionUnregisterHandler();
-            _registered = false;
+            try { unregister(); }
+            finally
+            {
+                // A failed native cleanup must never poison the next init by
+                // making Register believe the old native session is still wired.
+                _registered = false;
+            }
         }
 
         /// <summary>
@@ -56,6 +86,16 @@ namespace Balancy
         /// </summary>
         public static void ForceUpdate(string unnyId)
         {
+            if (string.IsNullOrEmpty(unnyId))
+            {
+                UnityEngine.Debug.LogError("[Balancy.CustomConditions] ForceUpdate requires a non-empty condition ID.");
+                return;
+            }
+            if (!Controller.IsNativeInitialized)
+            {
+                UnityEngine.Debug.LogError("[Balancy.CustomConditions] ForceUpdate ignored because the SDK is not initialized.");
+                return;
+            }
             LibraryMethods.CustomConditions.balancyCustomConditionForceUpdate(unnyId);
         }
 

@@ -39,21 +39,60 @@ namespace Balancy
         {
             if (Thread.CurrentThread.ManagedThreadId != _mainThreadId)
             {
-                UnityMainThreadDispatcher.Instance().Enqueue(() => ProfileReset(profileName, newPointer));
+                UnityMainThreadDispatcher.EnqueueFromAnyThread(() => ProfileReset(profileName, newPointer));
                 return;
             }
 
             if (_cachedProfiles.TryGetValue(profileName, out var profile))
-                profile.RefreshData(newPointer);
+            {
+                try
+                {
+                    profile.RefreshData(newPointer);
+                }
+                catch (Exception exception)
+                {
+                    // This method is a native callback. Generated InitData() may
+                    // execute game code, so never let it unwind through P/Invoke.
+                    UnityEngine.Debug.LogException(exception);
+                }
+            }
         }
 
-        private static Action _userResetCallback;
+        private static readonly List<Action> _userResetCallbacks = new List<Action>();
+        private static readonly object _resetLock = new object();
+        private static bool _resetInProgress;
 
         public static void Reset(Action onComplete)
         {
-            _userResetCallback = onComplete;
-            Balancy.Callbacks.OnProfileResetStart?.Invoke();
-            LibraryMethods.Data.balancyResetAllProfilesWithCallback(_resetProfilesCallback);
+            if (!Controller.IsNativeInitialized)
+            {
+                UnityEngine.Debug.LogError("[Balancy] Profiles.Reset ignored: SDK is not initialized");
+                return;
+            }
+
+            lock (_resetLock)
+            {
+                if (onComplete != null)
+                    _userResetCallbacks.Add(onComplete);
+                if (_resetInProgress)
+                    return;
+                _resetInProgress = true;
+            }
+
+            InvokeResetSubscribersSafely(Balancy.Callbacks.OnProfileResetStart);
+            try
+            {
+                LibraryMethods.Data.balancyResetAllProfilesWithCallback(_resetProfilesCallback);
+            }
+            catch (Exception exception)
+            {
+                lock (_resetLock)
+                {
+                    _userResetCallbacks.Clear();
+                    _resetInProgress = false;
+                }
+                UnityEngine.Debug.LogException(exception);
+            }
         }
 
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.Data.ResetProfilesCallback))]
@@ -61,19 +100,57 @@ namespace Balancy
         {
             if (Thread.CurrentThread.ManagedThreadId != _mainThreadId)
             {
-                UnityMainThreadDispatcher.Instance().Enqueue(OnResetComplete);
+                UnityMainThreadDispatcher.EnqueueFromAnyThread(OnResetComplete);
                 return;
             }
 
-            Balancy.Callbacks.OnProfileResetFinish?.Invoke();
-            var cb = _userResetCallback;
-            _userResetCallback = null;
-            cb?.Invoke();
+            Action[] callbacks;
+            lock (_resetLock)
+            {
+                callbacks = _userResetCallbacks.ToArray();
+                _userResetCallbacks.Clear();
+                _resetInProgress = false;
+            }
+
+            // Clear the state before invoking game code. A throwing subscriber
+            // must not strand every future reset behind _resetInProgress=true.
+            InvokeResetSubscribersSafely(Balancy.Callbacks.OnProfileResetFinish);
+
+            foreach (var callback in callbacks)
+            {
+                try
+                {
+                    callback.Invoke();
+                }
+                catch (Exception e)
+                {
+                    UnityEngine.Debug.LogException(e);
+                }
+            }
+        }
+
+        private static void InvokeResetSubscribersSafely(Callbacks.OnProfileResetDelegate subscribers)
+        {
+            if (subscribers == null)
+                return;
+
+            foreach (Callbacks.OnProfileResetDelegate subscriber in subscribers.GetInvocationList())
+            {
+                try
+                {
+                    subscriber.Invoke();
+                }
+                catch (Exception exception)
+                {
+                    UnityEngine.Debug.LogException(exception);
+                }
+            }
         }
 
         public static void ForceSaveSmartObjects()
         {
-            LibraryMethods.Data.balancyForceSaveSmartObjects();
+            if (Controller.IsNativeInitialized)
+                LibraryMethods.Data.balancyForceSaveSmartObjects();
         }
 
         internal static void Init()
@@ -100,6 +177,11 @@ namespace Balancy
                 }
                 
                 AllBaseDataSubscriptions?.Clear();
+                lock (_resetLock)
+                {
+                    _userResetCallbacks.Clear();
+                    _resetInProgress = false;
+                }
             }
             catch (System.Exception e)
             {
@@ -115,7 +197,20 @@ namespace Balancy
 
                 public void Invoke()
                 {
-                    OnUpdated?.Invoke();
+                    if (OnUpdated == null)
+                        return;
+
+                    foreach (Action callback in OnUpdated.GetInvocationList())
+                    {
+                        try
+                        {
+                            callback.Invoke();
+                        }
+                        catch (Exception exception)
+                        {
+                            UnityEngine.Debug.LogException(exception);
+                        }
+                    }
                 }
             }
 
@@ -148,7 +243,20 @@ namespace Balancy
                 if (_activeSubscriptions.TryGetValue(paramName, out var subs))
                     subs.Invoke();
 
-                _onAnyParamChanged?.Invoke(paramName);
+                if (_onAnyParamChanged == null)
+                    return;
+
+                foreach (Action<string> callback in _onAnyParamChanged.GetInvocationList())
+                {
+                    try
+                    {
+                        callback.Invoke(paramName);
+                    }
+                    catch (Exception exception)
+                    {
+                        UnityEngine.Debug.LogException(exception);
+                    }
+                }
             }
 
             public void RemoveDataSubscription(string paramName, Action callback)
@@ -199,7 +307,7 @@ namespace Balancy
         {
             if (Thread.CurrentThread.ManagedThreadId != _mainThreadId)
             {
-                UnityMainThreadDispatcher.Instance().Enqueue(() => OnBaseDataParamChanged(baseData, paramName));
+                UnityMainThreadDispatcher.EnqueueFromAnyThread(() => OnBaseDataParamChanged(baseData, paramName));
                 return;
             }
 
@@ -222,7 +330,7 @@ namespace Balancy
             // marshal just that part to the main thread.
             if (Thread.CurrentThread.ManagedThreadId != _mainThreadId)
             {
-                UnityMainThreadDispatcher.Instance().Enqueue(() => AllBaseDataSubscriptions.Remove(baseData));
+                UnityMainThreadDispatcher.EnqueueFromAnyThread(() => AllBaseDataSubscriptions.Remove(baseData));
                 return;
             }
 

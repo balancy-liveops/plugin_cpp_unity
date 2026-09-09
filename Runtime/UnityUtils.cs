@@ -23,15 +23,48 @@ namespace Balancy
 
         private static string GetUniqIdPrivate()
         {
-            if (PlayerPrefs.HasKey(DEVICE_UNIQUE_ID))
-                return PlayerPrefs.GetString(DEVICE_UNIQUE_ID);
+            try
+            {
+                if (PlayerPrefs.HasKey(DEVICE_UNIQUE_ID))
+                {
+                    var storedId = PlayerPrefs.GetString(DEVICE_UNIQUE_ID);
+                    if (IsValidDeviceId(storedId))
+                        return storedId;
+                }
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning($"[Balancy] Failed to read the device ID from PlayerPrefs. " +
+                                 $"A session-only ID will be used: {exception.Message}");
+            }
 
             var id = SystemInfo.deviceUniqueIdentifier;
-            if (SystemInfo.unsupportedIdentifier == SystemInfo.deviceUniqueIdentifier || string.IsNullOrEmpty(id) || id.Length <= 10)
+            if (!IsValidDeviceId(id))
                 id = Guid.NewGuid().ToString();
-            
-            PlayerPrefs.SetString(DEVICE_UNIQUE_ID, id);
+
+            try
+            {
+                PlayerPrefs.SetString(DEVICE_UNIQUE_ID, id);
+
+                // WebGL stores PlayerPrefs in IndexedDB. Persist the generated ID
+                // immediately instead of relying on application shutdown, which a
+                // browser tab is not guaranteed to report to Unity.
+                PlayerPrefs.Save();
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning($"[Balancy] Failed to persist the device ID in PlayerPrefs. " +
+                                 $"It may change after the application restarts: {exception.Message}");
+            }
+
             return id;
+        }
+
+        private static bool IsValidDeviceId(string id)
+        {
+            return !string.IsNullOrWhiteSpace(id) &&
+                   id.Length > 10 &&
+                   !string.Equals(id, SystemInfo.unsupportedIdentifier, StringComparison.Ordinal);
         }
     }
 }

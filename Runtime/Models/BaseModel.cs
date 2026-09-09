@@ -18,7 +18,21 @@ namespace Balancy.Models
 
         internal void NotifyChanged()
         {
-            OnChanged?.Invoke();
+            var callbacks = OnChanged;
+            if (callbacks == null)
+                return;
+
+            foreach (Action callback in callbacks.GetInvocationList())
+            {
+                try
+                {
+                    callback();
+                }
+                catch (Exception exception)
+                {
+                    UnityEngine.Debug.LogException(exception);
+                }
+            }
         }
 
         public override int GetHashCode()

@@ -23,26 +23,118 @@ namespace Balancy
         }
 
         private static List<CallbacksData> _callbacks = new List<CallbacksData>();
+        private static readonly object _purchaseCallbacksLock = new object();
 
         private static void HardPurchase(Actions.BalancyProductInfo productInfo, Action<bool, string> callback)
         {
-            _callbacks.Add(new CallbacksData(productInfo, callback));
-            Balancy.Actions.Purchasing.GetHardPurchaseCallback()(productInfo);
+            if (productInfo == null)
+            {
+                InvokePurchaseCallback(callback, false, "Product info is null");
+                return;
+            }
+
+            var pending = new CallbacksData(productInfo, callback);
+            lock (_purchaseCallbacksLock)
+                _callbacks.Add(pending);
+            try
+            {
+                Balancy.Actions.Purchasing.GetHardPurchaseCallback()(productInfo);
+            }
+            catch (Exception exception)
+            {
+                bool ownsCallback;
+                lock (_purchaseCallbacksLock)
+                    ownsCallback = _callbacks.Remove(pending);
+                Debug.LogException(exception);
+                // A synchronous finalization or cleanup may already have claimed
+                // this purchase before the provider threw. Only its owner completes it.
+                if (ownsCallback)
+                    InvokePurchaseCallback(callback, false, exception.Message);
+            }
         }
 
         private static CallbacksData GetCallbackData(Actions.BalancyProductInfo productInfo)
         {
-            for (int i = _callbacks.Count - 1; i >= 0; i--)
+            lock (_purchaseCallbacksLock)
             {
-                if (_callbacks[i].ProductInfo.Equals(productInfo))
+                // Prefer exact identity. If a platform plugin serializes and rebuilds
+                // the descriptor, fall back to FIFO value matching.
+                for (int i = 0; i < _callbacks.Count; i++)
                 {
-                    var data = _callbacks[i];
-                    _callbacks.RemoveAt(i);
-                    return data;
+                    if (ReferenceEquals(_callbacks[i].ProductInfo, productInfo))
+                    {
+                        var exact = _callbacks[i];
+                        _callbacks.RemoveAt(i);
+                        return exact;
+                    }
+                }
+                for (int i = 0; i < _callbacks.Count; i++)
+                {
+                    if (_callbacks[i].ProductInfo?.Equals(productInfo) == true)
+                    {
+                        var equivalent = _callbacks[i];
+                        _callbacks.RemoveAt(i);
+                        return equivalent;
+                    }
                 }
             }
 
             return null;
+        }
+
+        private static void CleanUpPendingPurchaseCallbacks()
+        {
+            CallbacksData[] pending;
+            lock (_purchaseCallbacksLock)
+            {
+                pending = _callbacks.ToArray();
+                _callbacks.Clear();
+            }
+
+            foreach (var item in pending)
+                InvokePurchaseCallback(item.Callback, false, "SDK stopped");
+        }
+
+        private static void InvokePurchaseCallback(Action<bool, string> callback, bool success, string error)
+        {
+            try { callback?.Invoke(success, error); }
+            catch (Exception exception) { Debug.LogException(exception); }
+        }
+
+        private static void InvokeValidationCallback(Action<bool, bool> callback, bool success, bool removeFromPending)
+        {
+            try { callback?.Invoke(success, removeFromPending); }
+            catch (Exception exception) { Debug.LogException(exception); }
+        }
+
+        private static void ExecutePurchaseValidation(
+            Action<Core.ResponseCallback<Core.Responses.PurchaseProductResponseData>> dispatch,
+            Core.ResponseCallback<Core.Responses.PurchaseProductResponseData> callback)
+        {
+            var completed = 0;
+            void Complete(Core.Responses.PurchaseProductResponseData response)
+            {
+                // A native call may complete synchronously and then throw, or a
+                // late response may race a dispatch failure. Only one owns delivery.
+                if (System.Threading.Interlocked.Exchange(ref completed, 1) != 0)
+                    return;
+                callback(response ?? new Core.Responses.PurchaseProductResponseData
+                {
+                    Success = false,
+                    ErrorMessage = "Purchase validation response is null"
+                });
+            }
+
+            try { dispatch(Complete); }
+            catch (Exception exception)
+            {
+                Debug.LogException(exception);
+                Complete(new Core.Responses.PurchaseProductResponseData
+                {
+                    Success = false,
+                    ErrorMessage = exception.Message
+                });
+            }
         }
 
         public static void NutakuCompletePurchase(int userId, string orderId, Balancy.Core.ResponseCallback<Balancy.Core.Responses.CompletePurchaseResponseData> callback)
@@ -155,7 +247,7 @@ namespace Balancy
             Action<bool, bool> validationCallback, bool requireReceiptValidation = true)
         {
             Debug.Log("HardPurchase result: " + result);
-            Debug.Log("HardPurchase Receipt: " + paymentInfo.Receipt);
+            Debug.Log("HardPurchase has receipt: " + !string.IsNullOrEmpty(paymentInfo?.Receipt));
 
 // #if UNITY_EDITOR
 //             bool requireValidation = false;
@@ -172,104 +264,117 @@ namespace Balancy
 
                 if (result == Actions.PurchaseResult.Success)
                 {
-                    void InvokeCallbacks(Balancy.Core.Responses.PurchaseProductResponseData responseData)
+                    if (paymentInfo == null)
+                    {
+                        InvokeValidationCallback(validationCallback, false, false);
+                        InvokePurchaseCallback(callback?.Callback, false, "Payment info is null");
+                        return;
+                    }
+
+                    void HandleResponse(Balancy.Core.Responses.PurchaseProductResponseData responseData)
                     {
                         Debug.Log(
                             $"Response: {responseData.Success} ErrorCode = {responseData.ErrorCode} Message = {responseData.ErrorMessage} Product = {responseData.ProductId}");
 
-                        validationCallback?.Invoke(responseData.Success, responseData.RemoveFromPending);
-                        callback?.Callback?.Invoke(responseData.Success, responseData.ErrorMessage);
+                        InvokeValidationCallback(validationCallback, responseData.Success, responseData.RemoveFromPending);
+                        InvokePurchaseCallback(callback?.Callback, responseData.Success, responseData.ErrorMessage);
 
                         if (responseData.Success)
                         {
                             paymentInfo.PriceUSD = responseData.PriceUSD;
-                            productInfo.ReportThePurchase(paymentInfo);
+                            try { productInfo.ReportThePurchase(paymentInfo); }
+                            catch (Exception exception) { Debug.LogException(exception); }
                         }
                     }
 
-                    switch (productInfo.Type)
+                    ExecutePurchaseValidation(InvokeCallbacks =>
                     {
-                        case Actions.BalancyProductInfo.PurchaseType.StoreItem:
+                        switch (productInfo.Type)
                         {
-                            var storeItem = productInfo.GetStoreItem();
-                            HardPurchaseStoreItem(storeItem, paymentInfo, InvokeCallbacks, requireValidation);
-                            break;
-                        }
-                        case Actions.BalancyProductInfo.PurchaseType.ShopSlot:
-                        {
-                            var shopSlot =
-                                Balancy.Profiles.System.ShopsInfo.FindShopSlot(productInfo.OfferUnnyId);
-                            if (shopSlot != null)
-                                HardPurchaseShopSlot(shopSlot, paymentInfo, InvokeCallbacks, requireValidation);
-                            else
+                            case Actions.BalancyProductInfo.PurchaseType.StoreItem:
                             {
                                 var storeItem = productInfo.GetStoreItem();
                                 HardPurchaseStoreItem(storeItem, paymentInfo, InvokeCallbacks, requireValidation);
+                                break;
                             }
-                            break;
-                        }
-                        case Actions.BalancyProductInfo.PurchaseType.Offer:
-                        {
-                            var offerInfo =
-                                Balancy.Profiles.System.SmartInfo.FindOfferInfo(productInfo.OfferInstanceId);
-                            if (offerInfo != null)
+                            case Actions.BalancyProductInfo.PurchaseType.ShopSlot:
                             {
-                                HardPurchaseGameOffer(offerInfo, paymentInfo, InvokeCallbacks, requireValidation);
-                            }
-                            else
-                            {
-                                // Offer instance is gone (stale ID from previous session or deactivated mid-purchase).
-                                // Fall back to completing the purchase via StoreItem so the user gets what they paid for.
-                                var storeItem = productInfo.GetStoreItem();
-                                if (storeItem != null)
+                                var shopSlot =
+                                    Balancy.Profiles.System.ShopsInfo.FindShopSlot(productInfo.OfferUnnyId);
+                                if (shopSlot != null)
+                                    HardPurchaseShopSlot(shopSlot, paymentInfo, InvokeCallbacks, requireValidation);
+                                else
                                 {
-                                    Debug.LogWarning($"OfferInfo not found for InstanceId={productInfo.OfferInstanceId}, falling back to StoreItem purchase.");
+                                    var storeItem = productInfo.GetStoreItem();
                                     HardPurchaseStoreItem(storeItem, paymentInfo, InvokeCallbacks, requireValidation);
+                                }
+                                break;
+                            }
+                            case Actions.BalancyProductInfo.PurchaseType.Offer:
+                            {
+                                var offerInfo =
+                                    Balancy.Profiles.System.SmartInfo.FindOfferInfo(productInfo.OfferInstanceId);
+                                if (offerInfo != null)
+                                {
+                                    HardPurchaseGameOffer(offerInfo, paymentInfo, InvokeCallbacks, requireValidation);
                                 }
                                 else
                                 {
-                                    validationCallback?.Invoke(false, false);
-                                    callback?.Callback?.Invoke(false, Constants.Errors.OfferInfoNull);
+                                    // Offer instance is gone (stale ID from previous session or deactivated mid-purchase).
+                                    // Fall back to completing the purchase via StoreItem so the user gets what they paid for.
+                                    var storeItem = productInfo.GetStoreItem();
+                                    if (storeItem != null)
+                                    {
+                                        Debug.LogWarning($"OfferInfo not found for InstanceId={productInfo.OfferInstanceId}, falling back to StoreItem purchase.");
+                                        HardPurchaseStoreItem(storeItem, paymentInfo, InvokeCallbacks, requireValidation);
+                                    }
+                                    else
+                                    {
+                                        InvokeCallbacks(new Core.Responses.PurchaseProductResponseData
+                                            { Success = false, ErrorMessage = Constants.Errors.OfferInfoNull });
+                                    }
                                 }
-                            }
 
-                            break;
-                        }
-                        case Actions.BalancyProductInfo.PurchaseType.OfferGroup:
-                        {
-                            var offerGroupInfo =
-                                Balancy.Profiles.System.SmartInfo.FindOfferGroupInfo(productInfo.OfferInstanceId);
-                            if (offerGroupInfo != null)
-                            {
-                                var storeItem = productInfo.GetStoreItem();
-                                HardPurchaseGameOfferGroup(offerGroupInfo, storeItem, paymentInfo,
-                                    InvokeCallbacks, requireValidation);
+                                break;
                             }
-                            else
+                            case Actions.BalancyProductInfo.PurchaseType.OfferGroup:
                             {
-                                // OfferGroup instance is gone — fall back to StoreItem purchase.
-                                var storeItem = productInfo.GetStoreItem();
-                                if (storeItem != null)
+                                var offerGroupInfo =
+                                    Balancy.Profiles.System.SmartInfo.FindOfferGroupInfo(productInfo.OfferInstanceId);
+                                if (offerGroupInfo != null)
                                 {
-                                    Debug.LogWarning($"OfferGroupInfo not found for InstanceId={productInfo.OfferInstanceId}, falling back to StoreItem purchase.");
-                                    HardPurchaseStoreItem(storeItem, paymentInfo, InvokeCallbacks, requireValidation);
+                                    var storeItem = productInfo.GetStoreItem();
+                                    HardPurchaseGameOfferGroup(offerGroupInfo, storeItem, paymentInfo,
+                                        InvokeCallbacks, requireValidation);
                                 }
                                 else
                                 {
-                                    validationCallback?.Invoke(false, false);
-                                    callback?.Callback?.Invoke(false, Constants.Errors.OfferGroupInfoNull);
+                                    // OfferGroup instance is gone — fall back to StoreItem purchase.
+                                    var storeItem = productInfo.GetStoreItem();
+                                    if (storeItem != null)
+                                    {
+                                        Debug.LogWarning($"OfferGroupInfo not found for InstanceId={productInfo.OfferInstanceId}, falling back to StoreItem purchase.");
+                                        HardPurchaseStoreItem(storeItem, paymentInfo, InvokeCallbacks, requireValidation);
+                                    }
+                                    else
+                                    {
+                                        InvokeCallbacks(new Core.Responses.PurchaseProductResponseData
+                                            { Success = false, ErrorMessage = Constants.Errors.OfferGroupInfoNull });
+                                    }
                                 }
-                            }
 
-                            break;
+                                break;
+                            }
+                            default:
+                                InvokeCallbacks(new Core.Responses.PurchaseProductResponseData
+                                    { Success = false, ErrorMessage = "Unsupported purchase type" });
+                                break;
                         }
-                        default:
-                            throw new ArgumentOutOfRangeException();
-                    }
+                    }, HandleResponse);
                 }
                 else
                 {
-                    callback?.Callback?.Invoke(false, "");
+                    InvokePurchaseCallback(callback?.Callback, false, "");
                 }
             }
             else
@@ -319,6 +424,15 @@ namespace Balancy
             if (shopSlot.Slot.StoreItem == null)
             {
                 callback?.Invoke(false, Constants.Errors.StoreItemNull);
+                return;
+            }
+
+            // Fail before opening a platform purchase or rewarded ad flow. The
+            // native core validates the slot again immediately before granting
+            // the purchase to protect against stale state and direct callers.
+            if (!shopSlot.IsAvailable())
+            {
+                callback?.Invoke(false, Constants.Errors.ShopSlotNotAvailable);
                 return;
             }
 
@@ -465,6 +579,27 @@ namespace Balancy
         public static void RestorePurchases()
         {
             Balancy.Actions.Purchasing.GetRestorePurchasesCallback()?.Invoke();
+        }
+
+        /// <summary>
+        /// Per-node visual scripting analytics (vs_node_start / vs_node_finish and
+        /// vs_script_start / vs_script_finish).
+        ///
+        /// Disabled by default: these fire on every executed node — two events per
+        /// node — which a script-heavy game produces faster than they can be sent.
+        /// Enable it only while debugging script flow.
+        /// </summary>
+        public static void SetVisualScriptingAnalyticsEnabled(bool enabled)
+        {
+            LibraryMethods.General.balancySetVisualScriptingAnalyticsEnabled(enabled);
+        }
+
+        /// <summary>
+        /// Whether per-node visual scripting analytics is currently being collected.
+        /// </summary>
+        public static bool IsVisualScriptingAnalyticsEnabled()
+        {
+            return LibraryMethods.General.balancyIsVisualScriptingAnalyticsEnabled();
         }
     }
 }

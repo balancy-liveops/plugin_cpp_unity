@@ -7,12 +7,44 @@ using UnityEngine;
 
 namespace Balancy.SmartObjects
 {
+    internal static class BalancyConditionalTemplateRegistry
+    {
+        private static readonly HashSet<IDisposable> Instances = new HashSet<IDisposable>();
+
+        internal static void Register(IDisposable instance)
+        {
+            Instances.Add(instance);
+        }
+
+        internal static void Unregister(IDisposable instance)
+        {
+            Instances.Remove(instance);
+        }
+
+        internal static void Clear()
+        {
+            var snapshot = Instances.ToArray();
+            foreach (var instance in snapshot)
+            {
+                try
+                {
+                    instance.Dispose();
+                }
+                catch (Exception exception)
+                {
+                    Debug.LogException(exception);
+                }
+            }
+            Instances.Clear();
+        }
+    }
+
     /// <summary>
     /// Wrapper for conditional template models. Provides notifications when template conditions change.
     /// Subscribe to OnStatusChanged to be notified when any document of this type becomes active or inactive.
     /// </summary>
     /// <typeparam name="T">ConditionalTemplate model type (must inherit from BaseModel)</typeparam>
-    public class BalancyConditionalTemplate<T> where T : BaseModel
+    public class BalancyConditionalTemplate<T> : IDisposable where T : BaseModel
     {
         /// <summary>
         /// Event fired when any document of this template type changes status
@@ -23,35 +55,69 @@ namespace Balancy.SmartObjects
         private readonly int _callbackId;
         private readonly string _templateName;
         private static readonly Dictionary<string, object> _instances = new Dictionary<string, object>();
+        private bool _disposed;
 
         internal BalancyConditionalTemplate()
         {
             _templateName = JsonBasedObject.GetModelClassName<T>();
+            if (_instances.TryGetValue(_templateName, out var previous))
+                (previous as IDisposable)?.Dispose();
+
             _callbackId = LibraryMethods.ConditionalTemplates.balancySubscribeConditionalTemplateChanged(
                 _templateName,
                 OnConditionalTemplateChangedStatic
             );
 
             _instances[_templateName] = this;
+            BalancyConditionalTemplateRegistry.Register(this);
         }
 
-        ~BalancyConditionalTemplate()
+        public void Dispose()
         {
-            LibraryMethods.ConditionalTemplates.balancyUnsubscribeConditionalTemplateChanged(_templateName, _callbackId);
-            _instances.Remove(_templateName);
+            if (_disposed)
+                return;
+
+            _disposed = true;
+            BalancyConditionalTemplateRegistry.Unregister(this);
+            if (_instances.TryGetValue(_templateName, out var current) && ReferenceEquals(current, this))
+                _instances.Remove(_templateName);
+            if (_callbackId >= 0 && Controller.IsNativeInitialized)
+                LibraryMethods.ConditionalTemplates.balancyUnsubscribeConditionalTemplateChanged(_templateName, _callbackId);
+            OnStatusChanged = null;
         }
 
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.ConditionalTemplates.ConditionalTemplateChangedCallback))]
         private static void OnConditionalTemplateChangedStatic(string templateName, string unnyId, bool passed)
         {
-            if (_instances.TryGetValue(templateName, out var instance))
+            try
             {
-                var conditionalTemplate = instance as BalancyConditionalTemplate<T>;
-                if (conditionalTemplate != null && !string.IsNullOrEmpty(unnyId))
+                if (_instances.TryGetValue(templateName, out var instance))
                 {
-                    var model = CMS.GetModelByUnnyId<T>(unnyId);
-                    conditionalTemplate.OnStatusChanged?.Invoke(model, passed);
+                    var conditionalTemplate = instance as BalancyConditionalTemplate<T>;
+                    if (conditionalTemplate != null && !string.IsNullOrEmpty(unnyId))
+                    {
+                        var model = CMS.GetModelByUnnyId<T>(unnyId);
+                        var callbacks = conditionalTemplate.OnStatusChanged;
+                        if (callbacks == null)
+                            return;
+
+                        foreach (Action<T, bool> callback in callbacks.GetInvocationList())
+                        {
+                            try
+                            {
+                                callback(model, passed);
+                            }
+                            catch (Exception exception)
+                            {
+                                Debug.LogException(exception);
+                            }
+                        }
+                    }
                 }
+            }
+            catch (Exception exception)
+            {
+                Debug.LogException(exception);
             }
         }
 
@@ -63,6 +129,9 @@ namespace Balancy.SmartObjects
         public List<T> GetActiveDocuments()
         {
             var result = new List<T>();
+
+            if (_disposed || !Controller.IsNativeInitialized)
+                return result;
 
             IntPtr arrayPtr = LibraryMethods.ConditionalTemplates.balancyGetActiveConditionalTemplates(_templateName, out int size);
 

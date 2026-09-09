@@ -458,6 +458,25 @@ var BalancyWebViewPlugin = {
     }
   },
 
+  _balancyClearBlobUrlCache: function() {
+    try {
+      if (!window._balancyBlobUrlCache) {
+        window._balancyBlobUrlCache = {};
+        return;
+      }
+      Object.keys(window._balancyBlobUrlCache).forEach(function(path) {
+        var blobUrl = window._balancyBlobUrlCache[path];
+        if (typeof blobUrl === 'string' && blobUrl.indexOf('blob:') === 0) {
+          try { URL.revokeObjectURL(blobUrl); } catch (_) {}
+        }
+      });
+      window._balancyBlobUrlCache = {};
+    } catch (error) {
+      console.error('[BalancyWebView Plugin] Error clearing blob URL cache:', error);
+      window._balancyBlobUrlCache = {};
+    }
+  },
+
   // Async version that loads from IndexedDB and caches blob URL
   _balancyPreloadFileAsBlobUrl: function(directoryPtr, fileNamePtr, callback, userData) {
     try {
