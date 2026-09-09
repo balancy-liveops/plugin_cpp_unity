@@ -154,12 +154,22 @@ namespace Balancy
         private static bool IsTextFile(string relativePath)
         {
             var ext = Path.GetExtension(relativePath).ToLowerInvariant();
-            // Only these extensions get their content preloaded from the StreamingAssets bundle;
-            // any other bundled file is merely marked as existing in resources, so native
-            // getFileContent returns an empty string for it. .lottie (JSON) and .svg (XML) were
-            // missing, which broke every view with a Lottie particle on Android. Keep this list
-            // text-only: entries are read into memory as strings; binaries are served by URL.
-            return ext == ".json" || ext == ".txt" || ext == ".xml" || ext == ".csv" || ext == ".yaml" || ext == ".yml" || ext == ".js" || ext == ".banim" || ext == ".html" || ext == ".css" || ext == ".lottie" || ext == ".svg";
+            // This list is a correctness condition, not an optimization. Only these extensions get
+            // their content preloaded out of the StreamingAssets bundle; every other bundled file
+            // is merely marked as existing, and native then reports it as available (so nothing is
+            // downloaded) while getFileContent returns an empty string for it - a silent failure.
+            //
+            // So an extension belongs here when something reads the file's *content*, and only
+            // then. .lottie was missing, which broke every view with a Lottie particle on Android.
+            // Formats that are only ever handed to the WebView as a URL (images, .svg among them)
+            // must stay out: they already work through file:///android_asset, and preloading them
+            // would just read them over JNI on the main thread and hold them in memory for good.
+            //
+            // Keep the entries text: they are read as UTF-8 strings. Our .lottie files are plain
+            // Lottie JSON despite the extension - if the dashboard ever starts exporting real
+            // dotLottie (which is a ZIP), reading it here would corrupt it and it would have to
+            // move out of this list.
+            return ext == ".json" || ext == ".txt" || ext == ".xml" || ext == ".csv" || ext == ".yaml" || ext == ".yml" || ext == ".js" || ext == ".banim" || ext == ".html" || ext == ".css" || ext == ".lottie";
         }
 
         private static string ReadAssetAsString(AndroidJavaObject assetManager, string assetPath)
