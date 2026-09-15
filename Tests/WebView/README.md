@@ -4,7 +4,7 @@ Branch: `codex/persistent-webview-fixes`. Ship with the matching TypeScript brid
 
 ## Run
 
-Use Unity Test Runner → EditMode → `Balancy.Tests.PersistentWebViewTests` for the seven state-transition tests. They test the actual `PersistentViewState` used by the component, with fake transport and time, including 100 open/close cycles.
+Use Unity Test Runner → EditMode → `Balancy.Tests.PersistentWebViewTests` for the eight state-transition tests. They test the actual `PersistentViewState` used by the component, with fake transport and time, including 100 open/close cycles.
 
 The same fixture can run without starting the editor using installed Mono and the Unity project's NUnit package:
 
@@ -34,11 +34,15 @@ Use a new output directory each time. Omit `--update` to keep build products out
 
 ## Results and remaining validation
 
-- 7 NUnit state tests, 3 WebGL plugin tests passed.
+- 8 NUnit state tests, 3 WebGL plugin tests passed.
 - Both C# assemblies and all five WebView platform branches compiled against Unity 6000.5.1f1 references.
 - Android Java compiled with Unity OpenJDK and API 36; macOS universal dylib rebuilt; iOS syntax check passed with Xcode iPhoneOS SDK 26.2. Existing platform deprecation warnings remain.
-- Matching TypeScript checkout: 32 bridge and 99 core tests passed, including DOM lifecycle fixtures and repeated cycles.
+- Matching TypeScript checkout: 37 bridge and 114 core tests passed, including DOM lifecycle fixtures and repeated cycles.
 
 No iOS/Android device, browser player or Unity Editor test-runner execution was performed. The standalone NUnit fixture does not load Unity or native plugins. Validate cold/warm open, A→close→B, error/retry, language/content/profile changes, native fade scheduling during rapid hide/show and customer legacy HTML on each actual target before release. Windows native remains unsupported.
 
 The public API still supports one active view; Prepare now has an optional failure callback. Root readiness waits for asynchronous initialization, while native fade completion remains separate. SDK scripts can register custom cleanup through `balancy.onViewDispose` and use `balancy.viewSignal`; arbitrary third-party asynchronous code still needs its own cancellation/disposal. Module-script HTML requires the full-page path. See `packages/bridge/PERSISTENT_WEBVIEW.md` in the TypeScript SDK for the full protocol and compatibility contract.
+
+## Second pass — 2026-09-15
+
+Native delayed show callbacks are cancelled/generation-guarded and stale navigation callbacks are ignored. Renderer termination resets persistent state even after shell readiness; the new NUnit scenario verifies re-preparation. Android/macOS binaries were rebuilt. The matching TypeScript branch also fixes iframe navigation latency, blob URL ownership and JS disposal; see `packages/bridge/PERFORMANCE_AND_MEMORY.md`. Its standalone headless Chrome GC fixture covers 520 persistent cycles; this does not replace native player profiling.

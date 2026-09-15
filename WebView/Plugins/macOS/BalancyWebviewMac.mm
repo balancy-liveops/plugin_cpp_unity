@@ -45,6 +45,7 @@ void LogToUnity(const char* message) {
 @property (nonatomic, assign) NSTimeInterval popupLastClickTime;
 @property (nonatomic, assign) int popupRapidClickCount;
 @property (nonatomic, strong) id clickMonitor;
+@property (nonatomic, assign) NSUInteger showGeneration;
 @property (nonatomic, assign) float showDelay;
 @property (nonatomic, assign) float animationDuration;
 @property (nonatomic, assign) BOOL emergencyExitEnabled;
@@ -61,6 +62,7 @@ void LogToUnity(const char* message) {
 - (void)setDebugLogging:(BOOL)enabled;
 - (void)setWebInspectorEnabled:(BOOL)enabled;
 - (void)preparePersistentShellLoad;
+- (void)hideForPersistentMode;
 @end
 
 // Embedded WebView controller for rendering to texture
@@ -514,6 +516,7 @@ void LogToUnity(const char* message) {
 #pragma mark - WKNavigationDelegate
 
 - (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
+    if (webView != _webView) return;
     [self injectTransparencyScript];
     
     if (_loadCompletedCallback) {
@@ -521,13 +524,19 @@ void LogToUnity(const char* message) {
     }
 }
 
+- (void)webViewWebContentProcessDidTerminate:(WKWebView *)webView {
+    if (webView == _webView && _loadCompletedCallback) _loadCompletedCallback(false);
+}
+
 - (void)webView:(WKWebView *)webView didFailNavigation:(WKNavigation *)navigation withError:(NSError *)error {
+    if (webView != _webView) return;
     if (_loadCompletedCallback) {
         _loadCompletedCallback(false);
     }
 }
 
 - (void)webView:(WKWebView *)webView didFailProvisionalNavigation:(WKNavigation *)navigation withError:(NSError *)error {
+    if (webView != _webView) return;
     if (_loadCompletedCallback) {
         _loadCompletedCallback(false);
     }
@@ -792,6 +801,7 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
 }
 
 - (void)close {
+    [self hideForPersistentMode];
     [[NSNotificationCenter defaultCenter] removeObserver:self];
     if (_clickMonitor) {
         [NSEvent removeMonitor:_clickMonitor];
@@ -925,7 +935,14 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
     _suppressNextAnimation = YES;
 }
 
+- (void)hideForPersistentMode {
+    ++_showGeneration;
+    [[self window] setAlphaValue:0.0f];
+    [[self window] orderOut:nil];
+}
+
 - (void)startShowAnimation {
+    const NSUInteger generation = ++_showGeneration;
     // Bring the persistent window back on screen before animating it in.
     [[self window] setAlphaValue:0.0f];
     [[self window] makeKeyAndOrderFront:nil];
@@ -934,8 +951,11 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
         LogToUnity([[NSString stringWithFormat:@"Starting show animation with delay: %.3fs, duration: %.3fs", _showDelay, _animationDuration] UTF8String]);
     }
     
+    __weak BalancyWebViewController *weakSelf = self;
     // Delay before starting the animation
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(_showDelay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        BalancyWebViewController *self = weakSelf;
+        if (!self || generation != self.showGeneration || !self.window.visible) return;
         // Animate the webview to fully visible
         [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
             context.duration = self->_animationDuration;
@@ -971,6 +991,7 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
 #pragma mark - WKNavigationDelegate
 
 - (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
+    if (webView != _webView) return;
     if (_transparentBackground) {
         [self setTransparentBackground:YES];
     }
@@ -995,13 +1016,19 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
     }
 }
 
+- (void)webViewWebContentProcessDidTerminate:(WKWebView *)webView {
+    if (webView == _webView && _loadCompletedCallback) _loadCompletedCallback(false);
+}
+
 - (void)webView:(WKWebView *)webView didFailNavigation:(WKNavigation *)navigation withError:(NSError *)error {
+    if (webView != _webView) return;
    if (_loadCompletedCallback) {
        _loadCompletedCallback(false);
    }
 }
 
 - (void)webView:(WKWebView *)webView didFailProvisionalNavigation:(WKNavigation *)navigation withError:(NSError *)error {
+    if (webView != _webView) return;
    if (_loadCompletedCallback) {
        _loadCompletedCallback(false);
    }
@@ -1096,8 +1123,7 @@ void _balancyShowWebView() {
 void _balancyHideWebView() {
     @autoreleasepool {
         if (_sharedController != nil) {
-            [[_sharedController window] setAlphaValue:0.0f];
-            [[_sharedController window] orderOut:nil];
+            [_sharedController hideForPersistentMode];
         }
     }
 }

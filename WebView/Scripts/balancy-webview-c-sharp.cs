@@ -92,6 +92,12 @@ namespace Balancy.WebView
         /// Called from Android Java when page load is completed
         /// </summary>
         /// <param name="successString">"true" or "false" as string</param>
+        public void OnAndroidRenderProcessGone(string reason)
+        {
+            if (Persistent.Enabled) Persistent.Fail("Android WebView renderer " + reason);
+            else { CloseWebView(); OnLoadCompleted?.Invoke(false); }
+        }
+
         public void OnAndroidLoadCompleted(string successString)
         {
             bool success = successString.ToLower() == "true";
@@ -1557,7 +1563,7 @@ namespace Balancy.WebView
                 success = _balancyInjectJSCode(fullCode);
 #endif
             }
-            if (preparingShell)
+            if (preparingShell || (!success && _instance.Persistent.Enabled))
             {
                 if (!success) _instance.Persistent.Fail("Persistent shell navigation or injection failed");
                 return; // Success is signalled by the bridge's shellReady ACK.

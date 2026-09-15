@@ -87,6 +87,17 @@ namespace Balancy.Tests
             state.Receive("viewReady", state.CurrentId, null, null);
             Assert.That(events.FindAll(e => e == "show").Count, Is.EqualTo(1));
         }
+        [Test] public void RendererFailureAfterReadyReleasesTheViewAndAllowsPreparationAgain()
+        {
+            Prepare(); int ready = 0, failed = 0;
+            state.Show(value => value, () => ready++, error => failed++); state.Tick();
+            state.Receive("viewReady", state.CurrentId, null, null);
+            state.Fail("Renderer terminated");
+            Assert.That(state.Enabled, Is.False); Assert.That(state.CurrentId, Is.Null);
+            Assert.That(ready, Is.EqualTo(1)); Assert.That(failed, Is.EqualTo(1));
+            Assert.That(events.FindAll(value => value == "closed").Count, Is.EqualTo(1));
+            Prepare(); Assert.That(state.CanShow, Is.True);
+        }
         [Test] public void OneHundredCyclesReleaseEveryAcceptedView()
         {
             Prepare();

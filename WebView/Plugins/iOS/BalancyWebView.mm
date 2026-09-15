@@ -125,6 +125,7 @@ static BalancyWebViewController* CreateOrGetWebViewController(void (*messageCall
 @property (nonatomic, assign) BOOL emergencyExitEnabled;
 @property (nonatomic, assign, readwrite) BOOL persistentMode;
 @property (nonatomic, assign) BOOL suppressNextAnimation;
+@property (nonatomic, assign) NSUInteger showGeneration;
 
 @end
 
@@ -637,6 +638,8 @@ static BalancyWebViewController* CreateOrGetWebViewController(void (*messageCall
 }
 
 - (void)startShowAnimation {
+    const NSUInteger generation = ++_showGeneration;
+    [_webView.layer removeAllAnimations];
     if (_debugLogging) {
         NSLog(@"[BalancyWebView] Starting show animation with delay: %.3f, duration: %.3f", _showDelay, _animationDuration);
     }
@@ -645,8 +648,11 @@ static BalancyWebViewController* CreateOrGetWebViewController(void (*messageCall
     self.view.userInteractionEnabled = YES;
     _webView.alpha = 0.0;
     
-    // Wait for the delay, then animate
+    // Closing/hiding invalidates this generation without retaining the controller.
+    __weak BalancyWebViewController *weakSelf = self;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(_showDelay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        BalancyWebViewController *self = weakSelf;
+        if (!self || generation != self.showGeneration || self.view.hidden || !self.webView) return;
         [UIView animateWithDuration:self.animationDuration
                               delay:0.0
                             options:UIViewAnimationOptionCurveEaseOut
@@ -662,6 +668,8 @@ static BalancyWebViewController* CreateOrGetWebViewController(void (*messageCall
 }
 
 - (void)hideForPersistentMode {
+    ++_showGeneration;
+    [_webView.layer removeAllAnimations];
     self.view.hidden = YES;
     self.view.userInteractionEnabled = NO;
     _webView.alpha = 0.0;
@@ -775,6 +783,7 @@ static BalancyWebViewController* CreateOrGetWebViewController(void (*messageCall
 }
 
 - (void)close {
+    [self hideForPersistentMode];
     _persistentMode = NO;
     _suppressNextAnimation = NO;
 
@@ -1425,6 +1434,7 @@ static BalancyWebViewController* CreateOrGetWebViewController(void (*messageCall
 }
 
 - (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
+    if (webView != _webView) return;
     // Hide the activity indicator when loading completes
     [_activityIndicator stopAnimating];
     
@@ -1462,7 +1472,12 @@ static BalancyWebViewController* CreateOrGetWebViewController(void (*messageCall
     }
 }
 
+- (void)webViewWebContentProcessDidTerminate:(WKWebView *)webView {
+    if (webView == _webView && _loadCompletedCallback) _loadCompletedCallback(false);
+}
+
 - (void)webView:(WKWebView *)webView didFailNavigation:(WKNavigation *)navigation withError:(NSError *)error {
+    if (webView != _webView) return;
     // Hide the activity indicator
     [_activityIndicator stopAnimating];
     
@@ -1477,6 +1492,7 @@ static BalancyWebViewController* CreateOrGetWebViewController(void (*messageCall
 }
 
 - (void)webView:(WKWebView *)webView didFailProvisionalNavigation:(WKNavigation *)navigation withError:(NSError *)error {
+    if (webView != _webView) return;
     // Hide the activity indicator
     [_activityIndicator stopAnimating];
     

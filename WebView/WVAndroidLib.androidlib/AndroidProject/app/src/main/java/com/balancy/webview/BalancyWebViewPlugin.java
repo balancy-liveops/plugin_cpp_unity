@@ -51,6 +51,8 @@ public class BalancyWebViewPlugin {
     private float viewportHeight = 1f;
     private String ownerJson = "";
     
+    private final Handler showHandler = new Handler(Looper.getMainLooper());
+    private Runnable pendingShow;
     private float showDelay = 0.1f;
     private float animationDuration = 0.1f;
     private boolean unityAvailable = false;
@@ -299,6 +301,7 @@ public class BalancyWebViewPlugin {
             
             @Override
             public void onPageFinished(WebView view, String url) {
+                if (view != webView) return;
                 logDebug("Page finished loading: " + url);
                 
                 if (transparentBackground) {
@@ -330,6 +333,7 @@ public class BalancyWebViewPlugin {
             
             @Override
             public void onReceivedError(WebView view, int errorCode, String description, String failingUrl) {
+                if (view != webView) return;
                 Log.e(TAG, "WebView error: " + description + " (" + errorCode + ") for URL: " + failingUrl);
                 sendUnityMessage("OnAndroidLoadCompleted", "false");
             }
@@ -347,6 +351,7 @@ public class BalancyWebViewPlugin {
             // LAYER_TYPE_NONE change above addresses; this is defense-in-depth.
             @Override
             public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {
+                if (view != webView) return true;
                 boolean didCrash = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
                         && detail != null && detail.didCrash();
                 Log.e(TAG, "WebView render process gone (didCrash=" + didCrash + "); recovering to avoid app kill");
@@ -363,8 +368,8 @@ public class BalancyWebViewPlugin {
                 if (view == webView) {
                     webView = null;
                 }
+                closeWebView();
                 sendUnityMessage("OnAndroidRenderProcessGone", didCrash ? "crashed" : "killed");
-                sendUnityMessage("OnAndroidLoadCompleted", "false");
                 return true;
             }
         });
@@ -499,22 +504,31 @@ public class BalancyWebViewPlugin {
         }
     }
     
+    private void cancelShowAnimation() {
+        if (pendingShow != null) showHandler.removeCallbacks(pendingShow);
+        pendingShow = null;
+        if (webView != null) webView.animate().cancel();
+    }
+
     private void startShowAnimation() {
+        cancelShowAnimation();
         if (webView == null) return;
         
         logDebug("Starting show animation");
         webView.setAlpha(0.0f);
         
-        Handler mainHandler = new Handler(Looper.getMainLooper());
-        mainHandler.postDelayed(() -> {
-            if (webView != null) {
+        final WebView target = webView;
+        pendingShow = () -> {
+            pendingShow = null;
+            if (webView == target && webViewContainer != null && webViewContainer.getVisibility() == View.VISIBLE) {
                 webView.animate()
                     .alpha(1.0f)
                     .setDuration((long)(animationDuration * 1000))
                     .setInterpolator(new DecelerateInterpolator())
                     .start();
             }
-        }, (long)(showDelay * 1000));
+        };
+        showHandler.postDelayed(pendingShow, (long)(showDelay * 1000));
     }
     
     // Private method for internal use (already on UI thread)
@@ -543,6 +557,7 @@ public class BalancyWebViewPlugin {
     public void hideWebView() {
         logDebug("hideWebView() called from thread: " + Thread.currentThread().getName());
         runOnUIThread(() -> {
+            cancelShowAnimation();
             if (webView != null) {
                 webView.animate().cancel();
                 webView.setAlpha(0.0f);
@@ -561,6 +576,7 @@ public class BalancyWebViewPlugin {
 
         logDebug("closeWebView() called from thread: " + Thread.currentThread().getName());
         runOnUIThread(() -> {
+            cancelShowAnimation();
             // Clean up emergency exit
             if (emergencyExitHideHandler != null && emergencyExitHideRunnable != null) {
                 emergencyExitHideHandler.removeCallbacks(emergencyExitHideRunnable);
