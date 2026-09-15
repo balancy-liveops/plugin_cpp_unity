@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
 using Balancy.Data.SmartObjects;
@@ -34,6 +35,7 @@ namespace Balancy
             _webView = BalancyWebView.Instance;
             _webView.OnLoadCompleted += HandleLoadCompleted;
             _webView.OnClosed += HandleWebViewClosed;
+            _webView.OnViewReleased += HandleViewReleased;
 
             _webView.SetTransparentBackground(true);
             _webView.SetFullScreen(true);
@@ -71,14 +73,19 @@ namespace Balancy
             Balancy.Callbacks.OnOfferDeactivated -= HandleOfferDeactivated;
             Balancy.Callbacks.OnOfferGroupDeactivated -= HandleOfferGroupDeactivated;
             Balancy.Callbacks.OnEventDeactivated -= HandleEventDeactivated;
+            Balancy.Callbacks.OnLocalizationChanged -= HandleLocalizationChanged;
+            Balancy.Callbacks.OnDataUpdated -= HandleContentUpdated;
 
             if (_webView != null)
             {
                 _webView.OnMessage -= OnMessageReceived;
                 _webView.OnLoadCompleted -= HandleLoadCompleted;
                 _webView.OnClosed -= HandleWebViewClosed;
+                _webView.OnViewReleased -= HandleViewReleased;
+                if (_webView.IsPersistentModeEnabled()) _webView.CloseWebView();
             }
 
+            ViewOwners.Clear();
             _onMessageReceived = null;
             m_LastOpenedOwnerPtr = IntPtr.Zero;
             _webView = null;
@@ -107,6 +114,27 @@ namespace Balancy
         }
 
         private static IntPtr m_LastOpenedOwnerPtr = IntPtr.Zero;
+        private static readonly Dictionary<string, IntPtr> ViewOwners = new Dictionary<string, IntPtr>();
+        private static void HandleViewReleased(string id) => ViewOwners.Remove(id);
+        private static void HandleLocalizationChanged(string code) => _webView?.InvalidateCache(true);
+        private static void HandleContentUpdated(Callbacks.DataUpdatedStatus status)
+        {
+            if (status.IsCMSUpdated) _webView?.InvalidateCache();
+        }
+        [Serializable] private class BridgeRequest { public string type, id, viewId; public BridgeRequest[] requests; }
+        [Serializable] private class BridgeError { public string type = "response"; public string id, error; }
+        private static string RequestError(string requestData, string error)
+        {
+            try {
+                var request = JsonUtility.FromJson<BridgeRequest>(requestData);
+                if (request.type == "batch" && request.requests != null) {
+                    var responses = new List<string>();
+                    foreach (var item in request.requests) responses.Add(JsonUtility.ToJson(new BridgeError { id = item.id, error = error }));
+                    return "{\"type\":\"batch-response\",\"responses\":[" + string.Join(",", responses) + "]}";
+                }
+                return JsonUtility.ToJson(new BridgeError { id = request.id, error = error });
+            } catch { return JsonUtility.ToJson(new BridgeError { error = error }); }
+        }
 
         private static void PrepareCallbacks()
         {
@@ -118,6 +146,10 @@ namespace Balancy
             
             Balancy.Callbacks.OnEventDeactivated -= HandleEventDeactivated;
             Balancy.Callbacks.OnEventDeactivated += HandleEventDeactivated;
+            Balancy.Callbacks.OnLocalizationChanged -= HandleLocalizationChanged;
+            Balancy.Callbacks.OnLocalizationChanged += HandleLocalizationChanged;
+            Balancy.Callbacks.OnDataUpdated -= HandleContentUpdated;
+            Balancy.Callbacks.OnDataUpdated += HandleContentUpdated;
         }
 
         private static void HandleEventDeactivated(EventInfo eventInfo)
@@ -150,9 +182,8 @@ namespace Balancy
 
         internal static void OnProfileUpdated()
         {
-            if (m_LastOpenedOwnerPtr == IntPtr.Zero)
-                return;
-
+            ViewOwners.Clear();
+            _webView?.InvalidateCache();
             // Profile was recreated — all smart object pointers (offers, events, etc.)
             // are now invalid. Close the view (it may be showing stale data) and null
             // the cached owner pointer so we don't send a dangling pointer to C++.
@@ -185,8 +216,7 @@ namespace Balancy
         
         internal static void SendMessageToView(string message)
         {
-            if (_webView.IsWebViewOpen())
-                _webView.SendMessageToWebView(message);
+            _webView?.SendMessageToWebView(message);
         }
 
         private static bool UsePersistentWebViewForLocalViews()
@@ -219,10 +249,12 @@ namespace Balancy
                 : filePath;
         }
 
-        public static void PrepareWebView(Action onReady = null)
+        public static void PrepareWebView(Action onReady = null, Action<string> onFailed = null)
         {
             Debug.Log("[RenderViewsManager] PrepareWebView requested");
-            _webView?.PrepareWebView(onReady);
+            if (_webView == null) { onFailed?.Invoke("RenderViewsManager is not initialized"); return; }
+            RefreshScripts();
+            _webView.PrepareWebView(onReady, onFailed);
         }
 
         public static void ShowWebView()
@@ -255,33 +287,41 @@ namespace Balancy
 
             if (UsePersistentWebViewForLocalViews())
             {
-                string normalizedPath = NormalizeLocalPath(filePath);
-                if (!File.Exists(normalizedPath))
+                if (!_webView.CanShowPersistentView())
                 {
-                    Debug.LogError($"[RenderViewsManager] Persistent WebView requires a readable local HTML file: {normalizedPath}");
-                    onFailed?.Invoke(ViewOpenError.FileNotFound);
-                    return;
-                }
-
-                if (_webView.IsWebViewOpen())
-                {
-                    Debug.LogError("View is already opened");
                     onFailed?.Invoke(ViewOpenError.AlreadyOpened);
                     return;
                 }
-
-                m_LastOpenedOwnerPtr = owner?.GetRawPointer() ?? IntPtr.Zero;
-                string ownerJson = owner?.ToJsonString(DEFAULT_OWNER_DEPTH, false) ?? "";
-                string additionalInfo = BuildAdditionalInfo(owner);
                 try
                 {
-                    string htmlContent = File.ReadAllText(normalizedPath);
-                    Debug.Log($"[RenderViewsManager] Persistent OpenLocalView loaded HTML. Length={htmlContent.Length} Owner={(owner == null ? "null" : owner.GetType().Name)}");
-                    _webView.ShowView(htmlContent, ownerJson, additionalInfo, onShown);
+                    string htmlContent;
+#if UNITY_WEBGL && !UNITY_EDITOR
+                    string cachePath = filePath;
+                    int cacheIndex = cachePath.IndexOf("Cache/", StringComparison.Ordinal);
+                    if (cacheIndex >= 0) cachePath = cachePath.Substring(cacheIndex);
+                    htmlContent = Marshal.PtrToStringAnsi(LibraryMethods.General.balancyLoadFileFromCache(cachePath));
+#else
+                    string normalizedPath = NormalizeLocalPath(filePath);
+                    if (!File.Exists(normalizedPath)) { onFailed?.Invoke(ViewOpenError.FileNotFound); return; }
+                    htmlContent = File.ReadAllText(normalizedPath);
+#endif
+                    if (string.IsNullOrEmpty(htmlContent)) { onFailed?.Invoke(ViewOpenError.LoadFailed); return; }
+#if UNITY_WEBGL && !UNITY_EDITOR
+                    string baseUrl = null; // Browser resources use the WebGL cache/blob URL mapping.
+#else
+                    string baseUrl = new Uri(Path.GetFullPath(NormalizeLocalPath(filePath))).AbsoluteUri;
+#endif
+                    string ownerJson = owner?.ToJsonString(DEFAULT_OWNER_DEPTH, false) ?? "";
+                    if (_webView.ShowView(htmlContent, ownerJson, BuildAdditionalInfo(owner), onShown,
+                        error => onFailed?.Invoke(ViewOpenError.LoadFailed), baseUrl))
+                    {
+                        m_LastOpenedOwnerPtr = owner?.GetRawPointer() ?? IntPtr.Zero;
+                        ViewOwners[_webView.CurrentViewId] = m_LastOpenedOwnerPtr;
+                    }
                 }
                 catch (Exception e)
                 {
-                    Debug.LogError($"[RenderViewsManager] Failed to read local view HTML for persistent WebView: {e.Message}");
+                    Debug.LogError("[RenderViewsManager] Failed to load persistent HTML: " + e.Message);
                     onFailed?.Invoke(ViewOpenError.LoadFailed);
                 }
                 return;
@@ -417,6 +457,12 @@ namespace Balancy
                 return false;
             }
 
+            if (_webView.IsPersistentModeEnabled())
+            {
+                if (!_webView.CanShowPersistentView()) { onFailed?.Invoke(ViewOpenError.AlreadyOpened); return false; }
+                _webView.CloseWebView();
+            }
+
             var urlToLoad = url;// + "?timestamp=" + Guid.NewGuid().ToString();
 
             m_LastOpenedOwnerPtr = owner?.GetRawPointer() ?? IntPtr.Zero;
@@ -489,7 +535,7 @@ namespace Balancy
                 {
                     Debug.Log("Message handling was cancelled by external handler: " + msg);
                     // Send response back so the WebView bridge doesn't hang waiting
-                    _webView.SendMessageToWebView("{\"status\":\"ok\"}");
+                    _webView.SendMessageToWebView(RequestError(msg, "Message rejected by application"));
                     return;
                 }
             }
@@ -962,14 +1008,23 @@ namespace Balancy
 
         private static void RunRequestInTheCorePlugin(string requestData, LibraryMethods.General.WebviewRequestCallback callback)
         {
-            if (m_LastOpenedOwnerPtr == IntPtr.Zero)
+            try
             {
-                // Debug.LogWarning("[RenderViewsManager] Cannot process WebView request: owner pointer is null");
-                callback("{\"type\":\"response\",\"error\":\"Owner pointer is null\"}");
-                return;
+                var request = JsonUtility.FromJson<BridgeRequest>(requestData);
+                var requests = request.type == "batch" ? request.requests : new[] { request };
+                if (requests == null) throw new FormatException("Invalid request batch");
+                string viewId = requests.Length > 0 ? requests[0].viewId : null;
+                IntPtr owner = m_LastOpenedOwnerPtr;
+                if (!string.IsNullOrEmpty(viewId) && !ViewOwners.TryGetValue(viewId, out owner))
+                {
+                    callback(RequestError(requestData, "View is no longer active")); return;
+                }
+                foreach (var item in requests)
+                    if (item.viewId != viewId) { callback(RequestError(requestData, "Mixed view contexts")); return; }
+                // Null owner is valid for explicit-context APIs, localization and resources.
+                LibraryMethods.General.balancyWebViewRequest(owner, requestData, callback);
             }
-
-            LibraryMethods.General.balancyWebViewRequest(m_LastOpenedOwnerPtr, requestData, callback);
+            catch (Exception error) { callback(RequestError(requestData, error.Message)); }
         }
     }
 }

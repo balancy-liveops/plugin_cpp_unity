@@ -623,8 +623,8 @@ public class BalancyWebViewPlugin {
             return false;
         }
         
-        String script = "if (balancy && balancy._receiveMessageFromUnity) { " +
-                       "balancy._receiveMessageFromUnity('" + message.replace("'", "\\'").replace("\"", "\\\"") + "'); }";
+        String script = "if (window.balancy && window.balancy._receiveMessageFromUnity) { " +
+                       "window.balancy._receiveMessageFromUnity(" + org.json.JSONObject.quote(message) + "); }";
         
         runOnUIThread(() -> {
             if (webView != null) {

@@ -8,8 +8,7 @@
 var BalancyWebViewPlugin = {
   $BalancyWebViewState: {
     webView: null,
-    initializationStarted: false,
-    initializationCallbacks: [],
+    initializationPromise: null,
     unityInstanceRef: null,
 
     /**
@@ -33,107 +32,42 @@ var BalancyWebViewPlugin = {
      * Load the initialization scripts
      */
     loadInitScripts: function() {
-      if (this.initializationStarted) {
-        return Promise.resolve();
+      if (this.initializationPromise) return this.initializationPromise;
+      function loadScript(src) {
+        return new Promise(function(resolve, reject) {
+          var script = document.createElement('script');
+          script.src = src;
+          script.onload = resolve;
+          script.onerror = function() { script.remove(); reject(new Error('Failed to load ' + src)); };
+          document.head.appendChild(script);
+        });
       }
-
-      this.initializationStarted = true;
-      //console.log('[BalancyWebView Plugin] Loading initialization scripts...');
-
-      return new Promise((resolve, reject) => {
-        // Check if already initialized
-        if (typeof window.balancyWebView !== 'undefined') {
-          //console.log('[BalancyWebView Plugin] WebView already initialized');
-          this.webView = window.balancyWebView;
-          resolve();
-          return;
-        }
-
-        // Load JSZip first
-        var jszipScript = document.createElement('script');
-        jszipScript.src = 'StreamingAssets/Balancy/jszip.min.js';
-        jszipScript.onload = function() {
-          //console.log('[BalancyWebView Plugin] JSZip loaded');
-
-          // Load WebView bundle (includes unity-entry which creates window.balancyWebView)
-          var webviewScript = document.createElement('script');
-          webviewScript.src = 'StreamingAssets/Balancy/balancy-webview.umd.js';
-          webviewScript.onload = function() {
-            //console.log('[BalancyWebView Plugin] WebView bundle loaded');
-
-            // Load bridge script
-            var bridgeScript = document.createElement('script');
-            bridgeScript.src = 'StreamingAssets/Balancy/balancy-webview-bridge.js';
-            bridgeScript.onload = function() {
-              //console.log('[BalancyWebView Plugin] Bridge loaded');
-
-              // Wait a bit for initialization to complete
-              setTimeout(function() {
-                if (typeof window.balancyWebView !== 'undefined') {
-                  BalancyWebViewState.webView = window.balancyWebView;
-                  //console.log('[BalancyWebView Plugin] ✅ WebView initialized successfully');
-
-                  // Register message forwarder
-                  BalancyWebViewState.registerMessageForwarder();
-
-                  resolve();
-                } else {
-                  reject(new Error('WebView not available after bundle load'));
-                }
-              }, 100);
-            };
-            bridgeScript.onerror = function() {
-              reject(new Error('Failed to load bridge script'));
-            };
-            document.head.appendChild(bridgeScript);
-          };
-          webviewScript.onerror = function() {
-            reject(new Error('Failed to load webview bundle'));
-          };
-          document.head.appendChild(webviewScript);
-        };
-        jszipScript.onerror = function() {
-          reject(new Error('Failed to load JSZip'));
-        };
-        document.head.appendChild(jszipScript);
+      // The WebView bundle embeds bridgeCode. Executing a separate bridge script
+      // in the game's parent document initializes an unintended second bridge.
+      this.initializationPromise = Promise.resolve().then(function() {
+        if (typeof window.balancyWebView !== 'undefined') return;
+        return loadScript('StreamingAssets/Balancy/jszip.min.js').then(function() {
+          return loadScript('StreamingAssets/Balancy/balancy-webview.umd.js');
+        });
+      }).then(function() {
+        if (!window.balancyWebView) throw new Error('WebView not available after bundle load');
+        BalancyWebViewState.webView = window.balancyWebView;
+        BalancyWebViewState.registerMessageForwarder();
+      }).catch(function(error) {
+        BalancyWebViewState.initializationPromise = null;
+        BalancyWebViewState.webView = null;
+        throw error;
       });
+      return this.initializationPromise;
     },
 
-    /**
-     * Get or initialize the WebView instance
-     */
     getWebView: function(callback) {
-      if (this.webView !== null) {
-        callback(this.webView);
-        return;
-      }
-
-      // Check if already available
-      if (typeof window.balancyWebView !== 'undefined') {
-        this.webView = window.balancyWebView;
-        //console.log('[BalancyWebView Plugin] Using existing WebView instance');
-        callback(this.webView);
-        return;
-      }
-
-      // Need to load scripts
-      //console.log('[BalancyWebView Plugin] WebView not ready, loading scripts...');
-      this.initializationCallbacks.push(callback);
-
+      if (this.webView !== null) { callback(this.webView); return; }
       this.loadInitScripts().then(function() {
-        //console.log('[BalancyWebView Plugin] Initialization complete, notifying callbacks');
-        var callbacks = BalancyWebViewState.initializationCallbacks;
-        BalancyWebViewState.initializationCallbacks = [];
-        callbacks.forEach(function(cb) {
-          cb(BalancyWebViewState.webView);
-        });
-      }).catch(function(error) {
+        callback(BalancyWebViewState.webView);
+      }, function(error) {
         console.error('[BalancyWebView Plugin] Failed to initialize:', error);
-        var callbacks = BalancyWebViewState.initializationCallbacks;
-        BalancyWebViewState.initializationCallbacks = [];
-        callbacks.forEach(function(cb) {
-          cb(null);
-        });
+        callback(null);
       });
     }
   },
@@ -141,6 +75,26 @@ var BalancyWebViewPlugin = {
   /**
    * Open WebView with HTML content
    */
+  _balancyPrepareWebView: function(shellIdPtr) {
+    var shellId = UTF8ToString(shellIdPtr);
+    BalancyWebViewState.getWebView(function(webView) {
+      try {
+        if (!webView) throw new Error('WebView bundle unavailable');
+        BalancyWebViewState.registerMessageForwarder();
+        webView.prepareWebView(shellId);
+      } catch (error) {
+        SendMessage('BalancyView', 'OnWebGLMessageReceived', JSON.stringify({ type: 'shellError', shellId: shellId, error: String(error) }));
+      }
+    });
+    return true;
+  },
+  _balancyShowWebView: function() {
+    if (BalancyWebViewState.webView) BalancyWebViewState.webView.show();
+  },
+  _balancyHideWebView: function() {
+    if (BalancyWebViewState.webView) BalancyWebViewState.webView.hide();
+  },
+
   _balancyOpenWebViewWithHtmlContent: function(htmlContentPtr, ownerJsonPtr, additionalInfoPtr, manifestJsonPtr) {
     try {
       var htmlContent = UTF8ToString(htmlContentPtr);
@@ -249,7 +203,7 @@ var BalancyWebViewPlugin = {
           return;
         }
 
-        webView.closeWebView();
+        webView.closeWebView(false); // C# emits its own OnClosed event.
         //console.log('[BalancyWebView Plugin] WebView closed');
       });
 

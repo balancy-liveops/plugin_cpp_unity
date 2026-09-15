@@ -835,11 +835,9 @@ static BalancyWebViewController* CreateOrGetWebViewController(void (*messageCall
     }
     
     // Escape single quotes for JavaScript
-    NSString *escapedMessage = [message stringByReplacingOccurrencesOfString:@"'" withString:@"\\'"];
-    escapedMessage = [escapedMessage stringByReplacingOccurrencesOfString:@"\"" withString:@"\\\""];
-    
-    // JavaScript to send the message to the web page
-    NSString *script = [NSString stringWithFormat:@"if (balancy) { balancy._receiveMessageFromUnity('%@'); }", escapedMessage];
+    NSData *jsonData = [NSJSONSerialization dataWithJSONObject:@[message ?: @""] options:0 error:nil];
+    NSString *argument = [[NSString alloc] initWithData:jsonData encoding:NSUTF8StringEncoding];
+    NSString *script = [NSString stringWithFormat:@"if (window.balancy) { window.balancy._receiveMessageFromUnity((%@)[0]); }", argument];
     
     [_webView evaluateJavaScript:script completionHandler:^(id _Nullable result, NSError * _Nullable error) {
         if (error && self.debugLogging) {

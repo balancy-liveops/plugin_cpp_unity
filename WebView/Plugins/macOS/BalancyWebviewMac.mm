@@ -297,9 +297,9 @@ void LogToUnity(const char* message) {
 - (BOOL)sendMessage:(NSString *)message {
     if (!_webView) return NO;
     
-    NSString *escapedMessage = [message stringByReplacingOccurrencesOfString:@"'" withString:@"\\'"];
-    escapedMessage = [escapedMessage stringByReplacingOccurrencesOfString:@"\"" withString:@"\\\""];
-    NSString *script = [NSString stringWithFormat:@"if (balancy) { balancy._receiveMessageFromUnity('%@'); }", escapedMessage];
+    NSData *jsonData = [NSJSONSerialization dataWithJSONObject:@[message ?: @""] options:0 error:nil];
+    NSString *argument = [[NSString alloc] initWithData:jsonData encoding:NSUTF8StringEncoding];
+    NSString *script = [NSString stringWithFormat:@"if (window.balancy) { window.balancy._receiveMessageFromUnity((%@)[0]); }", argument];
     
     [_webView evaluateJavaScript:script completionHandler:nil];
     return YES;
@@ -812,9 +812,9 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
 - (BOOL)sendMessage:(NSString *)message {
     if (!_webView) return NO;
     
-    NSString *escapedMessage = [message stringByReplacingOccurrencesOfString:@"'" withString:@"\\'"];
-    escapedMessage = [escapedMessage stringByReplacingOccurrencesOfString:@"\"" withString:@"\\\""];
-    NSString *script = [NSString stringWithFormat:@"if (balancy) { balancy._receiveMessageFromUnity('%@'); }", escapedMessage];
+    NSData *jsonData = [NSJSONSerialization dataWithJSONObject:@[message ?: @""] options:0 error:nil];
+    NSString *argument = [[NSString alloc] initWithData:jsonData encoding:NSUTF8StringEncoding];
+    NSString *script = [NSString stringWithFormat:@"if (window.balancy) { window.balancy._receiveMessageFromUnity((%@)[0]); }", argument];
     
     [_webView evaluateJavaScript:script completionHandler:nil];
     return YES;
