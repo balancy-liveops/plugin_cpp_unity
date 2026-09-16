@@ -42,7 +42,7 @@ namespace Balancy
             //_webView.SetViewportRect(viewportX, viewportY, viewportWidth, viewportHeight);
             //_webView.SetDebugLogging(true);
 
-            SetViewDelays(0.2f, 0.3f);
+            SetViewDelays(0f, 0f);
         }
 
         internal static void CleanUp()
@@ -458,6 +458,8 @@ namespace Balancy
         }
 #endif
 
+        /// <summary>Set presentation delay and fade duration in seconds. Both default to zero.
+        /// Call after SDK initialization; settings also apply to a prepared hidden WebView.</summary>
         public static void SetViewDelays(float showDelay, float transparencyAnimationDuration)
         {
             if (_webView)

@@ -151,8 +151,8 @@ static BalancyWebViewController* CreateOrGetWebViewController(void (*messageCall
         _viewportRect = CGRectMake(0.0f, 0.0f, 1.0f, 1.0f);
         
         // Animation defaults
-        _showDelay = 0.1f; // 100ms default delay
-        _animationDuration = 0.1f; // 100ms default animation duration
+        _showDelay = 0.0f; // No delay by default
+        _animationDuration = 0.0f; // No fade by default
 
         // Emergency exit enabled by default
         _emergencyExitEnabled = YES;

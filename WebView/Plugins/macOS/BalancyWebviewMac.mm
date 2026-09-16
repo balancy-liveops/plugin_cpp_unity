@@ -106,8 +106,8 @@ void LogToUnity(const char* message) {
         _debugLogging = NO;
         _webInspectorEnabled = NO;
         _gameUIMode = YES;
-        _showDelay = 0.1f;
-        _animationDuration = 0.1f;
+        _showDelay = 0.0f;
+        _animationDuration = 0.0f;
         _textureWidth = width;
         _textureHeight = height;
         _pixelDataReady = NO;
@@ -604,8 +604,8 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
         _webInspectorEnabled = NO;
         _gameUIMode = YES;
         _emergencyExitEnabled = YES;
-        _showDelay = 0.1f;
-        _animationDuration = 0.1f;
+        _showDelay = 0.0f;
+        _animationDuration = 0.0f;
         _viewportRect = NSMakeRect(0, 0, 1, 1);
         _suppressNextAnimation = NO;
         

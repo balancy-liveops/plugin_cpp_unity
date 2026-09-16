@@ -53,8 +53,8 @@ public class BalancyWebViewPlugin {
     
     private final Handler showHandler = new Handler(Looper.getMainLooper());
     private Runnable pendingShow;
-    private float showDelay = 0.1f;
-    private float animationDuration = 0.1f;
+    private float showDelay = 0.0f;
+    private float animationDuration = 0.0f;
     private boolean unityAvailable = false;
     private boolean emergencyExitEnabled = true;
     private boolean offlineCacheEnabled = false;

@@ -153,6 +153,60 @@ namespace Balancy.Tests
             Assert.DoesNotThrow(() => callback.DynamicInvoke("{\"id\":\"late\"}"));
         }
 
+        [Test]
+        public void PresentationDefaultsAreZeroAndPublicSettingsRemainConfigurable()
+        {
+            var type = typeof(BalancyWebView);
+            var delay = type.GetField("_showDelay", BindingFlags.NonPublic | BindingFlags.Instance);
+            var fade = type.GetField("_animationDuration", BindingFlags.NonPublic | BindingFlags.Instance);
+            Assert.That(delay.GetValue(_webView), Is.EqualTo(0f));
+            Assert.That(fade.GetValue(_webView), Is.EqualTo(0f));
+            WebViewField.SetValue(null, _webView);
+            RenderViewsManager.SetViewDelays(0.2f, 0.3f);
+            Assert.That(delay.GetValue(_webView), Is.EqualTo(0.2f));
+            Assert.That(fade.GetValue(_webView), Is.EqualTo(0.3f));
+            RenderViewsManager.SetViewDelays(-1f, -2f);
+            Assert.That(delay.GetValue(_webView), Is.EqualTo(0f));
+            Assert.That(fade.GetValue(_webView), Is.EqualTo(0f));
+        }
+
+        [Test]
+        public void ScriptPayloadIsOmittedOnlyAfterMatchingAckAndChangedBundlesAreSent()
+        {
+            string payload = null;
+            var state = new PersistentViewState(message => { payload = message; return true; },
+                () => {}, () => {}, () => {}, () => {}, _ => {}, () => 0);
+            var type = typeof(BalancyWebView);
+            type.GetField("_persistent", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(_webView, state);
+            var onMessage = type.GetMethod("OnMessageReceivedPrivate", BindingFlags.Instance | BindingFlags.NonPublic);
+            var versionField = type.GetField("_scriptsVersion", BindingFlags.Instance | BindingFlags.NonPublic);
+            Action<string> receive = message => onMessage.Invoke(_webView, new object[] { message });
+            try
+            {
+                _webView.SetScriptsCode("bundle-one");
+                var version = (string)versionField.GetValue(_webView);
+                state.Prepare(() => true, null, null);
+                receive("{\"type\":\"shellReady\",\"shellId\":\"" + state.ShellId + "\",\"scriptsVersion\":\"" + version + "\"}");
+                _webView.ShowView("<div>A</div>", "", ""); state.Tick();
+                StringAssert.DoesNotContain("scriptsBase64", payload);
+                StringAssert.Contains(version, payload);
+                state.Close(); state.Receive("viewCleared", state.ClosingId, null, null);
+                _webView.SetScriptsCode("bundle-one");
+                Assert.That(versionField.GetValue(_webView), Is.EqualTo(version));
+                _webView.SetScriptsCode("bundle-two");
+                var next = (string)versionField.GetValue(_webView);
+                _webView.ShowView("<div>B</div>", "", ""); state.Tick();
+                StringAssert.Contains(Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("bundle-two")), payload);
+                receive("{\"type\":\"viewReady\",\"viewId\":\"stale\",\"scriptsVersion\":\"" + next + "\"}");
+                Assert.That(type.GetField("_acknowledgedScriptsVersion", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(_webView), Is.EqualTo(version));
+                receive("{\"type\":\"viewReady\",\"viewId\":\"" + state.CurrentId + "\",\"scriptsVersion\":\"" + next + "\"}");
+                state.Close(); state.Receive("viewCleared", state.ClosingId, null, null);
+                _webView.ShowView("<div>C</div>", "", ""); state.Tick();
+                StringAssert.DoesNotContain("scriptsBase64", payload);
+            }
+            finally { state.Reset(); }
+        }
+
         private static void InvokeEventBackingField(object owner, string fieldName, params object[] arguments)
         {
             var callback = (Delegate)owner.GetType()
