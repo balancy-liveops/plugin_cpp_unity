@@ -61,7 +61,7 @@ Host строки:
 - `shellNavigationComplete`: callback загрузки shell до инъекции.
 - `injectBridgeDispatch`: стоимость отправки кода на выполнение, **не** его исполнения.
 - `shellReady`: полный host-интервал Prepare → ACK bridge, включая создание, навигацию и инициализацию.
-- `coreRequest`: обработка одного запроса/пакета C++ до callback. Не включает предшествующие JS batching 16 мс и путь до Unity.
+- Замер `coreRequest` удалён: временная C#-лямбда небезопасна для асинхронного native callback. Для запросов используйте bridge-счётчик `requestTotalMs` (сумма задержек, не wall-clock) и длительности стадий ресурсов.
 - `viewReadyReceived`: от принятия ShowView до ACK, включая ожидание shell/предыдущего clear и dispatch через Unity Tick.
 - **`openLocalToReady`**: от входа OpenLocalView до готовности — основной показатель для сравнения persistent View; включает RefreshScripts и чтение HTML.
 - `showCommand`: команда native show с `configuredDelayMs` и `configuredFadeMs`.

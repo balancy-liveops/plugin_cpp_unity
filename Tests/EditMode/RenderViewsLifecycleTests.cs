@@ -89,6 +89,70 @@ namespace Balancy.Tests
             Assert.DoesNotThrow(() => OnMessageResponseReceived.Invoke(null, new object[] { "response" }));
         }
 
+        private static Array ParseRequests(string json)
+        {
+            return (Array)ManagerType.GetMethod("ParseBridgeRequests", BindingFlags.Static | BindingFlags.NonPublic)
+                .Invoke(null, new object[] { json });
+        }
+
+        [Test]
+        public void SingleAndBatchRequestsDeserializeWithoutRecursiveSerializationErrors()
+        {
+            var single = ParseRequests("{\"type\":\"request\",\"id\":\"a\",\"viewId\":\"view-a\",\"params\":{\"path\":\"image\"}}");
+            Assert.That(single.Length, Is.EqualTo(1));
+            Assert.That(single.GetValue(0).GetType().GetField("viewId").GetValue(single.GetValue(0)), Is.EqualTo("view-a"));
+            var batch = ParseRequests("{\"type\":\"batch\",\"requests\":[{\"id\":\"a\",\"viewId\":\"view-a\"},{\"id\":\"b\",\"viewId\":\"view-a\"}]}");
+            Assert.That(batch.Length, Is.EqualTo(2));
+            Assert.That(batch.GetValue(1).GetType().GetField("id").GetValue(batch.GetValue(1)), Is.EqualTo("b"));
+        }
+
+        [TestCase("null")]
+        [TestCase("{\"type\":\"batch\"}")]
+        [TestCase("{\"type\":\"batch\",\"requests\":[]}")]
+        [TestCase("{\"type\":\"batch\",\"requests\":[null]}")]
+        [TestCase("{\"type\":\"batch\",\"requests\":[{\"type\":\"batch\",\"id\":\"a\"}]}")]
+        public void MalformedBatchesAreRejectedBeforeNativeDispatch(string json)
+        {
+            var error = Assert.Throws<TargetInvocationException>(() => ParseRequests(json));
+            Assert.That(error.InnerException is FormatException || error.InnerException is ArgumentException, Is.True);
+            Assert.That(error.InnerException, Is.Not.InstanceOf<NullReferenceException>());
+        }
+
+        [Test]
+        public void LegacyOwnerlessRequestsRemainSupported()
+        {
+            Assert.That(ParseRequests("{\"id\":\"legacy\",\"action\":10}").Length, Is.EqualTo(1));
+            Assert.That(ParseRequests("{\"action\":10}").Length, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void BatchErrorsPreserveEveryCorrelationId()
+        {
+            var json = (string)ManagerType.GetMethod("RequestError", BindingFlags.Static | BindingFlags.NonPublic)
+                .Invoke(null, new object[] { "{\"type\":\"batch\",\"requests\":[{\"id\":\"a\"},{\"id\":\"b\"}]}", "closed" });
+            StringAssert.Contains("\"batch-response\"", json);
+            StringAssert.Contains("\"id\":\"a\"", json);
+            StringAssert.Contains("\"id\":\"b\"", json);
+        }
+
+        [Test]
+        public void NativeResponseCallbackIsStaticRootedAndAotCompatible()
+        {
+            var field = ManagerType.GetField("CoreResponseCallback", BindingFlags.Static | BindingFlags.NonPublic);
+            Assert.That(field.IsInitOnly, Is.True);
+            var weak = new WeakReference(field.GetValue(null));
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+            var callback = (Delegate)weak.Target;
+            Assert.That(callback, Is.Not.Null);
+            Assert.That(callback.Target, Is.Null);
+            Assert.That(callback.Method, Is.EqualTo(OnMessageResponseReceived));
+            Assert.That(callback.Method.GetCustomAttributes(false).Any(a => a.GetType().Name == "MonoPInvokeCallbackAttribute"), Is.True);
+            WebViewField.SetValue(null, null);
+            Assert.DoesNotThrow(() => callback.DynamicInvoke("{\"id\":\"late\"}"));
+        }
+
         private static void InvokeEventBackingField(object owner, string fieldName, params object[] arguments)
         {
             var callback = (Delegate)owner.GetType()

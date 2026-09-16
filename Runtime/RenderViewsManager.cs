@@ -128,7 +128,26 @@ namespace Balancy
         {
             if (status.IsCMSUpdated) _webView?.InvalidateCache();
         }
-        [Serializable] private class BridgeRequest { public string type, id, viewId; public BridgeRequest[] requests; }
+        // JsonUtility traverses the serialized type graph, even for shallow JSON.
+        // Batch members must not contain another batch array.
+        [Serializable] private class BridgeRequestItem { public string type, id, viewId; }
+        [Serializable] private class BridgeRequest : BridgeRequestItem { public BridgeRequestItem[] requests; }
+        // Native retains this function pointer until its asynchronous response arrives.
+        // Keep a static, AOT-compatible callback; never pass a capturing lambda here.
+        private static readonly LibraryMethods.General.WebviewRequestCallback CoreResponseCallback = OnMessageResponseReceived;
+
+        private static BridgeRequestItem[] ParseBridgeRequests(string requestData)
+        {
+            var request = JsonUtility.FromJson<BridgeRequest>(requestData);
+            if (request == null) throw new FormatException("Invalid request");
+            var requests = request.type == "batch" ? request.requests : new BridgeRequestItem[] { request };
+            if (requests == null || requests.Length == 0) throw new FormatException("Invalid request batch");
+            foreach (var item in requests)
+                // Unity can deserialize a null array member as an empty inline object.
+                if (item == null || item.type == "batch" || (request.type == "batch" && string.IsNullOrEmpty(item.id)))
+                    throw new FormatException("Invalid request batch member");
+            return requests;
+        }
         [Serializable] private class BridgeError { public string type = "response"; public string id, error; }
         private static string RequestError(string requestData, string error)
         {
@@ -136,7 +155,7 @@ namespace Balancy
                 var request = JsonUtility.FromJson<BridgeRequest>(requestData);
                 if (request.type == "batch" && request.requests != null) {
                     var responses = new List<string>();
-                    foreach (var item in request.requests) responses.Add(JsonUtility.ToJson(new BridgeError { id = item.id, error = error }));
+                    foreach (var item in request.requests) responses.Add(JsonUtility.ToJson(new BridgeError { id = item?.id, error = error }));
                     return "{\"type\":\"batch-response\",\"responses\":[" + string.Join(",", responses) + "]}";
                 }
                 return JsonUtility.ToJson(new BridgeError { id = request.id, error = error });
@@ -555,7 +574,7 @@ namespace Balancy
                 }
             }
 
-            RunRequestInTheCorePlugin(msg, OnMessageResponseReceived);
+            RunRequestInTheCorePlugin(msg);
         }
 
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.General.WebviewRequestCallback))]
@@ -1021,32 +1040,23 @@ namespace Balancy
                     .Replace("\t", "\\t");
         }
 
-        private static void RunRequestInTheCorePlugin(string requestData, LibraryMethods.General.WebviewRequestCallback callback)
+        private static void RunRequestInTheCorePlugin(string requestData)
         {
             try
             {
-                var request = JsonUtility.FromJson<BridgeRequest>(requestData);
-                var requests = request.type == "batch" ? request.requests : new[] { request };
-                if (requests == null) throw new FormatException("Invalid request batch");
+                var requests = ParseBridgeRequests(requestData);
                 string viewId = requests.Length > 0 ? requests[0].viewId : null;
                 IntPtr owner = m_LastOpenedOwnerPtr;
                 if (!string.IsNullOrEmpty(viewId) && !ViewOwners.TryGetValue(viewId, out owner))
                 {
-                    callback(RequestError(requestData, "View is no longer active")); return;
+                    CoreResponseCallback(RequestError(requestData, "View is no longer active")); return;
                 }
                 foreach (var item in requests)
-                    if (item.viewId != viewId) { callback(RequestError(requestData, "Mixed view contexts")); return; }
+                    if (item.viewId != viewId) { CoreResponseCallback(RequestError(requestData, "Mixed view contexts")); return; }
                 // Null owner is valid for explicit-context APIs, localization and resources.
-                if (!BalancyWebView.PerformanceLoggingEnabled) { LibraryMethods.General.balancyWebViewRequest(owner, requestData, callback); return; }
-                var requestStarted = BalancyWebView.PerformanceNow();
-                int requestCount = requests.Length, requestChars = requestData.Length;
-                LibraryMethods.General.balancyWebViewRequest(owner, requestData, response => {
-                    BalancyWebView.PerformanceLog("coreRequest", requestStarted, viewId,
-                        "count=" + requestCount + " requestChars=" + requestChars + " responseChars=" + (response?.Length ?? 0));
-                    callback(response);
-                });
+                LibraryMethods.General.balancyWebViewRequest(owner, requestData, CoreResponseCallback);
             }
-            catch (Exception error) { callback(RequestError(requestData, error.Message)); }
+            catch (Exception error) { CoreResponseCallback(RequestError(requestData, error.Message)); }
         }
     }
 }
