@@ -46,3 +46,12 @@ test('obsolete WebGL asset cannot overwrite active plugin exports', () => {
   vm.runInContext(fs.readFileSync(path.join(root, 'WebView/Plugins/WebGL/BalancyWebViewPlugin.jslib'), 'utf8'), context);
   assert.deepEqual(context.LibraryManager.library, active);
 });
+test('persistent preparation transports raw script text and version before opening any view', async () => {
+  const { context, plugin } = harness();
+  const calls = [];
+  context.window.balancyWebView = { prepareWebView: (...args) => calls.push(args) };
+  const code = 'class Example {}\n// "quotes", Unicode: Привет';
+  plugin._balancyPrepareWebView('shell-v2', code, 'version-v2');
+  await tick();
+  assert.deepEqual(calls, [['shell-v2', code, 'version-v2']]);
+});

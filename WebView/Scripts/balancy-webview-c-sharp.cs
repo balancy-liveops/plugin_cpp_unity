@@ -22,6 +22,7 @@ namespace Balancy.WebView
         private string _scriptsCode = "";
         private string _scriptsVersion = Guid.NewGuid().ToString("N");
         private string _acknowledgedScriptsVersion;
+        private string _shellScriptsCode, _shellScriptsVersion;
         // Temporary opt-in diagnostics; do not enable native payload/debug logging for timings.
         public static bool PerformanceLoggingEnabled { get; set; }
         public static double PerformanceNow() => PerformanceLoggingEnabled
@@ -44,7 +45,16 @@ namespace Balancy.WebView
             scriptsCode = scriptsCode ?? "";
             if (string.Equals(_scriptsCode, scriptsCode, StringComparison.Ordinal)) return;
             _scriptsCode = scriptsCode;
-            _scriptsVersion = Guid.NewGuid().ToString("N");
+            if (_persistent != null && _persistent.Enabled && string.Equals(_shellScriptsCode, scriptsCode, StringComparison.Ordinal))
+            {
+                _scriptsVersion = _shellScriptsVersion;
+                _persistent.CancelRestart();
+            }
+            else
+            {
+                _scriptsVersion = Guid.NewGuid().ToString("N");
+                _persistent?.RequestRestart();
+            }
         }
 
         #region Singleton Implementation
@@ -340,7 +350,7 @@ namespace Balancy.WebView
 
         #elif UNITY_WEBGL && !UNITY_EDITOR
 
-        [DllImport("__Internal")] private static extern bool _balancyPrepareWebView(string shellId);
+        [DllImport("__Internal")] private static extern bool _balancyPrepareWebView(string shellId, string scripts, string scriptsVersion);
         [DllImport("__Internal")] private static extern void _balancyShowWebView();
         [DllImport("__Internal")] private static extern void _balancyHideWebView();
 
@@ -1020,9 +1030,12 @@ namespace Balancy.WebView
             _performanceShellStart = PerformanceNow();
             if (Persistent.Enabled && !Persistent.Preparing) PerformanceLog("shellReused", _performanceShellStart, Persistent.ShellId);
             Persistent.Prepare(() => {
+                _performanceShellStart = PerformanceNow();
                 _acknowledgedScriptsVersion = null;
+                _shellScriptsCode = _scriptsCode;
+                _shellScriptsVersion = _scriptsVersion;
 #if UNITY_WEBGL && !UNITY_EDITOR
-                return _balancyPrepareWebView(Persistent.ShellId);
+                return _balancyPrepareWebView(Persistent.ShellId, _shellScriptsCode, _shellScriptsVersion);
 #else
                 var shellAsset = Resources.Load<TextAsset>("balancy-shell");
                 if (shellAsset == null) throw new InvalidOperationException("balancy-shell resource is missing");
@@ -1046,19 +1059,17 @@ namespace Balancy.WebView
 
         public bool ShowView(string html, string ownerJson, string additionalInfo, Action onViewReady = null, Action<string> onFailed = null, string baseUrl = null)
         {
-            // Capture this accepted view's script snapshot; a later refresh must not alter it.
-            var scripts = _scriptsCode;
-            var scriptsVersion = _scriptsVersion;
+            // Resolve the installed version at dispatch, after any pending shell replacement.
             if (Persistent.CanShow) _performanceViewStart = PerformanceNow();
             return Persistent.Show(id => {
                 var started = PerformanceNow();
                 var payload = JsonUtility.ToJson(new PersistentLoadMessage {
                 type = "loadView", viewId = id, performanceLogging = PerformanceLoggingEnabled, htmlBase64 = Base64(html), baseUrl = baseUrl,
                 ownerJsonBase64 = Base64(ownerJson), additionalInfoBase64 = Base64(additionalInfo),
-                scriptsVersion = scriptsVersion
+                scriptsVersion = _shellScriptsVersion
                 });
-                if (_acknowledgedScriptsVersion != scriptsVersion)
-                    payload = payload.Substring(0, payload.Length - 1) + ",\"scriptsBase64\":\"" + Base64(scripts) + "\"}";
+                if (_acknowledgedScriptsVersion != _shellScriptsVersion)
+                    throw new InvalidOperationException("Persistent scripts have not been acknowledged");
                 PerformanceLog("buildLoadViewPayload", started, id, "messageChars=" + payload.Length);
                 return payload;
             }, onViewReady, error => { Debug.LogError("[BalancyWebView] " + error); onFailed?.Invoke(error); });
@@ -1596,7 +1607,7 @@ namespace Balancy.WebView
                 if (parsed != null && parsed.type == "viewCleared" && parsed.viewId == Persistent.ClosingId)
                     PerformanceLog("viewClearedReceived", _performanceCloseStart, parsed.viewId);
                 if (parsed != null && parsed.type == "viewLoadError" && parsed.viewId == Persistent.CurrentId)
-                    _acknowledgedScriptsVersion = null;
+                    Persistent.RequestRestart();
                 if (parsed != null && (parsed.type == "viewLoadError" || parsed.type == "shellError"))
                     PerformanceLog(parsed.type, parsed.type == "shellError" ? _performanceShellStart : _performanceViewStart, parsed.viewId ?? parsed.shellId);
                 if (parsed != null && Persistent.Receive(parsed.type, parsed.viewId, parsed.shellId, parsed.error)) return;
@@ -1641,7 +1652,7 @@ namespace Balancy.WebView
                     "window.balancyViewOwner = JSON.parse(" + JsString(owner) + ");\n" +
                     "window.balancySettings = JSON.parse(" + JsString(settings) + ");\n" +
                     (bridge == null ? "" : bridge.text) + "\n" +
-                    "window.balancy._installScripts(" + JsString(instance._scriptsCode) + "," + JsString(instance._scriptsVersion) + ");\n" +
+                    "window.balancy._installScripts(" + JsString(preparingShell ? instance._shellScriptsCode : instance._scriptsCode) + "," + JsString(preparingShell ? instance._shellScriptsVersion : instance._scriptsVersion) + ");\n" +
                     "window.balancy.initResponseHandler();\n" +
                     "} catch(error) { if(window.balancy) window.balancy._postHostError(error); console.error(error); }\ntrue;";
                 var injectionStarted = PerformanceNow();

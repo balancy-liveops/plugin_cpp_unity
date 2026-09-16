@@ -29,6 +29,13 @@ namespace Balancy.Tests
         private static readonly MethodInfo OnMessageResponseReceived = ManagerType
             .GetMethod("OnMessageResponseReceived", BindingFlags.Static | BindingFlags.NonPublic);
 
+        private static Func<string> ReadScripts {
+            get => (Func<string>)ManagerType.GetField("ReadScripts", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
+            set => ManagerType.GetField("ReadScripts", BindingFlags.Static | BindingFlags.NonPublic).SetValue(null, value);
+        }
+        private static void DataUpdated(Callbacks.DataUpdatedStatus status) =>
+            ManagerType.GetMethod("HandleContentUpdated", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null, new object[] { status });
+
         private GameObject _gameObject;
         private BalancyWebView _webView;
 
@@ -171,7 +178,7 @@ namespace Balancy.Tests
         }
 
         [Test]
-        public void ScriptPayloadIsOmittedOnlyAfterMatchingAckAndChangedBundlesAreSent()
+        public void ScriptUpdatesRecreateShellAndNeverTravelInViewPayload()
         {
             string payload = null;
             var state = new PersistentViewState(message => { payload = message; return true; },
@@ -185,7 +192,10 @@ namespace Balancy.Tests
             {
                 _webView.SetScriptsCode("bundle-one");
                 var version = (string)versionField.GetValue(_webView);
-                state.Prepare(() => true, null, null);
+                state.Prepare(() => {
+                    type.GetField("_shellScriptsVersion", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(_webView, versionField.GetValue(_webView));
+                    return true;
+                }, null, null);
                 receive("{\"type\":\"shellReady\",\"shellId\":\"" + state.ShellId + "\",\"scriptsVersion\":\"" + version + "\"}");
                 _webView.ShowView("<div>A</div>", "", ""); state.Tick();
                 StringAssert.DoesNotContain("scriptsBase64", payload);
@@ -196,15 +206,93 @@ namespace Balancy.Tests
                 _webView.SetScriptsCode("bundle-two");
                 var next = (string)versionField.GetValue(_webView);
                 _webView.ShowView("<div>B</div>", "", ""); state.Tick();
-                StringAssert.Contains(Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("bundle-two")), payload);
+                Assert.That(state.Preparing, Is.True);
+                Assert.That(payload, Does.Not.Contain("bundle-two"));
+                receive("{\"type\":\"shellReady\",\"shellId\":\"" + state.ShellId + "\",\"scriptsVersion\":\"" + next + "\"}");
+                StringAssert.DoesNotContain("scriptsBase64", payload);
+                StringAssert.Contains(next, payload);
                 receive("{\"type\":\"viewReady\",\"viewId\":\"stale\",\"scriptsVersion\":\"" + next + "\"}");
-                Assert.That(type.GetField("_acknowledgedScriptsVersion", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(_webView), Is.EqualTo(version));
+                Assert.That(type.GetField("_acknowledgedScriptsVersion", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(_webView), Is.EqualTo(next));
                 receive("{\"type\":\"viewReady\",\"viewId\":\"" + state.CurrentId + "\",\"scriptsVersion\":\"" + next + "\"}");
                 state.Close(); state.Receive("viewCleared", state.ClosingId, null, null);
                 _webView.ShowView("<div>C</div>", "", ""); state.Tick();
                 StringAssert.DoesNotContain("scriptsBase64", payload);
             }
             finally { state.Reset(); }
+        }
+
+        [Test]
+        public void PrepareBeforeInitializationRecordsIntentWithoutReadingNativeCode()
+        {
+            var read = ReadScripts;
+            int reads = 0;
+            ReadScripts = () => { reads++; return "code"; };
+            try {
+                RenderViewsManager.PrepareWebView(); RenderViewsManager.PrepareWebView();
+                Assert.That(reads, Is.Zero);
+                Assert.That(ManagerType.GetField("_prepareRequested", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null), Is.True);
+                CleanUpManagedState.Invoke(null, null);
+                Assert.That(ManagerType.GetField("_prepareRequested", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null), Is.False);
+            } finally { ReadScripts = read; }
+        }
+
+        [Test]
+        public void DataUpdateWithoutOptInDoesNotReadOrPrepareScripts()
+        {
+            var read = ReadScripts;
+            int reads = 0;
+            ReadScripts = () => { reads++; return "code"; };
+            WebViewField.SetValue(null, _webView);
+            try {
+                DataUpdated(new Callbacks.DataUpdatedStatus(false, true, true));
+                DataUpdated(new Callbacks.DataUpdatedStatus(true, true, true));
+                Assert.That(reads, Is.Zero);
+                Assert.That(_webView.IsPersistentModeEnabled(), Is.False);
+            } finally { ReadScripts = read; }
+        }
+
+        [Test]
+        public void SameScriptUpdatePreservesShellAndReadsOnlyOnDataUpdate()
+        {
+            var read = ReadScripts;
+            int reads = 0, destroyed = 0;
+            var state = new PersistentViewState(_ => true, () => {}, () => {}, () => destroyed++, () => {}, _ => {}, () => 0);
+            typeof(BalancyWebView).GetField("_persistent", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(_webView, state);
+            _webView.SetScriptsCode("code");
+            state.Prepare(() => true, null, null); state.Receive("shellReady", null, state.ShellId, null);
+            WebViewField.SetValue(null, _webView);
+            ReadScripts = () => { reads++; return "code"; };
+            try {
+                int ready = 0;
+                RenderViewsManager.PrepareWebView(() => ready++);
+                Assert.That(reads, Is.Zero); Assert.That(ready, Is.Zero);
+                DataUpdated(new Callbacks.DataUpdatedStatus(false, false, true));
+                Assert.That(reads, Is.EqualTo(1)); Assert.That(ready, Is.EqualTo(1));
+                RenderViewsManager.PrepareWebView(() => ready++);
+                Assert.That(reads, Is.EqualTo(1)); Assert.That(ready, Is.EqualTo(2));
+                DataUpdated(new Callbacks.DataUpdatedStatus(true, false, true));
+                state.Tick(); Assert.That(reads, Is.EqualTo(2)); Assert.That(destroyed, Is.Zero);
+            } finally { state.Reset(); ReadScripts = read; }
+        }
+
+        [Test]
+        public void FailedReadReportsFailureAndRetainsPrepareIntentForNextUpdate()
+        {
+            var read = ReadScripts;
+            int failures = 0, reads = 0;
+            WebViewField.SetValue(null, _webView);
+            ReadScripts = () => { reads++; throw new InvalidOperationException("test unavailable"); };
+            try {
+                RenderViewsManager.PrepareWebView(null, error => failures++);
+                UnityEngine.TestTools.LogAssert.Expect(LogType.Error, "[RenderViewsManager] Failed to compile scripts, keeping previous bundle: test unavailable");
+                DataUpdated(new Callbacks.DataUpdatedStatus(false, false, true));
+                Assert.That(reads, Is.EqualTo(1)); Assert.That(failures, Is.EqualTo(1));
+                Assert.That(_webView.IsPersistentModeEnabled(), Is.False);
+                Assert.That(ManagerType.GetField("_prepareRequested", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null), Is.True);
+                UnityEngine.TestTools.LogAssert.Expect(LogType.Error, "[RenderViewsManager] Failed to compile scripts, keeping previous bundle: test unavailable");
+                DataUpdated(new Callbacks.DataUpdatedStatus(true, false, true));
+                Assert.That(reads, Is.EqualTo(2)); Assert.That(failures, Is.EqualTo(1));
+            } finally { ReadScripts = read; }
         }
 
         private static void InvokeEventBackingField(object owner, string fieldName, params object[] arguments)

@@ -25,6 +25,119 @@ namespace Balancy.Tests
             state.Prepare(() => true, null, null);
             state.Receive("shellReady", null, state.ShellId, null);
         }
+        [Test] public void IdleRestartDestroysContextAndWaitsForNewAck()
+        {
+            int starts = 0;
+            state.Prepare(() => { starts++; return true; }, null, null);
+            var old = state.ShellId;
+            state.Receive("shellReady", null, old, null);
+            state.RequestRestart(); state.Tick();
+            Assert.That(starts, Is.EqualTo(2));
+            Assert.That(events, Is.EqualTo(new[] { "destroy" }));
+            Assert.That(state.Preparing, Is.True);
+            Assert.That(state.ShellId, Is.Not.EqualTo(old));
+            state.Receive("shellReady", null, old, null);
+            Assert.That(state.Preparing, Is.True);
+            state.Receive("shellReady", null, state.ShellId, null);
+            Assert.That(state.Preparing, Is.False);
+        }
+
+        [Test] public void UpdateNeverReplacesAnActiveOrHiddenView()
+        {
+            Prepare(); state.Show(id => id, null, null); state.Tick();
+            var active = state.CurrentId;
+            state.RequestRestart(); state.Tick();
+            Assert.That(events, Does.Not.Contain("destroy"));
+            state.Receive("viewReady", active, null, null);
+            state.Visible = false; // Hiding is not closing.
+            state.Tick(); Assert.That(events, Does.Not.Contain("destroy"));
+            state.Close(); state.Tick();
+            Assert.That(events, Does.Not.Contain("destroy"));
+            state.Receive("viewCleared", active, null, null);
+            Assert.That(events, Does.Contain("destroy"));
+            Assert.That(state.Preparing, Is.True);
+        }
+
+        [Test] public void QueuedViewUsesNewShellAfterCloseAcknowledgment()
+        {
+            Prepare(); state.Show(id => id, null, null); state.Tick();
+            var oldView = state.CurrentId;
+            state.RequestRestart(); state.Close();
+            state.Show(id => "new:" + id, null, null);
+            var next = state.CurrentId;
+            state.Receive("viewCleared", oldView, null, null);
+            Assert.That(messages.Count, Is.EqualTo(2));
+            Assert.That(state.CurrentId, Is.EqualTo(next));
+            state.Receive("shellReady", null, state.ShellId, null);
+            Assert.That(messages[2], Is.EqualTo("new:" + next));
+        }
+
+        [Test] public void UpdatesDuringPreparationCoalesceAndDelayReady()
+        {
+            int starts = 0, ready = 0;
+            state.Prepare(() => { starts++; return true; }, () => ready++, null);
+            var oldShell = state.ShellId;
+            state.RequestRestart(); state.RequestRestart();
+            state.Prepare(() => { Assert.Fail("Must reuse the original start operation"); return false; }, () => ready++, null);
+            state.Show(id => id, null, null);
+            state.Receive("shellReady", null, oldShell, null);
+            Assert.That(starts, Is.EqualTo(2)); Assert.That(ready, Is.Zero);
+            Assert.That(messages, Is.Empty);
+            state.Receive("shellReady", null, state.ShellId, null);
+            Assert.That(ready, Is.EqualTo(2)); Assert.That(messages.Count, Is.EqualTo(1));
+        }
+
+        [Test] public void FailedRestartReleasesQueuedViewAndReportsBothCallbacks()
+        {
+            bool startOk = true; int failures = 0;
+            state.Prepare(() => startOk, null, null);
+            state.Receive("shellReady", null, state.ShellId, null);
+            state.RequestRestart();
+            state.Prepare(() => true, null, error => failures++);
+            state.Show(id => id, null, error => failures++);
+            var pending = state.CurrentId;
+            startOk = false; state.Tick();
+            Assert.That(failures, Is.EqualTo(2)); Assert.That(state.Enabled, Is.False);
+            Assert.That(events, Does.Contain("release:" + pending));
+            Prepare(); Assert.That(state.Enabled, Is.True);
+        }
+
+        [Test] public void RestartTimeoutFailsQueuedViewAndResetForgetsPendingUpdate()
+        {
+            Prepare(); state.RequestRestart(); state.Tick();
+            int failed = 0;
+            state.Show(id => id, null, error => failed++);
+            now = 11; state.Tick();
+            Assert.That(failed, Is.EqualTo(1)); Assert.That(state.Enabled, Is.False);
+            Prepare(); state.RequestRestart(); state.Reset(); events.Clear(); state.Tick();
+            Assert.That(events, Is.Empty);
+        }
+
+        [Test] public void CancelledUpdateDoesNotRecreateUnchangedInstalledBundle()
+        {
+            Prepare(); state.RequestRestart(); state.CancelRestart(); state.Tick();
+            Assert.That(events, Is.Empty); Assert.That(state.Preparing, Is.False);
+        }
+
+        [Test] public void RepeatedReplacementsReleaseViewsAndDoNotReplayPreparationCallbacks()
+        {
+            int ready = 0;
+            state.Prepare(() => true, () => ready++, null);
+            state.Receive("shellReady", null, state.ShellId, null);
+            for (int i = 0; i < 200; i++)
+            {
+                state.Show(viewId => viewId, null, null); state.Tick();
+                var id = state.CurrentId;
+                state.Receive("viewReady", id, null, null);
+                state.RequestRestart(); state.Close(); state.Receive("viewCleared", id, null, null);
+                state.Receive("shellReady", null, state.ShellId, null);
+                Assert.That(state.CurrentId, Is.Null); Assert.That(state.ClosingId, Is.Null);
+            }
+            Assert.That(ready, Is.EqualTo(1));
+            Assert.That(events.FindAll(e => e == "destroy").Count, Is.EqualTo(200));
+            Assert.That(events.FindAll(e => e.StartsWith("release:")).Count, Is.EqualTo(200));
+        }
+
         [Test] public void OpenDuringPrepareWaitsAndRejectsSecondOpen()
         {
             state.Prepare(() => true, null, null);

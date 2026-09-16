@@ -32,7 +32,7 @@ public class BalancyWebViewPlugin {
     private static final String TAG = "BalancyWebView";
     
     private static BalancyWebViewPlugin instance;
-    private WebView webView;
+    private volatile WebView webView;
     private FrameLayout webViewContainer;
     private View emergencyExitButton;
     private Handler emergencyExitHideHandler;
@@ -41,8 +41,8 @@ public class BalancyWebViewPlugin {
     private int rapidTapCount = 0;
     private Activity currentActivity;
     
-    private boolean isWebViewOpen = false;
-    private boolean debugLogging = true; // Enable debug by default for testing
+    private volatile boolean isWebViewOpen = false;
+    private boolean debugLogging = false;
     private boolean transparentBackground = true;
     private boolean gameUIMode = true;
     private float viewportX = 0f;
@@ -166,6 +166,13 @@ public class BalancyWebViewPlugin {
     }
     
     private void setupWebViewContainer() {
+        if (webViewContainer != null) {
+            if (webViewContainer.getContext() == currentActivity && webViewContainer.getParent() != null) return;
+            // A replacement Activity must not retain the old Activity through its view tree.
+            closeWebView();
+            if (webViewContainer.getParent() instanceof ViewGroup)
+                ((ViewGroup) webViewContainer.getParent()).removeView(webViewContainer);
+        }
         webViewContainer = new FrameLayout(currentActivity);
         webViewContainer.setLayoutParams(new ViewGroup.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -194,7 +201,7 @@ public class BalancyWebViewPlugin {
             return false;
         }
 
-        this.ownerJson = ownerJson;
+        this.ownerJson = ownerJson == null ? "" : ownerJson;
         this.suppressNextShowAnimation = startHidden;
 
         runOnUIThread(() -> {
@@ -290,7 +297,7 @@ public class BalancyWebViewPlugin {
             return false;
         });
         
-        webView.addJavascriptInterface(new WebViewJavaScriptInterface(), "BalancyWebView");
+        webView.addJavascriptInterface(new WebViewJavaScriptInterface(webView), "BalancyWebView");
         
         webView.setWebViewClient(new WebViewClient() {
             @Override
@@ -515,6 +522,10 @@ public class BalancyWebViewPlugin {
         if (webView == null) return;
         
         logDebug("Starting show animation");
+        if (showDelay == 0f && animationDuration == 0f) {
+            webView.setAlpha(1f);
+            return;
+        }
         webView.setAlpha(0.0f);
         
         final WebView target = webView;
@@ -589,8 +600,13 @@ public class BalancyWebViewPlugin {
             }
 
             if (webView != null) {
-                webView.destroy();
-                webView = null;
+                WebView retired = webView;
+                webView = null; // Reject late JavaScript interface calls before teardown.
+                retired.stopLoading();
+                retired.removeJavascriptInterface("BalancyWebView");
+                retired.setWebViewClient(null);
+                retired.setWebChromeClient(null);
+                retired.destroy();
             }
 
             emergencyExitButton = null;
@@ -634,7 +650,8 @@ public class BalancyWebViewPlugin {
     }
     
     public boolean sendMessage(String message) {
-        if (webView == null || !isWebViewOpen) {
+        final WebView target = webView;
+        if (target == null || !isWebViewOpen) {
             Log.w(TAG, "Cannot send message: WebView not open");
             return false;
         }
@@ -643,8 +660,8 @@ public class BalancyWebViewPlugin {
                        "window.balancy._receiveMessageFromUnity(" + org.json.JSONObject.quote(message) + "); }";
         
         runOnUIThread(() -> {
-            if (webView != null) {
-                webView.evaluateJavascript(script, result -> {
+            if (webView == target && isWebViewOpen) {
+                target.evaluateJavascript(script, result -> {
                     logDebug("Message sent to WebView");
                 });
             }
@@ -654,14 +671,15 @@ public class BalancyWebViewPlugin {
     }
     
     public void injectJavaScript(String jsCode) {
-        if (webView == null || !isWebViewOpen) {
+        final WebView target = webView;
+        if (target == null || !isWebViewOpen) {
             Log.w(TAG, "Cannot inject JavaScript: WebView not open");
             return;
         }
         
         runOnUIThread(() -> {
-            if (webView != null) {
-                webView.evaluateJavascript(jsCode, null);
+            if (webView == target && isWebViewOpen) {
+                target.evaluateJavascript(jsCode, null);
             }
         });
     }
@@ -696,7 +714,7 @@ public class BalancyWebViewPlugin {
     
     private void injectOwnerJson() {
         String script = "try {" +
-                       "  balancy.owner = JSON.parse('" + ownerJson.replace("'", "\\'") + "');" +
+                       "  balancy.owner = JSON.parse(" + org.json.JSONObject.quote(ownerJson) + ");" +
                        "} catch (error) {" +
                        "  console.error('Error parsing owner JSON:', error);" +
                        "}";
@@ -970,8 +988,11 @@ public class BalancyWebViewPlugin {
     // ================================================================================
     
     private class WebViewJavaScriptInterface {
+        private final WebView source;
+        WebViewJavaScriptInterface(WebView source) { this.source = source; }
         @JavascriptInterface
         public void sendMessageToUnity(String message) {
+            if (webView != source || !isWebViewOpen) return;
             logDebug("Received message from WebView");
             sendUnityMessage("OnAndroidMessageReceived", message);
         }

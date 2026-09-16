@@ -22,7 +22,8 @@ namespace Balancy.WebView
         private Action onPrepared, onReady;
         private Action<string> onPrepareFailed, onFailed;
         private Func<string, string> createMessage;
-        private bool sent;
+        private bool sent, restartRequested;
+        private Func<bool> startShell;
 
         internal PersistentViewState(Func<string, bool> send, Action show, Action hide, Action destroy,
             Action closed, Action<string> released, Func<double> clock, double timeout = 30)
@@ -33,9 +34,10 @@ namespace Balancy.WebView
 
         internal bool Prepare(Func<bool> start, Action ready, Action<string> failed)
         {
-            if (Enabled && !Preparing) { ready?.Invoke(); return true; }
+            if (Enabled && !Preparing && !restartRequested) { ready?.Invoke(); return true; }
             onPrepared += ready; onPrepareFailed += failed;
-            if (Preparing) return true;
+            if (Enabled) return true;
+            startShell = start;
             Enabled = Preparing = true;
             ShellId = Guid.NewGuid().ToString("N");
             deadlines["prepare"] = clock() + timeout;
@@ -53,8 +55,31 @@ namespace Balancy.WebView
             return true;
         }
 
+        // Never replace the JavaScript context underneath a dispatched view. An accepted
+        // but unsent view survives replacement and is dispatched after the new shell ACK.
+        internal void RequestRestart()
+        {
+            if (Enabled) restartRequested = true;
+        }
+
+        internal void CancelRestart() => restartRequested = false;
+
+        private bool RestartIfIdle()
+        {
+            if (!restartRequested || Preparing || ClosingId != null || (CurrentId != null && sent)) return false;
+            restartRequested = false;
+            destroy();
+            Preparing = true;
+            ShellId = Guid.NewGuid().ToString("N");
+            deadlines["prepare"] = clock() + timeout;
+            try { if (!startShell()) Fail("Cannot restart persistent shell"); }
+            catch (Exception error) { Fail(error.Message); }
+            return true;
+        }
+
         private void Flush()
         {
+            if (RestartIfIdle()) return;
             if (Preparing || ClosingId != null || CurrentId == null || sent) return;
             sent = true;
             deadlines["view"] = clock() + timeout;
@@ -88,6 +113,7 @@ namespace Balancy.WebView
                 case "shellReady":
                     if (!Preparing || shellId != ShellId) return true;
                     deadlines.Remove("prepare"); Preparing = false;
+                    if (RestartIfIdle()) return true;
                     var ready = onPrepared; onPrepared = null; onPrepareFailed = null;
                     Flush(); ready?.Invoke(); return true;
                 case "shellError":
@@ -131,7 +157,8 @@ namespace Balancy.WebView
         {
             if (CurrentId != null) released?.Invoke(CurrentId);
             if (ClosingId != null) released?.Invoke(ClosingId);
-            Enabled = Preparing = Visible = sent = false;
+            Enabled = Preparing = Visible = sent = restartRequested = false;
+            startShell = null;
             ShellId = CurrentId = ClosingId = null;
             onPrepared = onReady = null; onPrepareFailed = onFailed = null; createMessage = null;
             deadlines.Clear();

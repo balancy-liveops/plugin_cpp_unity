@@ -23,6 +23,15 @@ namespace Balancy
         internal static Func<string, bool> _onMessageReceived;
 
         private static BalancyWebView _webView;
+        private static bool _prepareRequested, _dataAvailable, _scriptsLoaded;
+        private static Action _pendingPrepared;
+        private static Action<string> _pendingPrepareFailed;
+        // Kept separate from transport so readiness/failure paths can be tested without native code.
+        internal static Func<string> ReadScripts = () => {
+            var ptr = LibraryMethods.General.balancyDataObjectCompileAllScripts();
+            if (ptr == IntPtr.Zero) throw new InvalidOperationException("Script bundle is unavailable");
+            return Marshal.PtrToStringAnsi(ptr) ?? "";
+        };
 
         internal static void Init()
         {
@@ -43,6 +52,7 @@ namespace Balancy
             //_webView.SetDebugLogging(true);
 
             SetViewDelays(0f, 0f);
+            TryPrepareRequestedWebView();
         }
 
         internal static void CleanUp()
@@ -85,6 +95,8 @@ namespace Balancy
                 if (_webView.IsPersistentModeEnabled()) _webView.CloseWebView();
             }
 
+            _prepareRequested = _dataAvailable = _scriptsLoaded = false;
+            _pendingPrepared = null; _pendingPrepareFailed = null;
             ViewOwners.Clear();
             _onMessageReceived = null;
             m_LastOpenedOwnerPtr = IntPtr.Zero;
@@ -100,23 +112,30 @@ namespace Balancy
         }
 
         /// <summary>Read the prepared script bundle (or legacy compile result) from the native core.</summary>
-        public static void RefreshScripts()
+        public static void RefreshScripts() => TryRefreshScripts();
+
+        private static bool TryRefreshScripts()
         {
             var started = BalancyWebView.PerformanceNow();
             try
             {
-                IntPtr ptr = LibraryMethods.General.balancyDataObjectCompileAllScripts();
-                string scriptsCode = Marshal.PtrToStringAnsi(ptr) ?? "";
+                if (_webView == null) return false;
+                string scriptsCode = ReadScripts();
                 Debug.Log($"[RenderViewsManager] Scripts compiled: {scriptsCode.Length} characters");
                 _webView.SetScriptsCode(scriptsCode);
+                _scriptsLoaded = true;
                 BalancyWebView.PerformanceLog("readScriptsBundle", started, null, "scriptChars=" + scriptsCode.Length);
+                return true;
             }
             catch (Exception e)
             {
-                // Keep the previously-compiled bundle on failure. Wiping it (SetScriptsCode(""))
-                // would open the next view with zero components (blank) — a stale-but-complete
-                // bundle is strictly better than an empty one, and this now runs before every open.
+                // Preserve the last usable snapshot; the next data update or explicit
+                // Prepare retries. Never destroy an active view on a failed read.
                 Debug.LogError($"[RenderViewsManager] Failed to compile scripts, keeping previous bundle: {e.Message}");
+                var failed = _pendingPrepareFailed;
+                _pendingPrepared = null; _pendingPrepareFailed = null;
+                failed?.Invoke(e.Message);
+                return false;
             }
         }
 
@@ -124,9 +143,24 @@ namespace Balancy
         private static readonly Dictionary<string, IntPtr> ViewOwners = new Dictionary<string, IntPtr>();
         private static void HandleViewReleased(string id) => ViewOwners.Remove(id);
         private static void HandleLocalizationChanged(string code) => _webView?.InvalidateCache(true);
-        private static void HandleContentUpdated(Callbacks.DataUpdatedStatus status)
+        internal static void HandleContentUpdated(Callbacks.DataUpdatedStatus status)
         {
+            _dataAvailable = true;
             if (status.IsCMSUpdated) _webView?.InvalidateCache();
+            if (_prepareRequested)
+            {
+                if (TryRefreshScripts()) TryPrepareRequestedWebView();
+            }
+            else _scriptsLoaded = false; // Classic/direct URL opens read lazily after updates.
+        }
+
+        private static void TryPrepareRequestedWebView()
+        {
+            if (!_prepareRequested || !_dataAvailable || _webView == null) return;
+            if (!_scriptsLoaded && !TryRefreshScripts()) return;
+            var ready = _pendingPrepared; var failed = _pendingPrepareFailed;
+            _pendingPrepared = null; _pendingPrepareFailed = null;
+            _webView.PrepareWebView(ready, failed);
         }
         // JsonUtility traverses the serialized type graph, even for shallow JSON.
         // Batch members must not contain another batch array.
@@ -175,7 +209,7 @@ namespace Balancy
             Balancy.Callbacks.OnLocalizationChanged -= HandleLocalizationChanged;
             Balancy.Callbacks.OnLocalizationChanged += HandleLocalizationChanged;
             Balancy.Callbacks.OnDataUpdated -= HandleContentUpdated;
-            Balancy.Callbacks.OnDataUpdated += HandleContentUpdated;
+            // Controller invokes HandleContentUpdated before public subscribers.
         }
 
         private static void HandleEventDeactivated(EventInfo eventInfo)
@@ -279,9 +313,9 @@ namespace Balancy
         public static void PrepareWebView(Action onReady = null, Action<string> onFailed = null)
         {
             Debug.Log("[RenderViewsManager] PrepareWebView requested");
-            if (_webView == null) { onFailed?.Invoke("RenderViewsManager is not initialized"); return; }
-            RefreshScripts();
-            _webView.PrepareWebView(onReady, onFailed);
+            _prepareRequested = true;
+            _pendingPrepared += onReady; _pendingPrepareFailed += onFailed;
+            TryPrepareRequestedWebView();
         }
 
         public static void ShowWebView()
@@ -304,12 +338,16 @@ namespace Balancy
                 return;
             }
 
-            // Recompile scripts right before opening — the CENTRAL seam every view open funnels
-            // through (UnnyObject.OpenView and direct callers alike). Whatever preload put the
-            // view's script files on disk has finished by now, so this guarantees the injected
-            // bundle is complete. Without it, opening against a stale bundle that predates a
-            // late-arriving script throws "Can't find variable: <Class>" (black screen).
-            RefreshScripts();
+            if (_prepareRequested)
+            {
+                TryPrepareRequestedWebView();
+                if (!UsePersistentWebViewForLocalViews())
+                {
+                    onFailed?.Invoke(ViewOpenError.LoadFailed);
+                    return;
+                }
+            }
+            else RefreshScripts();
 
             Debug.Log($"[RenderViewsManager] OpenLocalView requested. Persistent={UsePersistentWebViewForLocalViews()} Path={filePath}");
 
@@ -485,6 +523,9 @@ namespace Balancy
                 onFailed?.Invoke(ViewOpenError.ViewNotFound);
                 return false;
             }
+
+            if (_webView == null) { onFailed?.Invoke(ViewOpenError.LoadFailed); return false; }
+            if (!_scriptsLoaded) RefreshScripts();
 
             if (_webView.IsWebViewOpen())
             {

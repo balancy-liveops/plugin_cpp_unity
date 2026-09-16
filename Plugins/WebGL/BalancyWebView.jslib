@@ -75,13 +75,15 @@ var BalancyWebViewPlugin = {
   /**
    * Open WebView with HTML content
    */
-  _balancyPrepareWebView: function(shellIdPtr) {
+  _balancyPrepareWebView: function(shellIdPtr, scriptsPtr, versionPtr) {
     var shellId = UTF8ToString(shellIdPtr);
+    var scripts = scriptsPtr ? UTF8ToString(scriptsPtr) : "";
+    var version = versionPtr ? UTF8ToString(versionPtr) : null;
     BalancyWebViewState.getWebView(function(webView) {
       try {
         if (!webView) throw new Error('WebView bundle unavailable');
         BalancyWebViewState.registerMessageForwarder();
-        webView.prepareWebView(shellId);
+        webView.prepareWebView(shellId, scripts, version);
       } catch (error) {
         SendMessage('BalancyView', 'OnWebGLMessageReceived', JSON.stringify({ type: 'shellError', shellId: shellId, error: String(error) }));
       }

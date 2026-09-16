@@ -1,0 +1,185 @@
+#import <UIKit/UIKit.h>
+#import "BalancyWebView.h"
+static NSMutableArray<NSString *> *results;
+static int failures, loads;
+static NSString *received;
+static void (^bridgeMessage)(NSString *);
+static void Message(const char *text) { received = text ? [NSString stringWithUTF8String:text] : nil; if (bridgeMessage) bridgeMessage(received); }
+static void Loaded(bool ok) { if (ok) ++loads; }
+static void Check(NSString *name, BOOL passed) { [results addObject:[NSString stringWithFormat:@"%@ %@", passed ? @"PASS" : @"FAIL", name]]; if (!passed) ++failures; }
+static void Later(double seconds, dispatch_block_t body) { dispatch_after(dispatch_time(DISPATCH_TIME_NOW, seconds * NSEC_PER_SEC), dispatch_get_main_queue(), body); }
+@interface LateMessage : WKScriptMessage
+@property(nonatomic,strong) WKWebView *source;
+@property(nonatomic,strong) id payload;
+@end
+@implementation LateMessage
+- (NSString *)name { return @"BalancyWebView"; }
+- (id)body { return self.payload ?: @"late old message"; }
+- (WKWebView *)webView { return self.source; }
+@end
+@interface Tests : UIResponder <UIApplicationDelegate>
+@property(nonatomic,strong) UIWindow *window;
+@property(nonatomic,strong) BalancyWebViewController *controller;
+@property(nonatomic,strong) NSHashTable *retiredControllers;
+@property(nonatomic) int bridgeCycle;
+@property(nonatomic) int imageRequests;
+@property(nonatomic) double openStart;
+@property(nonatomic,strong) NSMutableArray *bridgeTimes;
+@end
+@implementation Tests
+- (BalancyWebViewController *)makeController {
+    BalancyWebViewController *c = [[BalancyWebViewController alloc] initWithMessageCallback:Message loadCompletedCallback:Loaded cacheCompletedCallback:NULL];
+    [self.window.rootViewController addChildViewController:c];
+    c.view.frame = self.window.bounds;
+    [self.window.rootViewController.view addSubview:c.view];
+    [c didMoveToParentViewController:self.window.rootViewController];
+    [c preparePersistentShellLoad];
+    [c loadURL:@"about:blank"];
+    return c;
+}
+- (BOOL)application:(UIApplication *)app didFinishLaunchingWithOptions:(NSDictionary *)options {
+    results = [NSMutableArray new]; self.retiredControllers = [NSHashTable weakObjectsHashTable];
+    self.window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
+    self.window.rootViewController = [UIViewController new]; [self.window makeKeyAndVisible];
+    self.controller = [self makeController];
+    Later(1, ^{ [self testShow]; });
+    return YES;
+}
+- (void)testShow {
+    Check(@"prepare keeps shell hidden", self.controller.view.hidden);
+    self.controller.showDelay = 0; self.controller.animationDuration = 0;
+    [self.controller startShowAnimation];
+    Check(@"zero delay shows synchronously", self.controller.webView.alpha == 1);
+    self.controller.showDelay = .1; [self.controller startShowAnimation]; [self.controller hideForPersistentMode];
+    Later(.2, ^{
+        Check(@"hide cancels delayed show", self.controller.view.hidden && self.controller.webView.alpha == 0);
+        [self testTransport];
+    });
+}
+- (void)testTransport {
+    LateMessage *scalar = [LateMessage new]; scalar.source = self.controller.webView; scalar.payload = @42;
+    @try {
+        [self.controller userContentController:self.controller.webView.configuration.userContentController didReceiveScriptMessage:scalar];
+        Check(@"numeric JS messages do not throw native exceptions", [received isEqual:@"42"]);
+        scalar.payload = NSNull.null;
+        [self.controller userContentController:self.controller.webView.configuration.userContentController didReceiveScriptMessage:scalar];
+        Check(@"null JS messages do not throw native exceptions", [received isEqual:@"null"]);
+    } @catch(NSException *error) { Check(@"scalar message must not throw", NO); }
+    [self.controller.webView evaluateJavaScript:@"window.balancy={_receiveMessageFromUnity:function(s){webkit.messageHandlers.BalancyWebView.postMessage(s)}};true" completionHandler:^(id value, NSError *error) {
+        Check(@"install message receiver", !error);
+        NSString *message = @"quotes \" ' backslash \\ newline\nUnicode Привет 🎁";
+        Check(@"send accepts message", [self.controller sendMessage:message]);
+        Later(.3, ^{
+            Check(@"message roundtrip preserves Unicode and escaping", [received isEqual:message]);
+            WKWebView *old = self.controller.webView;
+            int previous = loads;
+            WKUserContentController *oldContent = old.configuration.userContentController;
+            [self.controller close]; [self.controller close];
+            LateMessage *late = [LateMessage new]; late.source = old;
+            received = @"unchanged";
+            [self.controller userContentController:oldContent didReceiveScriptMessage:late];
+            Check(@"late script messages from closed context ignored", [received isEqual:@"unchanged"]);
+            Check(@"close releases native view", self.controller.webView == nil);
+            Check(@"close detaches navigation delegate", old.navigationDelegate == nil && old.UIDelegate == nil);
+            Check(@"close detaches view hierarchy", old.superview == nil);
+            Check(@"send after close rejected", ![self.controller sendMessage:@"closed"]);
+            [self.controller webView:old didFinishNavigation:nil];
+            Check(@"late navigation ignored", loads == previous);
+            [self.retiredControllers addObject:self.controller]; self.controller = nil;
+            [self cycles:0];
+        });
+    }];
+}
+- (void)cycles:(int)count {
+    if (count == 20) {
+        Later(2, ^{
+            Check(@"closed controllers released", self.retiredControllers.allObjects.count == 0);
+            Check(@"root hierarchy returns to baseline", self.window.rootViewController.childViewControllers.count == 0 && self.window.rootViewController.view.subviews.count == 0);
+            [self startBridge];
+        });
+        return;
+    }
+    self.controller = [self makeController];
+    Later(.15, ^{
+        [self.controller close];
+        Check([NSString stringWithFormat:@"cycle %d releases view", count], self.controller.webView == nil);
+        [self.retiredControllers addObject:self.controller]; self.controller = nil;
+        [self cycles:count+1];
+    });
+}
+- (void)send:(NSDictionary *)message {
+    NSData *data = [NSJSONSerialization dataWithJSONObject:message options:0 error:nil];
+    [self.controller sendMessage:[[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding]];
+}
+- (void)startBridge {
+    self.bridgeTimes = [NSMutableArray new];
+    NSString *dir = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents"];
+    NSString *shell = [dir stringByAppendingPathComponent:@"shell.html"];
+    [@"<!doctype html><html data-balancy-shell><body><div id='root-container'></div></body></html>" writeToFile:shell atomically:YES encoding:NSUTF8StringEncoding error:nil];
+    UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(1,1)];
+    UIImage *image = [renderer imageWithActions:^(UIGraphicsImageRendererContext *ctx) { [[UIColor redColor] setFill]; UIRectFill(CGRectMake(0,0,1,1)); }];
+    [UIImagePNGRepresentation(image) writeToFile:[dir stringByAppendingPathComponent:@"icon.png"] atomically:YES];
+    self.controller = [self makeController];
+    [self.controller loadURL:[NSURL fileURLWithPath:shell].absoluteString];
+    bridgeMessage = ^(NSString *raw) { [self receiveBridge:raw]; };
+    Later(1, ^{
+        NSString *bridge = [NSString stringWithContentsOfFile:[NSBundle.mainBundle pathForResource:@"bridge" ofType:@"js"] encoding:NSUTF8StringEncoding error:nil];
+        NSString *code = [bridge stringByAppendingString:@";window.balancy._installScripts('window.bundleExecutions=(window.bundleExecutions||0)+1;', 'ios-test');window.balancy.initResponseHandler();true;"];
+        [self.controller.webView evaluateJavaScript:code completionHandler:^(id result,NSError *error){
+            Check(@"real bridge injects successfully", error == nil);
+            if(error) [self finish];
+        }];
+    });
+}
+- (void)receiveBridge:(NSString *)raw {
+    NSDictionary *msg = [NSJSONSerialization JSONObjectWithData:[raw dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil];
+    NSString *type = msg[@"type"];
+    if ([type isEqual:@"shellReady"]) {
+        Check(@"real bridge confirms installed scripts", [msg[@"scriptsVersion"] isEqual:@"ios-test"]);
+        [self openBridge];
+    } else if ([type isEqual:@"batch"] || [type isEqual:@"request"]) {
+        NSArray *requests = [type isEqual:@"batch"] ? msg[@"requests"] : @[msg];
+        NSMutableArray *responses = [NSMutableArray new];
+        for (NSDictionary *request in requests) {
+            int action = [request[@"action"] intValue]; NSString *result = @"{}";
+            if(action == 10) result = @"Localized text";
+            if(action == 11) { self.imageRequests++; result = [NSURL fileURLWithPath:[NSHomeDirectory() stringByAppendingPathComponent:@"Documents/icon.png"]].absoluteString; }
+            [responses addObject:@{@"id":request[@"id"], @"result":result}];
+        }
+        [self send:@{@"type":@"batch-response",@"responses":responses}];
+    } else if ([type isEqual:@"webview-performance"] && [msg[@"event"] isEqual:@"viewReady"]) {
+        NSDictionary *counters = msg[@"counters"];
+        Check([NSString stringWithFormat:@"real image decoded %d",self.bridgeCycle], [counters[@"imagesDecoded"] intValue] == 1 && [counters[@"imageDecodeErrors"] intValue] == 0);
+    } else if ([type isEqual:@"viewLoadError"] || [type isEqual:@"shellError"]) {
+        Check([@"real bridge error " stringByAppendingString:raw], NO); [self finish];
+    } else if ([type isEqual:@"viewReady"]) {
+        [self.bridgeTimes addObject:@((CACurrentMediaTime() - self.openStart)*1000)];
+        [self send:@{@"type":@"clearView",@"viewId":[NSString stringWithFormat:@"bridge-%d",self.bridgeCycle]}];
+    } else if ([type isEqual:@"viewCleared"]) {
+        if (++self.bridgeCycle < 20) [self openBridge];
+        else {
+            [self.controller.webView evaluateJavaScript:@"window.bundleExecutions === 1 && document.getElementById('root-container').children.length === 0" completionHandler:^(id result,NSError *error){
+                Check(@"real bridge reuses code and clears DOM", !error && [result boolValue]);
+                Check(@"real bridge caches image URL", self.imageRequests == 1);
+                [results addObject:[NSString stringWithFormat:@"MEASURE real bridge ready milliseconds %@",self.bridgeTimes]];
+                [self.controller close]; self.controller = nil; [self finish];
+            }];
+        }
+    }
+}
+- (void)openBridge {
+    self.openStart = CACurrentMediaTime();
+    [self send:@{@"type":@"loadView",@"viewId":[NSString stringWithFormat:@"bridge-%d",self.bridgeCycle],
+      @"html":@"<div><span data-text-type='localized' data-localization-key='native-text'></span><div data-image-id='icon' style='width:10px;height:10px'></div></div>",
+      @"scriptsVersion":@"ios-test",@"ownerJson":@"{}",@"additionalInfo":@"{\"trackWebViewEvents\":false}",@"performanceLogging":@YES,
+      @"baseUrl":[NSURL fileURLWithPath:[NSHomeDirectory() stringByAppendingFormat:@"/Documents/views/%d/index.html",self.bridgeCycle]].absoluteString}];
+}
+- (void)finish {
+    bridgeMessage = nil;
+    NSString *text = [[results componentsJoinedByString:@"\n"] stringByAppendingFormat:@"\nRESULT failures=%d checks=%lu\n",failures,(unsigned long)results.count];
+    NSLog(@"%@", text);
+    NSString *file = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/results.txt"];
+    [text writeToFile:file atomically:YES encoding:NSUTF8StringEncoding error:nil];
+}
+@end
+int main(int argc,char **argv) { @autoreleasepool { return UIApplicationMain(argc,argv,nil,NSStringFromClass(Tests.class)); } }

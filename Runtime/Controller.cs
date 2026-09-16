@@ -397,7 +397,8 @@ namespace Balancy
                         bool isCMSUpdated = notificationDataIsReady.IsCMSUpdated;
                         bool isProfileUpdated = notificationDataIsReady.IsProfileUpdated;
 #endif
-                        RenderViewsManager.RefreshScripts();
+                        RenderViewsManager.HandleContentUpdated(new Balancy.Callbacks.DataUpdatedStatus(
+                            isCloudSynced, isCMSUpdated, isProfileUpdated));
                         // A CMS update can re-version scripts/views. GetObjectView memoizes
                         // resolved views and skips the preload on repeat opens, so without
                         // this the next open would reuse a stale cached view and recompile

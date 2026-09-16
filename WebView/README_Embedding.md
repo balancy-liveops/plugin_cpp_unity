@@ -10,3 +10,11 @@ Balancy.RenderViewsManager.SetViewDelays(0f, 0f);    // restore immediate presen
 ```
 
 The setting also applies when a persistent shell is already prepared but hidden. Negative values are clamped to zero. These settings control presentation, not HTML/resource readiness. Configure after SDK initialization; values set through RenderViewsManager before initialization are not retained.
+
+### Persistent preparation and data updates
+
+`RenderViewsManager.PrepareWebView(onReady, onFailed)` explicitly opts the current SDK session into persistent mode. It may be called before SDK initialization: preparation waits until the first data-ready notification. The optional `onReady` reports WebView preparation completion; it is separate from `Callbacks.OnDataUpdated`.
+
+Scripts are read when preparing and on data updates, rather than on each persistent window opening. Unchanged scripts reuse the shell. Changed scripts replace the entire shell after the current view closes; hiding a view does not close it. A window requested during replacement waits for preparation. Script code is injected during preparation, including Unity WebGL, and is omitted from ordinary `loadView` messages.
+
+SDK shutdown clears the opt-in. Call Prepare again for a new SDK session. See `Tests/WebView/PERSISTENT_PREPARATION_PLAN.md` for local/cloud readiness limitations and validation.

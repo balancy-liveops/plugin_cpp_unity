@@ -129,6 +129,9 @@ void LogToUnity(const char* message) {
                                                       styleMask:NSWindowStyleMaskBorderless
                                                         backing:NSBackingStoreBuffered
                                                           defer:NO];
+        // ARC owns this window; AppKit must not release it independently on close.
+        _offscreenWindow.releasedWhenClosed = NO;
+        _offscreenWindow.animationBehavior = NSWindowAnimationBehaviorNone;
         [_offscreenWindow setTitle:@"Balancy Embedded"];
         [_offscreenWindow setAlphaValue:0.01];
         [_offscreenWindow setBackgroundColor:[NSColor clearColor]];
@@ -497,6 +500,7 @@ void LogToUnity(const char* message) {
 #pragma mark - WKScriptMessageHandler
 
 - (void)userContentController:(WKUserContentController *)userContentController didReceiveScriptMessage:(WKScriptMessage *)message {
+    if (!_webView || userContentController != _userContentController || message.webView != _webView) return;
     if (![message.name isEqualToString:@"BalancyWebView"]) return;
 
     NSString *messageString;
@@ -614,6 +618,9 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
                                                       styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable 
                                                         backing:NSBackingStoreBuffered 
                                                           defer:NO];
+        window.releasedWhenClosed = NO;
+        // Presentation timing is controlled by the SDK, not AppKit window transforms.
+        window.animationBehavior = NSWindowAnimationBehaviorNone;
         [window setTitle:@"Balancy WebView"];
         [window center];
         
@@ -815,7 +822,12 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
     }
     
     [_userContentController removeScriptMessageHandlerForName:@"BalancyWebView"];
+    _userContentController = nil;
+    _webView.navigationDelegate = nil;
+    _webView.UIDelegate = nil;
     [_webView stopLoading];
+    [_webView removeFromSuperview];
+    _webView = nil;
     [[self window] close];
 }
 
@@ -946,7 +958,11 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
     // Bring the persistent window back on screen before animating it in.
     [[self window] setAlphaValue:0.0f];
     [[self window] makeKeyAndOrderFront:nil];
-    
+    if (_showDelay == 0.0f && _animationDuration == 0.0f) {
+        [[self window] setAlphaValue:1.0f];
+        return;
+    }
+
     if (_debugLogging) {
         LogToUnity([[NSString stringWithFormat:@"Starting show animation with delay: %.3fs, duration: %.3fs", _showDelay, _animationDuration] UTF8String]);
     }
@@ -972,6 +988,7 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
 #pragma mark - WKScriptMessageHandler
 
 - (void)userContentController:(WKUserContentController *)userContentController didReceiveScriptMessage:(WKScriptMessage *)message {
+    if (!_webView || userContentController != _userContentController || message.webView != _webView) return;
     if (![message.name isEqualToString:@"BalancyWebView"]) return;
 
     NSString *messageString;

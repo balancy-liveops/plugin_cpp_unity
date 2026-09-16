@@ -646,6 +646,10 @@ static BalancyWebViewController* CreateOrGetWebViewController(void (*messageCall
 
     self.view.hidden = NO;
     self.view.userInteractionEnabled = YES;
+    if (_showDelay == 0.0f && _animationDuration == 0.0f) {
+        _webView.alpha = 1.0;
+        return;
+    }
     _webView.alpha = 0.0;
     
     // Closing/hiding invalidates this generation without retaining the controller.
@@ -1382,6 +1386,7 @@ static BalancyWebViewController* CreateOrGetWebViewController(void (*messageCall
 #pragma mark - WKScriptMessageHandler
 
 - (void)userContentController:(WKUserContentController *)userContentController didReceiveScriptMessage:(WKScriptMessage *)message {
+    if (!_webView || userContentController != _userContentController || message.webView != _webView) return;
     // Make sure the message is from our handler
     if (![message.name isEqualToString:@"BalancyWebView"]) {
         return;
@@ -1403,7 +1408,7 @@ static BalancyWebViewController* CreateOrGetWebViewController(void (*messageCall
         messageString = (NSString *)message.body;
     } else {
         // Try to convert to JSON string
-        NSData *jsonData = [NSJSONSerialization dataWithJSONObject:message.body options:0 error:nil];
+        NSData *jsonData = [NSJSONSerialization dataWithJSONObject:message.body options:NSJSONWritingFragmentsAllowed error:nil];
         if (jsonData) {
             messageString = [[NSString alloc] initWithData:jsonData encoding:NSUTF8StringEncoding];
         } else {

@@ -1,0 +1,188 @@
+package com.balancy.webview.tests;
+
+import android.app.Activity;
+import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.view.View;
+import android.view.ViewGroup;
+import android.webkit.WebView;
+import com.balancy.webview.BalancyWebViewPlugin;
+import com.unity3d.player.UnityPlayer;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+
+/** Real Android WebView regression harness. No Unity editor or network is required. */
+public class MainActivity extends Activity {
+    final Handler handler = new Handler(Looper.getMainLooper());
+    final ArrayList<String> results = new ArrayList<>();
+    BalancyWebViewPlugin plugin;
+    int failures;
+    int bridgeCycle, imageRequests;
+    boolean bridgeStarted;
+    long bridgeOpenStart;
+    final ArrayList<Double> bridgeTimes = new ArrayList<>();
+    final ArrayList<java.lang.ref.WeakReference<WebView>> retired = new ArrayList<>();
+    Object field(String name) throws Exception { Field f = plugin.getClass().getDeclaredField(name); f.setAccessible(true); return f.get(plugin); }
+    void check(String name, boolean passed) { results.add((passed ? "PASS " : "FAIL ") + name); if (!passed) failures++; }
+    void later(Runnable run) { handler.postDelayed(() -> { try { run.run(); } catch (Throwable e) { fail(e); } }, 250); }
+    void fail(Throwable error) { check(error.toString(), false); finishResults(); }
+    @Override public void onCreate(Bundle bundle) {
+        super.onCreate(bundle);
+        UnityPlayer.currentActivity = this;
+        plugin = BalancyWebViewPlugin.getInstance(); plugin.initialize(); plugin.setDebugLogging(false);
+        try {
+            ViewGroup root = findViewById(android.R.id.content);
+            int before = root.getChildCount(); plugin.initialize(); plugin.initialize();
+            check("repeated initialize retains one container", root.getChildCount() == before);
+            UnityPlayer.receiver = (method, payload) -> {
+                if (method.equals("OnAndroidLoadCompleted")) handler.post(() -> {
+                    UnityPlayer.receiver = null;
+                    if (payload.equals("true")) runLoaded(); else fail(new Exception("Initial page load failed"));
+                });
+            };
+            check("null owner accepted", plugin.openWebView("about:blank", null, 0, 0, true));
+        } catch (Throwable error) { fail(error); }
+    }
+    void runLoaded() {
+        try {
+            WebView first = (WebView)field("webView");
+            org.json.JSONObject owner = new org.json.JSONObject().put("value", "Привет \\ \" \n ' 🎁");
+            Field ownerField = plugin.getClass().getDeclaredField("ownerJson"); ownerField.setAccessible(true); ownerField.set(plugin, owner.toString());
+            Method injectOwner = plugin.getClass().getDeclaredMethod("injectOwnerJson"); injectOwner.setAccessible(true); injectOwner.invoke(plugin);
+            first.evaluateJavascript("balancy.owner.value === " + org.json.JSONObject.quote(owner.getString("value")), value -> check("legacy owner preserves Unicode and escapes", "true".equals(value)));
+            check("prepared shell hidden", ((View)field("webViewContainer")).getVisibility() != View.VISIBLE);
+            plugin.setShowDelay(0); plugin.setAnimationDuration(0); plugin.showWebView();
+            check("zero delay shows synchronously", first.getAlpha() == 1f);
+            plugin.setShowDelay(.1f); plugin.showWebView(); plugin.hideWebView();
+            later(() -> afterHide(first));
+        } catch (Throwable error) { fail(error); }
+    }
+    void afterHide(WebView first) {
+        try {
+            check("hide cancels delayed show", first.getAlpha() == 0f);
+            plugin.closeWebView(); plugin.closeWebView();
+            check("close releases WebView", field("webView") == null);
+            check("close removes children", ((ViewGroup)field("webViewContainer")).getChildCount() == 0);
+            check("send after close rejected", !plugin.sendMessage("closed"));
+            plugin.prepareWebView("about:blank");
+            later(() -> testStaleDispatch());
+        } catch (Throwable error) { fail(error); }
+    }
+    void testStaleDispatch() {
+        try {
+            WebView old = (WebView)field("webView");
+            // Hold the UI thread while worker queues a command targeting the old view.
+            Thread worker = new Thread(() -> plugin.injectJavaScript("window.staleInjection = true"));
+            worker.start(); worker.join();
+            retired.add(new java.lang.ref.WeakReference<>((WebView)field("webView")));
+            plugin.closeWebView(); plugin.prepareWebView("about:blank");
+            later(() -> {
+                try {
+                    WebView next = (WebView)field("webView");
+                    check("replacement uses new native object", next != old);
+                    next.evaluateJavascript("window.staleInjection === true", value -> {
+                        check("queued injection cannot enter replacement", "false".equals(value));
+                        runCycles(0);
+                    });
+                } catch (Throwable error) { fail(error); }
+            });
+        } catch (Throwable error) { fail(error); }
+    }
+    void runCycles(int count) {
+        try {
+            if (count == 30) { startBridge(); return; }
+            retired.add(new java.lang.ref.WeakReference<>((WebView)field("webView")));
+            plugin.closeWebView(); plugin.prepareWebView("about:blank");
+            later(() -> {
+                try {
+                    check("cycle " + count + " one WebView", ((ViewGroup)field("webViewContainer")).getChildCount() == 1);
+                    runCycles(count + 1);
+                } catch (Throwable error) { fail(error); }
+            });
+        } catch (Throwable error) { fail(error); }
+    }
+    void startBridge() {
+        try {
+            plugin.closeWebView();
+            java.io.File shell = new java.io.File(getFilesDir(), "shell.html");
+            try (java.io.FileOutputStream stream = new java.io.FileOutputStream(shell)) {
+                stream.write("<!doctype html><html data-balancy-shell><body><div id='root-container'></div></body></html>".getBytes("UTF-8"));
+            }
+            android.graphics.Bitmap pixel = android.graphics.Bitmap.createBitmap(1, 1, android.graphics.Bitmap.Config.ARGB_8888);
+            try (java.io.FileOutputStream stream = new java.io.FileOutputStream(new java.io.File(getFilesDir(), "icon.png"))) {
+                pixel.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, stream);
+            }
+            pixel.recycle();
+            UnityPlayer.receiver = (method, payload) -> handler.post(() -> bridgeMessage(method, payload));
+            plugin.prepareWebView("file://" + shell.getAbsolutePath());
+        } catch (Throwable error) { fail(error); }
+    }
+    void bridgeMessage(String method, String payload) {
+        try {
+            if (method.equals("OnAndroidLoadCompleted") && payload.equals("true") && !bridgeStarted) {
+                bridgeStarted = true;
+                java.io.InputStream input = getAssets().open("bridge.js");
+                java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+                byte[] buf = new byte[8192]; int n; while ((n = input.read(buf)) != -1) bytes.write(buf, 0, n); input.close();
+                plugin.injectJavaScript(bytes.toString("UTF-8") + ";window.balancy._installScripts('window.bundleExecutions=(window.bundleExecutions||0)+1;', 'native-test');window.balancy.initResponseHandler();");
+                return;
+            }
+            if (!method.equals("OnAndroidMessageReceived")) return;
+            org.json.JSONObject msg = new org.json.JSONObject(payload);
+            String type = msg.optString("type");
+            if (type.equals("shellReady")) {
+                check("real bridge prepared with script version", msg.optString("scriptsVersion").equals("native-test"));
+                openBridgeView();
+            } else if (type.equals("batch") || type.equals("request")) {
+                org.json.JSONArray requests = type.equals("batch") ? msg.getJSONArray("requests") : new org.json.JSONArray().put(msg);
+                org.json.JSONArray responses = new org.json.JSONArray();
+                for (int i = 0; i < requests.length(); i++) {
+                    org.json.JSONObject request = requests.getJSONObject(i); int action = request.getInt("action");
+                    String result = "{}";
+                    if (action == 10) result = "Localized text";
+                    if (action == 11) { imageRequests++; result = "file://" + new java.io.File(getFilesDir(), "icon.png").getAbsolutePath(); }
+                    responses.put(new org.json.JSONObject().put("id", request.getString("id")).put("result", result));
+                }
+                plugin.sendMessage(new org.json.JSONObject().put("type", "batch-response").put("responses", responses).toString());
+            } else if (type.equals("viewLoadError") || type.equals("shellError")) {
+                check("real bridge error " + payload, false); finishResults();
+            } else if (type.equals("webview-performance") && msg.optString("event").equals("viewReady")) {
+                org.json.JSONObject counters = msg.getJSONObject("counters");
+                check("real bridge image decoded " + bridgeCycle, counters.optInt("imagesDecoded") == 1 && counters.optInt("imageDecodeErrors") == 0);
+            } else if (type.equals("viewReady")) {
+                bridgeTimes.add((System.nanoTime() - bridgeOpenStart) / 1000000.0);
+                plugin.sendMessage(new org.json.JSONObject().put("type", "clearView").put("viewId", "bridge-" + bridgeCycle).toString());
+            } else if (type.equals("viewCleared")) {
+                bridgeCycle++;
+                if (bridgeCycle < 20) openBridgeView();
+                else ((WebView)field("webView")).evaluateJavascript("window.bundleExecutions === 1 && document.getElementById('root-container').children.length === 0", value -> {
+                    check("real bridge reuses scripts and clears DOM", "true".equals(value));
+                    check("real bridge reuses image URL cache", imageRequests == 1);
+                    plugin.closeWebView(); UnityPlayer.receiver = null;
+                    System.gc(); System.runFinalization(); System.gc();
+                    later(() -> {
+                        int alive = 0; for (java.lang.ref.WeakReference<WebView> reference : retired) if (reference.get() != null) alive++;
+                        check("retired native views released", alive == 0);
+                        results.add("MEASURE real bridge ready milliseconds " + bridgeTimes);
+                        finishResults();
+                    });
+                });
+            }
+        } catch (Throwable error) { fail(error); }
+    }
+    void openBridgeView() throws Exception {
+        String html = "<div><span data-text-type='localized' data-localization-key='native-text'></span><div data-image-id='icon' style='width:10px;height:10px'></div></div>";
+        org.json.JSONObject msg = new org.json.JSONObject().put("type", "loadView").put("viewId", "bridge-" + bridgeCycle)
+            .put("html", html).put("ownerJson", "{}").put("additionalInfo", "{\"trackWebViewEvents\":false}").put("scriptsVersion", "native-test")
+            .put("performanceLogging", true).put("baseUrl", "file://" + getFilesDir().getAbsolutePath() + "/views/" + bridgeCycle + "/index.html");
+        bridgeOpenStart = System.nanoTime(); plugin.sendMessage(msg.toString());
+    }
+    void finishResults() {
+        plugin.closeWebView(); UnityPlayer.receiver = null;
+        String text = String.join("\n", results) + "\nRESULT failures=" + failures + " checks=" + results.size() + "\n";
+        android.util.Log.i("BalancyNativeTests", text);
+        try { java.io.FileOutputStream file = openFileOutput("results.txt", MODE_PRIVATE); file.write(text.getBytes("UTF-8")); file.close(); } catch (Exception ignored) {}
+    }
+}
