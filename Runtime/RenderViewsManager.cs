@@ -91,18 +91,25 @@ namespace Balancy
             _webView = null;
         }
 
-        /// <summary>
-        /// Compile all view scripts from the native layer and pass them to BalancyWebView for injection.
-        /// Called automatically during Init() and can be called again if scripts need refreshing.
-        /// </summary>
+        /// <summary>Opt-in timing summaries in Unity logs. Enable before Prepare/Open.</summary>
+        public static void SetPerformanceLogging(bool enabled)
+        {
+            BalancyWebView.PerformanceLoggingEnabled = enabled;
+            if (_webView != null && _webView.IsPersistentModeEnabled())
+                _webView.SendMessageToWebView("{\"type\":\"setPerformanceLogging\",\"enabled\":" + (enabled ? "true" : "false") + "}");
+        }
+
+        /// <summary>Read the prepared script bundle (or legacy compile result) from the native core.</summary>
         public static void RefreshScripts()
         {
+            var started = BalancyWebView.PerformanceNow();
             try
             {
                 IntPtr ptr = LibraryMethods.General.balancyDataObjectCompileAllScripts();
                 string scriptsCode = Marshal.PtrToStringAnsi(ptr) ?? "";
                 Debug.Log($"[RenderViewsManager] Scripts compiled: {scriptsCode.Length} characters");
                 _webView.SetScriptsCode(scriptsCode);
+                BalancyWebView.PerformanceLog("readScriptsBundle", started, null, "scriptChars=" + scriptsCode.Length);
             }
             catch (Exception e)
             {
@@ -236,6 +243,7 @@ namespace Balancy
                     additionalInfo = $"{{\"launchTime\":{launchTime},\"secondsLeft\":{secondsLeft}}}";
             }
 
+            if (BalancyWebView.PerformanceLoggingEnabled) additionalInfo = additionalInfo.Substring(0, additionalInfo.Length - 1) + ",\"performanceLogging\":true}";
             return additionalInfo;
         }
 
@@ -269,6 +277,7 @@ namespace Balancy
 
         public static void OpenLocalView(string filePath, JsonBasedObject owner, Action onShown = null, Action<ViewOpenError> onFailed = null)
         {
+            var openStarted = BalancyWebView.PerformanceNow();
             if (string.IsNullOrEmpty(filePath))
             {
                 Debug.LogError("File path is null or empty");
@@ -294,6 +303,7 @@ namespace Balancy
                 }
                 try
                 {
+                    var htmlStarted = BalancyWebView.PerformanceNow();
                     string htmlContent;
 #if UNITY_WEBGL && !UNITY_EDITOR
                     string cachePath = filePath;
@@ -311,12 +321,17 @@ namespace Balancy
 #else
                     string baseUrl = new Uri(Path.GetFullPath(NormalizeLocalPath(filePath))).AbsoluteUri;
 #endif
+                    BalancyWebView.PerformanceLog("readViewHtml", htmlStarted, null, "htmlChars=" + htmlContent.Length);
                     string ownerJson = owner?.ToJsonString(DEFAULT_OWNER_DEPTH, false) ?? "";
-                    if (_webView.ShowView(htmlContent, ownerJson, BuildAdditionalInfo(owner), onShown,
+                    if (_webView.ShowView(htmlContent, ownerJson, BuildAdditionalInfo(owner), () => {
+                            BalancyWebView.PerformanceLog("openLocalToReady", openStarted, _webView.CurrentViewId);
+                            onShown?.Invoke();
+                        },
                         error => onFailed?.Invoke(ViewOpenError.LoadFailed), baseUrl))
                     {
                         m_LastOpenedOwnerPtr = owner?.GetRawPointer() ?? IntPtr.Zero;
                         ViewOwners[_webView.CurrentViewId] = m_LastOpenedOwnerPtr;
+                        BalancyWebView.PerformanceLog("openLocalAccepted", openStarted, _webView.CurrentViewId, "file=" + Path.GetFileName(filePath));
                     }
                 }
                 catch (Exception e)
@@ -1022,7 +1037,14 @@ namespace Balancy
                 foreach (var item in requests)
                     if (item.viewId != viewId) { callback(RequestError(requestData, "Mixed view contexts")); return; }
                 // Null owner is valid for explicit-context APIs, localization and resources.
-                LibraryMethods.General.balancyWebViewRequest(owner, requestData, callback);
+                if (!BalancyWebView.PerformanceLoggingEnabled) { LibraryMethods.General.balancyWebViewRequest(owner, requestData, callback); return; }
+                var requestStarted = BalancyWebView.PerformanceNow();
+                int requestCount = requests.Length, requestChars = requestData.Length;
+                LibraryMethods.General.balancyWebViewRequest(owner, requestData, response => {
+                    BalancyWebView.PerformanceLog("coreRequest", requestStarted, viewId,
+                        "count=" + requestCount + " requestChars=" + requestChars + " responseChars=" + (response?.Length ?? 0));
+                    callback(response);
+                });
             }
             catch (Exception error) { callback(RequestError(requestData, error.Message)); }
         }

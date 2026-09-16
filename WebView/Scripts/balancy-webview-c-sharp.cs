@@ -20,6 +20,18 @@ namespace Balancy.WebView
     public class BalancyWebView : MonoBehaviour
     {
         private string _scriptsCode = "";
+        // Temporary opt-in diagnostics; do not enable native payload/debug logging for timings.
+        public static bool PerformanceLoggingEnabled { get; set; }
+        public static double PerformanceNow() => PerformanceLoggingEnabled
+            ? (double)System.Diagnostics.Stopwatch.GetTimestamp() * 1000.0 / System.Diagnostics.Stopwatch.Frequency : 0;
+        public static void PerformanceLog(string stage, double started, string viewId = null, string detail = null)
+        {
+            if (!PerformanceLoggingEnabled || started <= 0) return;
+            Debug.Log("[BalancyPerf] host stage=" + stage + " view=" + (viewId ?? "-") + " ms=" +
+                (PerformanceNow() - started).ToString("F2", System.Globalization.CultureInfo.InvariantCulture) + " " + detail);
+        }
+        private double _performanceShellStart, _performanceViewStart, _performanceCloseStart;
+
 
         /// <summary>
         /// Store compiled scripts code for injection into WebView.
@@ -224,17 +236,30 @@ namespace Balancy.WebView
         private PersistentViewState _persistent;
         public event Action<string> OnViewReleased;
         private PersistentViewState Persistent => _persistent ?? (_persistent = new PersistentViewState(
-            _balancySendMessage,
-            () => { _balancyShowWebView(); _isWebViewOpen = true; },
+            SendPersistentMessage,
+            () => { PerformanceLog("showCommand", _performanceViewStart, _persistent?.CurrentId,
+                "configuredDelayMs=" + (_showDelay * 1000) + " configuredFadeMs=" + (_animationDuration * 1000));
+                _balancyShowWebView(); _isWebViewOpen = true; },
             () => { _balancyHideWebView(); _isWebViewOpen = false; },
             () => { _balancyCloseWebView(); _isWebViewOpen = false; },
             () => OnClosed?.Invoke(), id => OnViewReleased?.Invoke(id),
             () => Time.realtimeSinceStartup));
 
+        private bool SendPersistentMessage(string message)
+        {
+            if (!PerformanceLoggingEnabled) return _balancySendMessage(message);
+            var started = PerformanceNow();
+            bool result = _balancySendMessage(message);
+            PerformanceLog("sendPersistentDispatch", started, _persistent?.CurrentId ?? _persistent?.ClosingId,
+                "messageChars=" + message.Length + " accepted=" + result);
+            return result;
+        }
+
         [Serializable]
         private class PersistentMessage
         {
             public string type, viewId, shellId, error;
+            public bool performanceLogging;
             public string htmlBase64, ownerJsonBase64, additionalInfoBase64, scriptsBase64, baseUrl;
         }
 
@@ -873,6 +898,7 @@ namespace Balancy.WebView
         /// <returns>True if the WebView was opened successfully, false otherwise</returns>
         public bool OpenWebView(string url, string ownerJson, string additionalInfo, int width, int height)
         {
+            _performanceViewStart = PerformanceNow();
             if (_isWebViewOpen)
             {
                 Debug.LogWarning("WebView is already open. Close it first before opening a new one.");
@@ -972,6 +998,8 @@ namespace Balancy.WebView
                 onFailed?.Invoke("Close the current view before preparing persistent mode");
                 return;
             }
+            _performanceShellStart = PerformanceNow();
+            if (Persistent.Enabled && !Persistent.Preparing) PerformanceLog("shellReused", _performanceShellStart, Persistent.ShellId);
             Persistent.Prepare(() => {
 #if UNITY_WEBGL && !UNITY_EDITOR
                 return _balancyPrepareWebView(Persistent.ShellId);
@@ -998,11 +1026,17 @@ namespace Balancy.WebView
         {
             // Capture this accepted view's script snapshot; a later refresh must not alter it.
             var scripts = _scriptsCode;
-            return Persistent.Show(id => JsonUtility.ToJson(new PersistentMessage {
-                type = "loadView", viewId = id, htmlBase64 = Base64(html), baseUrl = baseUrl,
+            if (Persistent.CanShow) _performanceViewStart = PerformanceNow();
+            return Persistent.Show(id => {
+                var started = PerformanceNow();
+                var payload = JsonUtility.ToJson(new PersistentMessage {
+                type = "loadView", viewId = id, performanceLogging = PerformanceLoggingEnabled, htmlBase64 = Base64(html), baseUrl = baseUrl,
                 ownerJsonBase64 = Base64(ownerJson), additionalInfoBase64 = Base64(additionalInfo),
                 scriptsBase64 = Base64(scripts)
-            }), onViewReady, error => { Debug.LogError("[BalancyWebView] " + error); onFailed?.Invoke(error); });
+                });
+                PerformanceLog("buildLoadViewPayload", started, id, "messageChars=" + payload.Length);
+                return payload;
+            }, onViewReady, error => { Debug.LogError("[BalancyWebView] " + error); onFailed?.Invoke(error); });
         }
 
         public void ShowWebView()
@@ -1019,6 +1053,7 @@ namespace Balancy.WebView
 
         public void CloseView()
         {
+            _performanceCloseStart = PerformanceNow();
             if (Persistent.Enabled) Persistent.Close();
             else CloseWebView();
         }
@@ -1518,6 +1553,19 @@ namespace Balancy.WebView
             try
             {
                 var parsed = JsonUtility.FromJson<PersistentMessage>(message);
+                if (parsed != null && parsed.type == "webview-performance")
+                {
+                    if (PerformanceLoggingEnabled) Debug.Log("[BalancyPerf] " + message);
+                    return;
+                }
+                if (parsed != null && parsed.type == "shellReady" && Persistent.Preparing && parsed.shellId == Persistent.ShellId)
+                    PerformanceLog("shellReady", _performanceShellStart, parsed.shellId);
+                if (parsed != null && parsed.type == "viewReady" && parsed.viewId == Persistent.CurrentId)
+                    PerformanceLog("viewReadyReceived", _performanceViewStart, parsed.viewId);
+                if (parsed != null && parsed.type == "viewCleared" && parsed.viewId == Persistent.ClosingId)
+                    PerformanceLog("viewClearedReceived", _performanceCloseStart, parsed.viewId);
+                if (parsed != null && (parsed.type == "viewLoadError" || parsed.type == "shellError"))
+                    PerformanceLog(parsed.type, parsed.type == "shellError" ? _performanceShellStart : _performanceViewStart, parsed.viewId ?? parsed.shellId);
                 if (parsed != null && Persistent.Receive(parsed.type, parsed.viewId, parsed.shellId, parsed.error)) return;
             }
             catch (Exception error) { Debug.LogWarning("[BalancyWebView] Invalid protocol message: " + error.Message); }
@@ -1544,6 +1592,8 @@ namespace Balancy.WebView
         {
             if (_instance == null) return;
             bool preparingShell = _instance.Persistent.Preparing;
+            if (!preparingShell) PerformanceLog("classicNavigationComplete", _instance._performanceViewStart, null, "success=" + success);
+            if (preparingShell) PerformanceLog("shellNavigationComplete", _instance._performanceShellStart, _instance.Persistent.ShellId, "success=" + success);
             if (success)
             {
 #if !(UNITY_WEBGL && !UNITY_EDITOR)
@@ -1553,6 +1603,7 @@ namespace Balancy.WebView
                 var bridge = Resources.Load<TextAsset>("balancy-webview-bridge");
                 string shellId = instance.Persistent.ShellId;
                 var fullCode =
+                    "window.balancyPerformanceEnabled = " + (PerformanceLoggingEnabled ? "true" : "false") + ";\n" +
                     "window.balancyShellId = " + JsString(shellId) + ";\ntry {\n" +
                     "window.balancyViewOwner = JSON.parse(" + JsString(owner) + ");\n" +
                     "window.balancySettings = JSON.parse(" + JsString(settings) + ");\n" +
@@ -1560,7 +1611,9 @@ namespace Balancy.WebView
                     "window.balancy._installScripts(" + JsString(instance._scriptsCode) + ");\n" +
                     "window.balancy.initResponseHandler();\n" +
                     "} catch(error) { if(window.balancy) window.balancy._postHostError(error); console.error(error); }\ntrue;";
+                var injectionStarted = PerformanceNow();
                 success = _balancyInjectJSCode(fullCode);
+                PerformanceLog("injectBridgeDispatch", injectionStarted, shellId, "codeChars=" + fullCode.Length);
 #endif
             }
             if (preparingShell || (!success && _instance.Persistent.Enabled))
