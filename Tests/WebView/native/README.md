@@ -34,3 +34,5 @@ Uses small actual AppKit windows (briefly visible). Twenty normal window cycles 
 ## Results and limits
 
 See `validation/` and `../NATIVE_OPTIMIZATION_REPORT.md`. Android 12/API 31 and Android 16/API 36, iOS 17.0 and iOS 26.3, and macOS were exercised locally. These tests do not establish GPU-driver behavior on physical Android devices or total memory use of separate WebKit/Chromium renderer processes.
+
+The 2026-09-17 fixture also instantiates two cached prefabs per View (one detached and one reparented outside the mount). Across 20 opens it requires 40 `onDestroy` calls, one template load, no remaining managed instances and an empty View DOM. `prefab-fixture.js.txt` is a test asset copied only into the standalone harness app.

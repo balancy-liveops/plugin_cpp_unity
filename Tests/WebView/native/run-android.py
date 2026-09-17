@@ -15,6 +15,7 @@ apk=out/'native-tests.apk';run([bt/'aapt2','link','-I',android,'--manifest',src/
 with zipfile.ZipFile(apk,'a') as f:
  f.write(out/'classes.dex','classes.dex')
  f.write(r/'WebView/Resources/balancy-webview-bridge.txt','assets/bridge.js')
+ f.write(src.parent/'prefab-fixture.js.txt','assets/prefab-fixture.js')
 key=out/'test.keystore'
 if not key.exists():run([java/'keytool','-genkeypair','-keystore',key,'-storepass','android','-keypass','android','-alias','test','-dname','CN=Local SDK Tests','-keyalg','RSA','-validity','30'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
 run([bt/'apksigner','sign','--ks',key,'--ks-pass','pass:android',apk])

@@ -1,0 +1,67 @@
+PASS repeated initialize retains one container
+PASS null owner accepted
+PASS prepared shell hidden
+PASS zero delay shows synchronously
+PASS hide cancels delayed show
+PASS close releases WebView
+PASS close removes children
+PASS send after close rejected
+PASS legacy owner preserves Unicode and escapes
+PASS replacement uses new native object
+PASS queued injection cannot enter replacement
+PASS cycle 0 one WebView
+PASS cycle 1 one WebView
+PASS cycle 2 one WebView
+PASS cycle 3 one WebView
+PASS cycle 4 one WebView
+PASS cycle 5 one WebView
+PASS cycle 6 one WebView
+PASS cycle 7 one WebView
+PASS cycle 8 one WebView
+PASS cycle 9 one WebView
+PASS cycle 10 one WebView
+PASS cycle 11 one WebView
+PASS cycle 12 one WebView
+PASS cycle 13 one WebView
+PASS cycle 14 one WebView
+PASS cycle 15 one WebView
+PASS cycle 16 one WebView
+PASS cycle 17 one WebView
+PASS cycle 18 one WebView
+PASS cycle 19 one WebView
+PASS cycle 20 one WebView
+PASS cycle 21 one WebView
+PASS cycle 22 one WebView
+PASS cycle 23 one WebView
+PASS cycle 24 one WebView
+PASS cycle 25 one WebView
+PASS cycle 26 one WebView
+PASS cycle 27 one WebView
+PASS cycle 28 one WebView
+PASS cycle 29 one WebView
+PASS real bridge prepared with script version
+PASS real bridge image decoded 0
+PASS real bridge image decoded 1
+PASS real bridge image decoded 2
+PASS real bridge image decoded 3
+PASS real bridge image decoded 4
+PASS real bridge image decoded 5
+PASS real bridge image decoded 6
+PASS real bridge image decoded 7
+PASS real bridge image decoded 8
+PASS real bridge image decoded 9
+PASS real bridge image decoded 10
+PASS real bridge image decoded 11
+PASS real bridge image decoded 12
+PASS real bridge image decoded 13
+PASS real bridge image decoded 14
+PASS real bridge image decoded 15
+PASS real bridge image decoded 16
+PASS real bridge image decoded 17
+PASS real bridge image decoded 18
+PASS real bridge image decoded 19
+PASS real bridge reuses scripts and clears DOM
+PASS real bridge reuses image URL cache
+PASS retired native views released
+MEASURE real bridge ready milliseconds [44.40775, 7.172584, 5.756083, 4.152083, 3.480708, 2.951334, 4.033208, 3.593084, 3.757708, 5.868875, 4.619583, 4.308042, 3.777625, 3.71025, 3.181375, 3.892, 2.729667, 4.74625, 7.27025, 3.561584]
+RESULT failures=0 checks=66

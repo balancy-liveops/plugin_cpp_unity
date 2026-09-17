@@ -8,6 +8,10 @@ static void Message(const char *text) { received = text ? [NSString stringWithUT
 static void Loaded(bool ok) { if (ok) ++loads; }
 static void Check(NSString *name, BOOL passed) { [results addObject:[NSString stringWithFormat:@"%@ %@", passed ? @"PASS" : @"FAIL", name]]; if (!passed) ++failures; }
 static void Later(double seconds, dispatch_block_t body) { dispatch_after(dispatch_time(DISPATCH_TIME_NOW, seconds * NSEC_PER_SEC), dispatch_get_main_queue(), body); }
+static void WaitUntil(BOOL (^condition)(void), double deadline, dispatch_block_t body) {
+    if (condition() || CACurrentMediaTime() >= deadline) { body(); return; }
+    Later(.02, ^{ WaitUntil(condition, deadline, body); });
+}
 @interface LateMessage : WKScriptMessage
 @property(nonatomic,strong) WKWebView *source;
 @property(nonatomic,strong) id payload;
@@ -42,7 +46,10 @@ static void Later(double seconds, dispatch_block_t body) { dispatch_after(dispat
     self.window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
     self.window.rootViewController = [UIViewController new]; [self.window makeKeyAndVisible];
     self.controller = [self makeController];
-    Later(1, ^{ [self testShow]; });
+    WaitUntil(^BOOL{ return loads > 0; }, CACurrentMediaTime()+15, ^{
+        Check(@"initial document finished loading", loads > 0);
+        if (loads > 0) [self testShow]; else [self finish];
+    });
     return YES;
 }
 - (void)testShow {
@@ -69,7 +76,7 @@ static void Later(double seconds, dispatch_block_t body) { dispatch_after(dispat
         Check(@"install message receiver", !error);
         NSString *message = @"quotes \" ' backslash \\ newline\nUnicode Привет 🎁";
         Check(@"send accepts message", [self.controller sendMessage:message]);
-        Later(.3, ^{
+        WaitUntil(^BOOL{ return [received isEqual:message]; }, CACurrentMediaTime()+5, ^{
             Check(@"message roundtrip preserves Unicode and escaping", [received isEqual:message]);
             WKWebView *old = self.controller.webView;
             int previous = loads;
@@ -122,8 +129,12 @@ static void Later(double seconds, dispatch_block_t body) { dispatch_after(dispat
     self.controller = [self makeController];
     [self.controller loadURL:[NSURL fileURLWithPath:shell].absoluteString];
     bridgeMessage = ^(NSString *raw) { [self receiveBridge:raw]; };
-    Later(1, ^{
+    WaitUntil(^BOOL{ return !self.controller.webView.loading && [self.controller.webView.URL.path isEqual:shell]; }, CACurrentMediaTime()+15, ^{
+        BOOL loaded = !self.controller.webView.loading && [self.controller.webView.URL.path isEqual:shell];
+        Check(@"fixture shell navigation completed before injection", loaded);
+        if (!loaded) { [self finish]; return; }
         NSString *bridge = [NSString stringWithContentsOfFile:[NSBundle.mainBundle pathForResource:@"bridge" ofType:@"js"] encoding:NSUTF8StringEncoding error:nil];
+        bridge = [bridge stringByAppendingString:[NSString stringWithContentsOfFile:[NSBundle.mainBundle pathForResource:@"prefab-fixture" ofType:@"js"] encoding:NSUTF8StringEncoding error:nil]];
         NSString *code = [bridge stringByAppendingString:@";window.balancy._installScripts('window.bundleExecutions=(window.bundleExecutions||0)+1;', 'ios-test');window.balancy.initResponseHandler();true;"];
         [self.controller.webView evaluateJavaScript:code completionHandler:^(id result,NSError *error){
             Check(@"real bridge injects successfully", error == nil);
@@ -158,7 +169,7 @@ static void Later(double seconds, dispatch_block_t body) { dispatch_after(dispat
     } else if ([type isEqual:@"viewCleared"]) {
         if (++self.bridgeCycle < 20) [self openBridge];
         else {
-            [self.controller.webView evaluateJavaScript:@"window.bundleExecutions === 1 && document.getElementById('root-container').children.length === 0" completionHandler:^(id result,NSError *error){
+            [self.controller.webView evaluateJavaScript:@"window.prefabLoads === 1 && window.prefabDestroyed === 40 && balancy.ElementsManager.elementObjects.size === 0 && balancy.ElementsManager.instanceRoots.size === 0 && document.body.children.length === 1 && window.bundleExecutions === 1 && document.getElementById('root-container').children.length === 0" completionHandler:^(id result,NSError *error){
                 Check(@"real bridge reuses code and clears DOM", !error && [result boolValue]);
                 Check(@"real bridge caches image URL", self.imageRequests == 1);
                 [results addObject:[NSString stringWithFormat:@"MEASURE real bridge ready milliseconds %@",self.bridgeTimes]];
@@ -170,7 +181,7 @@ static void Later(double seconds, dispatch_block_t body) { dispatch_after(dispat
 - (void)openBridge {
     self.openStart = CACurrentMediaTime();
     [self send:@{@"type":@"loadView",@"viewId":[NSString stringWithFormat:@"bridge-%d",self.bridgeCycle],
-      @"html":@"<div><span data-text-type='localized' data-localization-key='native-text'></span><div data-image-id='icon' style='width:10px;height:10px'></div></div>",
+      @"html":@"<div><div data-script-id='NativeRoot'></div><span data-text-type='localized' data-localization-key='native-text'></span><div data-image-id='icon' style='width:10px;height:10px'></div></div>",
       @"scriptsVersion":@"ios-test",@"ownerJson":@"{}",@"additionalInfo":@"{\"trackWebViewEvents\":false}",@"performanceLogging":@YES,
       @"baseUrl":[NSURL fileURLWithPath:[NSHomeDirectory() stringByAppendingFormat:@"/Documents/views/%d/index.html",self.bridgeCycle]].absoluteString}];
 }

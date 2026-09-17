@@ -126,7 +126,10 @@ public class MainActivity extends Activity {
                 java.io.InputStream input = getAssets().open("bridge.js");
                 java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
                 byte[] buf = new byte[8192]; int n; while ((n = input.read(buf)) != -1) bytes.write(buf, 0, n); input.close();
-                plugin.injectJavaScript(bytes.toString("UTF-8") + ";window.balancy._installScripts('window.bundleExecutions=(window.bundleExecutions||0)+1;', 'native-test');window.balancy.initResponseHandler();");
+                input = getAssets().open("prefab-fixture.js");
+                java.io.ByteArrayOutputStream fixture = new java.io.ByteArrayOutputStream();
+                while ((n = input.read(buf)) != -1) fixture.write(buf, 0, n); input.close();
+                plugin.injectJavaScript(bytes.toString("UTF-8") + ";" + fixture.toString("UTF-8") + ";window.balancy._installScripts('window.bundleExecutions=(window.bundleExecutions||0)+1;', 'native-test');window.balancy.initResponseHandler();");
                 return;
             }
             if (!method.equals("OnAndroidMessageReceived")) return;
@@ -157,7 +160,7 @@ public class MainActivity extends Activity {
             } else if (type.equals("viewCleared")) {
                 bridgeCycle++;
                 if (bridgeCycle < 20) openBridgeView();
-                else ((WebView)field("webView")).evaluateJavascript("window.bundleExecutions === 1 && document.getElementById('root-container').children.length === 0", value -> {
+                else ((WebView)field("webView")).evaluateJavascript("window.prefabLoads === 1 && window.prefabDestroyed === 40 && balancy.ElementsManager.elementObjects.size === 0 && balancy.ElementsManager.instanceRoots.size === 0 && document.body.children.length === 1 && window.bundleExecutions === 1 && document.getElementById('root-container').children.length === 0", value -> {
                     check("real bridge reuses scripts and clears DOM", "true".equals(value));
                     check("real bridge reuses image URL cache", imageRequests == 1);
                     plugin.closeWebView(); UnityPlayer.receiver = null;
@@ -173,7 +176,7 @@ public class MainActivity extends Activity {
         } catch (Throwable error) { fail(error); }
     }
     void openBridgeView() throws Exception {
-        String html = "<div><span data-text-type='localized' data-localization-key='native-text'></span><div data-image-id='icon' style='width:10px;height:10px'></div></div>";
+        String html = "<div><div data-script-id='NativeRoot'></div><span data-text-type='localized' data-localization-key='native-text'></span><div data-image-id='icon' style='width:10px;height:10px'></div></div>";
         org.json.JSONObject msg = new org.json.JSONObject().put("type", "loadView").put("viewId", "bridge-" + bridgeCycle)
             .put("html", html).put("ownerJson", "{}").put("additionalInfo", "{\"trackWebViewEvents\":false}").put("scriptsVersion", "native-test")
             .put("performanceLogging", true).put("baseUrl", "file://" + getFilesDir().getAbsolutePath() + "/views/" + bridgeCycle + "/index.html");

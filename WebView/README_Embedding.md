@@ -18,3 +18,9 @@ The setting also applies when a persistent shell is already prepared but hidden.
 Scripts are read when preparing and on data updates, rather than on each persistent window opening. Unchanged scripts reuse the shell. Changed scripts replace the entire shell after the current view closes; hiding a view does not close it. A window requested during replacement waits for preparation. Script code is injected during preparation, including Unity WebGL, and is omitted from ordinary `loadView` messages.
 
 SDK shutdown clears the opt-in. Call Prepare again for a new SDK session. See `Tests/WebView/PERSISTENT_PREPARATION_PLAN.md` for local/cloud readiness limitations and validation.
+
+### Persistent View object ownership
+
+Bridge-managed prefab/element instances are released on View close, including instances moved outside the View parent. Cached raw templates remain available for reuse. Custom DOM outside the View mount and external resources belong to the creating script: release them in `onDestroy` or `balancy.onViewDispose`. Capture `balancy.viewSignal` before asynchronous work and check cancellation before modifying UI afterwards.
+
+With performance logging enabled, check the `viewDisposed` counters `liveElementsAfterClear`, `liveInstancesAfterClear`, `pendingPreparationsAfterClear`, and `pendingRequestsAfterClear`: they should return to zero. `prefabTemplatesCached` may remain nonzero. These counters complement heap/native profiling; they do not prove arbitrary customer code has no retained references.
