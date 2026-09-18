@@ -749,9 +749,11 @@ namespace Balancy.WebView
         [DllImport("libBalancyWebViewMac")]
         private static extern void _balancyShowWebInspector();
 
-        // Persistent WebView mode (macOS)
+        // Match the Game View dimensions used by ordinary OpenWebView.
         [DllImport("libBalancyWebViewMac")]
-        private static extern bool _balancyPrepareWebView(string shellUrl);
+        private static extern bool _balancyPrepareWebViewWithSize(string shellUrl, int width, int height);
+        private static bool _balancyPrepareWebView(string shellUrl)
+            => _balancyPrepareWebViewWithSize(shellUrl, Screen.width, Screen.height);
         [DllImport("libBalancyWebViewMac")]
         private static extern void _balancyShowWebView();
         [DllImport("libBalancyWebViewMac")]

@@ -44,7 +44,13 @@ class Runner {
     subprocess.run([args.mono, str(output / 'tests.exe')], check=True)
     if args.unity_editor:
         runtime = args.unity_editor / 'Contents/Resources/Scripting/DotNetSdk'
-        compiler = next(runtime.glob('sdk/*/Roslyn/bincore/csc.dll'))
+        compiler = next(runtime.glob('sdk/*/Roslyn/bincore/csc.dll'), None)
+        if compiler is None:
+            # Unity 2021 keeps Roslyn and its runtime in separate directories.
+            runtime = args.unity_editor / 'Contents/NetCoreRuntime'
+            compiler = args.unity_editor / 'Contents/DotNetSdkRoslyn/csc.dll'
+            if not compiler.is_file() or not (runtime / 'dotnet').is_file():
+                parser.error('Cannot locate the Unity C# compiler/runtime')
         namespace = {'m': 'http://schemas.microsoft.com/developer/msbuild/2003'}
         def compile_assembly(name, defines, sources, refs):
             rsp = output / (name + '.rsp')

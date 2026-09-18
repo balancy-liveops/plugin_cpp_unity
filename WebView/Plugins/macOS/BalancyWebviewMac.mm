@@ -1115,16 +1115,21 @@ void _balancyCloseWebView() {
 
 // Persistent-mode: create WebView, load shell page, suppress fade-in.
 // C# detects the load callback and switches to persistent mode.
-bool _balancyPrepareWebView(const char* shellUrl) {
+bool _balancyPrepareWebViewWithSize(const char* shellUrl, int width, int height) {
     @autoreleasepool {
         if (_sharedController == nil) {
-            _sharedController = [[BalancyWebViewController alloc] init];
+            _sharedController = [[BalancyWebViewController alloc] initWithSize:NSMakeSize(width, height)];
         }
         // Mark the next didFinishNavigation as a shell load (no animation, stay hidden)
         [_sharedController preparePersistentShellLoad];
         NSString* nsUrl = [NSString stringWithUTF8String:shellUrl];
         return [_sharedController loadURL:nsUrl];
     }
+}
+
+// Preserve the native entry point used by older C# SDKs.
+bool _balancyPrepareWebView(const char* shellUrl) {
+    return _balancyPrepareWebViewWithSize(shellUrl, 800, 600);
 }
 
 // Persistent-mode: fade the WebView window in.

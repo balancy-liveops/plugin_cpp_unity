@@ -16,6 +16,24 @@ int main() {
  @autoreleasepool {
   [NSApplication sharedApplication]; [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
   _messageCallback = Message;
+  // Exercise exported entry points: ordinary and prepared windows must agree.
+  for (NSValue *value in @[[NSValue valueWithSize:NSMakeSize(360,640)],
+                           [NSValue valueWithSize:NSMakeSize(640,360)]]) {
+   NSSize size = value.sizeValue;
+   Check("classic sized open starts", _balancyOpenWebViewWithSize("about:blank", size.width, size.height));
+   NSSize classic = _sharedController.webView.bounds.size;
+   Check("classic matches requested viewport", NSEqualSizes(classic, size));
+   _balancyCloseWebView();
+   Check("sized persistent prepare starts", _balancyPrepareWebViewWithSize("about:blank", size.width, size.height));
+   Check("persistent matches classic viewport", NSEqualSizes(_sharedController.webView.bounds.size, classic));
+   Check("sized preparation stays hidden", !_sharedController.window.visible);
+   _balancyShowWebView();
+   Check("show preserves prepared viewport", NSEqualSizes(_sharedController.webView.bounds.size, size));
+   _balancyCloseWebView();
+  }
+  Check("legacy prepare entry point remains callable", _balancyPrepareWebView("about:blank"));
+  Check("legacy prepare retains default size", NSEqualSizes(_sharedController.webView.bounds.size, NSMakeSize(800,600)));
+  _balancyCloseWebView();
   NSHashTable *retired = [NSHashTable weakObjectsHashTable];
   for(int i=0;i<20;i++) {
    @autoreleasepool {

@@ -1,0 +1,196 @@
+PASS classic sized open starts
+PASS classic matches requested viewport
+PASS sized persistent prepare starts
+PASS persistent matches classic viewport
+PASS sized preparation stays hidden
+PASS show preserves prepared viewport
+PASS classic sized open starts
+PASS classic matches requested viewport
+PASS sized persistent prepare starts
+PASS persistent matches classic viewport
+PASS sized preparation stays hidden
+PASS show preserves prepared viewport
+PASS legacy prepare entry point remains callable
+PASS legacy prepare retains default size
+PASS window ownership stays with ARC
+PASS prepare hidden
+PASS zero duration shows synchronously
+PASS hide disables visible window
+PASS close clears native references
+PASS close detaches delegates and hierarchy
+PASS send after close rejected
+PASS late script message ignored
+PASS window ownership stays with ARC
+PASS prepare hidden
+PASS zero duration shows synchronously
+PASS hide disables visible window
+PASS close clears native references
+PASS close detaches delegates and hierarchy
+PASS send after close rejected
+PASS late script message ignored
+PASS window ownership stays with ARC
+PASS prepare hidden
+PASS zero duration shows synchronously
+PASS hide disables visible window
+PASS close clears native references
+PASS close detaches delegates and hierarchy
+PASS send after close rejected
+PASS late script message ignored
+PASS window ownership stays with ARC
+PASS prepare hidden
+PASS zero duration shows synchronously
+PASS hide disables visible window
+PASS close clears native references
+PASS close detaches delegates and hierarchy
+PASS send after close rejected
+PASS late script message ignored
+PASS window ownership stays with ARC
+PASS prepare hidden
+PASS zero duration shows synchronously
+PASS hide disables visible window
+PASS close clears native references
+PASS close detaches delegates and hierarchy
+PASS send after close rejected
+PASS late script message ignored
+PASS window ownership stays with ARC
+PASS prepare hidden
+PASS zero duration shows synchronously
+PASS hide disables visible window
+PASS close clears native references
+PASS close detaches delegates and hierarchy
+PASS send after close rejected
+PASS late script message ignored
+PASS window ownership stays with ARC
+PASS prepare hidden
+PASS zero duration shows synchronously
+PASS hide disables visible window
+PASS close clears native references
+PASS close detaches delegates and hierarchy
+PASS send after close rejected
+PASS late script message ignored
+PASS window ownership stays with ARC
+PASS prepare hidden
+PASS zero duration shows synchronously
+PASS hide disables visible window
+PASS close clears native references
+PASS close detaches delegates and hierarchy
+PASS send after close rejected
+PASS late script message ignored
+PASS window ownership stays with ARC
+PASS prepare hidden
+PASS zero duration shows synchronously
+PASS hide disables visible window
+PASS close clears native references
+PASS close detaches delegates and hierarchy
+PASS send after close rejected
+PASS late script message ignored
+PASS window ownership stays with ARC
+PASS prepare hidden
+PASS zero duration shows synchronously
+PASS hide disables visible window
+PASS close clears native references
+PASS close detaches delegates and hierarchy
+PASS send after close rejected
+PASS late script message ignored
+PASS window ownership stays with ARC
+PASS prepare hidden
+PASS zero duration shows synchronously
+PASS hide disables visible window
+PASS close clears native references
+PASS close detaches delegates and hierarchy
+PASS send after close rejected
+PASS late script message ignored
+PASS window ownership stays with ARC
+PASS prepare hidden
+PASS zero duration shows synchronously
+PASS hide disables visible window
+PASS close clears native references
+PASS close detaches delegates and hierarchy
+PASS send after close rejected
+PASS late script message ignored
+PASS window ownership stays with ARC
+PASS prepare hidden
+PASS zero duration shows synchronously
+PASS hide disables visible window
+PASS close clears native references
+PASS close detaches delegates and hierarchy
+PASS send after close rejected
+PASS late script message ignored
+PASS window ownership stays with ARC
+PASS prepare hidden
+PASS zero duration shows synchronously
+PASS hide disables visible window
+PASS close clears native references
+PASS close detaches delegates and hierarchy
+PASS send after close rejected
+PASS late script message ignored
+PASS window ownership stays with ARC
+PASS prepare hidden
+PASS zero duration shows synchronously
+PASS hide disables visible window
+PASS close clears native references
+PASS close detaches delegates and hierarchy
+PASS send after close rejected
+PASS late script message ignored
+PASS window ownership stays with ARC
+PASS prepare hidden
+PASS zero duration shows synchronously
+PASS hide disables visible window
+PASS close clears native references
+PASS close detaches delegates and hierarchy
+PASS send after close rejected
+PASS late script message ignored
+PASS window ownership stays with ARC
+PASS prepare hidden
+PASS zero duration shows synchronously
+PASS hide disables visible window
+PASS close clears native references
+PASS close detaches delegates and hierarchy
+PASS send after close rejected
+PASS late script message ignored
+PASS window ownership stays with ARC
+PASS prepare hidden
+PASS zero duration shows synchronously
+PASS hide disables visible window
+PASS close clears native references
+PASS close detaches delegates and hierarchy
+PASS send after close rejected
+PASS late script message ignored
+PASS window ownership stays with ARC
+PASS prepare hidden
+PASS zero duration shows synchronously
+PASS hide disables visible window
+PASS close clears native references
+PASS close detaches delegates and hierarchy
+PASS send after close rejected
+PASS late script message ignored
+PASS window ownership stays with ARC
+PASS prepare hidden
+PASS zero duration shows synchronously
+PASS hide disables visible window
+PASS close clears native references
+PASS close detaches delegates and hierarchy
+PASS send after close rejected
+PASS late script message ignored
+PASS embedded window ownership stays with ARC
+PASS embedded close releases pixel buffer and graphics context
+PASS embedded close releases timer and window
+PASS embedded close releases view and handlers
+PASS embedded window ownership stays with ARC
+PASS embedded close releases pixel buffer and graphics context
+PASS embedded close releases timer and window
+PASS embedded close releases view and handlers
+PASS embedded window ownership stays with ARC
+PASS embedded close releases pixel buffer and graphics context
+PASS embedded close releases timer and window
+PASS embedded close releases view and handlers
+PASS embedded window ownership stays with ARC
+PASS embedded close releases pixel buffer and graphics context
+PASS embedded close releases timer and window
+PASS embedded close releases view and handlers
+PASS embedded window ownership stays with ARC
+PASS embedded close releases pixel buffer and graphics context
+PASS embedded close releases timer and window
+PASS embedded close releases view and handlers
+PASS retired window controllers released
+RESULT failures=0 checks=195
