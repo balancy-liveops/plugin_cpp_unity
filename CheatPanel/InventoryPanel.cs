@@ -1,5 +1,6 @@
 using Balancy.Data.SmartObjects;
 using Balancy.Example;
+using Balancy.Models.SmartObjects;
 using UnityEngine;
 
 namespace Balancy.CheatPanel
@@ -7,7 +8,7 @@ namespace Balancy.CheatPanel
     public class InventoryPanel : MonoBehaviour
     {
         [SerializeField] private GameObject slotPrefab;
-        [SerializeField] private RectTransform currencyItemsContent;
+        [SerializeField] private RectTransform allItemsContent;
         [SerializeField] private RectTransform inventoryCurrenciesContent;
         [SerializeField] private RectTransform inventoryItemsContent;
         
@@ -18,7 +19,9 @@ namespace Balancy.CheatPanel
 
         private void Refresh()
         {
-            currencyItemsContent.RemoveChildren();
+            allItemsContent.RemoveChildren();
+            inventoryCurrenciesContent.RemoveChildren();
+            inventoryItemsContent.RemoveChildren();
             
             if (!Balancy.Main.IsReadyToUse)
                 return;
@@ -26,6 +29,7 @@ namespace Balancy.CheatPanel
             var inventories = Profiles.System.Inventories;
             FillInventory(inventoryCurrenciesContent, inventories.Currencies);
             FillInventory(inventoryItemsContent, inventories.Items);
+            FillAllItems(allItemsContent);
         }
 
         private void FillInventory(RectTransform content, Inventory inventory)
@@ -36,8 +40,22 @@ namespace Balancy.CheatPanel
             {
                 var newItem = Instantiate(slotPrefab, content);
                 newItem.SetActive(true);
-                var offerView = newItem.GetComponent<InventorySlotView>();
-                offerView.Init(slot);
+                var slotView = newItem.GetComponent<InventorySlotView>();
+                slotView.Init(slot);
+            }
+        }
+
+        private void FillAllItems(RectTransform content)
+        {
+            foreach (var item in CMS.GetModels<Item>(true))
+            {
+                if (item == null)
+                    continue;
+
+                var newItem = Instantiate(slotPrefab, content);
+                newItem.SetActive(true);
+                var slotView = newItem.GetComponent<InventorySlotView>();
+                slotView.Init(item);
             }
         }
     }

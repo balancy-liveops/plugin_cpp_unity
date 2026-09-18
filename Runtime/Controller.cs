@@ -86,7 +86,13 @@ namespace Balancy
             Balancy.UnzipBridge.Initialize(); // Initialize Unity ZIP bridge for all platforms
 
             LibraryMethods.General.balancySetInvokeInMainThreadCallback(InvokeInMainThread);
+            FreezeDiagnostics.Log("SESSION sdk=latest diagnostic=freeze-latest-no-fix-v1 platform=" + Application.platform
+                + " unity=" + Application.unityVersion + " device=" + SystemInfo.deviceModel
+                + " launchType=" + appConfig.LaunchType);
+            long filesStarted = FreezeDiagnostics.Now;
+            FreezeDiagnostics.Log("FILES_INIT BEGIN");
             yield return UnityFileManager.InitRuntime();
+            FreezeDiagnostics.End("FILES_INIT END (includes coroutine waits)", filesStarted, 0);
 
             if (!_isInitialized || generation != _lifecycleGeneration)
                 yield break;
@@ -103,6 +109,8 @@ namespace Balancy
             CppAppConfig config = CreateConfigForCPP(appConfig);
             IntPtr configPtr = Marshal.AllocHGlobal(Marshal.SizeOf(config));
             bool structureInitialized = false;
+            long nativeStarted = FreezeDiagnostics.Now;
+            FreezeDiagnostics.Log("NATIVE_INIT BEGIN");
             try
             {
                 Marshal.StructureToPtr(config, configPtr, false);
@@ -125,6 +133,7 @@ namespace Balancy
             }
             finally
             {
+                FreezeDiagnostics.End("NATIVE_INIT END", nativeStarted, 0);
                 if (structureInitialized)
                     Marshal.DestroyStructure(configPtr, typeof(CppAppConfig));
                 Marshal.FreeHGlobal(configPtr);
@@ -397,7 +406,8 @@ namespace Balancy
                         bool isCMSUpdated = notificationDataIsReady.IsCMSUpdated;
                         bool isProfileUpdated = notificationDataIsReady.IsProfileUpdated;
 #endif
-                        RenderViewsManager.RefreshScripts();
+                        RenderViewsManager.HandleContentUpdated(new Balancy.Callbacks.DataUpdatedStatus(
+                            isCloudSynced, isCMSUpdated, isProfileUpdated));
                         // A CMS update can re-version scripts/views. GetObjectView memoizes
                         // resolved views and skips the preload on repeat opens, so without
                         // this the next open would reuse a stale cached view and recompile
@@ -819,11 +829,17 @@ namespace Balancy
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.General.InvokeInMainThreadCallback))]
         private static void InvokeInMainThread(int id)
         {
+            long queued = FreezeDiagnostics.Now;
             int generation = _lifecycleGeneration;
             UnityMainThreadDispatcher.EnqueueFromAnyThread(() =>
             {
+                FreezeDiagnostics.End("NATIVE_CALLBACK_QUEUE_WAIT id=" + id, queued, 100);
                 if (_nativeInitialized && generation == _lifecycleGeneration)
-                    LibraryMethods.General.balancyInvokeMethodInMainThread(id);
+                {
+                    long started = FreezeDiagnostics.Now;
+                    try { LibraryMethods.General.balancyInvokeMethodInMainThread(id); }
+                    finally { FreezeDiagnostics.End("NATIVE_CALLBACK id=" + id, started); }
+                }
             });
         }
         

@@ -45,6 +45,7 @@ void LogToUnity(const char* message) {
 @property (nonatomic, assign) NSTimeInterval popupLastClickTime;
 @property (nonatomic, assign) int popupRapidClickCount;
 @property (nonatomic, strong) id clickMonitor;
+@property (nonatomic, assign) NSUInteger showGeneration;
 @property (nonatomic, assign) float showDelay;
 @property (nonatomic, assign) float animationDuration;
 @property (nonatomic, assign) BOOL emergencyExitEnabled;
@@ -61,6 +62,7 @@ void LogToUnity(const char* message) {
 - (void)setDebugLogging:(BOOL)enabled;
 - (void)setWebInspectorEnabled:(BOOL)enabled;
 - (void)preparePersistentShellLoad;
+- (void)hideForPersistentMode;
 @end
 
 // Embedded WebView controller for rendering to texture
@@ -104,8 +106,8 @@ void LogToUnity(const char* message) {
         _debugLogging = NO;
         _webInspectorEnabled = NO;
         _gameUIMode = YES;
-        _showDelay = 0.1f;
-        _animationDuration = 0.1f;
+        _showDelay = 0.0f;
+        _animationDuration = 0.0f;
         _textureWidth = width;
         _textureHeight = height;
         _pixelDataReady = NO;
@@ -127,6 +129,9 @@ void LogToUnity(const char* message) {
                                                       styleMask:NSWindowStyleMaskBorderless
                                                         backing:NSBackingStoreBuffered
                                                           defer:NO];
+        // ARC owns this window; AppKit must not release it independently on close.
+        _offscreenWindow.releasedWhenClosed = NO;
+        _offscreenWindow.animationBehavior = NSWindowAnimationBehaviorNone;
         [_offscreenWindow setTitle:@"Balancy Embedded"];
         [_offscreenWindow setAlphaValue:0.01];
         [_offscreenWindow setBackgroundColor:[NSColor clearColor]];
@@ -297,9 +302,9 @@ void LogToUnity(const char* message) {
 - (BOOL)sendMessage:(NSString *)message {
     if (!_webView) return NO;
     
-    NSString *escapedMessage = [message stringByReplacingOccurrencesOfString:@"'" withString:@"\\'"];
-    escapedMessage = [escapedMessage stringByReplacingOccurrencesOfString:@"\"" withString:@"\\\""];
-    NSString *script = [NSString stringWithFormat:@"if (balancy) { balancy._receiveMessageFromUnity('%@'); }", escapedMessage];
+    NSData *jsonData = [NSJSONSerialization dataWithJSONObject:@[message ?: @""] options:0 error:nil];
+    NSString *argument = [[NSString alloc] initWithData:jsonData encoding:NSUTF8StringEncoding];
+    NSString *script = [NSString stringWithFormat:@"if (window.balancy) { window.balancy._receiveMessageFromUnity((%@)[0]); }", argument];
     
     [_webView evaluateJavaScript:script completionHandler:nil];
     return YES;
@@ -495,6 +500,7 @@ void LogToUnity(const char* message) {
 #pragma mark - WKScriptMessageHandler
 
 - (void)userContentController:(WKUserContentController *)userContentController didReceiveScriptMessage:(WKScriptMessage *)message {
+    if (!_webView || userContentController != _userContentController || message.webView != _webView) return;
     if (![message.name isEqualToString:@"BalancyWebView"]) return;
 
     NSString *messageString;
@@ -514,6 +520,7 @@ void LogToUnity(const char* message) {
 #pragma mark - WKNavigationDelegate
 
 - (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
+    if (webView != _webView) return;
     [self injectTransparencyScript];
     
     if (_loadCompletedCallback) {
@@ -521,13 +528,19 @@ void LogToUnity(const char* message) {
     }
 }
 
+- (void)webViewWebContentProcessDidTerminate:(WKWebView *)webView {
+    if (webView == _webView && _loadCompletedCallback) _loadCompletedCallback(false);
+}
+
 - (void)webView:(WKWebView *)webView didFailNavigation:(WKNavigation *)navigation withError:(NSError *)error {
+    if (webView != _webView) return;
     if (_loadCompletedCallback) {
         _loadCompletedCallback(false);
     }
 }
 
 - (void)webView:(WKWebView *)webView didFailProvisionalNavigation:(WKNavigation *)navigation withError:(NSError *)error {
+    if (webView != _webView) return;
     if (_loadCompletedCallback) {
         _loadCompletedCallback(false);
     }
@@ -595,8 +608,8 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
         _webInspectorEnabled = NO;
         _gameUIMode = YES;
         _emergencyExitEnabled = YES;
-        _showDelay = 0.1f;
-        _animationDuration = 0.1f;
+        _showDelay = 0.0f;
+        _animationDuration = 0.0f;
         _viewportRect = NSMakeRect(0, 0, 1, 1);
         _suppressNextAnimation = NO;
         
@@ -605,6 +618,9 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
                                                       styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable 
                                                         backing:NSBackingStoreBuffered 
                                                           defer:NO];
+        window.releasedWhenClosed = NO;
+        // Presentation timing is controlled by the SDK, not AppKit window transforms.
+        window.animationBehavior = NSWindowAnimationBehaviorNone;
         [window setTitle:@"Balancy WebView"];
         [window center];
         
@@ -761,19 +777,19 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
 
 - (void)hideEmergencyExitButton {
     _emergencyExitHideTimer = nil;
-    if (_emergencyExitButton) {
+    NSView *button = _emergencyExitButton;
+    if (button) {
         [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
             context.duration = 0.3;
-            _emergencyExitButton.animator.alphaValue = 0.0;
+            button.animator.alphaValue = 0.0;
         } completionHandler:^{
-            [_emergencyExitButton setHidden:YES];
+            [button setHidden:YES];
         }];
     }
 }
 
 - (void)emergencyExitButtonClicked:(id)sender {
-    [_emergencyExitHideTimer invalidate];
-    _emergencyExitHideTimer = nil;
+    [self resetEmergencyExitButton];
     if (_messageCallback) {
         _messageCallback("{\"action\":200, \"params\":{}}");
     }
@@ -792,6 +808,7 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
 }
 
 - (void)close {
+    [self hideForPersistentMode];
     [[NSNotificationCenter defaultCenter] removeObserver:self];
     if (_clickMonitor) {
         [NSEvent removeMonitor:_clickMonitor];
@@ -805,16 +822,21 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
     }
     
     [_userContentController removeScriptMessageHandlerForName:@"BalancyWebView"];
+    _userContentController = nil;
+    _webView.navigationDelegate = nil;
+    _webView.UIDelegate = nil;
     [_webView stopLoading];
+    [_webView removeFromSuperview];
+    _webView = nil;
     [[self window] close];
 }
 
 - (BOOL)sendMessage:(NSString *)message {
     if (!_webView) return NO;
     
-    NSString *escapedMessage = [message stringByReplacingOccurrencesOfString:@"'" withString:@"\\'"];
-    escapedMessage = [escapedMessage stringByReplacingOccurrencesOfString:@"\"" withString:@"\\\""];
-    NSString *script = [NSString stringWithFormat:@"if (balancy) { balancy._receiveMessageFromUnity('%@'); }", escapedMessage];
+    NSData *jsonData = [NSJSONSerialization dataWithJSONObject:@[message ?: @""] options:0 error:nil];
+    NSString *argument = [[NSString alloc] initWithData:jsonData encoding:NSUTF8StringEncoding];
+    NSString *script = [NSString stringWithFormat:@"if (window.balancy) { window.balancy._receiveMessageFromUnity((%@)[0]); }", argument];
     
     [_webView evaluateJavaScript:script completionHandler:nil];
     return YES;
@@ -925,17 +947,42 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
     _suppressNextAnimation = YES;
 }
 
+- (void)resetEmergencyExitButton {
+    [_emergencyExitHideTimer invalidate];
+    _emergencyExitHideTimer = nil;
+    [_emergencyExitButton.layer removeAllAnimations];
+    [_emergencyExitButton removeFromSuperview];
+    _emergencyExitButton = nil;
+    _popupRapidClickCount = 0;
+    _popupLastClickTime = 0;
+}
+
+- (void)hideForPersistentMode {
+    [self resetEmergencyExitButton];
+    ++_showGeneration;
+    [[self window] setAlphaValue:0.0f];
+    [[self window] orderOut:nil];
+}
+
 - (void)startShowAnimation {
+    const NSUInteger generation = ++_showGeneration;
     // Bring the persistent window back on screen before animating it in.
     [[self window] setAlphaValue:0.0f];
     [[self window] makeKeyAndOrderFront:nil];
-    
+    if (_showDelay == 0.0f && _animationDuration == 0.0f) {
+        [[self window] setAlphaValue:1.0f];
+        return;
+    }
+
     if (_debugLogging) {
         LogToUnity([[NSString stringWithFormat:@"Starting show animation with delay: %.3fs, duration: %.3fs", _showDelay, _animationDuration] UTF8String]);
     }
     
+    __weak BalancyWebViewController *weakSelf = self;
     // Delay before starting the animation
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(_showDelay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        BalancyWebViewController *self = weakSelf;
+        if (!self || generation != self.showGeneration || !self.window.visible) return;
         // Animate the webview to fully visible
         [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
             context.duration = self->_animationDuration;
@@ -952,6 +999,7 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
 #pragma mark - WKScriptMessageHandler
 
 - (void)userContentController:(WKUserContentController *)userContentController didReceiveScriptMessage:(WKScriptMessage *)message {
+    if (!_webView || userContentController != _userContentController || message.webView != _webView) return;
     if (![message.name isEqualToString:@"BalancyWebView"]) return;
 
     NSString *messageString;
@@ -971,6 +1019,7 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
 #pragma mark - WKNavigationDelegate
 
 - (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
+    if (webView != _webView) return;
     if (_transparentBackground) {
         [self setTransparentBackground:YES];
     }
@@ -995,13 +1044,19 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
     }
 }
 
+- (void)webViewWebContentProcessDidTerminate:(WKWebView *)webView {
+    if (webView == _webView && _loadCompletedCallback) _loadCompletedCallback(false);
+}
+
 - (void)webView:(WKWebView *)webView didFailNavigation:(WKNavigation *)navigation withError:(NSError *)error {
+    if (webView != _webView) return;
    if (_loadCompletedCallback) {
        _loadCompletedCallback(false);
    }
 }
 
 - (void)webView:(WKWebView *)webView didFailProvisionalNavigation:(WKNavigation *)navigation withError:(NSError *)error {
+    if (webView != _webView) return;
    if (_loadCompletedCallback) {
        _loadCompletedCallback(false);
    }
@@ -1071,16 +1126,21 @@ void _balancyCloseWebView() {
 
 // Persistent-mode: create WebView, load shell page, suppress fade-in.
 // C# detects the load callback and switches to persistent mode.
-bool _balancyPrepareWebView(const char* shellUrl) {
+bool _balancyPrepareWebViewWithSize(const char* shellUrl, int width, int height) {
     @autoreleasepool {
         if (_sharedController == nil) {
-            _sharedController = [[BalancyWebViewController alloc] init];
+            _sharedController = [[BalancyWebViewController alloc] initWithSize:NSMakeSize(width, height)];
         }
         // Mark the next didFinishNavigation as a shell load (no animation, stay hidden)
         [_sharedController preparePersistentShellLoad];
         NSString* nsUrl = [NSString stringWithUTF8String:shellUrl];
         return [_sharedController loadURL:nsUrl];
     }
+}
+
+// Preserve the native entry point used by older C# SDKs.
+bool _balancyPrepareWebView(const char* shellUrl) {
+    return _balancyPrepareWebViewWithSize(shellUrl, 800, 600);
 }
 
 // Persistent-mode: fade the WebView window in.
@@ -1096,8 +1156,7 @@ void _balancyShowWebView() {
 void _balancyHideWebView() {
     @autoreleasepool {
         if (_sharedController != nil) {
-            [[_sharedController window] setAlphaValue:0.0f];
-            [[_sharedController window] orderOut:nil];
+            [_sharedController hideForPersistentMode];
         }
     }
 }

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
 using Balancy.Data.SmartObjects;
@@ -22,6 +23,15 @@ namespace Balancy
         internal static Func<string, bool> _onMessageReceived;
 
         private static BalancyWebView _webView;
+        private static bool _prepareRequested, _dataAvailable, _scriptsLoaded;
+        private static Action _pendingPrepared;
+        private static Action<string> _pendingPrepareFailed;
+        // Kept separate from transport so readiness/failure paths can be tested without native code.
+        internal static Func<string> ReadScripts = () => {
+            var ptr = LibraryMethods.General.balancyDataObjectCompileAllScripts();
+            if (ptr == IntPtr.Zero) throw new InvalidOperationException("Script bundle is unavailable");
+            return Marshal.PtrToStringAnsi(ptr) ?? "";
+        };
 
         internal static void Init()
         {
@@ -34,13 +44,15 @@ namespace Balancy
             _webView = BalancyWebView.Instance;
             _webView.OnLoadCompleted += HandleLoadCompleted;
             _webView.OnClosed += HandleWebViewClosed;
+            _webView.OnViewReleased += HandleViewReleased;
 
             _webView.SetTransparentBackground(true);
             _webView.SetFullScreen(true);
             //_webView.SetViewportRect(viewportX, viewportY, viewportWidth, viewportHeight);
             //_webView.SetDebugLogging(true);
 
-            SetViewDelays(0.2f, 0.3f);
+            SetViewDelays(0f, 0f);
+            TryPrepareRequestedWebView();
         }
 
         internal static void CleanUp()
@@ -71,42 +83,118 @@ namespace Balancy
             Balancy.Callbacks.OnOfferDeactivated -= HandleOfferDeactivated;
             Balancy.Callbacks.OnOfferGroupDeactivated -= HandleOfferGroupDeactivated;
             Balancy.Callbacks.OnEventDeactivated -= HandleEventDeactivated;
+            Balancy.Callbacks.OnLocalizationChanged -= HandleLocalizationChanged;
+            Balancy.Callbacks.OnDataUpdated -= HandleContentUpdated;
 
             if (_webView != null)
             {
                 _webView.OnMessage -= OnMessageReceived;
                 _webView.OnLoadCompleted -= HandleLoadCompleted;
                 _webView.OnClosed -= HandleWebViewClosed;
+                _webView.OnViewReleased -= HandleViewReleased;
+                if (_webView.IsPersistentModeEnabled()) _webView.CloseWebView();
             }
 
+            _prepareRequested = _dataAvailable = _scriptsLoaded = false;
+            _pendingPrepared = null; _pendingPrepareFailed = null;
+            ViewOwners.Clear();
             _onMessageReceived = null;
             m_LastOpenedOwnerPtr = IntPtr.Zero;
             _webView = null;
         }
 
-        /// <summary>
-        /// Compile all view scripts from the native layer and pass them to BalancyWebView for injection.
-        /// Called automatically during Init() and can be called again if scripts need refreshing.
-        /// </summary>
-        public static void RefreshScripts()
+        /// <summary>Opt-in timing summaries in Unity logs. Enable before Prepare/Open.</summary>
+        public static void SetPerformanceLogging(bool enabled)
         {
+            BalancyWebView.PerformanceLoggingEnabled = enabled;
+            if (_webView != null && _webView.IsPersistentModeEnabled())
+                _webView.SendMessageToWebView("{\"type\":\"setPerformanceLogging\",\"enabled\":" + (enabled ? "true" : "false") + "}");
+        }
+
+        /// <summary>Read the prepared script bundle (or legacy compile result) from the native core.</summary>
+        public static void RefreshScripts() => TryRefreshScripts();
+
+        private static bool TryRefreshScripts()
+        {
+            var started = BalancyWebView.PerformanceNow();
             try
             {
-                IntPtr ptr = LibraryMethods.General.balancyDataObjectCompileAllScripts();
-                string scriptsCode = Marshal.PtrToStringAnsi(ptr) ?? "";
+                if (_webView == null) return false;
+                string scriptsCode = ReadScripts();
                 Debug.Log($"[RenderViewsManager] Scripts compiled: {scriptsCode.Length} characters");
                 _webView.SetScriptsCode(scriptsCode);
+                _scriptsLoaded = true;
+                BalancyWebView.PerformanceLog("readScriptsBundle", started, null, "scriptChars=" + scriptsCode.Length);
+                return true;
             }
             catch (Exception e)
             {
-                // Keep the previously-compiled bundle on failure. Wiping it (SetScriptsCode(""))
-                // would open the next view with zero components (blank) — a stale-but-complete
-                // bundle is strictly better than an empty one, and this now runs before every open.
+                // Preserve the last usable snapshot; the next data update or explicit
+                // Prepare retries. Never destroy an active view on a failed read.
                 Debug.LogError($"[RenderViewsManager] Failed to compile scripts, keeping previous bundle: {e.Message}");
+                var failed = _pendingPrepareFailed;
+                _pendingPrepared = null; _pendingPrepareFailed = null;
+                failed?.Invoke(e.Message);
+                return false;
             }
         }
 
         private static IntPtr m_LastOpenedOwnerPtr = IntPtr.Zero;
+        private static readonly Dictionary<string, IntPtr> ViewOwners = new Dictionary<string, IntPtr>();
+        private static void HandleViewReleased(string id) => ViewOwners.Remove(id);
+        private static void HandleLocalizationChanged(string code) => _webView?.InvalidateCache(true);
+        internal static void HandleContentUpdated(Callbacks.DataUpdatedStatus status)
+        {
+            _dataAvailable = true;
+            if (status.IsCMSUpdated) _webView?.InvalidateCache();
+            if (_prepareRequested)
+            {
+                if (TryRefreshScripts()) TryPrepareRequestedWebView();
+            }
+            else _scriptsLoaded = false; // Classic/direct URL opens read lazily after updates.
+        }
+
+        private static void TryPrepareRequestedWebView()
+        {
+            if (!_prepareRequested || !_dataAvailable || _webView == null) return;
+            if (!_scriptsLoaded && !TryRefreshScripts()) return;
+            var ready = _pendingPrepared; var failed = _pendingPrepareFailed;
+            _pendingPrepared = null; _pendingPrepareFailed = null;
+            _webView.PrepareWebView(ready, failed);
+        }
+        // JsonUtility traverses the serialized type graph, even for shallow JSON.
+        // Batch members must not contain another batch array.
+        [Serializable] private class BridgeRequestItem { public string type, id, viewId; }
+        [Serializable] private class BridgeRequest : BridgeRequestItem { public BridgeRequestItem[] requests; }
+        // Native retains this function pointer until its asynchronous response arrives.
+        // Keep a static, AOT-compatible callback; never pass a capturing lambda here.
+        private static readonly LibraryMethods.General.WebviewRequestCallback CoreResponseCallback = OnMessageResponseReceived;
+
+        private static BridgeRequestItem[] ParseBridgeRequests(string requestData)
+        {
+            var request = JsonUtility.FromJson<BridgeRequest>(requestData);
+            if (request == null) throw new FormatException("Invalid request");
+            var requests = request.type == "batch" ? request.requests : new BridgeRequestItem[] { request };
+            if (requests == null || requests.Length == 0) throw new FormatException("Invalid request batch");
+            foreach (var item in requests)
+                // Unity can deserialize a null array member as an empty inline object.
+                if (item == null || item.type == "batch" || (request.type == "batch" && string.IsNullOrEmpty(item.id)))
+                    throw new FormatException("Invalid request batch member");
+            return requests;
+        }
+        [Serializable] private class BridgeError { public string type = "response"; public string id, error; }
+        private static string RequestError(string requestData, string error)
+        {
+            try {
+                var request = JsonUtility.FromJson<BridgeRequest>(requestData);
+                if (request.type == "batch" && request.requests != null) {
+                    var responses = new List<string>();
+                    foreach (var item in request.requests) responses.Add(JsonUtility.ToJson(new BridgeError { id = item?.id, error = error }));
+                    return "{\"type\":\"batch-response\",\"responses\":[" + string.Join(",", responses) + "]}";
+                }
+                return JsonUtility.ToJson(new BridgeError { id = request.id, error = error });
+            } catch { return JsonUtility.ToJson(new BridgeError { error = error }); }
+        }
 
         private static void PrepareCallbacks()
         {
@@ -118,6 +206,10 @@ namespace Balancy
             
             Balancy.Callbacks.OnEventDeactivated -= HandleEventDeactivated;
             Balancy.Callbacks.OnEventDeactivated += HandleEventDeactivated;
+            Balancy.Callbacks.OnLocalizationChanged -= HandleLocalizationChanged;
+            Balancy.Callbacks.OnLocalizationChanged += HandleLocalizationChanged;
+            Balancy.Callbacks.OnDataUpdated -= HandleContentUpdated;
+            // Controller invokes HandleContentUpdated before public subscribers.
         }
 
         private static void HandleEventDeactivated(EventInfo eventInfo)
@@ -150,9 +242,8 @@ namespace Balancy
 
         internal static void OnProfileUpdated()
         {
-            if (m_LastOpenedOwnerPtr == IntPtr.Zero)
-                return;
-
+            ViewOwners.Clear();
+            _webView?.InvalidateCache();
             // Profile was recreated — all smart object pointers (offers, events, etc.)
             // are now invalid. Close the view (it may be showing stale data) and null
             // the cached owner pointer so we don't send a dangling pointer to C++.
@@ -185,8 +276,7 @@ namespace Balancy
         
         internal static void SendMessageToView(string message)
         {
-            if (_webView.IsWebViewOpen())
-                _webView.SendMessageToWebView(message);
+            _webView?.SendMessageToWebView(message);
         }
 
         private static bool UsePersistentWebViewForLocalViews()
@@ -206,6 +296,7 @@ namespace Balancy
                     additionalInfo = $"{{\"launchTime\":{launchTime},\"secondsLeft\":{secondsLeft}}}";
             }
 
+            if (BalancyWebView.PerformanceLoggingEnabled) additionalInfo = additionalInfo.Substring(0, additionalInfo.Length - 1) + ",\"performanceLogging\":true}";
             return additionalInfo;
         }
 
@@ -219,10 +310,12 @@ namespace Balancy
                 : filePath;
         }
 
-        public static void PrepareWebView(Action onReady = null)
+        public static void PrepareWebView(Action onReady = null, Action<string> onFailed = null)
         {
             Debug.Log("[RenderViewsManager] PrepareWebView requested");
-            _webView?.PrepareWebView(onReady);
+            _prepareRequested = true;
+            _pendingPrepared += onReady; _pendingPrepareFailed += onFailed;
+            TryPrepareRequestedWebView();
         }
 
         public static void ShowWebView()
@@ -237,6 +330,7 @@ namespace Balancy
 
         public static void OpenLocalView(string filePath, JsonBasedObject owner, Action onShown = null, Action<ViewOpenError> onFailed = null)
         {
+            var openStarted = BalancyWebView.PerformanceNow();
             if (string.IsNullOrEmpty(filePath))
             {
                 Debug.LogError("File path is null or empty");
@@ -244,44 +338,62 @@ namespace Balancy
                 return;
             }
 
-            // Recompile scripts right before opening — the CENTRAL seam every view open funnels
-            // through (UnnyObject.OpenView and direct callers alike). Whatever preload put the
-            // view's script files on disk has finished by now, so this guarantees the injected
-            // bundle is complete. Without it, opening against a stale bundle that predates a
-            // late-arriving script throws "Can't find variable: <Class>" (black screen).
-            RefreshScripts();
+            if (_prepareRequested)
+            {
+                TryPrepareRequestedWebView();
+                if (!UsePersistentWebViewForLocalViews())
+                {
+                    onFailed?.Invoke(ViewOpenError.LoadFailed);
+                    return;
+                }
+            }
+            else RefreshScripts();
 
             Debug.Log($"[RenderViewsManager] OpenLocalView requested. Persistent={UsePersistentWebViewForLocalViews()} Path={filePath}");
 
             if (UsePersistentWebViewForLocalViews())
             {
-                string normalizedPath = NormalizeLocalPath(filePath);
-                if (!File.Exists(normalizedPath))
+                if (!_webView.CanShowPersistentView())
                 {
-                    Debug.LogError($"[RenderViewsManager] Persistent WebView requires a readable local HTML file: {normalizedPath}");
-                    onFailed?.Invoke(ViewOpenError.FileNotFound);
-                    return;
-                }
-
-                if (_webView.IsWebViewOpen())
-                {
-                    Debug.LogError("View is already opened");
                     onFailed?.Invoke(ViewOpenError.AlreadyOpened);
                     return;
                 }
-
-                m_LastOpenedOwnerPtr = owner?.GetRawPointer() ?? IntPtr.Zero;
-                string ownerJson = owner?.ToJsonString(DEFAULT_OWNER_DEPTH, false) ?? "";
-                string additionalInfo = BuildAdditionalInfo(owner);
                 try
                 {
-                    string htmlContent = File.ReadAllText(normalizedPath);
-                    Debug.Log($"[RenderViewsManager] Persistent OpenLocalView loaded HTML. Length={htmlContent.Length} Owner={(owner == null ? "null" : owner.GetType().Name)}");
-                    _webView.ShowView(htmlContent, ownerJson, additionalInfo, onShown);
+                    var htmlStarted = BalancyWebView.PerformanceNow();
+                    string htmlContent;
+#if UNITY_WEBGL && !UNITY_EDITOR
+                    string cachePath = filePath;
+                    int cacheIndex = cachePath.IndexOf("Cache/", StringComparison.Ordinal);
+                    if (cacheIndex >= 0) cachePath = cachePath.Substring(cacheIndex);
+                    htmlContent = Marshal.PtrToStringAnsi(LibraryMethods.General.balancyLoadFileFromCache(cachePath));
+#else
+                    string normalizedPath = NormalizeLocalPath(filePath);
+                    if (!File.Exists(normalizedPath)) { onFailed?.Invoke(ViewOpenError.FileNotFound); return; }
+                    htmlContent = File.ReadAllText(normalizedPath);
+#endif
+                    if (string.IsNullOrEmpty(htmlContent)) { onFailed?.Invoke(ViewOpenError.LoadFailed); return; }
+#if UNITY_WEBGL && !UNITY_EDITOR
+                    string baseUrl = null; // Browser resources use the WebGL cache/blob URL mapping.
+#else
+                    string baseUrl = new Uri(Path.GetFullPath(NormalizeLocalPath(filePath))).AbsoluteUri;
+#endif
+                    BalancyWebView.PerformanceLog("readViewHtml", htmlStarted, null, "htmlChars=" + htmlContent.Length);
+                    string ownerJson = owner?.ToJsonString(DEFAULT_OWNER_DEPTH, false) ?? "";
+                    if (_webView.ShowView(htmlContent, ownerJson, BuildAdditionalInfo(owner), () => {
+                            BalancyWebView.PerformanceLog("openLocalToReady", openStarted, _webView.CurrentViewId);
+                            onShown?.Invoke();
+                        },
+                        error => onFailed?.Invoke(ViewOpenError.LoadFailed), baseUrl))
+                    {
+                        m_LastOpenedOwnerPtr = owner?.GetRawPointer() ?? IntPtr.Zero;
+                        ViewOwners[_webView.CurrentViewId] = m_LastOpenedOwnerPtr;
+                        BalancyWebView.PerformanceLog("openLocalAccepted", openStarted, _webView.CurrentViewId, "file=" + Path.GetFileName(filePath));
+                    }
                 }
                 catch (Exception e)
                 {
-                    Debug.LogError($"[RenderViewsManager] Failed to read local view HTML for persistent WebView: {e.Message}");
+                    Debug.LogError("[RenderViewsManager] Failed to load persistent HTML: " + e.Message);
                     onFailed?.Invoke(ViewOpenError.LoadFailed);
                 }
                 return;
@@ -384,6 +496,8 @@ namespace Balancy
         }
 #endif
 
+        /// <summary>Set presentation delay and fade duration in seconds. Both default to zero.
+        /// Call after SDK initialization; settings also apply to a prepared hidden WebView.</summary>
         public static void SetViewDelays(float showDelay, float transparencyAnimationDuration)
         {
             if (_webView)
@@ -410,11 +524,20 @@ namespace Balancy
                 return false;
             }
 
+            if (_webView == null) { onFailed?.Invoke(ViewOpenError.LoadFailed); return false; }
+            if (!_scriptsLoaded) RefreshScripts();
+
             if (_webView.IsWebViewOpen())
             {
                 Debug.LogError("View is already opened");
                 onFailed?.Invoke(ViewOpenError.AlreadyOpened);
                 return false;
+            }
+
+            if (_webView.IsPersistentModeEnabled())
+            {
+                if (!_webView.CanShowPersistentView()) { onFailed?.Invoke(ViewOpenError.AlreadyOpened); return false; }
+                _webView.CloseWebView();
             }
 
             var urlToLoad = url;// + "?timestamp=" + Guid.NewGuid().ToString();
@@ -489,12 +612,12 @@ namespace Balancy
                 {
                     Debug.Log("Message handling was cancelled by external handler: " + msg);
                     // Send response back so the WebView bridge doesn't hang waiting
-                    _webView.SendMessageToWebView("{\"status\":\"ok\"}");
+                    _webView.SendMessageToWebView(RequestError(msg, "Message rejected by application"));
                     return;
                 }
             }
 
-            RunRequestInTheCorePlugin(msg, OnMessageResponseReceived);
+            RunRequestInTheCorePlugin(msg);
         }
 
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.General.WebviewRequestCallback))]
@@ -960,16 +1083,23 @@ namespace Balancy
                     .Replace("\t", "\\t");
         }
 
-        private static void RunRequestInTheCorePlugin(string requestData, LibraryMethods.General.WebviewRequestCallback callback)
+        private static void RunRequestInTheCorePlugin(string requestData)
         {
-            if (m_LastOpenedOwnerPtr == IntPtr.Zero)
+            try
             {
-                // Debug.LogWarning("[RenderViewsManager] Cannot process WebView request: owner pointer is null");
-                callback("{\"type\":\"response\",\"error\":\"Owner pointer is null\"}");
-                return;
+                var requests = ParseBridgeRequests(requestData);
+                string viewId = requests.Length > 0 ? requests[0].viewId : null;
+                IntPtr owner = m_LastOpenedOwnerPtr;
+                if (!string.IsNullOrEmpty(viewId) && !ViewOwners.TryGetValue(viewId, out owner))
+                {
+                    CoreResponseCallback(RequestError(requestData, "View is no longer active")); return;
+                }
+                foreach (var item in requests)
+                    if (item.viewId != viewId) { CoreResponseCallback(RequestError(requestData, "Mixed view contexts")); return; }
+                // Null owner is valid for explicit-context APIs, localization and resources.
+                LibraryMethods.General.balancyWebViewRequest(owner, requestData, CoreResponseCallback);
             }
-
-            LibraryMethods.General.balancyWebViewRequest(m_LastOpenedOwnerPtr, requestData, callback);
+            catch (Exception error) { CoreResponseCallback(RequestError(requestData, error.Message)); }
         }
     }
 }

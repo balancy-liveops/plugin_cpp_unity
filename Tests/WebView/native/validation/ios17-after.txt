@@ -1,0 +1,81 @@
+PASS prepare keeps shell hidden
+PASS zero delay shows synchronously
+PASS hide cancels delayed show
+PASS install message receiver
+PASS send accepts message
+PASS message roundtrip preserves Unicode and escaping
+PASS late script messages from closed context ignored
+PASS close releases native view
+PASS close detaches navigation delegate
+PASS close detaches view hierarchy
+PASS send after close rejected
+PASS late navigation ignored
+PASS cycle 0 releases view
+PASS cycle 1 releases view
+PASS cycle 2 releases view
+PASS cycle 3 releases view
+PASS cycle 4 releases view
+PASS cycle 5 releases view
+PASS cycle 6 releases view
+PASS cycle 7 releases view
+PASS cycle 8 releases view
+PASS cycle 9 releases view
+PASS cycle 10 releases view
+PASS cycle 11 releases view
+PASS cycle 12 releases view
+PASS cycle 13 releases view
+PASS cycle 14 releases view
+PASS cycle 15 releases view
+PASS cycle 16 releases view
+PASS cycle 17 releases view
+PASS cycle 18 releases view
+PASS cycle 19 releases view
+PASS closed controllers released
+PASS root hierarchy returns to baseline
+PASS real bridge confirms installed scripts
+PASS real bridge injects successfully
+PASS real image decoded 0
+PASS real image decoded 1
+PASS real image decoded 2
+PASS real image decoded 3
+PASS real image decoded 4
+PASS real image decoded 5
+PASS real image decoded 6
+PASS real image decoded 7
+PASS real image decoded 8
+PASS real image decoded 9
+PASS real image decoded 10
+PASS real image decoded 11
+PASS real image decoded 12
+PASS real image decoded 13
+PASS real image decoded 14
+PASS real image decoded 15
+PASS real image decoded 16
+PASS real image decoded 17
+PASS real image decoded 18
+PASS real image decoded 19
+PASS real bridge reuses code and clears DOM
+PASS real bridge caches image URL
+MEASURE real bridge ready milliseconds (
+    "78.50312499795109",
+    "4.21466666739434",
+    "2.723125013289973",
+    "1.923458330566064",
+    "2.356708340812474",
+    "3.053874999750406",
+    "1.805749983759597",
+    "1.727124996250495",
+    "2.226208336651325",
+    "1.877333357697353",
+    "2.094708353979513",
+    "2.390499983448535",
+    "1.738416671287268",
+    "3.768708324059844",
+    "1.911083323648199",
+    "2.541916648624465",
+    "2.424041682388633",
+    "1.281791686778888",
+    "1.621458330191672",
+    "2.982166653964669"
+)
+RESULT failures=0 checks=59

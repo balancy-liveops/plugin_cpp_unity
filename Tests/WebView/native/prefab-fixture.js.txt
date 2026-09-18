@@ -1,0 +1,21 @@
+window.prefabLoads = 0;
+window.prefabDestroyed = 0;
+window.fixturePrefabLoader = async () => {
+  window.prefabLoads++;
+  const template = document.createElement('section');
+  template.innerHTML = '<div data-guid="native-prefab"><div data-script-id="NativePrefab"></div></div>';
+  return template;
+};
+class NativePrefab extends balancy.ElementBehaviour {
+  onDestroy() { window.prefabDestroyed++; }
+}
+class NativeRoot extends balancy.ElementBehaviour {
+  async init() {
+    balancy.PrefabsManager.setLoader(window.fixturePrefabLoader);
+    await balancy.ElementsManager.instantiatePrefab('fixture'); // Deliberately detached.
+    const outside = await balancy.ElementsManager.instantiatePrefab('fixture');
+    document.body.append(outside); // Deliberately outside the view mount.
+  }
+}
+balancy.ElementsManager.registerScript('NativePrefab', NativePrefab);
+balancy.ElementsManager.registerScript('NativeRoot', NativeRoot);

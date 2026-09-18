@@ -398,9 +398,9 @@ namespace Balancy
             return false;
         }
 
-        public static void PrepareWebView(Action onReady = null)
+        public static void PrepareWebView(Action onReady = null, Action<string> onFailed = null)
         {
-            RenderViewsManager.PrepareWebView(onReady);
+            RenderViewsManager.PrepareWebView(onReady, onFailed);
         }
 
         public static void ShowWebView()

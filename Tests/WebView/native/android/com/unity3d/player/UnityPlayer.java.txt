@@ -1,0 +1,12 @@
+package com.unity3d.player;
+import android.app.Activity;
+import java.util.ArrayList;
+public class UnityPlayer {
+    public static Activity currentActivity;
+    public static java.util.function.BiConsumer<String, String> receiver;
+    public static final ArrayList<String> messages = new ArrayList<>();
+    public static void UnitySendMessage(String object, String method, String payload) {
+        synchronized (messages) { messages.add(method + ":" + payload); }
+        if (receiver != null) receiver.accept(method, payload);
+    }
+}

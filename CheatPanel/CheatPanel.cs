@@ -91,7 +91,8 @@ namespace Balancy.Cheats
             statusBranch.SetText(status.BranchName);
             statusDeploy.SetText(status.Deploy.ToString());
             statusServerTime.SetText(GetHumanReadableTime(status.ServerTime));
-            statusGameTime.SetText(GetHumanReadableTime(status.GameTime));
+            //statusGameTime.SetText(GetHumanReadableTime(status.GameTime));
+            statusGameTime.SetText(GetHumanReadableTime(status.LastCloudConfigsUpdate));
         }
 
         private string GetHumanReadableTime(long unixTime)
@@ -169,7 +170,7 @@ namespace Balancy.Cheats
                 for (int i = 0; i < info.AvoidedTests.Length; i++)
                 {
                     var test = info.AvoidedTests[i];
-                    var aTest = CMS.GetModelByUnnyId<ABTest>(test);
+                    var aTest = CMS.GetModelByUnnyId<Balancy.Models.SmartObjects.Analytics.ABTest>(test);
                     if (aTest != null)
                         result += $"{aTest.UnnyId} - {aTest.Name}\n";
                     else

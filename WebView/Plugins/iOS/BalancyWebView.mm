@@ -125,6 +125,7 @@ static BalancyWebViewController* CreateOrGetWebViewController(void (*messageCall
 @property (nonatomic, assign) BOOL emergencyExitEnabled;
 @property (nonatomic, assign, readwrite) BOOL persistentMode;
 @property (nonatomic, assign) BOOL suppressNextAnimation;
+@property (nonatomic, assign) NSUInteger showGeneration;
 
 @end
 
@@ -150,8 +151,8 @@ static BalancyWebViewController* CreateOrGetWebViewController(void (*messageCall
         _viewportRect = CGRectMake(0.0f, 0.0f, 1.0f, 1.0f);
         
         // Animation defaults
-        _showDelay = 0.1f; // 100ms default delay
-        _animationDuration = 0.1f; // 100ms default animation duration
+        _showDelay = 0.0f; // No delay by default
+        _animationDuration = 0.0f; // No fade by default
 
         // Emergency exit enabled by default
         _emergencyExitEnabled = YES;
@@ -637,16 +638,25 @@ static BalancyWebViewController* CreateOrGetWebViewController(void (*messageCall
 }
 
 - (void)startShowAnimation {
+    const NSUInteger generation = ++_showGeneration;
+    [_webView.layer removeAllAnimations];
     if (_debugLogging) {
         NSLog(@"[BalancyWebView] Starting show animation with delay: %.3f, duration: %.3f", _showDelay, _animationDuration);
     }
 
     self.view.hidden = NO;
     self.view.userInteractionEnabled = YES;
+    if (_showDelay == 0.0f && _animationDuration == 0.0f) {
+        _webView.alpha = 1.0;
+        return;
+    }
     _webView.alpha = 0.0;
     
-    // Wait for the delay, then animate
+    // Closing/hiding invalidates this generation without retaining the controller.
+    __weak BalancyWebViewController *weakSelf = self;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(_showDelay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        BalancyWebViewController *self = weakSelf;
+        if (!self || generation != self.showGeneration || self.view.hidden || !self.webView) return;
         [UIView animateWithDuration:self.animationDuration
                               delay:0.0
                             options:UIViewAnimationOptionCurveEaseOut
@@ -661,7 +671,18 @@ static BalancyWebViewController* CreateOrGetWebViewController(void (*messageCall
     });
 }
 
+- (void)resetEmergencyExitButton {
+    [_emergencyExitHideTimer invalidate];
+    _emergencyExitHideTimer = nil;
+    [_emergencyExitButton.layer removeAllAnimations];
+    [_emergencyExitButton removeFromSuperview];
+    _emergencyExitButton = nil;
+}
+
 - (void)hideForPersistentMode {
+    [self resetEmergencyExitButton];
+    ++_showGeneration;
+    [_webView.layer removeAllAnimations];
     self.view.hidden = YES;
     self.view.userInteractionEnabled = NO;
     _webView.alpha = 0.0;
@@ -775,6 +796,7 @@ static BalancyWebViewController* CreateOrGetWebViewController(void (*messageCall
 }
 
 - (void)close {
+    [self hideForPersistentMode];
     _persistentMode = NO;
     _suppressNextAnimation = NO;
 
@@ -835,11 +857,9 @@ static BalancyWebViewController* CreateOrGetWebViewController(void (*messageCall
     }
     
     // Escape single quotes for JavaScript
-    NSString *escapedMessage = [message stringByReplacingOccurrencesOfString:@"'" withString:@"\\'"];
-    escapedMessage = [escapedMessage stringByReplacingOccurrencesOfString:@"\"" withString:@"\\\""];
-    
-    // JavaScript to send the message to the web page
-    NSString *script = [NSString stringWithFormat:@"if (balancy) { balancy._receiveMessageFromUnity('%@'); }", escapedMessage];
+    NSData *jsonData = [NSJSONSerialization dataWithJSONObject:@[message ?: @""] options:0 error:nil];
+    NSString *argument = [[NSString alloc] initWithData:jsonData encoding:NSUTF8StringEncoding];
+    NSString *script = [NSString stringWithFormat:@"if (window.balancy) { window.balancy._receiveMessageFromUnity((%@)[0]); }", argument];
     
     [_webView evaluateJavaScript:script completionHandler:^(id _Nullable result, NSError * _Nullable error) {
         if (error && self.debugLogging) {
@@ -1252,19 +1272,19 @@ static BalancyWebViewController* CreateOrGetWebViewController(void (*messageCall
 
 - (void)hideEmergencyExitButton {
     _emergencyExitHideTimer = nil;
-    if (_emergencyExitButton) {
+    UIView *button = _emergencyExitButton;
+    if (button) {
         [UIView animateWithDuration:0.3 animations:^{
-            self->_emergencyExitButton.alpha = 0.0;
+            button.alpha = 0.0;
         } completion:^(BOOL finished) {
-            self->_emergencyExitButton.hidden = YES;
+            button.hidden = YES;
         }];
     }
 }
 
 // Emergency exit button tap handler
 - (void)emergencyExitButtonTapped:(id)sender {
-    [_emergencyExitHideTimer invalidate];
-    _emergencyExitHideTimer = nil;
+    [self resetEmergencyExitButton];
 
     if (_debugLogging) {
         NSLog(@"[BalancyWebView] Emergency exit button tapped in iOS mode");
@@ -1375,6 +1395,7 @@ static BalancyWebViewController* CreateOrGetWebViewController(void (*messageCall
 #pragma mark - WKScriptMessageHandler
 
 - (void)userContentController:(WKUserContentController *)userContentController didReceiveScriptMessage:(WKScriptMessage *)message {
+    if (!_webView || userContentController != _userContentController || message.webView != _webView) return;
     // Make sure the message is from our handler
     if (![message.name isEqualToString:@"BalancyWebView"]) {
         return;
@@ -1396,7 +1417,7 @@ static BalancyWebViewController* CreateOrGetWebViewController(void (*messageCall
         messageString = (NSString *)message.body;
     } else {
         // Try to convert to JSON string
-        NSData *jsonData = [NSJSONSerialization dataWithJSONObject:message.body options:0 error:nil];
+        NSData *jsonData = [NSJSONSerialization dataWithJSONObject:message.body options:NSJSONWritingFragmentsAllowed error:nil];
         if (jsonData) {
             messageString = [[NSString alloc] initWithData:jsonData encoding:NSUTF8StringEncoding];
         } else {
@@ -1427,6 +1448,7 @@ static BalancyWebViewController* CreateOrGetWebViewController(void (*messageCall
 }
 
 - (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
+    if (webView != _webView) return;
     // Hide the activity indicator when loading completes
     [_activityIndicator stopAnimating];
     
@@ -1464,7 +1486,12 @@ static BalancyWebViewController* CreateOrGetWebViewController(void (*messageCall
     }
 }
 
+- (void)webViewWebContentProcessDidTerminate:(WKWebView *)webView {
+    if (webView == _webView && _loadCompletedCallback) _loadCompletedCallback(false);
+}
+
 - (void)webView:(WKWebView *)webView didFailNavigation:(WKNavigation *)navigation withError:(NSError *)error {
+    if (webView != _webView) return;
     // Hide the activity indicator
     [_activityIndicator stopAnimating];
     
@@ -1479,6 +1506,7 @@ static BalancyWebViewController* CreateOrGetWebViewController(void (*messageCall
 }
 
 - (void)webView:(WKWebView *)webView didFailProvisionalNavigation:(WKNavigation *)navigation withError:(NSError *)error {
+    if (webView != _webView) return;
     // Hide the activity indicator
     [_activityIndicator stopAnimating];
     

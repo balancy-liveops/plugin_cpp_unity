@@ -1,0 +1,95 @@
+extern "C" void UnitySendMessage(const char*, const char*, const char*) {}
+// Include production implementation so private native controller lifetimes are exercised.
+#import "../../../../WebView/Plugins/macOS/BalancyWebviewMac.mm"
+static int failures, checks, messages;
+static void Check(const char *name, bool ok) { checks++; printf("%s %s\n",ok ? "PASS" : "FAIL",name); if(!ok) failures++; }
+static void Message(const char *) { messages++; }
+@interface LateMessage : WKScriptMessage
+@property(nonatomic,strong) WKWebView *source;
+@end
+@implementation LateMessage
+- (NSString *)name { return @"BalancyWebView"; }
+- (id)body { return @"late"; }
+- (WKWebView *)webView { return self.source; }
+@end
+int main() {
+ @autoreleasepool {
+  [NSApplication sharedApplication]; [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
+  _messageCallback = Message;
+  // Exercise exported entry points: ordinary and prepared windows must agree.
+  for (NSValue *value in @[[NSValue valueWithSize:NSMakeSize(360,640)],
+                           [NSValue valueWithSize:NSMakeSize(640,360)]]) {
+   NSSize size = value.sizeValue;
+   Check("classic sized open starts", _balancyOpenWebViewWithSize("about:blank", size.width, size.height));
+   NSSize classic = _sharedController.webView.bounds.size;
+   Check("classic matches requested viewport", NSEqualSizes(classic, size));
+   _balancyCloseWebView();
+   Check("sized persistent prepare starts", _balancyPrepareWebViewWithSize("about:blank", size.width, size.height));
+   Check("persistent matches classic viewport", NSEqualSizes(_sharedController.webView.bounds.size, classic));
+   Check("sized preparation stays hidden", !_sharedController.window.visible);
+   _balancyShowWebView();
+   Check("show preserves prepared viewport", NSEqualSizes(_sharedController.webView.bounds.size, size));
+   _balancyCloseWebView();
+  }
+  Check("legacy prepare entry point remains callable", _balancyPrepareWebView("about:blank"));
+  Check("legacy prepare retains default size", NSEqualSizes(_sharedController.webView.bounds.size, NSMakeSize(800,600)));
+  _balancyCloseWebView();
+  _balancyPrepareWebView("about:blank");
+  BalancyWebViewController *emergency = _sharedController;
+  _balancyShowWebView();
+  Check("emergency initially absent", emergency.emergencyExitButton == nil);
+  [emergency showEmergencyExitButton];
+  Check("triple click reveals emergency", emergency.emergencyExitButton != nil && !emergency.emergencyExitButton.hidden);
+  [emergency emergencyExitButtonClicked:nil];
+  Check("emergency exit sends close", messages == 1);
+  messages = 0;
+  Check("exit removes emergency button and timer", emergency.emergencyExitButton == nil && emergency.emergencyExitHideTimer == nil);
+  [emergency hideForPersistentMode]; [emergency startShowAnimation];
+  Check("reopen does not inherit emergency", emergency.emergencyExitButton == nil);
+  [emergency showEmergencyExitButton]; [emergency hideForPersistentMode]; [emergency startShowAnimation];
+  Check("regular hide resets emergency and timer", emergency.emergencyExitButton == nil && emergency.emergencyExitHideTimer == nil);
+  _balancySetEmergencyExitEnabled(false); [emergency showEmergencyExitButton];
+  Check("disabled emergency cannot appear", emergency.emergencyExitButton == nil);
+  _balancySetEmergencyExitEnabled(true); [emergency showEmergencyExitButton];
+  Check("reenabled emergency can appear", emergency.emergencyExitButton != nil);
+  _balancyCloseWebView(); emergency = nil;
+  NSHashTable *retired = [NSHashTable weakObjectsHashTable];
+  for(int i=0;i<20;i++) {
+   @autoreleasepool {
+    BalancyWebViewController *c = [[BalancyWebViewController alloc] initWithSize:NSMakeSize(100,100)];
+    [retired addObject:c];
+    Check("window ownership stays with ARC", !c.window.releasedWhenClosed);
+    [c preparePersistentShellLoad];
+    Check("prepare hidden", !c.window.visible);
+    [c setShowDelay:0];[c setAnimationDuration:0];[c startShowAnimation];
+    Check("zero duration shows synchronously", c.window.alphaValue == 1);
+    c.showDelay=.1;[c startShowAnimation];[c hideForPersistentMode];
+    Check("hide disables visible window", !c.window.visible);
+    WKWebView *view = c.webView; WKUserContentController *content = c.userContentController;
+    [c close];[c close];
+    Check("close clears native references", c.webView == nil && c.userContentController == nil);
+    Check("close detaches delegates and hierarchy", view.navigationDelegate == nil && view.UIDelegate == nil && view.superview == nil);
+    Check("send after close rejected", ![c sendMessage:@"closed"]);
+    LateMessage *late = [LateMessage new];late.source=view;
+    [c userContentController:content didReceiveScriptMessage:late];
+    Check("late script message ignored", messages == 0);
+   }
+   [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:.05]];
+  }
+  for(int i=0;i<5;i++) {
+   @autoreleasepool {
+    BalancyEmbeddedWebViewController *c = [[BalancyEmbeddedWebViewController alloc] initWithWidth:64 height:64];
+    [retired addObject:c];
+    Check("embedded window ownership stays with ARC", !c.offscreenWindow.releasedWhenClosed);
+    [c close];[c close];
+    Check("embedded close releases pixel buffer and graphics context", c.pixelBuffer == nil && c.persistentContext == nil);
+    Check("embedded close releases timer and window", c.renderTimer == nil && c.offscreenWindow == nil);
+    Check("embedded close releases view and handlers", c.webView == nil && c.userContentController == nil);
+   }
+  }
+  [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:1]];
+  Check("retired window controllers released", retired.allObjects.count == 0);
+  printf("RESULT failures=%d checks=%d\n",failures,checks);
+  return failures ? 1 : 0;
+ }
+}

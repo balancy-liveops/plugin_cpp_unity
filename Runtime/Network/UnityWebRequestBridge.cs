@@ -400,8 +400,12 @@ namespace Balancy.Network
             // Track the request
             _activeRequests[requestId] = webRequest;
 
-            // Send the request
+            string trace = "HTTP id=" + requestId + " path=" + FreezeDiagnostics.Route(url);
+            long networkStarted = FreezeDiagnostics.Now;
+            FreezeDiagnostics.Log(trace + " SEND");
             yield return webRequest.SendWebRequest();
+            FreezeDiagnostics.End(trace + " NETWORK_DONE status=" + webRequest.responseCode, networkStarted, 0);
+            long responseStarted = FreezeDiagnostics.Now;
 
             if (_isStopped)
             {
@@ -434,8 +438,14 @@ namespace Balancy.Network
             try
             {
                 // Send the result back to the native plugin
-                if (!_isStopped)
-                    InvokeNative(() => balancyHandleWebRequestComplete(requestId, success, errorCode, dataPtr, dataSize));
+                long callbackStarted = FreezeDiagnostics.Now;
+                FreezeDiagnostics.Log(trace + " CALLBACK_BEGIN bytes=" + dataSize);
+                try
+                {
+                    if (!_isStopped)
+                        InvokeNative(() => balancyHandleWebRequestComplete(requestId, success, errorCode, dataPtr, dataSize));
+                }
+                finally { FreezeDiagnostics.End(trace + " CALLBACK_END", callbackStarted, 0); }
             }
             finally
             {
@@ -447,6 +457,7 @@ namespace Balancy.Network
 
                 _activeRequests.Remove(requestId);
                 webRequest.Dispose();
+                FreezeDiagnostics.End(trace + " RESPONSE_PROCESSING", responseStarted);
             }
         }
         
@@ -553,8 +564,12 @@ namespace Balancy.Network
             // Track the request
             _activeRequests[requestId] = webRequest;
 
-            // Send the request
+            string trace = "HTTP id=" + requestId + " path=" + FreezeDiagnostics.Route(url);
+            long networkStarted = FreezeDiagnostics.Now;
+            FreezeDiagnostics.Log(trace + " SEND");
             yield return webRequest.SendWebRequest();
+            FreezeDiagnostics.End(trace + " NETWORK_DONE status=" + webRequest.responseCode, networkStarted, 0);
+            long responseStarted = FreezeDiagnostics.Now;
 
             if (_isStopped)
             {
@@ -602,8 +617,14 @@ namespace Balancy.Network
             try
             {
                 // Send the result back to the native plugin
-                if (!_isStopped)
-                    InvokeNative(() => balancyHandleFileLoadComplete(requestId, success, errorCode, dataPtr, dataSize, contentType));
+                long callbackStarted = FreezeDiagnostics.Now;
+                FreezeDiagnostics.Log(trace + " CALLBACK_BEGIN bytes=" + dataSize);
+                try
+                {
+                    if (!_isStopped)
+                        InvokeNative(() => balancyHandleFileLoadComplete(requestId, success, errorCode, dataPtr, dataSize, contentType));
+                }
+                finally { FreezeDiagnostics.End(trace + " CALLBACK_END", callbackStarted, 0); }
             }
             finally
             {
@@ -615,6 +636,7 @@ namespace Balancy.Network
 
                 _activeRequests.Remove(requestId);
                 webRequest.Dispose();
+                FreezeDiagnostics.End(trace + " RESPONSE_PROCESSING", responseStarted);
             }
         }
 
