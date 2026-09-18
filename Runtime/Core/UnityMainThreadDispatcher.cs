@@ -175,6 +175,7 @@ namespace Balancy
         // Execute actions from the queue on the main thread (called in Play mode)
         private void Update()
         {
+            FreezeDiagnostics.Frame();
             ProcessQueue();
             
 #if UNITY_WEBGL && !UNITY_EDITOR
@@ -217,8 +218,10 @@ namespace Balancy
                 _executionQueue.Clear();
             }
 
+            long batchStarted = FreezeDiagnostics.Now;
             foreach (var action in actions)
             {
+                long actionStarted = FreezeDiagnostics.Now;
                 try
                 {
                     action.Invoke();
@@ -227,7 +230,9 @@ namespace Balancy
                 {
                     Debug.LogException(e);
                 }
+                finally { FreezeDiagnostics.End("DISPATCH_ACTION", actionStarted); }
             }
+            FreezeDiagnostics.End("DISPATCH_BATCH count=" + actions.Length, batchStarted);
         }
 
         // Cleanup the instance on destroy
@@ -248,6 +253,7 @@ namespace Balancy
         
         private void OnApplicationPause(bool pauseStatus)
         {
+            FreezeDiagnostics.Pause(pauseStatus);
             if (!Controller.IsReadyToUse)
                 return;
 

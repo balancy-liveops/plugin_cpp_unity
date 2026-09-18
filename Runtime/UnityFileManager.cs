@@ -88,7 +88,10 @@ namespace Balancy
             DataObjectsManager.Init(Application.persistentDataPath, resourcesPath);
 
             // Preload text resources from StreamingAssets into C++ memory using synchronous AssetManager reads
-            PreloadAndroidTextResourcesSync(streamingAssetsSubpath);
+            long preloadStarted = FreezeDiagnostics.Now;
+            FreezeDiagnostics.Log("ANDROID_PRELOAD BEGIN");
+            try { PreloadAndroidTextResourcesSync(streamingAssetsSubpath); }
+            finally { FreezeDiagnostics.End("ANDROID_PRELOAD END", preloadStarted, 0); }
             yield return null;
 #elif UNITY_IOS && !UNITY_EDITOR
             // iOS: copy StreamingAssets to PersistentDataPath so WebView can access
@@ -232,6 +235,10 @@ namespace Balancy
             }
 
             var lines = manifestContent.Split('\n');
+            int textFiles = 0, binaryFiles = 0, failures = 0;
+            long totalChars = 0;
+            double readMs = 0, nativeMs = 0;
+            FreezeDiagnostics.Log("ANDROID_MANIFEST entries=" + lines.Length);
 
             foreach (var line in lines)
             {
@@ -244,20 +251,34 @@ namespace Balancy
                 {
                     try
                     {
+                        long readStarted = FreezeDiagnostics.Now;
                         var content = ReadAssetAsString(assetManager, subpath + "/" + relativePath);
+                        readMs += FreezeDiagnostics.Ms(readStarted);
+                        FreezeDiagnostics.End("ASSET_READ file=" + relativePath + " chars=" + content.Length, readStarted);
+                        long nativeStarted = FreezeDiagnostics.Now;
                         Balancy.LibraryMethods.General.balancyAndroidPreloadResource(relativePath, content);
+                        nativeMs += FreezeDiagnostics.Ms(nativeStarted);
+                        FreezeDiagnostics.End("ASSET_NATIVE_STORE file=" + relativePath, nativeStarted);
+                        textFiles++;
+                        totalChars += content.Length;
                     }
                     catch (Exception e)
                     {
+                        failures++;
                         Debug.LogWarning($"[Balancy] Failed to preload Android text resource {relativePath}: {e.Message}");
                     }
                 }
                 else
                 {
+                    binaryFiles++;
                     Balancy.LibraryMethods.General.balancyAndroidSetResourceExists(relativePath, true);
                 }
             }
 
+            FreezeDiagnostics.Log("ANDROID_PRELOAD_SUMMARY text=" + textFiles + " binary=" + binaryFiles
+                + " failures=" + failures + " utf16_chars=" + totalChars
+                + " read_ms=" + readMs.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)
+                + " native_store_ms=" + nativeMs.ToString("F1", System.Globalization.CultureInfo.InvariantCulture));
             assetManager.Dispose();
             activity.Dispose();
             unityPlayer.Dispose();
