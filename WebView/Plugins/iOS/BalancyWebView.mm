@@ -671,7 +671,16 @@ static BalancyWebViewController* CreateOrGetWebViewController(void (*messageCall
     });
 }
 
+- (void)resetEmergencyExitButton {
+    [_emergencyExitHideTimer invalidate];
+    _emergencyExitHideTimer = nil;
+    [_emergencyExitButton.layer removeAllAnimations];
+    [_emergencyExitButton removeFromSuperview];
+    _emergencyExitButton = nil;
+}
+
 - (void)hideForPersistentMode {
+    [self resetEmergencyExitButton];
     ++_showGeneration;
     [_webView.layer removeAllAnimations];
     self.view.hidden = YES;
@@ -1263,19 +1272,19 @@ static BalancyWebViewController* CreateOrGetWebViewController(void (*messageCall
 
 - (void)hideEmergencyExitButton {
     _emergencyExitHideTimer = nil;
-    if (_emergencyExitButton) {
+    UIView *button = _emergencyExitButton;
+    if (button) {
         [UIView animateWithDuration:0.3 animations:^{
-            self->_emergencyExitButton.alpha = 0.0;
+            button.alpha = 0.0;
         } completion:^(BOOL finished) {
-            self->_emergencyExitButton.hidden = YES;
+            button.hidden = YES;
         }];
     }
 }
 
 // Emergency exit button tap handler
 - (void)emergencyExitButtonTapped:(id)sender {
-    [_emergencyExitHideTimer invalidate];
-    _emergencyExitHideTimer = nil;
+    [self resetEmergencyExitButton];
 
     if (_debugLogging) {
         NSLog(@"[BalancyWebView] Emergency exit button tapped in iOS mode");

@@ -777,19 +777,19 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
 
 - (void)hideEmergencyExitButton {
     _emergencyExitHideTimer = nil;
-    if (_emergencyExitButton) {
+    NSView *button = _emergencyExitButton;
+    if (button) {
         [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
             context.duration = 0.3;
-            _emergencyExitButton.animator.alphaValue = 0.0;
+            button.animator.alphaValue = 0.0;
         } completionHandler:^{
-            [_emergencyExitButton setHidden:YES];
+            [button setHidden:YES];
         }];
     }
 }
 
 - (void)emergencyExitButtonClicked:(id)sender {
-    [_emergencyExitHideTimer invalidate];
-    _emergencyExitHideTimer = nil;
+    [self resetEmergencyExitButton];
     if (_messageCallback) {
         _messageCallback("{\"action\":200, \"params\":{}}");
     }
@@ -947,7 +947,18 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
     _suppressNextAnimation = YES;
 }
 
+- (void)resetEmergencyExitButton {
+    [_emergencyExitHideTimer invalidate];
+    _emergencyExitHideTimer = nil;
+    [_emergencyExitButton.layer removeAllAnimations];
+    [_emergencyExitButton removeFromSuperview];
+    _emergencyExitButton = nil;
+    _popupRapidClickCount = 0;
+    _popupLastClickTime = 0;
+}
+
 - (void)hideForPersistentMode {
+    [self resetEmergencyExitButton];
     ++_showGeneration;
     [[self window] setAlphaValue:0.0f];
     [[self window] orderOut:nil];

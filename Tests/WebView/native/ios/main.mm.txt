@@ -57,6 +57,21 @@ static void WaitUntil(BOOL (^condition)(void), double deadline, dispatch_block_t
     self.controller.showDelay = 0; self.controller.animationDuration = 0;
     [self.controller startShowAnimation];
     Check(@"zero delay shows synchronously", self.controller.webView.alpha == 1);
+    BalancyWebViewController *c = self.controller;
+    Check(@"emergency initially absent", [c valueForKey:@"emergencyExitButton"] == nil);
+    [c performSelector:NSSelectorFromString(@"showEmergencyExitButton")];
+    Check(@"triple tap reveals emergency", [c valueForKey:@"emergencyExitButton"] != nil);
+    [c performSelector:NSSelectorFromString(@"emergencyExitButtonTapped:") withObject:nil];
+    Check(@"emergency exit sends close", [received containsString:@"200"]);
+    Check(@"exit removes emergency and timer", [c valueForKey:@"emergencyExitButton"] == nil && [c valueForKey:@"emergencyExitHideTimer"] == nil);
+    [c hideForPersistentMode]; [c startShowAnimation];
+    Check(@"reopen does not inherit emergency", [c valueForKey:@"emergencyExitButton"] == nil);
+    [c performSelector:NSSelectorFromString(@"showEmergencyExitButton")]; [c hideForPersistentMode]; [c startShowAnimation];
+    Check(@"regular hide clears emergency", [c valueForKey:@"emergencyExitButton"] == nil);
+    [c setEmergencyExitEnabled:NO]; [c performSelector:NSSelectorFromString(@"showEmergencyExitButton")];
+    Check(@"disabled emergency cannot appear", [c valueForKey:@"emergencyExitButton"] == nil);
+    [c setEmergencyExitEnabled:YES]; [c performSelector:NSSelectorFromString(@"showEmergencyExitButton")];
+    Check(@"reenabled emergency can appear", [c valueForKey:@"emergencyExitButton"] != nil);
     self.controller.showDelay = .1; [self.controller startShowAnimation]; [self.controller hideForPersistentMode];
     Later(.2, ^{
         Check(@"hide cancels delayed show", self.controller.view.hidden && self.controller.webView.alpha == 0);

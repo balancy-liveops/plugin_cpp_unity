@@ -34,6 +34,25 @@ int main() {
   Check("legacy prepare entry point remains callable", _balancyPrepareWebView("about:blank"));
   Check("legacy prepare retains default size", NSEqualSizes(_sharedController.webView.bounds.size, NSMakeSize(800,600)));
   _balancyCloseWebView();
+  _balancyPrepareWebView("about:blank");
+  BalancyWebViewController *emergency = _sharedController;
+  _balancyShowWebView();
+  Check("emergency initially absent", emergency.emergencyExitButton == nil);
+  [emergency showEmergencyExitButton];
+  Check("triple click reveals emergency", emergency.emergencyExitButton != nil && !emergency.emergencyExitButton.hidden);
+  [emergency emergencyExitButtonClicked:nil];
+  Check("emergency exit sends close", messages == 1);
+  messages = 0;
+  Check("exit removes emergency button and timer", emergency.emergencyExitButton == nil && emergency.emergencyExitHideTimer == nil);
+  [emergency hideForPersistentMode]; [emergency startShowAnimation];
+  Check("reopen does not inherit emergency", emergency.emergencyExitButton == nil);
+  [emergency showEmergencyExitButton]; [emergency hideForPersistentMode]; [emergency startShowAnimation];
+  Check("regular hide resets emergency and timer", emergency.emergencyExitButton == nil && emergency.emergencyExitHideTimer == nil);
+  _balancySetEmergencyExitEnabled(false); [emergency showEmergencyExitButton];
+  Check("disabled emergency cannot appear", emergency.emergencyExitButton == nil);
+  _balancySetEmergencyExitEnabled(true); [emergency showEmergencyExitButton];
+  Check("reenabled emergency can appear", emergency.emergencyExitButton != nil);
+  _balancyCloseWebView(); emergency = nil;
   NSHashTable *retired = [NSHashTable weakObjectsHashTable];
   for(int i=0;i<20;i++) {
    @autoreleasepool {

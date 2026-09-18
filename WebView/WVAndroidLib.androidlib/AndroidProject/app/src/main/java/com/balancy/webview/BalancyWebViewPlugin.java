@@ -473,10 +473,7 @@ public class BalancyWebViewPlugin {
             emergencyExitButton.setOnClickListener(v -> {
                 logDebug("Emergency exit button tapped");
                 // Cancel auto-hide
-                if (emergencyExitHideHandler != null && emergencyExitHideRunnable != null) {
-                    emergencyExitHideHandler.removeCallbacks(emergencyExitHideRunnable);
-                    emergencyExitHideRunnable = null;
-                }
+                resetEmergencyExitButton();
                 sendUnityMessage("OnAndroidMessageReceived", "{\"action\":200, \"params\":{}}");
             });
 
@@ -495,16 +492,15 @@ public class BalancyWebViewPlugin {
 
     private void hideEmergencyExitButton() {
         emergencyExitHideRunnable = null;
-        if (emergencyExitButton != null) {
-            emergencyExitButton.animate()
+        final View button = emergencyExitButton;
+        if (button != null) {
+            button.animate()
                 .alpha(0.0f)
                 .setDuration(300)
                 .setListener(new AnimatorListenerAdapter() {
                     @Override
                     public void onAnimationEnd(Animator animation) {
-                        if (emergencyExitButton != null) {
-                            emergencyExitButton.setVisibility(View.GONE);
-                        }
+                        button.setVisibility(View.GONE);
                     }
                 })
                 .start();
@@ -565,10 +561,26 @@ public class BalancyWebViewPlugin {
         });
     }
     
+    private void resetEmergencyExitButton() {
+        if (emergencyExitHideHandler != null && emergencyExitHideRunnable != null) {
+            emergencyExitHideHandler.removeCallbacks(emergencyExitHideRunnable);
+        }
+        emergencyExitHideRunnable = null;
+        rapidTapCount = 0;
+        lastTapTime = 0;
+        if (emergencyExitButton != null) {
+            emergencyExitButton.animate().cancel();
+            emergencyExitButton.setVisibility(View.GONE);
+            webViewContainer.removeView(emergencyExitButton);
+            emergencyExitButton = null;
+        }
+    }
+
     public void hideWebView() {
         logDebug("hideWebView() called from thread: " + Thread.currentThread().getName());
         runOnUIThread(() -> {
             cancelShowAnimation();
+            resetEmergencyExitButton();
             if (webView != null) {
                 webView.animate().cancel();
                 webView.setAlpha(0.0f);

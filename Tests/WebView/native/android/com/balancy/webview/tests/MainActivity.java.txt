@@ -55,6 +55,20 @@ public class MainActivity extends Activity {
             check("prepared shell hidden", ((View)field("webViewContainer")).getVisibility() != View.VISIBLE);
             plugin.setShowDelay(0); plugin.setAnimationDuration(0); plugin.showWebView();
             check("zero delay shows synchronously", first.getAlpha() == 1f);
+            check("emergency initially absent", field("emergencyExitButton") == null);
+            Method showEmergency = plugin.getClass().getDeclaredMethod("showEmergencyExitButton"); showEmergency.setAccessible(true);
+            showEmergency.invoke(plugin);
+            check("triple tap reveals emergency", field("emergencyExitButton") != null);
+            ((View)field("emergencyExitButton")).performClick();
+            check("exit removes emergency and timer", field("emergencyExitButton") == null && field("emergencyExitHideRunnable") == null);
+            plugin.hideWebView(); plugin.showWebView();
+            check("reopen does not inherit emergency", field("emergencyExitButton") == null);
+            showEmergency.invoke(plugin); plugin.hideWebView(); plugin.showWebView();
+            check("regular hide clears emergency", field("emergencyExitButton") == null);
+            plugin.setEmergencyExitEnabled(false); showEmergency.invoke(plugin);
+            check("disabled emergency cannot appear", field("emergencyExitButton") == null);
+            plugin.setEmergencyExitEnabled(true); showEmergency.invoke(plugin);
+            check("reenabled emergency can appear", field("emergencyExitButton") != null);
             plugin.setShowDelay(.1f); plugin.showWebView(); plugin.hideWebView();
             later(() -> afterHide(first));
         } catch (Throwable error) { fail(error); }
