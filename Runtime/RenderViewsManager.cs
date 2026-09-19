@@ -454,7 +454,7 @@ namespace Balancy
 #if UNITY_WEBGL && !UNITY_EDITOR
                     string baseUrl = null; // Browser resources use the WebGL cache/blob URL mapping.
 #else
-                    string baseUrl = new Uri(Path.GetFullPath(NormalizeLocalPath(filePath))).AbsoluteUri;
+                    string baseUrl = BalancyWebView.ToWebViewUrl(NormalizeLocalPath(filePath));
 #endif
                     BalancyWebView.PerformanceLog("readViewHtml", htmlStarted, null, "htmlChars=" + htmlContent.Length);
                     string ownerJson = owner?.ToJsonString(DEFAULT_OWNER_DEPTH, false) ?? "";
@@ -482,7 +482,7 @@ namespace Balancy
             if (OpenLocalViewWebGL(filePath, owner, onFailed))
                 onShown?.Invoke();
 #else
-            string fileUrl = "file://" + filePath;
+            string fileUrl = BalancyWebView.ToWebViewUrl(filePath);
             if (OpenView(fileUrl, owner, onFailed))
                 onShown?.Invoke();
 #endif

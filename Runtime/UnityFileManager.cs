@@ -82,42 +82,29 @@ namespace Balancy
             // Android: native AAssetManager keeps the synchronous C++ file contract while
             // reading packaged files lazily, without copying every text asset through C#/JNI.
             var streamingAssetsSubpath = "Balancy/";
-            bool nativeAssetManagerReady = false;
-            try
+            using (var unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer"))
+            using (var activity = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity"))
+            using (var assetManager = activity.Call<AndroidJavaObject>("getAssets"))
             {
-                using (var unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer"))
-                using (var activity = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity"))
-                using (var assetManager = activity.Call<AndroidJavaObject>("getAssets"))
-                {
-                    Balancy.LibraryMethods.General.balancyInitUnityFileHelperAndroidWithAssetManager(
-                        Application.persistentDataPath, streamingAssetsSubpath, codePath,
-                        AndroidJNI.GetJavaVM(), assetManager.GetRawObject());
-                    nativeAssetManagerReady = true;
-                }
-            }
-            catch (EntryPointNotFoundException)
-            {
-                // Supports an incremental package update where the managed files were
-                // imported before the matching native libraries.
-                Balancy.LibraryMethods.General.balancyInitUnityFileHelperAndroid(
-                    Application.persistentDataPath, streamingAssetsSubpath, codePath);
-                PreloadAndroidTextResourcesSync(streamingAssetsSubpath);
+                Balancy.LibraryMethods.General.balancyInitUnityFileHelperAndroidWithAssetManager(
+                    Application.persistentDataPath, streamingAssetsSubpath, codePath,
+                    AndroidJNI.GetJavaVM(), assetManager.GetRawObject());
             }
 
             var resourcesPath = Path.Combine(Application.streamingAssetsPath, "Balancy/");
             DataObjectsManager.Init(Application.persistentDataPath, resourcesPath);
 
-            FreezeDiagnostics.Log("ANDROID_NATIVE_ASSET_MANAGER ready=" + nativeAssetManagerReady);
+            FreezeDiagnostics.Log("ANDROID_NATIVE_ASSET_MANAGER ready=True");
             yield return null;
 #elif UNITY_IOS && !UNITY_EDITOR
-            // iOS: copy StreamingAssets to PersistentDataPath so WebView can access
-            // everything from a single directory tree (iOS sandbox prevents cross-directory file:// access)
-            var resourcesPath = Path.Combine(Application.persistentDataPath, "Balancy/Resources/");
-            yield return CopyStreamingAssetsToPath(
-                Path.Combine(Application.streamingAssetsPath, "Balancy/"),
-                resourcesPath);
-            Balancy.LibraryMethods.General.balancyInitUnityFileHelper(Application.persistentDataPath, resourcesPath, codePath);
+            // iOS can synchronously read the packaged snapshot from the app bundle.
+            // WKWebView reaches the same files through balancy-local://, so no startup copy
+            // into persistentDataPath is required.
+            var resourcesPath = Path.Combine(Application.streamingAssetsPath, "Balancy/");
+            Balancy.LibraryMethods.General.balancyInitUnityFileHelper(
+                Application.persistentDataPath, resourcesPath, codePath);
             DataObjectsManager.Init(Application.persistentDataPath, resourcesPath);
+            yield return null;
 #else
             // macOS, Windows, Editor: StreamingAssets are directly accessible on the filesystem
             var resourcesPath = Path.Combine(Application.streamingAssetsPath, "Balancy/");
@@ -169,201 +156,6 @@ namespace Balancy
         }
 #endif
 
-#if UNITY_ANDROID && !UNITY_EDITOR
-        private static bool IsTextFile(string relativePath)
-        {
-            var ext = Path.GetExtension(relativePath).ToLowerInvariant();
-            // This list is a correctness condition, not an optimization. Only these extensions get
-            // their content preloaded out of the StreamingAssets bundle; every other bundled file
-            // is merely marked as existing, and native then reports it as available (so nothing is
-            // downloaded) while getFileContent returns an empty string for it - a silent failure.
-            //
-            // So an extension belongs here when something reads the file's *content*, and only
-            // then. .lottie was missing, which broke every view with a Lottie particle on Android.
-            // Formats that are only ever handed to the WebView as a URL (images, .svg among them)
-            // must stay out: they already work through file:///android_asset, and preloading them
-            // would just read them over JNI on the main thread and hold them in memory for good.
-            //
-            // Keep the entries text: they are read as UTF-8 strings. Our .lottie files are plain
-            // Lottie JSON despite the extension - if the dashboard ever starts exporting real
-            // dotLottie (which is a ZIP), reading it here would corrupt it and it would have to
-            // move out of this list.
-            return ext == ".json" || ext == ".txt" || ext == ".xml" || ext == ".csv" || ext == ".yaml" || ext == ".yml" || ext == ".js" || ext == ".banim" || ext == ".html" || ext == ".css" || ext == ".lottie";
-        }
 
-        private static bool IsDirectWebViewAsset(string relativePath)
-        {
-            if (string.Equals(relativePath, "balancy-webview-bridge.js", StringComparison.Ordinal))
-                return true;
-
-            var fileName = Path.GetFileName(relativePath);
-            return fileName.StartsWith("scripts_combined_", StringComparison.Ordinal) &&
-                   string.Equals(Path.GetExtension(fileName), ".js", StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static string ReadAssetAsString(AndroidJavaObject assetManager, string assetPath)
-        {
-            // Read raw bytes and decode as UTF-8 to preserve the file content exactly,
-            // including the trailing newline. A previous BufferedReader.readLine()
-            // implementation stripped the trailing newline, which corrupted the
-            // compiled script bundle: a file ending in a line comment ("// ...") would
-            // be glued onto the next file's "class X {", swallowing the declaration and
-            // producing a SyntaxError that broke the entire injected bundle.
-            // Use a Scanner with the "\A" delimiter (beginning-of-input) so the entire
-            // stream is read as a single token on the Java side and returned directly
-            // to C# as one string. This avoids round-tripping a byte[]/char[] buffer
-            // through JNI (which copies, so Java-side reads would not propagate back),
-            // and crucially keeps the file content byte-for-byte, including the
-            // trailing newline.
-            AndroidJavaObject inputStream = null;
-            AndroidJavaObject scanner = null;
-            AndroidJavaObject delimitedScanner = null;
-            try
-            {
-                inputStream = assetManager.Call<AndroidJavaObject>("open", assetPath);
-                scanner = new AndroidJavaObject("java.util.Scanner", inputStream, "UTF-8");
-                delimitedScanner = scanner.Call<AndroidJavaObject>("useDelimiter", "\\A");
-
-                bool hasContent = delimitedScanner.Call<bool>("hasNext");
-                return hasContent ? delimitedScanner.Call<string>("next") : "";
-            }
-            finally
-            {
-                scanner?.Call("close");
-                inputStream?.Call("close");
-                delimitedScanner?.Dispose();
-                scanner?.Dispose();
-                inputStream?.Dispose();
-            }
-        }
-
-        private static void PreloadAndroidTextResourcesSync(string streamingAssetsSubpath)
-        {
-            // Get AssetManager via JNI
-            var unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer");
-            var activity = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity");
-            var assetManager = activity.Call<AndroidJavaObject>("getAssets");
-
-            // Read manifest synchronously from AssetManager
-            var subpath = streamingAssetsSubpath.TrimEnd('/');
-            string manifestContent;
-            try
-            {
-                manifestContent = ReadAssetAsString(assetManager, subpath + "/balancy_files_manifest.txt");
-            }
-            catch (Exception e)
-            {
-                Debug.LogWarning($"[Balancy] No manifest file found in StreamingAssets, skipping Android preload: {e.Message}");
-                assetManager.Dispose();
-                activity.Dispose();
-                unityPlayer.Dispose();
-                return;
-            }
-
-            var lines = manifestContent.Split('\n');
-            int textFiles = 0, binaryFiles = 0, failures = 0;
-            long totalChars = 0;
-            double readMs = 0, nativeMs = 0;
-            FreezeDiagnostics.Log("ANDROID_MANIFEST entries=" + lines.Length);
-
-            foreach (var line in lines)
-            {
-                var relativePath = line.Trim().TrimStart('.', '/');
-                if (string.IsNullOrEmpty(relativePath) || relativePath == "balancy_files_manifest.txt")
-                    continue;
-
-                // The WebView reads these files directly from android_asset. Preloading their
-                // multi-megabyte bodies into C# and then C++ only delays the first callback.
-                if (IsDirectWebViewAsset(relativePath))
-                {
-                    binaryFiles++;
-                    Balancy.LibraryMethods.General.balancyAndroidSetResourceExists(relativePath, true);
-                    continue;
-                }
-
-                // Process all files: text files get preloaded into memory, binary files are marked as existing
-                if (IsTextFile(relativePath))
-                {
-                    try
-                    {
-                        long readStarted = FreezeDiagnostics.Now;
-                        var content = ReadAssetAsString(assetManager, subpath + "/" + relativePath);
-                        readMs += FreezeDiagnostics.Ms(readStarted);
-                        FreezeDiagnostics.End("ASSET_READ file=" + relativePath + " chars=" + content.Length, readStarted);
-                        long nativeStarted = FreezeDiagnostics.Now;
-                        Balancy.LibraryMethods.General.balancyAndroidPreloadResource(relativePath, content);
-                        nativeMs += FreezeDiagnostics.Ms(nativeStarted);
-                        FreezeDiagnostics.End("ASSET_NATIVE_STORE file=" + relativePath, nativeStarted);
-                        textFiles++;
-                        totalChars += content.Length;
-                    }
-                    catch (Exception e)
-                    {
-                        failures++;
-                        Debug.LogWarning($"[Balancy] Failed to preload Android text resource {relativePath}: {e.Message}");
-                    }
-                }
-                else
-                {
-                    binaryFiles++;
-                    Balancy.LibraryMethods.General.balancyAndroidSetResourceExists(relativePath, true);
-                }
-            }
-
-            FreezeDiagnostics.Log("ANDROID_PRELOAD_SUMMARY text=" + textFiles + " binary=" + binaryFiles
-                + " failures=" + failures + " utf16_chars=" + totalChars
-                + " read_ms=" + readMs.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)
-                + " native_store_ms=" + nativeMs.ToString("F1", System.Globalization.CultureInfo.InvariantCulture));
-            assetManager.Dispose();
-            activity.Dispose();
-            unityPlayer.Dispose();
-        }
-#endif
-
-#if UNITY_IOS && !UNITY_EDITOR
-        private static IEnumerator CopyStreamingAssetsToPath(string sourcePath, string targetPath)
-        {
-            if (Directory.Exists(targetPath))
-                Directory.Delete(targetPath, true);
-
-            Directory.CreateDirectory(targetPath);
-
-            var manifestPath = Path.Combine(sourcePath, "balancy_files_manifest.txt");
-            if (!File.Exists(manifestPath))
-            {
-                Debug.LogWarning($"[Balancy] Manifest file not found: {manifestPath}");
-                yield break;
-            }
-
-            var lines = File.ReadAllText(manifestPath).Split('\n');
-            int filesCopied = 0;
-
-            foreach (var line in lines)
-            {
-                var relativePath = line.Trim().TrimStart('.', '/');
-                if (string.IsNullOrEmpty(relativePath) || relativePath == "balancy_files_manifest.txt")
-                    continue;
-
-                var src = Path.Combine(sourcePath, relativePath);
-                var dst = Path.Combine(targetPath, relativePath);
-                var dstDir = Path.GetDirectoryName(dst);
-
-                if (!Directory.Exists(dstDir))
-                    Directory.CreateDirectory(dstDir);
-
-                if (File.Exists(src))
-                {
-                    File.Copy(src, dst, true);
-                    filesCopied++;
-
-                    // Yield periodically to avoid blocking the main thread
-                    if (filesCopied % 50 == 0)
-                        yield return null;
-                }
-            }
-
-            Debug.Log($"[Balancy] iOS: copied {filesCopied} files from StreamingAssets");
-        }
-#endif
     }
 }

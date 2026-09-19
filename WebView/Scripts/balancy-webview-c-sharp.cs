@@ -20,6 +20,7 @@ namespace Balancy.WebView
     public class BalancyWebView : MonoBehaviour
     {
         private const string BridgeFileName = "balancy-webview-bridge.js";
+        private const string IosLocalUrlPrefix = "balancy-local://local/";
         private string _scriptsCode = "";
         private string _scriptsUrl = "";
         private string _scriptsVersion = Guid.NewGuid().ToString("N");
@@ -66,7 +67,7 @@ namespace Balancy.WebView
         /// </summary>
         public void SetScriptsFile(string filePath, string version)
         {
-            string scriptsUrl = ToFileUrl(filePath);
+            string scriptsUrl = ToWebViewUrl(filePath);
             version = version ?? "";
             if (string.IsNullOrEmpty(scriptsUrl) || string.IsNullOrEmpty(version))
                 throw new ArgumentException("Scripts file path and version are required");
@@ -320,19 +321,58 @@ namespace Balancy.WebView
         private static string JsString(string value) => "(" + JsonUtility.ToJson(new StringValue { value = value ?? "" }) + ").value";
         [Serializable] private class StringValue { public string value; }
 
-        private static string ToFileUrl(string path)
+        public static string ToWebViewUrl(string path)
         {
-            if (string.IsNullOrEmpty(path) || path.StartsWith("file://", StringComparison.OrdinalIgnoreCase)) return path ?? "";
+            if (string.IsNullOrEmpty(path)) return path ?? "";
+#if UNITY_IOS && !UNITY_EDITOR
+            if (path.StartsWith(IosLocalUrlPrefix, StringComparison.OrdinalIgnoreCase)) return path;
+            if (Uri.TryCreate(path, UriKind.Absolute, out var existingUri) && !existingUri.IsFile) return path;
+
+            string physicalPath = path.StartsWith("file://", StringComparison.OrdinalIgnoreCase)
+                ? new Uri(path).LocalPath
+                : System.IO.Path.GetFullPath(path);
+            if (TryMakeIosLocalUrl(physicalPath, Application.persistentDataPath, "persistent", out var localUrl))
+                return localUrl;
+            if (TryMakeIosLocalUrl(physicalPath, Application.streamingAssetsPath, "streaming", out localUrl))
+                return localUrl;
+            return new Uri(physicalPath).AbsoluteUri;
+#else
+            if (path.StartsWith("file://", StringComparison.OrdinalIgnoreCase)) return path;
             if (path.StartsWith("/android_asset/", StringComparison.Ordinal)) return "file://" + path;
             return new Uri(System.IO.Path.GetFullPath(path)).AbsoluteUri;
+#endif
         }
+
+#if UNITY_IOS && !UNITY_EDITOR
+        private static bool TryMakeIosLocalUrl(string physicalPath, string rootPath, string storage, out string url)
+        {
+            string normalizedPath = System.IO.Path.GetFullPath(physicalPath);
+            string normalizedRoot = System.IO.Path.GetFullPath(rootPath).TrimEnd('/', '\\');
+            string prefix = normalizedRoot + System.IO.Path.DirectorySeparatorChar;
+            string relativePath;
+            if (string.Equals(normalizedPath, normalizedRoot, StringComparison.Ordinal))
+                relativePath = "";
+            else if (normalizedPath.StartsWith(prefix, StringComparison.Ordinal))
+                relativePath = normalizedPath.Substring(prefix.Length);
+            else
+            {
+                url = null;
+                return false;
+            }
+
+            var segments = relativePath.Replace('\\', '/').Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            for (int i = 0; i < segments.Length; i++) segments[i] = Uri.EscapeDataString(segments[i]);
+            url = IosLocalUrlPrefix + storage + "/" + string.Join("/", segments);
+            return true;
+        }
+#endif
 
         private static string GetBridgeUrl()
         {
 #if UNITY_ANDROID && !UNITY_EDITOR
             return "file:///android_asset/Balancy/" + BridgeFileName;
 #elif UNITY_IOS && !UNITY_EDITOR
-            return ToFileUrl(System.IO.Path.Combine(Application.persistentDataPath, "Balancy", "Resources", BridgeFileName));
+            return IosLocalUrlPrefix + "resources/" + BridgeFileName;
 #else
             string path = System.IO.Path.Combine(Application.streamingAssetsPath, "Balancy", BridgeFileName);
             if (!System.IO.File.Exists(path))
@@ -346,7 +386,7 @@ namespace Balancy.WebView
                 path = System.IO.Path.Combine(directory, BridgeFileName);
                 System.IO.File.WriteAllText(path, bridge.text);
             }
-            return ToFileUrl(path);
+            return ToWebViewUrl(path);
 #endif
         }
 
@@ -394,6 +434,8 @@ namespace Balancy.WebView
         // Platform-specific native method declarations
         #if UNITY_IOS && !UNITY_EDITOR
         
+        [DllImport("__Internal")]
+        private static extern void _balancyConfigureLocalResourceRoots(string persistentDataPath, string streamingAssetsPath);
         [DllImport("__Internal")]
         private static extern bool _balancyOpenWebViewWithSize(string url, int width, int height);
         [DllImport("__Internal")]
@@ -881,6 +923,7 @@ namespace Balancy.WebView
             }
 #endif
 #if UNITY_IOS
+            _balancyConfigureLocalResourceRoots(Application.persistentDataPath, Application.streamingAssetsPath);
             _balancyRegisterCacheCompletedCallback(OnCacheCompletedReceived);
 #endif
 #endif
@@ -1134,7 +1177,7 @@ namespace Balancy.WebView
                 System.IO.File.WriteAllText(shellPath, shellHtml);
                 ApplySettings();
                 SetTransparentBackground(true);
-                bool started = _balancyPrepareWebView("file://" + shellPath);
+                bool started = _balancyPrepareWebView(ToWebViewUrl(shellPath));
                 if (started) ApplyAnimationSettings();
                 return started;
 #endif

@@ -5,6 +5,204 @@
 
 #import "BalancyWebView.h"
 
+static NSString* const kBalancyLocalScheme = @"balancy-local";
+static NSString* gBalancyPersistentDataRootPath = nil;
+static NSString* gBalancyStreamingAssetsRootPath = nil;
+
+static NSString* BalancyStandardizedRoot(NSString* path) {
+    if (path == nil || path.length == 0) return nil;
+    return [[path stringByStandardizingPath] stringByResolvingSymlinksInPath];
+}
+
+static BOOL BalancyPathIsInsideRoot(NSString* path, NSString* root, NSString** relativePath) {
+    if (path == nil || root == nil) return NO;
+    NSString* standardizedPath = BalancyStandardizedRoot(path);
+    NSString* standardizedRoot = BalancyStandardizedRoot(root);
+    if ([standardizedPath isEqualToString:standardizedRoot]) {
+        if (relativePath != nil) *relativePath = @"";
+        return YES;
+    }
+    NSString* rootPrefix = [standardizedRoot stringByAppendingString:@"/"];
+    if (![standardizedPath hasPrefix:rootPrefix]) return NO;
+    if (relativePath != nil) *relativePath = [standardizedPath substringFromIndex:rootPrefix.length];
+    return YES;
+}
+
+static NSURL* BalancyVirtualURLForFilePath(NSString* filePath) {
+    NSString* relativePath = nil;
+    NSString* storage = nil;
+    @synchronized([NSFileManager class]) {
+        if (BalancyPathIsInsideRoot(filePath, gBalancyPersistentDataRootPath, &relativePath))
+            storage = @"persistent";
+        else if (BalancyPathIsInsideRoot(filePath, gBalancyStreamingAssetsRootPath, &relativePath))
+            storage = @"streaming";
+    }
+    if (storage == nil) return nil;
+
+    NSString* encodedPath = [relativePath stringByAddingPercentEncodingWithAllowedCharacters:NSCharacterSet.URLPathAllowedCharacterSet];
+    NSString* urlString = [NSString stringWithFormat:@"%@://local/%@/%@", kBalancyLocalScheme, storage, encodedPath ?: @""];
+    return [NSURL URLWithString:urlString];
+}
+
+static NSString* BalancyMimeTypeForPath(NSString* path) {
+    static NSDictionary<NSString*, NSString*>* mimeTypes;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        mimeTypes = @{
+            @"html": @"text/html", @"htm": @"text/html", @"js": @"application/javascript",
+            @"mjs": @"application/javascript", @"css": @"text/css", @"json": @"application/json",
+            @"lottie": @"application/json", @"banim": @"application/json", @"txt": @"text/plain",
+            @"xml": @"application/xml", @"csv": @"text/csv", @"yaml": @"text/yaml", @"yml": @"text/yaml",
+            @"svg": @"image/svg+xml", @"png": @"image/png", @"jpg": @"image/jpeg", @"jpeg": @"image/jpeg",
+            @"gif": @"image/gif", @"webp": @"image/webp", @"bmp": @"image/bmp", @"ico": @"image/x-icon",
+            @"woff": @"font/woff", @"woff2": @"font/woff2", @"ttf": @"font/ttf", @"otf": @"font/otf",
+            @"mp4": @"video/mp4", @"webm": @"video/webm", @"mp3": @"audio/mpeg", @"wav": @"audio/wav",
+            @"ogg": @"audio/ogg", @"zip": @"application/zip"
+        };
+    });
+    return mimeTypes[path.pathExtension.lowercaseString] ?: @"application/octet-stream";
+}
+
+@interface BalancyLocalSchemeHandler : NSObject <WKURLSchemeHandler>
+@property (nonatomic, strong) dispatch_queue_t ioQueue;
+@property (nonatomic, strong) NSHashTable* stoppedTasks;
+@end
+
+@implementation BalancyLocalSchemeHandler
+
+- (instancetype)init {
+    self = [super init];
+    if (self) {
+        _ioQueue = dispatch_queue_create("com.balancy.webview.local-resources", DISPATCH_QUEUE_CONCURRENT);
+        _stoppedTasks = [NSHashTable weakObjectsHashTable];
+    }
+    return self;
+}
+
+- (BOOL)isStopped:(id<WKURLSchemeTask>)task {
+    @synchronized (self) {
+        return [_stoppedTasks containsObject:task];
+    }
+}
+
+- (void)markFinished:(id<WKURLSchemeTask>)task {
+    @synchronized (self) {
+        [_stoppedTasks removeObject:task];
+    }
+}
+
+- (NSString*)resolveFilePath:(NSURL*)url {
+    NSArray<NSString*>* components = url.path.pathComponents;
+    if (components.count < 2) return nil;
+
+    NSString* storage = components[1].lowercaseString;
+    NSString* relativePath = components.count > 2
+        ? [[components subarrayWithRange:NSMakeRange(2, components.count - 2)] componentsJoinedByString:@"/"]
+        : @"";
+    relativePath = [relativePath stringByRemovingPercentEncoding] ?: relativePath;
+
+    NSString* persistentRoot = nil;
+    NSString* streamingRoot = nil;
+    @synchronized ([NSFileManager class]) {
+        persistentRoot = gBalancyPersistentDataRootPath;
+        streamingRoot = gBalancyStreamingAssetsRootPath;
+    }
+
+    NSArray<NSString*>* candidateRoots = nil;
+    if ([storage isEqualToString:@"persistent"])
+        candidateRoots = persistentRoot ? @[persistentRoot] : @[];
+    else if ([storage isEqualToString:@"streaming"])
+        candidateRoots = streamingRoot ? @[streamingRoot] : @[];
+    else if ([storage isEqualToString:@"resources"])
+        candidateRoots = streamingRoot ? @[[streamingRoot stringByAppendingPathComponent:@"Balancy"]] : @[];
+    else
+        return nil;
+
+    NSFileManager* fileManager = [NSFileManager defaultManager];
+    for (NSString* root in candidateRoots) {
+        NSString* candidate = BalancyStandardizedRoot([root stringByAppendingPathComponent:relativePath]);
+        if (!BalancyPathIsInsideRoot(candidate, root, nil)) continue;
+        BOOL isDirectory = NO;
+        if ([fileManager fileExistsAtPath:candidate isDirectory:&isDirectory] && !isDirectory)
+            return candidate;
+    }
+    return nil;
+}
+
+- (void)webView:(WKWebView*)webView startURLSchemeTask:(id<WKURLSchemeTask>)urlSchemeTask {
+    NSURLRequest* request = urlSchemeTask.request;
+    dispatch_async(_ioQueue, ^{
+        if ([self isStopped:urlSchemeTask]) return;
+
+        NSString* filePath = [self resolveFilePath:request.URL];
+        NSError* error = nil;
+        NSData* data = filePath == nil ? nil : [NSData dataWithContentsOfFile:filePath options:NSDataReadingMappedIfSafe error:&error];
+        if (data == nil && error == nil) {
+            error = [NSError errorWithDomain:@"com.balancy.webview.local-resources" code:404
+                                     userInfo:@{NSLocalizedDescriptionKey: @"Local resource was not found"}];
+        }
+
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if ([self isStopped:urlSchemeTask]) return;
+            if (data == nil) {
+                [urlSchemeTask didFailWithError:error];
+                [self markFinished:urlSchemeTask];
+                return;
+            }
+
+            NSUInteger totalLength = data.length;
+            NSUInteger start = 0;
+            NSUInteger end = totalLength > 0 ? totalLength - 1 : 0;
+            BOOL partial = NO;
+            NSString* rangeHeader = [request valueForHTTPHeaderField:@"Range"];
+            if (totalLength > 0 && [rangeHeader hasPrefix:@"bytes="]) {
+                NSArray<NSString*>* range = [[rangeHeader substringFromIndex:6] componentsSeparatedByString:@"-"];
+                if (range.count == 2) {
+                    if (range[0].length > 0) {
+                        start = MIN((NSUInteger)range[0].longLongValue, totalLength - 1);
+                        if (range[1].length > 0) end = MIN((NSUInteger)range[1].longLongValue, totalLength - 1);
+                        else end = totalLength - 1;
+                    } else if (range[1].length > 0) {
+                        NSUInteger suffixLength = MIN((NSUInteger)range[1].longLongValue, totalLength);
+                        start = totalLength - suffixLength;
+                        end = totalLength - 1;
+                    }
+                    partial = start <= end;
+                }
+            }
+
+            NSData* responseData = partial ? [data subdataWithRange:NSMakeRange(start, end - start + 1)] : data;
+            NSString* mimeType = BalancyMimeTypeForPath(filePath);
+            NSMutableDictionary<NSString*, NSString*>* headers = [@{
+                @"Content-Type": mimeType,
+                @"Content-Length": [NSString stringWithFormat:@"%lu", (unsigned long)responseData.length],
+                @"Accept-Ranges": @"bytes"
+            } mutableCopy];
+            NSInteger statusCode = partial ? 206 : 200;
+            if (partial)
+                headers[@"Content-Range"] = [NSString stringWithFormat:@"bytes %lu-%lu/%lu",
+                    (unsigned long)start, (unsigned long)end, (unsigned long)totalLength];
+
+            NSHTTPURLResponse* response = [[NSHTTPURLResponse alloc] initWithURL:request.URL
+                statusCode:statusCode HTTPVersion:@"HTTP/1.1" headerFields:headers];
+            [urlSchemeTask didReceiveResponse:response];
+            if (![request.HTTPMethod.uppercaseString isEqualToString:@"HEAD"] && responseData.length > 0)
+                [urlSchemeTask didReceiveData:responseData];
+            [urlSchemeTask didFinish];
+            [self markFinished:urlSchemeTask];
+        });
+    });
+}
+
+- (void)webView:(WKWebView*)webView stopURLSchemeTask:(id<WKURLSchemeTask>)urlSchemeTask {
+    @synchronized (self) {
+        [_stoppedTasks addObject:urlSchemeTask];
+    }
+}
+
+@end
+
+
 // C function pointers for callbacks
 extern "C" {
     void (*_messageCallback)(const char*) = NULL;
@@ -26,44 +224,6 @@ static NSURL* GetPersistentDataRootURL(void) {
     }
 
     return [NSURL fileURLWithPath:documentsDirectory isDirectory:YES];
-}
-
-static NSURL* CreatePersistentShellURL(NSString* sourcePath) {
-    if (sourcePath == nil || sourcePath.length == 0) {
-        return nil;
-    }
-
-    NSFileManager* fileManager = [NSFileManager defaultManager];
-    NSURL* persistentDataRootURL = GetPersistentDataRootURL();
-    NSString* documentsDirectory = persistentDataRootURL.path;
-    if (documentsDirectory == nil) {
-        return nil;
-    }
-
-    NSString* persistentDirectory = [documentsDirectory stringByAppendingPathComponent:@"Balancy/PersistentWebView"];
-    NSError* directoryError = nil;
-    if (![fileManager createDirectoryAtPath:persistentDirectory withIntermediateDirectories:YES attributes:nil error:&directoryError]) {
-        NSLog(@"[BalancyWebView] Failed to create persistent shell directory: %@", directoryError.localizedDescription);
-        return nil;
-    }
-
-    NSString* targetPath = [persistentDirectory stringByAppendingPathComponent:@"balancy-shell.html"];
-    NSURL* targetURL = [NSURL fileURLWithPath:targetPath];
-    NSURL* sourceURL = [NSURL fileURLWithPath:sourcePath];
-
-    NSError* removeError = nil;
-    if ([fileManager fileExistsAtPath:targetPath] && ![fileManager removeItemAtURL:targetURL error:&removeError]) {
-        NSLog(@"[BalancyWebView] Failed to replace persistent shell file: %@", removeError.localizedDescription);
-        return nil;
-    }
-
-    NSError* copyError = nil;
-    if (![fileManager copyItemAtURL:sourceURL toURL:targetURL error:&copyError]) {
-        NSLog(@"[BalancyWebView] Failed to copy persistent shell file: %@", copyError.localizedDescription);
-        return nil;
-    }
-
-    return targetURL;
 }
 
 static BalancyWebViewController* GetExistingWebViewController(void) {
@@ -117,6 +277,7 @@ static BalancyWebViewController* CreateOrGetWebViewController(void (*messageCall
 
 @property (nonatomic, strong, readwrite) WKWebView *webView;
 @property (nonatomic, strong) WKUserContentController *userContentController;
+@property (nonatomic, strong) BalancyLocalSchemeHandler *localSchemeHandler;
 @property (nonatomic, strong) UIActivityIndicatorView *activityIndicator;
 @property (nonatomic, assign) BOOL debugLogging;
 @property (nonatomic, assign) CGRect viewportRect;
@@ -168,6 +329,8 @@ static BalancyWebViewController* CreateOrGetWebViewController(void (*messageCall
 - (void)setupWebView {
     // Create a WKWebViewConfiguration object
     WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
+    _localSchemeHandler = [[BalancyLocalSchemeHandler alloc] init];
+    [configuration setURLSchemeHandler:_localSchemeHandler forURLScheme:kBalancyLocalScheme];
     
     // === REDUCE WEBKIT PROCESS ERRORS ===
     // Configure process pool to reduce termination errors
@@ -181,8 +344,7 @@ static BalancyWebViewController* CreateOrGetWebViewController(void (*messageCall
     configuration.preferences.javaScriptEnabled = YES;
     configuration.preferences.javaScriptCanOpenWindowsAutomatically = NO;
     
-    // Note: iOS doesn't allow universal file access via configuration
-    // We'll handle cross-directory access via loadFileURL:allowingReadAccessToURL: instead
+    // Local SDK content uses balancy-local:// so WebKit does not need one shared file:// root.
     
     // === AGGRESSIVE MAGNIFYING GLASS PREVENTION ===
     // Try to disable text interaction and magnification at the configuration level
@@ -203,9 +365,8 @@ static BalancyWebViewController* CreateOrGetWebViewController(void (*messageCall
         configuration.defaultWebpagePreferences.allowsContentJavaScript = YES;
     }
     
-    // Configure for local file access
-    // WKWebView automatically allows file:// URLs to access other file:// URLs
-    // in the same directory, which is what we need for local HTML content
+    // External file:// URLs remain supported as a compatibility fallback. SDK-owned
+    // local content is served by BalancyLocalSchemeHandler above.
     
     // Create user content controller and add script message handler
     _userContentController = [[WKUserContentController alloc] init];
@@ -749,6 +910,13 @@ static BalancyWebViewController* CreateOrGetWebViewController(void (*messageCall
     if ([urlString hasPrefix:@"file://"]) {
         NSString *cleanUrl = urlString;
         NSString *filePath = [cleanUrl stringByReplacingOccurrencesOfString:@"file://" withString:@""];
+
+        NSURL *virtualURL = BalancyVirtualURLForFilePath(filePath);
+        if (virtualURL != nil) {
+            [_webView loadRequest:[NSURLRequest requestWithURL:virtualURL]];
+            if (_debugLogging) NSLog(@"[BalancyWebView] Loading virtual local URL: %@", virtualURL);
+            return YES;
+        }
 
         NSURL *fileURL = [NSURL fileURLWithPath:filePath];
         NSURL *broadReadAccessURL = GetPersistentDataRootURL();
@@ -1582,6 +1750,18 @@ static UIViewController* GetRootViewController() {
 
 extern "C" {
 
+void _balancyConfigureLocalResourceRoots(const char* persistentDataPath, const char* streamingAssetsPath) {
+    @autoreleasepool {
+        NSString* persistent = persistentDataPath ? [NSString stringWithUTF8String:persistentDataPath] : nil;
+        NSString* streaming = streamingAssetsPath ? [NSString stringWithUTF8String:streamingAssetsPath] : nil;
+        @synchronized ([NSFileManager class]) {
+            gBalancyPersistentDataRootPath = BalancyStandardizedRoot(persistent);
+            gBalancyStreamingAssetsRootPath = BalancyStandardizedRoot(streaming);
+        }
+        NSLog(@"[BalancyWebView] Local resource roots configured without StreamingAssets copy");
+    }
+}
+
 // Open a WebView with the specified URL
 bool _balancyOpenWebView(const char* url) {
     @autoreleasepool {
@@ -1652,9 +1832,7 @@ bool _balancyPrepareWebView(const char* shellUrl) {
 
         [webViewController preparePersistentShellLoad];
 
-        NSString* sourcePath = [[NSString stringWithUTF8String:shellUrl] stringByReplacingOccurrencesOfString:@"file://" withString:@""];
-        NSURL* persistentShellURL = CreatePersistentShellURL(sourcePath);
-        NSString* nsUrl = persistentShellURL != nil ? persistentShellURL.absoluteString : [NSString stringWithUTF8String:shellUrl];
+        NSString* nsUrl = [NSString stringWithUTF8String:shellUrl];
         return [webViewController loadURL:nsUrl];
     }
 }
