@@ -175,6 +175,16 @@ namespace Balancy
             return ext == ".json" || ext == ".txt" || ext == ".xml" || ext == ".csv" || ext == ".yaml" || ext == ".yml" || ext == ".js" || ext == ".banim" || ext == ".html" || ext == ".css" || ext == ".lottie";
         }
 
+        private static bool IsDirectWebViewAsset(string relativePath)
+        {
+            if (string.Equals(relativePath, "balancy-webview-bridge.js", StringComparison.Ordinal))
+                return true;
+
+            var fileName = Path.GetFileName(relativePath);
+            return fileName.StartsWith("scripts_combined_", StringComparison.Ordinal) &&
+                   string.Equals(Path.GetExtension(fileName), ".js", StringComparison.OrdinalIgnoreCase);
+        }
+
         private static string ReadAssetAsString(AndroidJavaObject assetManager, string assetPath)
         {
             // Read raw bytes and decode as UTF-8 to preserve the file content exactly,
@@ -245,6 +255,15 @@ namespace Balancy
                 var relativePath = line.Trim().TrimStart('.', '/');
                 if (string.IsNullOrEmpty(relativePath) || relativePath == "balancy_files_manifest.txt")
                     continue;
+
+                // The WebView reads these files directly from android_asset. Preloading their
+                // multi-megabyte bodies into C# and then C++ only delays the first callback.
+                if (IsDirectWebViewAsset(relativePath))
+                {
+                    binaryFiles++;
+                    Balancy.LibraryMethods.General.balancyAndroidSetResourceExists(relativePath, true);
+                    continue;
+                }
 
                 // Process all files: text files get preloaded into memory, binary files are marked as existing
                 if (IsTextFile(relativePath))

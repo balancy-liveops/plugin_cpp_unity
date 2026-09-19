@@ -19,10 +19,12 @@ namespace Balancy.WebView
     /// </summary>
     public class BalancyWebView : MonoBehaviour
     {
+        private const string BridgeFileName = "balancy-webview-bridge.js";
         private string _scriptsCode = "";
+        private string _scriptsUrl = "";
         private string _scriptsVersion = Guid.NewGuid().ToString("N");
         private string _acknowledgedScriptsVersion;
-        private string _shellScriptsCode, _shellScriptsVersion;
+        private string _shellScriptsCode, _shellScriptsUrl, _shellScriptsVersion;
         // Temporary opt-in diagnostics; do not enable native payload/debug logging for timings.
         public static bool PerformanceLoggingEnabled { get; set; }
         public static double PerformanceNow() => PerformanceLoggingEnabled
@@ -43,7 +45,8 @@ namespace Balancy.WebView
         public void SetScriptsCode(string scriptsCode)
         {
             scriptsCode = scriptsCode ?? "";
-            if (string.Equals(_scriptsCode, scriptsCode, StringComparison.Ordinal)) return;
+            if (string.IsNullOrEmpty(_scriptsUrl) && string.Equals(_scriptsCode, scriptsCode, StringComparison.Ordinal)) return;
+            _scriptsUrl = "";
             _scriptsCode = scriptsCode;
             if (_persistent != null && _persistent.Enabled && string.Equals(_shellScriptsCode, scriptsCode, StringComparison.Ordinal))
             {
@@ -55,6 +58,30 @@ namespace Balancy.WebView
                 _scriptsVersion = Guid.NewGuid().ToString("N");
                 _persistent?.RequestRestart();
             }
+        }
+
+        /// <summary>
+        /// Installs a server-built combined bundle from disk. Version comparison is the
+        /// invalidation contract; the multi-megabyte file is never copied into C#.
+        /// </summary>
+        public void SetScriptsFile(string filePath, string version)
+        {
+            string scriptsUrl = ToFileUrl(filePath);
+            version = version ?? "";
+            if (string.IsNullOrEmpty(scriptsUrl) || string.IsNullOrEmpty(version))
+                throw new ArgumentException("Scripts file path and version are required");
+
+            bool sameVersion = string.Equals(_scriptsVersion, version, StringComparison.Ordinal);
+            _scriptsCode = "";
+            _scriptsUrl = scriptsUrl;
+            _scriptsVersion = version;
+            if (sameVersion || (_persistent != null && _persistent.Enabled &&
+                string.Equals(_shellScriptsVersion, version, StringComparison.Ordinal)))
+            {
+                _persistent?.CancelRestart();
+                return;
+            }
+            _persistent?.RequestRestart();
         }
 
         #region Singleton Implementation
@@ -292,6 +319,64 @@ namespace Balancy.WebView
         private static string Base64(string value) => Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(value ?? ""));
         private static string JsString(string value) => "(" + JsonUtility.ToJson(new StringValue { value = value ?? "" }) + ").value";
         [Serializable] private class StringValue { public string value; }
+
+        private static string ToFileUrl(string path)
+        {
+            if (string.IsNullOrEmpty(path) || path.StartsWith("file://", StringComparison.OrdinalIgnoreCase)) return path ?? "";
+            if (path.StartsWith("/android_asset/", StringComparison.Ordinal)) return "file://" + path;
+            return new Uri(System.IO.Path.GetFullPath(path)).AbsoluteUri;
+        }
+
+        private static string GetBridgeUrl()
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            return "file:///android_asset/Balancy/" + BridgeFileName;
+#elif UNITY_IOS && !UNITY_EDITOR
+            return ToFileUrl(System.IO.Path.Combine(Application.persistentDataPath, "Balancy", "Resources", BridgeFileName));
+#else
+            string path = System.IO.Path.Combine(Application.streamingAssetsPath, "Balancy", BridgeFileName);
+            if (!System.IO.File.Exists(path))
+            {
+                // Editor runs do not execute a player build preprocessor. Materialize the
+                // package resource beside the shell without changing the runtime path.
+                var bridge = Resources.Load<TextAsset>("balancy-webview-bridge");
+                if (bridge == null) throw new InvalidOperationException("balancy-webview-bridge resource is missing");
+                string directory = System.IO.Path.Combine(Application.persistentDataPath, "Balancy", "EditorWebView");
+                System.IO.Directory.CreateDirectory(directory);
+                path = System.IO.Path.Combine(directory, BridgeFileName);
+                System.IO.File.WriteAllText(path, bridge.text);
+            }
+            return ToFileUrl(path);
+#endif
+        }
+
+        private static string HtmlAttribute(string value) => (value ?? "")
+            .Replace("&", "&amp;").Replace("\"", "&quot;").Replace("<", "&lt;").Replace(">", "&gt;");
+
+        private static string BuildRuntimeBootstrap(string bridgeUrl, string scriptsUrl, string scriptsCode,
+            string scriptsVersion, string shellId, string owner, string settings)
+        {
+            string installSource = string.IsNullOrEmpty(scriptsUrl)
+                ? "install(" + JsString(scriptsCode) + ");\n"
+                : "var request = new XMLHttpRequest();\n" +
+                  "request.open('GET', " + JsString(scriptsUrl) + ", true);\n" +
+                  "request.onload = function() { if (request.status === 0 || (request.status >= 200 && request.status < 300)) install(request.responseText); else fail(new Error('Scripts file HTTP ' + request.status)); };\n" +
+                  "request.onerror = function() { fail(new Error('Failed to load scripts file')); };\n" +
+                  "request.send();\n";
+
+            return
+                "window.balancyPerformanceEnabled = " + (PerformanceLoggingEnabled ? "true" : "false") + ";\n" +
+                "window.balancyShellId = " + JsString(shellId) + ";\n" +
+                "window.balancyViewOwner = JSON.parse(" + JsString(owner) + ");\n" +
+                "window.balancySettings = JSON.parse(" + JsString(settings) + ");\n" +
+                "(function() {\n" +
+                "function fail(error) { try { if (window.balancy) window.balancy._postHostError(error); } catch (_) {} console.error(error); }\n" +
+                "function install(code) { try { window.balancy._installScripts(code, " + JsString(scriptsVersion) + "); Promise.resolve(window.balancy.initResponseHandler()).catch(fail); } catch (error) { fail(error); } }\n" +
+                "function start() { try { if (!window.balancy) throw new Error('Balancy bridge did not initialize'); " + installSource + " } catch (error) { fail(error); } }\n" +
+                "if (window.balancy) { start(); return; }\n" +
+                "var bridge = document.createElement('script'); bridge.src = " + JsString(bridgeUrl) + "; bridge.onload = start; bridge.onerror = function() { fail(new Error('Failed to load Balancy bridge')); }; (document.head || document.documentElement).appendChild(bridge);\n" +
+                "})();\ntrue;";
+        }
         #if UNITY_EDITOR_OSX
         private RenderTexture _embeddedTexture = null;
         #endif
@@ -1035,6 +1120,7 @@ namespace Balancy.WebView
                 _performanceShellStart = PerformanceNow();
                 _acknowledgedScriptsVersion = null;
                 _shellScriptsCode = _scriptsCode;
+                _shellScriptsUrl = _scriptsUrl;
                 _shellScriptsVersion = _scriptsVersion;
 #if UNITY_WEBGL && !UNITY_EDITOR
                 return _balancyPrepareWebView(Persistent.ShellId, _shellScriptsCode, _shellScriptsVersion);
@@ -1044,7 +1130,8 @@ namespace Balancy.WebView
                 string shellDir = System.IO.Path.Combine(Application.persistentDataPath, "Balancy");
                 System.IO.Directory.CreateDirectory(shellDir);
                 string shellPath = System.IO.Path.Combine(shellDir, "balancy-shell.html");
-                System.IO.File.WriteAllText(shellPath, shellAsset.text);
+                string shellHtml = shellAsset.text.Replace("__BALANCY_BRIDGE_URL__", HtmlAttribute(GetBridgeUrl()));
+                System.IO.File.WriteAllText(shellPath, shellHtml);
                 ApplySettings();
                 SetTransparentBackground(true);
                 bool started = _balancyPrepareWebView("file://" + shellPath);
@@ -1646,20 +1733,17 @@ namespace Balancy.WebView
                 var instance = _instance;
                 var owner = instance.Persistent.Preparing ? "null" : (string.IsNullOrEmpty(instance._ownerJson) ? "null" : instance._ownerJson);
                 var settings = instance.Persistent.Preparing ? "null" : (string.IsNullOrEmpty(instance._additionalInfo) ? "null" : instance._additionalInfo);
-                var bridge = Resources.Load<TextAsset>("balancy-webview-bridge");
                 string shellId = instance.Persistent.ShellId;
-                var fullCode =
-                    "window.balancyPerformanceEnabled = " + (PerformanceLoggingEnabled ? "true" : "false") + ";\n" +
-                    "window.balancyShellId = " + JsString(shellId) + ";\ntry {\n" +
-                    "window.balancyViewOwner = JSON.parse(" + JsString(owner) + ");\n" +
-                    "window.balancySettings = JSON.parse(" + JsString(settings) + ");\n" +
-                    (bridge == null ? "" : bridge.text) + "\n" +
-                    "window.balancy._installScripts(" + JsString(preparingShell ? instance._shellScriptsCode : instance._scriptsCode) + "," + JsString(preparingShell ? instance._shellScriptsVersion : instance._scriptsVersion) + ");\n" +
-                    "window.balancy.initResponseHandler();\n" +
-                    "} catch(error) { if(window.balancy) window.balancy._postHostError(error); console.error(error); }\ntrue;";
+                string scriptsUrl = preparingShell ? instance._shellScriptsUrl : instance._scriptsUrl;
+                string scriptsCode = preparingShell ? instance._shellScriptsCode : instance._scriptsCode;
+                string scriptsVersion = preparingShell ? instance._shellScriptsVersion : instance._scriptsVersion;
+                var fullCode = BuildRuntimeBootstrap(GetBridgeUrl(), scriptsUrl, scriptsCode,
+                    scriptsVersion, shellId, owner, settings);
                 var injectionStarted = PerformanceNow();
                 success = _balancyInjectJSCode(fullCode);
-                PerformanceLog("injectBridgeDispatch", injectionStarted, shellId, "codeChars=" + fullCode.Length);
+                PerformanceLog("injectBridgeDispatch", injectionStarted, shellId,
+                    "codeChars=" + fullCode.Length + " bridge=file scripts=" + (string.IsNullOrEmpty(scriptsUrl) ? "inline" : "file") +
+                    " version=" + scriptsVersion);
 #endif
             }
             if (preparingShell || (!success && _instance.Persistent.Enabled))

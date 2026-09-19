@@ -26,7 +26,29 @@ namespace Balancy
         private static bool _prepareRequested, _dataAvailable, _scriptsLoaded;
         private static Action _pendingPrepared;
         private static Action<string> _pendingPrepareFailed;
+        public sealed class ScriptsBundleInfo
+        {
+            public string Path;
+            public string Version;
+        }
+
         // Kept separate from transport so readiness/failure paths can be tested without native code.
+        // Combined bundles stay on disk; only legacy projects materialize a multi-megabyte C# string.
+        internal static Func<ScriptsBundleInfo> ReadScriptsBundleInfo = () => {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            // The browser build keeps SDK files in Emscripten virtual filesystem and
+            // passes script source into its iframe. A native path is not a browser URL,
+            // so preserve that transport until WebGL exposes a blob URL.
+            return null;
+#else
+            var pathPtr = LibraryMethods.General.balancyDataObjectGetCombinedScriptsPath();
+            var versionPtr = LibraryMethods.General.balancyDataObjectGetCombinedScriptsVersion();
+            string path = pathPtr == IntPtr.Zero ? "" : Marshal.PtrToStringAnsi(pathPtr) ?? "";
+            string version = versionPtr == IntPtr.Zero ? "" : Marshal.PtrToStringAnsi(versionPtr) ?? "";
+            return string.IsNullOrEmpty(path) || string.IsNullOrEmpty(version)
+                ? null : new ScriptsBundleInfo { Path = path, Version = version };
+#endif
+        };
         internal static Func<string> ReadScripts = () => {
             var ptr = LibraryMethods.General.balancyDataObjectCompileAllScripts();
             if (ptr == IntPtr.Zero) throw new InvalidOperationException("Script bundle is unavailable");
@@ -120,11 +142,23 @@ namespace Balancy
             try
             {
                 if (_webView == null) return false;
-                string scriptsCode = ReadScripts();
-                Debug.Log($"[RenderViewsManager] Scripts compiled: {scriptsCode.Length} characters");
-                _webView.SetScriptsCode(scriptsCode);
+                var bundle = ReadScriptsBundleInfo();
+                if (bundle != null)
+                {
+                    _webView.SetScriptsFile(bundle.Path, bundle.Version);
+                    Debug.Log($"[RenderViewsManager] Scripts bundle ready: version={bundle.Version} path={bundle.Path}");
+                    BalancyWebView.PerformanceLog("resolveScriptsBundle", started, null,
+                        "mode=file version=" + bundle.Version + " pathChars=" + bundle.Path.Length);
+                }
+                else
+                {
+                    string scriptsCode = ReadScripts();
+                    Debug.Log($"[RenderViewsManager] Legacy scripts compiled: {scriptsCode.Length} characters");
+                    _webView.SetScriptsCode(scriptsCode);
+                    BalancyWebView.PerformanceLog("readScriptsBundle", started, null,
+                        "mode=legacy scriptChars=" + scriptsCode.Length);
+                }
                 _scriptsLoaded = true;
-                BalancyWebView.PerformanceLog("readScriptsBundle", started, null, "scriptChars=" + scriptsCode.Length);
                 return true;
             }
             catch (Exception e)
@@ -175,10 +209,10 @@ namespace Balancy
             if (status.IsCMSUpdated) _webView?.InvalidateCache();
             if (_prepareRequested)
             {
-                // A profile-only cloud update cannot change view scripts. Keeping the
-                // acknowledged bundle avoids copying/comparing a multi-megabyte string
-                // and, more importantly, avoids replacing a ready persistent WebView.
-                if ((!_scriptsLoaded || status.IsCMSUpdated) && !TryRefreshScripts()) return;
+                // Data-object scripts can change even when the dictionaries-only CMS flag
+                // is false. Resolve the cheap path/version descriptor on every update;
+                // SetScriptsFile restarts the shell only when that version actually changed.
+                if (!TryRefreshScripts()) return;
                 TryPrepareRequestedWebView();
             }
             else _scriptsLoaded = false; // Classic/direct URL opens read lazily after updates.

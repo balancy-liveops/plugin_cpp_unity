@@ -260,6 +260,12 @@ namespace Balancy
 
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern IntPtr balancyDataObjectCompileAllScripts();
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyDataObjectGetCombinedScriptsPath();
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern IntPtr balancyDataObjectGetCombinedScriptsVersion();
         }
 
         public static class WebSocket

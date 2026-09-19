@@ -33,16 +33,23 @@ namespace Balancy.Tests
             get => (Func<string>)ManagerType.GetField("ReadScripts", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
             set => ManagerType.GetField("ReadScripts", BindingFlags.Static | BindingFlags.NonPublic).SetValue(null, value);
         }
+        private static Func<RenderViewsManager.ScriptsBundleInfo> ReadScriptsBundleInfo {
+            get => (Func<RenderViewsManager.ScriptsBundleInfo>)ManagerType.GetField("ReadScriptsBundleInfo", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
+            set => ManagerType.GetField("ReadScriptsBundleInfo", BindingFlags.Static | BindingFlags.NonPublic).SetValue(null, value);
+        }
         private static void DataUpdated(Callbacks.DataUpdatedStatus status) =>
             ManagerType.GetMethod("HandleContentUpdated", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null, new object[] { status });
 
         private GameObject _gameObject;
         private BalancyWebView _webView;
+        private Func<RenderViewsManager.ScriptsBundleInfo> _originalReadScriptsBundleInfo;
 
         [SetUp]
         public void SetUp()
         {
             CleanUpManagedState.Invoke(null, null);
+            _originalReadScriptsBundleInfo = ReadScriptsBundleInfo;
+            ReadScriptsBundleInfo = () => null; // Existing tests exercise the legacy fallback explicitly.
             _gameObject = new GameObject("Balancy render views lifecycle test");
             _webView = _gameObject.AddComponent<BalancyWebView>();
         }
@@ -51,6 +58,7 @@ namespace Balancy.Tests
         public void TearDown()
         {
             CleanUpManagedState.Invoke(null, null);
+            ReadScriptsBundleInfo = _originalReadScriptsBundleInfo;
             UnityEngine.Object.DestroyImmediate(_gameObject);
         }
 
@@ -252,7 +260,7 @@ namespace Balancy.Tests
         }
 
         [Test]
-        public void SameScriptUpdatePreservesShellAndReadsOnlyOnDataUpdate()
+        public void SameScriptUpdatePreservesShellWhileEveryDataUpdateChecksVersion()
         {
             var read = ReadScripts;
             int reads = 0, destroyed = 0;
@@ -271,8 +279,64 @@ namespace Balancy.Tests
                 RenderViewsManager.PrepareWebView(() => ready++);
                 Assert.That(reads, Is.EqualTo(1)); Assert.That(ready, Is.EqualTo(2));
                 DataUpdated(new Callbacks.DataUpdatedStatus(true, false, true));
-                state.Tick(); Assert.That(reads, Is.EqualTo(1)); Assert.That(destroyed, Is.Zero);
+                state.Tick(); Assert.That(reads, Is.EqualTo(2)); Assert.That(destroyed, Is.Zero);
             } finally { state.Reset(); ReadScripts = read; }
+        }
+
+        [Test]
+        public void FileBootstrapPassesOnlyUrlsAndVersionToNativeInjection()
+        {
+            var method = typeof(BalancyWebView).GetMethod("BuildRuntimeBootstrap", BindingFlags.Static | BindingFlags.NonPublic);
+            string code = (string)method.Invoke(null, new object[] {
+                "file:///android_asset/Balancy/balancy-webview-bridge.js",
+                "file:///data/user/0/game/scripts_combined_dev_v42.js",
+                "THIS_LARGE_INLINE_BODY_MUST_NOT_TRAVEL",
+                "/dev/scripts_combined_v42.js", "shell", "null", "null"
+            });
+            StringAssert.Contains("balancy-webview-bridge.js", code);
+            StringAssert.Contains("scripts_combined_dev_v42.js", code);
+            StringAssert.Contains("/dev/scripts_combined_v42.js", code);
+            StringAssert.Contains("XMLHttpRequest", code);
+            StringAssert.DoesNotContain("THIS_LARGE_INLINE_BODY_MUST_NOT_TRAVEL", code);
+            Assert.That(code.Length, Is.LessThan(5000));
+        }
+
+        [Test]
+        public void CombinedScriptsUsePublishedVersionWithoutReadingTheBundle()
+        {
+            int descriptorReads = 0, legacyReads = 0, destroyed = 0;
+            var state = new PersistentViewState(_ => true, () => {}, () => {}, () => destroyed++, () => {}, _ => {}, () => 0);
+            typeof(BalancyWebView).GetField("_persistent", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(_webView, state);
+            _webView.SetScriptsFile("/tmp/scripts-v1.js", "/dev/scripts_combined_v1.js");
+            state.Prepare(() => {
+                typeof(BalancyWebView).GetField("_shellScriptsVersion", BindingFlags.Instance | BindingFlags.NonPublic)
+                    .SetValue(_webView, "/dev/scripts_combined_v1.js");
+                return true;
+            }, null, null);
+            state.Receive("shellReady", null, state.ShellId, null);
+            WebViewField.SetValue(null, _webView);
+            var read = ReadScripts;
+            ReadScripts = () => { legacyReads++; return "legacy"; };
+            ReadScriptsBundleInfo = () => {
+                descriptorReads++;
+                return new RenderViewsManager.ScriptsBundleInfo {
+                    Path = descriptorReads == 1 ? "/tmp/scripts-v1.js" : "/tmp/scripts-v2.js",
+                    Version = descriptorReads == 1 ? "/dev/scripts_combined_v1.js" : "/dev/scripts_combined_v2.js"
+                };
+            };
+            try
+            {
+                RenderViewsManager.PrepareWebView();
+                DataUpdated(new Callbacks.DataUpdatedStatus(false, false, true));
+                Assert.That(state.Preparing, Is.False);
+                DataUpdated(new Callbacks.DataUpdatedStatus(true, false, true));
+                state.Tick();
+                Assert.That(state.Preparing, Is.True, "Version change must restart even when IsCMSUpdated is false");
+                Assert.That(descriptorReads, Is.EqualTo(2));
+                Assert.That(legacyReads, Is.Zero);
+                Assert.That(destroyed, Is.EqualTo(1));
+            }
+            finally { state.Reset(); ReadScripts = read; }
         }
 
         [Test]

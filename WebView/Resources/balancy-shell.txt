@@ -11,5 +11,6 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: transparen
 </head>
 <body>
 <div id="root-container"></div>
+<script src="__BALANCY_BRIDGE_URL__"></script>
 </body>
 </html>
