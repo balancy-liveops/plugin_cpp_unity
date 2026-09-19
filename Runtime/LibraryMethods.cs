@@ -175,7 +175,12 @@ namespace Balancy
 
 #if UNITY_ANDROID && !UNITY_EDITOR
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-            public static extern void balancyInitUnityFileHelperAndroid(string persistentDataPath, string streamingAssetsSubpath, string codePath);
+            public static extern void balancyInitUnityFileHelperAndroid(string persistentDataPath, string streamingAssetsSubpath,
+                string codePath);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyInitUnityFileHelperAndroidWithAssetManager(string persistentDataPath,
+                string streamingAssetsSubpath, string codePath, IntPtr javaVm, IntPtr assetManagerObject);
 
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyAndroidPreloadResource(string fileName, string content);

@@ -79,19 +79,35 @@ namespace Balancy
             Debug.Log("[Balancy] Preloading files from StreamingAssets...");
             yield return PreloadStreamingAssets(resourcesPath);
 #elif UNITY_ANDROID && !UNITY_EDITOR
-            // Android: use FileHelperAndroid — reads text resources from preloaded in-memory cache,
-            // serves file:///android_asset/ URLs to WebView
+            // Android: native AAssetManager keeps the synchronous C++ file contract while
+            // reading packaged files lazily, without copying every text asset through C#/JNI.
             var streamingAssetsSubpath = "Balancy/";
-            Balancy.LibraryMethods.General.balancyInitUnityFileHelperAndroid(Application.persistentDataPath, streamingAssetsSubpath, codePath);
+            bool nativeAssetManagerReady = false;
+            try
+            {
+                using (var unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer"))
+                using (var activity = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity"))
+                using (var assetManager = activity.Call<AndroidJavaObject>("getAssets"))
+                {
+                    Balancy.LibraryMethods.General.balancyInitUnityFileHelperAndroidWithAssetManager(
+                        Application.persistentDataPath, streamingAssetsSubpath, codePath,
+                        AndroidJNI.GetJavaVM(), assetManager.GetRawObject());
+                    nativeAssetManagerReady = true;
+                }
+            }
+            catch (EntryPointNotFoundException)
+            {
+                // Supports an incremental package update where the managed files were
+                // imported before the matching native libraries.
+                Balancy.LibraryMethods.General.balancyInitUnityFileHelperAndroid(
+                    Application.persistentDataPath, streamingAssetsSubpath, codePath);
+                PreloadAndroidTextResourcesSync(streamingAssetsSubpath);
+            }
 
             var resourcesPath = Path.Combine(Application.streamingAssetsPath, "Balancy/");
             DataObjectsManager.Init(Application.persistentDataPath, resourcesPath);
 
-            // Preload text resources from StreamingAssets into C++ memory using synchronous AssetManager reads
-            long preloadStarted = FreezeDiagnostics.Now;
-            FreezeDiagnostics.Log("ANDROID_PRELOAD BEGIN");
-            try { PreloadAndroidTextResourcesSync(streamingAssetsSubpath); }
-            finally { FreezeDiagnostics.End("ANDROID_PRELOAD END", preloadStarted, 0); }
+            FreezeDiagnostics.Log("ANDROID_NATIVE_ASSET_MANAGER ready=" + nativeAssetManagerReady);
             yield return null;
 #elif UNITY_IOS && !UNITY_EDITOR
             // iOS: copy StreamingAssets to PersistentDataPath so WebView can access
