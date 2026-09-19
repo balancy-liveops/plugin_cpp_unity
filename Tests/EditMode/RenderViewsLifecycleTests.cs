@@ -271,7 +271,7 @@ namespace Balancy.Tests
                 RenderViewsManager.PrepareWebView(() => ready++);
                 Assert.That(reads, Is.EqualTo(1)); Assert.That(ready, Is.EqualTo(2));
                 DataUpdated(new Callbacks.DataUpdatedStatus(true, false, true));
-                state.Tick(); Assert.That(reads, Is.EqualTo(2)); Assert.That(destroyed, Is.Zero);
+                state.Tick(); Assert.That(reads, Is.EqualTo(1)); Assert.That(destroyed, Is.Zero);
             } finally { state.Reset(); ReadScripts = read; }
         }
 

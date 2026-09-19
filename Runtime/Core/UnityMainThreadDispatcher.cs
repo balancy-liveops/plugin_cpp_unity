@@ -209,18 +209,19 @@ namespace Balancy
             if (_mainThreadId == -1)
                 _mainThreadId = System.Threading.Thread.CurrentThread.ManagedThreadId;
 
-            Action[] actions;
-            lock (_executionQueue)
-            {
-                if (_executionQueue.Count == 0)
-                    return;
-                actions = _executionQueue.ToArray();
-                _executionQueue.Clear();
-            }
-
             long batchStarted = FreezeDiagnostics.Now;
-            foreach (var action in actions)
+            int processed = 0;
+            int scheduled;
+            lock (_executionQueue) scheduled = _executionQueue.Count;
+            while (processed < scheduled)
             {
+                Action action;
+                lock (_executionQueue)
+                {
+                    if (_executionQueue.Count == 0) break;
+                    action = _executionQueue.Dequeue();
+                }
+
                 long actionStarted = FreezeDiagnostics.Now;
                 try
                 {
@@ -231,8 +232,16 @@ namespace Balancy
                     Debug.LogException(e);
                 }
                 finally { FreezeDiagnostics.End("DISPATCH_ACTION", actionStarted); }
+                processed++;
+
+#if !UNITY_EDITOR
+                // Once gameplay can start, keep queued SDK callbacks inside a small
+                // per-frame budget. Newly queued work keeps FIFO order for later frames.
+                if (Controller.IsReadyToUse && FreezeDiagnostics.Ms(batchStarted) >= 4.0)
+                    break;
+#endif
             }
-            FreezeDiagnostics.End("DISPATCH_BATCH count=" + actions.Length, batchStarted);
+            FreezeDiagnostics.End("DISPATCH_BATCH count=" + processed, batchStarted);
         }
 
         // Cleanup the instance on destroy

@@ -3,11 +3,12 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.Networking;
 #if UNITY_EDITOR
 using System.Net.Http;
-using System.Threading.Tasks;
 using UnityEditor;
 #endif
 
@@ -44,8 +45,14 @@ namespace Balancy.Network
 
         private static volatile bool _isStopped = false;
         private static int _generation;
+        // Native CDN completion may parse/save megabytes and unzip payloads. Keep its
+        // original serial ordering, but never execute that work on Unitys frame thread.
+        private static readonly SemaphoreSlim _fileCompletionGate = new SemaphoreSlim(1, 1);
+        private static int _pendingNativeFileCompletions;
 
         public static bool IsStopped => _isStopped;
+        internal static bool HasPendingNativeFileCompletions =>
+            Volatile.Read(ref _pendingNativeFileCompletions) != 0;
 
 #if UNITY_EDITOR
         // HttpClient for Editor mode - use a dictionary to manage different clients with different timeouts
@@ -89,15 +96,25 @@ namespace Balancy.Network
 
             if (_instance == null) return;
 
-            _instance.StopAllCoroutines();
-            _instance.CleanupResources();
+            // Stop waits for an already-entered native file completion before the
+            // controller destroys C++ state. New workers observe _isStopped above.
+            _fileCompletionGate.Wait();
+            try
+            {
+                _instance.StopAllCoroutines();
+                _instance.CleanupResources();
 
-            if (Application.isPlaying)
-                Destroy(_instance.gameObject);
-            else
-                DestroyImmediate(_instance.gameObject);
+                if (Application.isPlaying)
+                    Destroy(_instance.gameObject);
+                else
+                    DestroyImmediate(_instance.gameObject);
 
-            _instance = null;
+                _instance = null;
+            }
+            finally
+            {
+                _fileCompletionGate.Release();
+            }
         }
         
         // Method to manually clean up resources
@@ -616,15 +633,40 @@ namespace Balancy.Network
 
             try
             {
-                // Send the result back to the native plugin
                 long callbackStarted = FreezeDiagnostics.Now;
-                FreezeDiagnostics.Log(trace + " CALLBACK_BEGIN bytes=" + dataSize);
-                try
+                FreezeDiagnostics.Log(trace + " CALLBACK_WORKER_BEGIN bytes=" + dataSize);
+#if UNITY_WEBGL && !UNITY_EDITOR
+                if (!_isStopped)
+                    InvokeNative(() => balancyHandleFileLoadComplete(requestId, success, errorCode, dataPtr, dataSize, contentType));
+#else
+                int generation = _generation;
+                Exception callbackError = null;
+                Interlocked.Increment(ref _pendingNativeFileCompletions);
+                var callbackTask = Task.Run(() =>
                 {
-                    if (!_isStopped)
-                        InvokeNative(() => balancyHandleFileLoadComplete(requestId, success, errorCode, dataPtr, dataSize, contentType));
-                }
-                finally { FreezeDiagnostics.End(trace + " CALLBACK_END", callbackStarted, 0); }
+                    _fileCompletionGate.Wait();
+                    try
+                    {
+                        if (!_isStopped && generation == _generation)
+                            InvokeNative(() => balancyHandleFileLoadComplete(requestId, success, errorCode, dataPtr, dataSize, contentType));
+                    }
+                    catch (Exception exception)
+                    {
+                        callbackError = exception;
+                    }
+                    finally
+                    {
+                        _fileCompletionGate.Release();
+                        if (Interlocked.Decrement(ref _pendingNativeFileCompletions) == 0)
+                            Controller.NotifyNativeFileCompletionsDrained();
+                    }
+                });
+                while (!callbackTask.IsCompleted)
+                    yield return null;
+                if (callbackError != null)
+                    Debug.LogException(callbackError);
+#endif
+                FreezeDiagnostics.End(trace + " CALLBACK_WORKER_END", callbackStarted, 0);
             }
             finally
             {

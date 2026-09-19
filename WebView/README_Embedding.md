@@ -13,7 +13,7 @@ The setting also applies when a persistent shell is already prepared but hidden.
 
 ### Persistent preparation and data updates
 
-`RenderViewsManager.PrepareWebView(onReady, onFailed)` explicitly opts the current SDK session into persistent mode. It may be called before SDK initialization: preparation waits until the first data-ready notification. The optional `onReady` reports WebView preparation completion; it is separate from `Callbacks.OnDataUpdated`.
+`RenderViewsManager.PrepareWebView(onReady, onFailed)` explicitly opts the current SDK session into persistent mode. It may be called before SDK initialization: the native WebView is prewarmed while local files are prepared, then restarted with the local script snapshot. In this opt-in startup case the first `Callbacks.OnDataUpdated` waits for that script-backed shell, so the Android cold-WebView pause cannot move into gameplay. The optional `onReady` still reports the WebView preparation result directly.
 
 Scripts are read when preparing and on data updates, rather than on each persistent window opening. Unchanged scripts reuse the shell. Changed scripts replace the entire shell after the current view closes; hiding a view does not close it. A window requested during replacement waits for preparation. Script code is injected during preparation, including Unity WebGL, and is omitted from ordinary `loadView` messages.
 

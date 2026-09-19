@@ -16,7 +16,8 @@ namespace Balancy
         internal static double Ms(long start) => (Now - start) * 1000.0 / Stopwatch.Frequency;
         internal static void Log(string text)
         {
-            UnityEngine.Debug.Log("[FREEZE182] t_ms=" + Ms(Origin).ToString("F1", CultureInfo.InvariantCulture)
+            UnityEngine.Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null, "{0}",
+                "[FREEZE182] t_ms=" + Ms(Origin).ToString("F1", CultureInfo.InvariantCulture)
                 + " tid=" + Thread.CurrentThread.ManagedThreadId + " " + text);
         }
         internal static void End(string name, long start, double threshold = 20)

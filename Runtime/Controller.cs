@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Balancy.Core;
 using Balancy.Data.SmartObjects;
@@ -20,6 +21,8 @@ namespace Balancy
         private static bool _nativeInitialized;
         private static int _lifecycleGeneration;
         private static Coroutine _initCoroutine;
+        private static readonly object _deferredNativeCallbacksLock = new object();
+        private static readonly Queue<Action> _deferredNativeCallbacks = new Queue<Action>();
 
         public static bool IsReadyToUse => _isReadyToUse;
         internal static bool IsNativeInitialized => _nativeInitialized;
@@ -86,7 +89,7 @@ namespace Balancy
             Balancy.UnzipBridge.Initialize(); // Initialize Unity ZIP bridge for all platforms
 
             LibraryMethods.General.balancySetInvokeInMainThreadCallback(InvokeInMainThread);
-            FreezeDiagnostics.Log("SESSION sdk=latest diagnostic=freeze-latest-no-fix-v1 platform=" + Application.platform
+            FreezeDiagnostics.Log("SESSION sdk=latest diagnostic=startup-pipeline-v2 platform=" + Application.platform
                 + " unity=" + Application.unityVersion + " device=" + SystemInfo.deviceModel
                 + " launchType=" + appConfig.LaunchType);
             long filesStarted = FreezeDiagnostics.Now;
@@ -184,6 +187,8 @@ namespace Balancy
             RunCleanupStep(Profiles.CleanUp);
             RunCleanupStep(CMS.CleanUp);
             RunCleanupStep(CustomConditions.Unregister);
+            lock (_deferredNativeCallbacksLock)
+                _deferredNativeCallbacks.Clear();
             RunCleanupStep(UnityMainThreadDispatcher.ClearPendingActions);
 
             if (_nativeInitialized)
@@ -355,6 +360,20 @@ namespace Balancy
             return originalPlatform;
         }
         
+        private static void CompleteDataReady(Balancy.Callbacks.DataUpdatedStatus status, long started)
+        {
+            // A CMS update can re-version scripts/views. GetObjectView memoizes resolved
+            // views, so invalidate only after the matching script snapshot is ready.
+            if (status.IsCMSUpdated)
+                Balancy.Dictionaries.DataObjectsManager.InvalidateLoadedViews();
+            DataUpdated(status.IsCMSUpdated, status.IsProfileUpdated);
+            _isReadyToUse = true;
+            if (status.IsCloudSynced)
+                InvokeSubscribersSafely(OnCloudSynced, callback => callback());
+            InvokeSubscribersSafely(Balancy.Callbacks.OnDataUpdated, callback => callback(status));
+            FreezeDiagnostics.End("DATA_READY END cloud=" + status.IsCloudSynced, started, 0);
+        }
+
         [AOT.MonoPInvokeCallback(typeof(Balancy.ProgressUpdateCallback))]
         private static void OnProgressUpdate(string fileName, float progress)
         {
@@ -406,22 +425,21 @@ namespace Balancy
                         bool isCMSUpdated = notificationDataIsReady.IsCMSUpdated;
                         bool isProfileUpdated = notificationDataIsReady.IsProfileUpdated;
 #endif
-                        RenderViewsManager.HandleContentUpdated(new Balancy.Callbacks.DataUpdatedStatus(
-                            isCloudSynced, isCMSUpdated, isProfileUpdated));
-                        // A CMS update can re-version scripts/views. GetObjectView memoizes
-                        // resolved views and skips the preload on repeat opens, so without
-                        // this the next open would reuse a stale cached view and recompile
-                        // from a disk missing the re-versioned script (original crash).
-                        if (isCMSUpdated)
-                            Balancy.Dictionaries.DataObjectsManager.InvalidateLoadedViews();
-                        DataUpdated(isCMSUpdated, isProfileUpdated);
-                        _isReadyToUse = true;
-                        if (isCloudSynced)
-                            InvokeSubscribersSafely(OnCloudSynced, callback => callback());
-                        InvokeSubscribersSafely(Balancy.Callbacks.OnDataUpdated, callback => callback(new Balancy.Callbacks.DataUpdatedStatus(
-                            isCloudSynced, 
-                            isCMSUpdated,
-                            isProfileUpdated)));
+                        long dataReadyStarted = FreezeDiagnostics.Now;
+                        FreezeDiagnostics.Log("DATA_READY BEGIN cloud=" + isCloudSynced
+                            + " cms=" + isCMSUpdated + " profile=" + isProfileUpdated);
+                        var dataStatus = new Balancy.Callbacks.DataUpdatedStatus(
+                            isCloudSynced, isCMSUpdated, isProfileUpdated);
+                        int dataReadyGeneration = _lifecycleGeneration;
+                        RenderViewsManager.HandleContentUpdatedAndWait(dataStatus, () =>
+                        {
+                            if (!_isInitialized || dataReadyGeneration != _lifecycleGeneration) return;
+                            CompleteDataReady(dataStatus, dataReadyStarted);
+                        });
+                        break;
+                    case Notifications.NotificationType.BackgroundPreloadCompleted:
+                        FreezeDiagnostics.Log("BACKGROUND_PRELOAD_EVENT");
+                        InvokeSubscribersSafely(Balancy.Callbacks.OnBackgroundPreloadCompleted, callback => callback());
                         break;
                     case Notifications.NotificationType.AuthFailed:
 #if UNITY_WEBGL && !UNITY_EDITOR
@@ -821,7 +839,7 @@ namespace Balancy
                     Debug.LogWarning(message);
                     break;
                 default:
-                    Debug.Log(message);
+                    Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null, "{0}", message);
                     break;
             }
         }
@@ -832,17 +850,49 @@ namespace Balancy
             long queued = FreezeDiagnostics.Now;
             int generation = _lifecycleGeneration;
             UnityMainThreadDispatcher.EnqueueFromAnyThread(() =>
+                InvokeNativeMainThreadCallback(id, generation, queued));
+        }
+
+        private static void InvokeNativeMainThreadCallback(int id, int generation, long queued)
+        {
+            if (!_nativeInitialized || generation != _lifecycleGeneration) return;
+
+            // File completions mutate native state under the shared execution gate.
+            // Entering C++ from Unity while that worker owns the gate turns async CDN
+            // work back into a main-thread stall. Defer it until the worker drains.
+            if (Balancy.Network.UnityWebRequestBridge.HasPendingNativeFileCompletions)
             {
-                FreezeDiagnostics.End("NATIVE_CALLBACK_QUEUE_WAIT id=" + id, queued, 100);
-                if (_nativeInitialized && generation == _lifecycleGeneration)
-                {
-                    long started = FreezeDiagnostics.Now;
-                    try { LibraryMethods.General.balancyInvokeMethodInMainThread(id); }
-                    finally { FreezeDiagnostics.End("NATIVE_CALLBACK id=" + id, started); }
-                }
-            });
+                lock (_deferredNativeCallbacksLock)
+                    _deferredNativeCallbacks.Enqueue(() =>
+                        InvokeNativeMainThreadCallback(id, generation, queued));
+                return;
+            }
+
+            FreezeDiagnostics.End("NATIVE_CALLBACK_QUEUE_WAIT id=" + id, queued, 100);
+            long started = FreezeDiagnostics.Now;
+            try { LibraryMethods.General.balancyInvokeMethodInMainThread(id); }
+            finally { FreezeDiagnostics.End("NATIVE_CALLBACK id=" + id, started); }
         }
         
+        internal static void NotifyNativeFileCompletionsDrained()
+        {
+            UnityMainThreadDispatcher.EnqueueFromAnyThread(FlushDeferredNativeCallbacks);
+        }
+
+        private static void FlushDeferredNativeCallbacks()
+        {
+            Action[] callbacks;
+            lock (_deferredNativeCallbacksLock)
+            {
+                if (_deferredNativeCallbacks.Count == 0) return;
+                callbacks = _deferredNativeCallbacks.ToArray();
+                _deferredNativeCallbacks.Clear();
+            }
+
+            foreach (var callback in callbacks)
+                UnityMainThreadDispatcher.EnqueueFromAnyThread(callback);
+        }
+
         public static void PrintSizeAndOffsets<T>()
         {
             Debug.LogWarning($"Size of {typeof(T).Name}: {Marshal.SizeOf<T>()}");

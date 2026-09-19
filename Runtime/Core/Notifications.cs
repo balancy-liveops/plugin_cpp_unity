@@ -27,6 +27,7 @@ namespace Balancy.Core
             DisconnectAnotherSessionConflict = 6,
             AuthRequired = 7,
             ConfigFailed = 8,
+            BackgroundPreloadCompleted = 9,
             SignedOut = 20,
 
             OnNewEventActivated = 100,

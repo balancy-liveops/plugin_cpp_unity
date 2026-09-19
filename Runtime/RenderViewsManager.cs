@@ -132,6 +132,8 @@ namespace Balancy
                 // Preserve the last usable snapshot; the next data update or explicit
                 // Prepare retries. Never destroy an active view on a failed read.
                 Debug.LogError($"[RenderViewsManager] Failed to compile scripts, keeping previous bundle: {e.Message}");
+                if (!_scriptsLoaded && _webView != null && _webView.IsPersistentModeEnabled())
+                    _webView.CloseWebView();
                 var failed = _pendingPrepareFailed;
                 _pendingPrepared = null; _pendingPrepareFailed = null;
                 failed?.Invoke(e.Message);
@@ -145,18 +147,60 @@ namespace Balancy
         private static void HandleLocalizationChanged(string code) => _webView?.InvalidateCache(true);
         internal static void HandleContentUpdated(Callbacks.DataUpdatedStatus status)
         {
+            HandleContentUpdatedAndWait(status, null);
+        }
+
+        internal static void HandleContentUpdatedAndWait(Callbacks.DataUpdatedStatus status, Action onReady)
+        {
+            // If the client opted into persistent mode before the first local snapshot,
+            // finish the one-time WebView engine startup before publishing OnDataUpdated.
+            // Android may pause Unity while creating its first WebView; publishing first
+            // would move that visible pause into gameplay.
+            bool waitForInitialPersistentView = !status.IsCloudSynced && _prepareRequested &&
+                _webView != null;
+            bool completed = false;
+            Action completeOnce = () =>
+            {
+                if (completed) return;
+                completed = true;
+                onReady?.Invoke();
+            };
+            if (waitForInitialPersistentView)
+            {
+                _pendingPrepared += completeOnce;
+                _pendingPrepareFailed += _ => completeOnce();
+            }
+
             _dataAvailable = true;
             if (status.IsCMSUpdated) _webView?.InvalidateCache();
             if (_prepareRequested)
             {
-                if (TryRefreshScripts()) TryPrepareRequestedWebView();
+                // A profile-only cloud update cannot change view scripts. Keeping the
+                // acknowledged bundle avoids copying/comparing a multi-megabyte string
+                // and, more importantly, avoids replacing a ready persistent WebView.
+                if ((!_scriptsLoaded || status.IsCMSUpdated) && !TryRefreshScripts()) return;
+                TryPrepareRequestedWebView();
             }
             else _scriptsLoaded = false; // Classic/direct URL opens read lazily after updates.
+
+            if (!waitForInitialPersistentView) completeOnce();
         }
 
         private static void TryPrepareRequestedWebView()
         {
-            if (!_prepareRequested || !_dataAvailable || _webView == null) return;
+            if (!_prepareRequested || _webView == null) return;
+            if (!_dataAvailable)
+            {
+                // Creating the first native WebView is expensive on Android. Start an
+                // empty shell as soon as the client opts in, while StreamingAssets are
+                // still being prepared. SetScriptsCode requests a shell replacement
+                // when the local snapshot arrives; PersistentViewState keeps the public
+                // preparation callback pending until that script-backed shell is ready.
+                if (!_webView.IsPersistentModeEnabled())
+                    _webView.PrepareWebView(null, error =>
+                        Debug.LogWarning("[RenderViewsManager] WebView prewarm failed; retrying with data: " + error));
+                return;
+            }
             if (!_scriptsLoaded && !TryRefreshScripts()) return;
             var ready = _pendingPrepared; var failed = _pendingPrepareFailed;
             _pendingPrepared = null; _pendingPrepareFailed = null;

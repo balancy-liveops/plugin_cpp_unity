@@ -88,6 +88,7 @@ namespace Balancy
         public delegate void OnDisconnectedDelegate(DisconnectReason reason);
         
         public static OnDataUpdatedDelegate OnDataUpdated = null;
+        public static Action OnBackgroundPreloadCompleted = null;
         public static OnErrorDelegate OnAuthFailed = null;
         public static OnErrorDelegate OnCloudProfileFailedToLoad = null;
         public static OnErrorDelegate OnConfigFailedToLoad = null;
@@ -199,6 +200,7 @@ namespace Balancy
         public static void InitExamplesWithLogs()
         {
             OnDataUpdated += status => Debug.Log(" => Balancy.OnDataUpdated Cloud = " + status.IsCloudSynced + " ;CMS = " + status.IsCMSUpdated + " ;Profiles = " + status.IsProfileUpdated);
+            OnBackgroundPreloadCompleted += () => Debug.Log(" => Balancy.OnBackgroundPreloadCompleted");
             OnAuthFailed += status => Debug.Log(" => Balancy.OnAuthFailed: " + status.Message);
             OnCloudProfileFailedToLoad += status => Debug.Log(" => Balancy.OnCloudProfileFailedToLoad: " + status.Message);
             OnConfigFailedToLoad += status => Debug.Log(" => Balancy.OnConfigFailedToLoad: " + status.Message);
@@ -240,6 +242,7 @@ namespace Balancy
         internal static void ClearAll()
         {
             OnDataUpdated = null;
+            OnBackgroundPreloadCompleted = null;
             OnAuthFailed = null;
             OnCloudProfileFailedToLoad = null;
             OnConfigFailedToLoad = null;
