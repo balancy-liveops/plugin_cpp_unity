@@ -29,10 +29,15 @@ namespace Balancy.UI
 
         public void Init(Sprite sprite, Func<int> getSecondsLeft)
         {
-            icon.sprite = sprite;
+            if (sprite != null) SetIcon(sprite);
             _getSecondsLeft = getSecondsLeft;
 
             _cancellationTokenSource = Tasks.Periodic(1, UpdateTimer);
+        }
+
+        public void SetIcon(Sprite sprite)
+        {
+            icon.sprite = sprite;
         }
 
         public void SetOnClick(Action callback)

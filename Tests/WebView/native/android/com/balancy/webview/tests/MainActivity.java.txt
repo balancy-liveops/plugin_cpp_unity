@@ -124,7 +124,7 @@ public class MainActivity extends Activity {
             check("encoded shell directory created", shellDirectory.mkdirs() || shellDirectory.isDirectory());
             java.io.File shell = new java.io.File(shellDirectory, "shell page %20 # ü.html");
             try (java.io.FileOutputStream stream = new java.io.FileOutputStream(shell)) {
-                stream.write("<!doctype html><html data-balancy-shell><body><div id='root-container'></div></body></html>".getBytes("UTF-8"));
+                stream.write("<!doctype html><html data-balancy-shell><head><script src='file:///android_asset/bridge.js'></script><script>window.originalBridgeReceiver=window.balancy._receiveMessageFromUnity;</script></head><body><div id='root-container'></div></body></html>".getBytes("UTF-8"));
             }
             android.graphics.Bitmap pixel = android.graphics.Bitmap.createBitmap(1, 1, android.graphics.Bitmap.Config.ARGB_8888);
             try (java.io.FileOutputStream stream = new java.io.FileOutputStream(new java.io.File(getFilesDir(), "icon.png"))) {
@@ -141,13 +141,15 @@ public class MainActivity extends Activity {
         try {
             if (method.equals("OnAndroidLoadCompleted") && payload.equals("true") && !bridgeStarted) {
                 bridgeStarted = true;
-                java.io.InputStream input = getAssets().open("bridge.js");
-                java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
-                byte[] buf = new byte[8192]; int n; while ((n = input.read(buf)) != -1) bytes.write(buf, 0, n); input.close();
-                input = getAssets().open("prefab-fixture.js");
+                java.io.InputStream input = getAssets().open("prefab-fixture.js");
+                byte[] buf = new byte[8192]; int n;
                 java.io.ByteArrayOutputStream fixture = new java.io.ByteArrayOutputStream();
                 while ((n = input.read(buf)) != -1) fixture.write(buf, 0, n); input.close();
-                plugin.injectJavaScript(bytes.toString("UTF-8") + ";" + fixture.toString("UTF-8") + ";window.balancy._installScripts('window.bundleExecutions=(window.bundleExecutions||0)+1;', 'native-test');window.balancy.initResponseHandler();");
+                ((WebView)field("webView")).evaluateJavascript("window.balancy._receiveMessageFromUnity === window.originalBridgeReceiver", value -> {
+                    check("page finish preserves bundled bridge receiver", "true".equals(value));
+                    if (!"true".equals(value)) finishResults();
+                });
+                plugin.injectJavaScript(fixture.toString("UTF-8") + ";window.balancy._installScripts('window.bundleExecutions=(window.bundleExecutions||0)+1;', 'native-test');window.balancy.initResponseHandler();");
                 return;
             }
             if (!method.equals("OnAndroidMessageReceived")) return;

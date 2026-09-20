@@ -219,14 +219,18 @@ static void WaitUntil(BOOL (^condition)(void), double deadline, dispatch_block_t
             if(action == 10) result = @"Localized text";
             if(action == 11) {
                 self.imageRequests++;
-                result = @"balancy-local://local/persistent/icon.png";
+                // Match the C++ FileHelper response; production transport must map it.
+                NSString *path = [request[@"params"][@"id"] isEqual:@"packaged-icon"]
+                    ? [NSBundle.mainBundle.bundlePath stringByAppendingPathComponent:@"Balancy/packaged icon.png"]
+                    : [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/icon.png"];
+                result = [NSURL fileURLWithPath:path].absoluteString;
             }
             [responses addObject:@{@"id":request[@"id"], @"result":result}];
         }
         [self send:@{@"type":@"batch-response",@"responses":responses}];
     } else if ([type isEqual:@"webview-performance"] && [msg[@"event"] isEqual:@"viewReady"]) {
         NSDictionary *counters = msg[@"counters"];
-        Check([NSString stringWithFormat:@"real image decoded %d",self.bridgeCycle], [counters[@"imagesDecoded"] intValue] == 1 && [counters[@"imageDecodeErrors"] intValue] == 0);
+        Check([NSString stringWithFormat:@"real image decoded %d",self.bridgeCycle], [counters[@"imagesDecoded"] intValue] == 2 && [counters[@"imageDecodeErrors"] intValue] == 0);
     } else if ([type isEqual:@"viewLoadError"] || [type isEqual:@"shellError"]) {
         Check([@"real bridge error " stringByAppendingString:raw], NO); [self finish];
     } else if ([type isEqual:@"viewReady"]) {
@@ -237,7 +241,7 @@ static void WaitUntil(BOOL (^condition)(void), double deadline, dispatch_block_t
         else {
             [self.controller.webView evaluateJavaScript:@"window.prefabLoads === 1 && window.prefabDestroyed === 40 && balancy.ElementsManager.elementObjects.size === 0 && balancy.ElementsManager.instanceRoots.size === 0 && document.body.children.length === 1 && window.bundleExecutions === 1 && document.getElementById('root-container').children.length === 0" completionHandler:^(id result,NSError *error){
                 Check(@"real bridge reuses code and clears DOM", !error && [result boolValue]);
-                Check(@"real bridge caches image URL", self.imageRequests == 1);
+                Check(@"real bridge caches image URL", self.imageRequests == 2);
                 [results addObject:[NSString stringWithFormat:@"MEASURE real bridge ready milliseconds %@",self.bridgeTimes]];
                 [self.controller close]; self.controller = nil; [self finish];
             }];
@@ -247,7 +251,7 @@ static void WaitUntil(BOOL (^condition)(void), double deadline, dispatch_block_t
 - (void)openBridge {
     self.openStart = CACurrentMediaTime();
     [self send:@{@"type":@"loadView",@"viewId":[NSString stringWithFormat:@"bridge-%d",self.bridgeCycle],
-      @"html":@"<div><div data-script-id='NativeRoot'></div><span data-text-type='localized' data-localization-key='native-text'></span><div data-image-id='icon' style='width:10px;height:10px'></div></div>",
+      @"html":@"<div><div data-script-id='NativeRoot'></div><span data-text-type='localized' data-localization-key='native-text'></span><div data-image-id='icon' style='width:10px;height:10px'></div><div data-image-id='packaged-icon' style='width:10px;height:10px'></div></div>",
       @"scriptsVersion":@"ios-test",@"ownerJson":@"{}",@"additionalInfo":@"{\"trackWebViewEvents\":false}",@"performanceLogging":@YES,
       @"baseUrl":[NSURL fileURLWithPath:[NSHomeDirectory() stringByAppendingFormat:@"/Documents/views/%d/index.html",self.bridgeCycle]].absoluteString}];
 }

@@ -17,6 +17,7 @@ namespace Balancy.UI
         {
             public Element Element;
             public int Priority;
+            public AsyncLoadHandler IconLoad;
         }
         private Dictionary<string, ElementInfo> _activeElements = new Dictionary<string, ElementInfo>();
 
@@ -49,42 +50,38 @@ namespace Balancy.UI
             Balancy.Callbacks.OnProfileResetStart -= CleanUp;
             Balancy.Callbacks.OnGameRefreshed -= OnGameRefreshed;
             // Balancy.Callbacks.OnProfileResetFinish -= RefreshAll;
+            CleanUp();
         }
         
-        private void OnEventDeactivated(EventInfo eventInfo)
-        {
-            if (_activeElements.TryGetValue(eventInfo.GameEventUnnyId, out var elementInfo))
-            {
-                if (elementInfo.Element != null)
-                    Destroy(elementInfo.Element.gameObject);
-                _activeElements.Remove(eventInfo.GameEventUnnyId);
-            }
-        }
+        private void OnEventDeactivated(EventInfo eventInfo) => RemoveElement(eventInfo.GameEventUnnyId);
 
-        private void OnOfferDeactivated(OfferInfo offerInfo, bool wasPurchased)
-        {
-            if (_activeElements.TryGetValue(offerInfo.InstanceId, out var elementInfo))
-            {
-                if (elementInfo.Element != null)
-                    Destroy(elementInfo.Element.gameObject);
-                _activeElements.Remove(offerInfo.InstanceId);
-            }
-        }
+        private void OnOfferDeactivated(OfferInfo offerInfo, bool wasPurchased) => RemoveElement(offerInfo.InstanceId);
 
-        private void OnOfferGroupDeactivated(OfferGroupInfo offerGroupInfo)
+        private void OnOfferGroupDeactivated(OfferGroupInfo offerGroupInfo) => RemoveElement(offerGroupInfo.InstanceId);
+
+        private void RemoveElement(string id)
         {
-            if (_activeElements.TryGetValue(offerGroupInfo.InstanceId, out var elementInfo))
+            if (!_activeElements.TryGetValue(id, out var entry)) return;
+            _activeElements.Remove(id);
+            entry.IconLoad?.Cancel();
+            if (entry.Element != null)
             {
-                if (elementInfo.Element != null)
-                    Destroy(elementInfo.Element.gameObject);
-                _activeElements.Remove(offerGroupInfo.InstanceId);
+                entry.Element.gameObject.SetActive(false);
+                Destroy(entry.Element.gameObject);
             }
         }
 
         private void CleanUp()
         {
-            RemoveChildren();
+            foreach (var entry in _activeElements.Values) entry.IconLoad?.Cancel();
             _activeElements.Clear();
+            if (content == null) return;
+            for (int i = content.childCount - 1; i >= 0; i--)
+            {
+                var child = content.GetChild(i);
+                child.gameObject.SetActive(false);
+                Destroy(child.gameObject);
+            }
         }
 
         private void RefreshAll()
@@ -107,85 +104,38 @@ namespace Balancy.UI
 
         private void TryToAddEvent(EventInfo info)
         {
-            if (info.GameEvent?.UnnyPlacement != placement)
-                return;
-
-            if (_activeElements.ContainsKey(info.GameEventUnnyId))
-            {
-                if (_activeElements[info.GameEventUnnyId].Element)
-                    Destroy(_activeElements[info.GameEventUnnyId].Element.gameObject);
-                _activeElements.Remove(info.GameEventUnnyId);
-            }
-            
-            _activeElements.Add(info.GameEventUnnyId, new ElementInfo
-            {
-                Priority = info.GameEvent?.UnnyPriority ?? 0
-            });
-
-            void OnIconLoaded(Sprite sprite)
-            {
-                AddIconDisplay(info.GameEventUnnyId, info.GameEvent, info, info.GetSecondsLeftBeforeDeactivation,
-                    sprite);
-            }
-
-            if (info.GameEvent?.Icon == null)
-                OnIconLoaded(null);
-            else
-                info.GameEvent?.Icon?.LoadSprite(OnIconLoaded);
+            AddView(info.GameEventUnnyId, info.GameEvent, info, info.GetSecondsLeftBeforeDeactivation);
         }
-        
+
         private void TryToAddOffer(OfferInfo info)
         {
-            if (info.GameOffer?.UnnyPlacement != placement)
-                return;
-            
-            _activeElements.Add(info.InstanceId, new ElementInfo
-            {
-                Priority = info.GameOffer?.UnnyPriority ?? 0
-            });
-            
-            void OnIconLoaded(Sprite sprite)
-            {
-                AddIconDisplay(info.InstanceId, info.GameOffer, info, info.GetSecondsLeftBeforeDeactivation, sprite);
-            }
-
-            if (info.GameOffer?.Icon == null)
-                OnIconLoaded(null);
-            else
-                info.GameOffer?.Icon?.LoadSprite(OnIconLoaded);
+            AddView(info.InstanceId, info.GameOffer, info, info.GetSecondsLeftBeforeDeactivation);
         }
-        
+
         private void TryToAddOffer(OfferGroupInfo info)
         {
-            if (info.GameOfferGroup?.UnnyPlacement != placement)
-                return;
-            
-            _activeElements.Add(info.InstanceId, new ElementInfo
-            {
-                Priority = info.GameOfferGroup?.UnnyPriority ?? 0
-            });
-            
-            void OnIconLoaded(Sprite sprite)
-            {
-                AddIconDisplay(info.InstanceId, info.GameOfferGroup, info, info.GetSecondsLeftBeforeDeactivation, sprite);
-            }
-
-            if (info.GameOfferGroup?.Icon == null)
-                OnIconLoaded(null);
-            else
-                info.GameOfferGroup?.Icon?.LoadSprite(OnIconLoaded);
+            AddView(info.InstanceId, info.GameOfferGroup, info, info.GetSecondsLeftBeforeDeactivation);
         }
 
-        private void AddIconDisplay(string id, IViewModel info, JsonBasedObject owner, Func<int> getSecondsLeft, Sprite sprite)
+        private void AddView(string id, IViewModel info, JsonBasedObject owner, Func<int> getSecondsLeft)
         {
-            if (!_activeElements.ContainsKey(id) || info == null)
-                return;
-                
-            var elementGameObject = GameObject.Instantiate(elementPrefab, content);
-            var element = elementGameObject.GetComponent<Element>();
-            element.Init(sprite, getSecondsLeft);
-            elementGameObject.SetActive(true);
+            if (info == null || info.UnnyPlacement != placement) return;
+            var icon = info.Icon;
+            AddIconDisplay(id, info, owner, getSecondsLeft,
+                icon == null ? null : new Func<Action<Sprite>, AsyncLoadHandler>(icon.LoadSprite));
+        }
 
+        private void AddIconDisplay(string id, IViewModel info, JsonBasedObject owner,
+            Func<int> getSecondsLeft, Func<Action<Sprite>, AsyncLoadHandler> loadIcon)
+        {
+            RemoveElement(id);
+            var elementGameObject = Instantiate(elementPrefab, content);
+            var element = elementGameObject.GetComponent<Element>();
+            var entry = new ElementInfo { Element = element, Priority = info.UnnyPriority };
+            _activeElements.Add(id, entry);
+
+            // Keep the prefab's placeholder and make the button usable before I/O.
+            element.Init(null, getSecondsLeft);
             element.SetOnClick(() =>
             {
                 if (info.UnnyView != null)
@@ -193,13 +143,19 @@ namespace Balancy.UI
                 else
                     MainUI.ShowMessage("Error", "This element doesn't have a View associated with it.", "OK", null);
             });
-
-            _activeElements[id].Element = element;
-
+            elementGameObject.SetActive(true);
             SortElements();
+
+            if (loadIcon == null) return;
+            entry.IconLoad = loadIcon(sprite =>
+            {
+                // The same ID may now belong to a different activation or refresh.
+                if (this == null || !_activeElements.TryGetValue(id, out var current) ||
+                    !ReferenceEquals(current, entry) || entry.Element == null) return;
+                if (sprite != null) entry.Element.SetIcon(sprite);
+            });
         }
 
-        
         private void OnDataUpdated(Callbacks.DataUpdatedStatus status)
         {
             RefreshAll();
@@ -229,31 +185,8 @@ namespace Balancy.UI
         {
             var elements = new List<ElementInfo>(_activeElements.Values);
             elements.Sort((a, b) => b.Priority.CompareTo(a.Priority));
-
-            RemoveChildren(false);
-
-            foreach (var elementInfo in elements)
-            {
-                if (elementInfo.Element == null) continue;
-                RectTransform transform1;
-                (transform1 = elementInfo.Element.transform as RectTransform).SetParent(content, false);
-                transform1.localScale = Vector3.one;
-            }
-        }
-        
-        private void RemoveChildren(bool destroy = true)
-        {
-            int n = content.childCount - 1;
-
-            for (int i = n; i >= 0; --i)
-            {
-                var child = content.GetChild(i);
-                if (child == null) continue;
-                if (destroy)
-                    Destroy(child.gameObject);
-                else
-                    child.SetParent(null);
-            }
+            for (int i = 0; i < elements.Count; i++)
+                if (elements[i].Element != null) elements[i].Element.transform.SetSiblingIndex(i);
         }
     }
 }

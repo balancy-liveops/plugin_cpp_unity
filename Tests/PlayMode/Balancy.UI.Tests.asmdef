@@ -1,0 +1,6 @@
+{
+  "name": "Balancy.UI.Tests",
+  "references": ["Balancy", "Balancy.UI", "Unity.ugui", "Unity.TextMeshPro"],
+  "optionalUnityReferences": ["TestAssemblies"],
+  "autoReferenced": false
+}

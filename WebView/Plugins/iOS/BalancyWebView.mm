@@ -44,6 +44,42 @@ static NSURL* BalancyVirtualURLForFilePath(NSString* filePath) {
     return [NSURL URLWithString:urlString];
 }
 
+// Core image/file responses contain physical file:// URLs. The iOS document
+// lives under balancy-local://; route those resources through the same handler.
+// Only protocol response results are changed, never owner data or custom messages.
+static BOOL BalancyRewriteLocalResourceResult(NSMutableDictionary* response) {
+    id result = response[@"result"];
+    if (![result isKindOfClass:NSString.class] ||
+        ![result hasPrefix:@"file://"]) return NO;
+    NSURL* fileURL = [NSURL URLWithString:result];
+    if (!fileURL.isFileURL) return NO;
+    NSURL* localURL = BalancyVirtualURLForFilePath(fileURL.path);
+    if (localURL == nil) return NO;
+    response[@"result"] = localURL.absoluteString;
+    return YES;
+}
+
+static NSString* BalancyMessageWithLocalResourceURLs(NSString* message) {
+    if ([message rangeOfString:@"file:"].location == NSNotFound) return message;
+    id parsed = [NSJSONSerialization JSONObjectWithData:[message dataUsingEncoding:NSUTF8StringEncoding]
+        options:NSJSONReadingMutableContainers error:nil];
+    if (![parsed isKindOfClass:NSMutableDictionary.class]) return message;
+    NSMutableDictionary* envelope = parsed;
+    BOOL changed = NO;
+    if ([envelope[@"type"] isEqual:@"response"]) {
+        changed = BalancyRewriteLocalResourceResult(envelope);
+    } else if ([envelope[@"type"] isEqual:@"batch-response"] &&
+               [envelope[@"responses"] isKindOfClass:NSArray.class]) {
+        for (id response in envelope[@"responses"]) {
+            if ([response isKindOfClass:NSMutableDictionary.class])
+                changed = BalancyRewriteLocalResourceResult(response) || changed;
+        }
+    }
+    if (!changed) return message;
+    NSData* data = [NSJSONSerialization dataWithJSONObject:envelope options:0 error:nil];
+    return data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : message;
+}
+
 static NSString* BalancyMimeTypeForPath(NSString* path) {
     static NSDictionary<NSString*, NSString*>* mimeTypes;
     static dispatch_once_t onceToken;
@@ -1028,8 +1064,9 @@ static BalancyWebViewController* CreateOrGetWebViewController(void (*messageCall
         return NO;
     }
     
-    // Escape single quotes for JavaScript
-    NSData *jsonData = [NSJSONSerialization dataWithJSONObject:@[message ?: @""] options:0 error:nil];
+    message = BalancyMessageWithLocalResourceURLs(message ?: @"");
+    // Serialize the complete message as a JavaScript string argument.
+    NSData *jsonData = [NSJSONSerialization dataWithJSONObject:@[message] options:0 error:nil];
     NSString *argument = [[NSString alloc] initWithData:jsonData encoding:NSUTF8StringEncoding];
     NSString *script = [NSString stringWithFormat:@"if (window.balancy) { window.balancy._receiveMessageFromUnity((%@)[0]); }", argument];
     

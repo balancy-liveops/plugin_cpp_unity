@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Build native WKWebView regression app and optionally run on a booted iOS Simulator."""
-import argparse, pathlib, subprocess, plistlib, time, shutil
+import argparse, pathlib, subprocess, plistlib, time, shutil, struct, zlib
 p=argparse.ArgumentParser();p.add_argument('--output',type=pathlib.Path,required=True);p.add_argument('--device');a=p.parse_args()
 r=pathlib.Path(__file__).resolve().parents[3];out=a.output;app=out/'NativeTests.app';app.mkdir(parents=True,exist_ok=True)
 sdk=subprocess.check_output(['xcrun','--sdk','iphonesimulator','--show-sdk-path'],text=True).strip()
@@ -10,6 +10,11 @@ shutil.copy2(r/'WebView/Resources/balancy-webview-bridge.txt',app/'bridge.js')
 packaged=app/'Balancy';packaged.mkdir(exist_ok=True)
 shutil.copy2(r/'WebView/Resources/balancy-webview-bridge.txt',packaged/'balancy-webview-bridge.js')
 (packaged/'packaged snapshot.txt').write_text('packaged-v1')
+# Real bundled PNG for the StreamingAssets-style URL regression.
+def png_chunk(kind, data):
+ return struct.pack('!I',len(data))+kind+data+struct.pack('!I',zlib.crc32(kind+data)&0xffffffff)
+(packaged/'packaged icon.png').write_bytes(b'\x89PNG\r\n\x1a\n'+png_chunk(b'IHDR',struct.pack('!IIBBBBB',1,1,8,6,0,0,0))+png_chunk(b'IDAT',zlib.compress(b'\x00\xff\x00\x00\xff'))+png_chunk(b'IEND',b''))
+
 shutil.copy2(pathlib.Path(__file__).parent/'prefab-fixture.js.txt',app/'prefab-fixture.js')
 subprocess.run(['codesign','--force','--sign','-',str(app)],check=True)
 if a.device:

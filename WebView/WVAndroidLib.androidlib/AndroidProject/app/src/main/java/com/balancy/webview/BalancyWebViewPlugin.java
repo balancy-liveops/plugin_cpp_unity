@@ -714,10 +714,15 @@ public class BalancyWebViewPlugin {
     }
     
     private void injectBalancyBridge() {
+        // The persistent shell loads the SDK bridge before onPageFinished.
+        // Keep its request/response and loadView dispatcher; the legacy shim is
+        // only for pages that have not installed their own receiver yet.
         String bridge = "window.balancy = window.balancy || {};" +
+                       "if (typeof balancy._receiveMessageFromUnity !== 'function') {" +
                        "balancy._receiveMessageFromUnity = function(message) {" +
                        "  if (balancy.onMessage) balancy.onMessage(message);" +
                        "};" +
+                       "}" +
                        "balancy.sendMessageToUnity = function(message) {" +
                        "  BalancyWebView.sendMessageToUnity(message);" +
                        "};";

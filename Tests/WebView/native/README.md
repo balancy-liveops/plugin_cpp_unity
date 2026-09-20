@@ -44,3 +44,19 @@ Persistent hide and emergency close now remove the transient native button and c
 The macOS harness also verifies that a shell prepared with an earlier size adopts the current Unity Game View dimensions before it is shown and preserves them while becoming visible. It also routes the native title-bar close button through the SDK lifecycle and verifies that the same persistent shell can be shown again.
 
 The macOS universal library and Unity WebGL resources were rebuilt. Android AAR classes were compiled with `javac --release 8` against API 35 and replaced in the existing AAR, preserving its manifest and metadata (the offline Gradle build lacked AGP 8.6.0). Only production plugin classes are packaged.
+
+## iOS resource response regression (2026-09-20)
+
+The iOS fixture now returns physical `file://` URLs, matching C++ FileHelper responses, rather than pre-converted `balancy-local://` URLs. Each of 20 persistent View cycles decodes both a downloaded Documents image and a bundled image. The native transport converts response URLs using the configured persistent/StreamingAssets roots; HTTP/data URLs and unrelated message payloads stay unchanged. iOS 26.3 Simulator: 77 checks passed. This does not replace an IL2CPP build on a physical iPhone.
+
+Run `python3 Tests/WebView/ios-local-resource-urls.test.py` on macOS for 16 Foundation checks of the production response mapper (single/batch responses, packaged paths, escaping, unchanged payloads and unconfigured roots).
+
+## Android page-finish bridge regression (2026-09-21)
+
+The Android fixture loads the production bridge from a `<script src>` in the shell,
+matching Unity's persistent shell, and checks that `onPageFinished` preserves its
+receiver. Previously the fixture injected the bridge after page completion and
+missed the native fallback overwriting `_receiveMessageFromUnity`. The updated
+fixture fails on the old Java implementation and passes 76 checks with the fix,
+including 20 image/dependency preparation and clear cycles. This is a native
+protocol regression test, not a full reproduction of a client's View scripts.
