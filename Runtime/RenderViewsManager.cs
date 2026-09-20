@@ -13,6 +13,8 @@ namespace Balancy
     public class RenderViewsManager
     {
         private const int DEFAULT_OWNER_DEPTH = 10;
+        private const float DefaultViewShowDelay = 0.03f;
+        private const float DefaultViewFadeDuration = 0.08f;
 #if UNITY_EDITOR
         // private const bool UseEmbeddedWebView = true;
         private const bool UseEmbeddedWebView = false;
@@ -73,7 +75,7 @@ namespace Balancy
             //_webView.SetViewportRect(viewportX, viewportY, viewportWidth, viewportHeight);
             //_webView.SetDebugLogging(true);
 
-            SetViewDelays(0f, 0f);
+            SetViewDelays(DefaultViewShowDelay, DefaultViewFadeDuration);
             TryPrepareRequestedWebView();
         }
 
@@ -650,7 +652,7 @@ namespace Balancy
         }
 #endif
 
-        /// <summary>Set presentation delay and fade duration in seconds. Both default to zero.
+        /// <summary>Set presentation delay and fade duration in seconds. The defaults are 0.03 and 0.08 seconds.
         /// Call after SDK initialization; settings also apply to a prepared hidden WebView.</summary>
         public static void SetViewDelays(float showDelay, float transparencyAnimationDuration)
         {

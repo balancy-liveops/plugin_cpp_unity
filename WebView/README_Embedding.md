@@ -2,11 +2,11 @@
 
 ## Presentation timing
 
-WebView presentation defaults to zero delay and zero fade duration. After SDK initialization, clients can opt into a delay/fade through the public Unity API:
+WebView presentation defaults to a 30 ms delay followed by an 80 ms fade. This short transition gives the View time to settle before it becomes visible and reduces visible state changes during initialization. After SDK initialization, clients can override either value through the public Unity API:
 
 ```csharp
-Balancy.RenderViewsManager.SetViewDelays(0f, 0.15f); // seconds: immediate start, 150 ms fade
-Balancy.RenderViewsManager.SetViewDelays(0f, 0f);    // restore immediate presentation
+Balancy.RenderViewsManager.SetViewDelays(0.03f, 0.08f); // SDK defaults
+Balancy.RenderViewsManager.SetViewDelays(0f, 0f);       // immediate presentation
 ```
 
 The setting also applies when a persistent shell is already prepared but hidden. Negative values are clamped to zero. These settings control presentation, not HTML/resource readiness. Configure after SDK initialization; values set through RenderViewsManager before initialization are not retained.

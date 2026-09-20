@@ -242,11 +242,15 @@ namespace Balancy.Tests
         }
 
         [Test]
-        public void PresentationDefaultsAreZeroAndPublicSettingsRemainConfigurable()
+        public void PresentationDefaultsAreStableAndPublicSettingsRemainConfigurable()
         {
             var type = typeof(BalancyWebView);
             var delay = type.GetField("_showDelay", BindingFlags.NonPublic | BindingFlags.Instance);
             var fade = type.GetField("_animationDuration", BindingFlags.NonPublic | BindingFlags.Instance);
+            var defaultDelay = ManagerType.GetField("DefaultViewShowDelay", BindingFlags.NonPublic | BindingFlags.Static);
+            var defaultFade = ManagerType.GetField("DefaultViewFadeDuration", BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.That(defaultDelay.GetRawConstantValue(), Is.EqualTo(0.03f));
+            Assert.That(defaultFade.GetRawConstantValue(), Is.EqualTo(0.08f));
             Assert.That(delay.GetValue(_webView), Is.EqualTo(0f));
             Assert.That(fade.GetValue(_webView), Is.EqualTo(0f));
             WebViewField.SetValue(null, _webView);
