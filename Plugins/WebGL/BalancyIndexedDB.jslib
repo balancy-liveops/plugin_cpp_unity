@@ -191,7 +191,13 @@ mergeInto(LibraryManager.library, {
         var directoryStr = UTF8ToString(directory);
 
         function isSynchronousContent(fileName) {
-            var lower = fileName.toLowerCase();
+            var normalized = fileName.replace(/\\/g, '/');
+            var parts = normalized.split('/');
+            var name = parts.length ? parts[parts.length - 1] : normalized;
+            if (name === 'LocalDeviceData' || name === 'user.info' || normalized.indexOf('_Profiles/') >= 0)
+                return true;
+
+            var lower = normalized.toLowerCase();
             return ['.json', '.txt', '.xml', '.csv', '.yaml', '.yml', '.js',
                     '.banim', '.html', '.css', '.lottie'].some(function(ext) {
                 return lower.endsWith(ext);
@@ -232,15 +238,10 @@ mergeInto(LibraryManager.library, {
         }
 
         BalancyIndexedDBFileHelper.getAllFileNamesInDirectory(directoryStr).then(function(fileNames) {
-            var hasCombinedScripts = fileNames.some(function(fileName) {
-                var name = fileName.split('/').pop();
-                return name.indexOf('scripts_combined_') === 0 && name.toLowerCase().endsWith('.js');
-            });
-            var textFiles = fileNames.filter(function(fileName) {
-                var isLegacyScript = fileName.indexOf('Cache/Files/') >= 0 &&
-                    fileName.toLowerCase().endsWith('.js');
-                return isSynchronousContent(fileName) && !(hasCombinedScripts && isLegacyScript);
-            });
+            // The active game/branch manifest is not known during hydration. Do
+            // not let an unrelated or stale combined bundle suppress a script
+            // that the synchronous native core may need on this launch.
+            var textFiles = fileNames.filter(isSynchronousContent);
             var textFileSet = new Set(textFiles);
 
             // Publish existence immediately. Text entries are overwritten with their content below.

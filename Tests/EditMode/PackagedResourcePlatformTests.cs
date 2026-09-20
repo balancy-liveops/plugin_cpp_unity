@@ -19,6 +19,18 @@ namespace Balancy.Tests
             "IsWebGlSynchronousContent", BindingFlags.Static | BindingFlags.NonPublic);
         private static readonly MethodInfo ShouldHydrate = FileManager.GetMethod(
             "ShouldHydrateWebGlContent", BindingFlags.Static | BindingFlags.NonPublic);
+        private static readonly MethodInfo ResolveViewLocation = typeof(RenderViewsManager).GetMethod(
+            "ResolveLocalViewLocation", BindingFlags.Static | BindingFlags.NonPublic);
+
+        private static (string storage, string path) Resolve(string filePath, string persistent,
+            string streaming, RuntimePlatform platform)
+        {
+            var result = ResolveViewLocation.Invoke(null, new object[] { filePath, persistent, streaming, platform });
+            var type = result.GetType();
+            return (
+                type.GetField("Storage", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(result).ToString(),
+                (string)type.GetField("Path", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(result));
+        }
 
         [TestCase(RuntimePlatform.Android, "AndroidAssetManager")]
         [TestCase(RuntimePlatform.IPhonePlayer, "DirectFileSystem")]
@@ -34,6 +46,9 @@ namespace Balancy.Tests
         [TestCase("test_versions.json", true)]
         [TestCase("Cache/do_versions_512.json", true)]
         [TestCase("Cache/Files/scripts_combined_dev_v12.js", true)]
+        [TestCase("LocalDeviceData", true)]
+        [TestCase("user.info", true)]
+        [TestCase("game_Profiles/System/Profile", true)]
         [TestCase("Views/store/index.html", true)]
         [TestCase("Images/icon.png", false)]
         [TestCase("Views/store.zip", false)]
@@ -45,10 +60,10 @@ namespace Balancy.Tests
         }
 
         [Test]
-        public void WebGlCombinedBundleSuppressesLegacyScriptsButKeepsExistenceIndex()
+        public void WebGlCombinedBundleDoesNotSuppressScriptsBeforeActiveManifestIsKnown()
         {
             Assert.That(ShouldHydrate.Invoke(null,
-                new object[] { "Cache/Files/legacy.js", true }), Is.False);
+                new object[] { "Cache/Files/legacy.js", true }), Is.True);
             Assert.That(ShouldHydrate.Invoke(null,
                 new object[] { "Cache/Files/legacy.js", false }), Is.True);
             Assert.That(ShouldHydrate.Invoke(null,
@@ -80,6 +95,58 @@ namespace Balancy.Tests
         {
             Assert.That(BalancyWebView.ToWebViewUrl("/android_asset/Balancy/Images/icon.png"),
                 Is.EqualTo("file:///android_asset/Balancy/Images/icon.png"));
+        }
+
+        [Test]
+        public void LocalViewLocationsPreserveGameCachePrefixAndPackagedSource()
+        {
+            Assert.That(Resolve(
+                "/idbfs/hash/ba1fc076_Cache/Files/2274/index.html",
+                "/idbfs/hash", "https://game/StreamingAssets", RuntimePlatform.WebGLPlayer),
+                Is.EqualTo(("Cache", "ba1fc076_Cache/Files/2274/index.html")));
+
+            Assert.That(Resolve(
+                "https://game/StreamingAssets/Balancy/ba1fc076_Cache/Files/2274/index.html",
+                "/idbfs/hash", "https://game/StreamingAssets", RuntimePlatform.WebGLPlayer),
+                Is.EqualTo(("Resources", "ba1fc076_Cache/Files/2274/index.html")));
+
+            Assert.That(Resolve(
+                "/android_asset/Balancy/ba1fc076_Cache/Files/2274/index.html",
+                "/data/user/0/game/files", "jar:file:///base.apk!/assets", RuntimePlatform.Android),
+                Is.EqualTo(("Resources", "ba1fc076_Cache/Files/2274/index.html")));
+
+            Assert.That(Resolve(
+                "/data/user/0/game/files/Balancy/Models/ba1fc076_Cache/Files/2274/index.html",
+                "/data/user/0/game/files", "jar:file:///base.apk!/assets", RuntimePlatform.Android),
+                Is.EqualTo(("Cache", "ba1fc076_Cache/Files/2274/index.html")));
+        }
+
+        [TestCase(RuntimePlatform.IPhonePlayer)]
+        [TestCase(RuntimePlatform.OSXPlayer)]
+        [TestCase(RuntimePlatform.OSXEditor)]
+        public void AppleLocalViewLocationsRemainPhysicalFiles(RuntimePlatform platform)
+        {
+            const string persistent = "/Users/test/Library/Application Support/game";
+            const string streaming = "/Applications/Game.app/Contents/Resources/Data/StreamingAssets";
+            string cachePath = persistent + "/Balancy/Models/game_Cache/Files/view/index.html";
+            string resourcePath = streaming + "/Balancy/game_Cache/Files/view/index.html";
+
+            Assert.That(Resolve(cachePath, persistent, streaming, platform),
+                Is.EqualTo(("PhysicalFile", cachePath)));
+            Assert.That(Resolve(resourcePath, persistent, streaming, platform),
+                Is.EqualTo(("PhysicalFile", resourcePath)));
+        }
+
+        [Test]
+        public void SourceAwareNativeTextLoaderUsesStableIntegerAbi()
+        {
+            var general = typeof(Controller).Assembly.GetType("Balancy.LibraryMethods+General", true);
+            var method = general.GetMethod("balancyLoadFileContent", BindingFlags.Static | BindingFlags.Public);
+            Assert.That(method, Is.Not.Null);
+            Assert.That(method.GetParameters().Select(p => p.ParameterType),
+                Is.EqualTo(new[] { typeof(string), typeof(int) }));
+            Assert.That(method.GetCustomAttribute<DllImportAttribute>()?.CallingConvention,
+                Is.EqualTo(CallingConvention.Cdecl));
         }
 
         [Test]

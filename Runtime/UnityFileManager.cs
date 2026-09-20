@@ -35,7 +35,13 @@ namespace Balancy
 
         internal static bool IsWebGlSynchronousContent(string relativePath)
         {
-            var ext = Path.GetExtension(relativePath).ToLowerInvariant();
+            var normalizedPath = (relativePath ?? string.Empty).Replace('\\', '/');
+            var fileName = Path.GetFileName(normalizedPath);
+            if (fileName == "LocalDeviceData" || fileName == "user.info" ||
+                normalizedPath.IndexOf("_Profiles/", StringComparison.Ordinal) >= 0)
+                return true;
+
+            var ext = Path.GetExtension(normalizedPath).ToLowerInvariant();
             return ext == ".json" || ext == ".txt" || ext == ".xml" || ext == ".csv" ||
                    ext == ".yaml" || ext == ".yml" || ext == ".js" || ext == ".banim" ||
                    ext == ".html" || ext == ".css" || ext == ".lottie";
@@ -43,17 +49,12 @@ namespace Balancy
 
         internal static bool ShouldHydrateWebGlContent(string relativePath, bool hasCombinedScripts)
         {
+            // The active game/branch is selected only after this startup hydration.
+            // A bundle elsewhere in the cache or StreamingAssets cannot prove that
+            // this script is obsolete, so legacy scripts must remain synchronously
+            // readable. Clean snapshots containing only the bundle still load only it.
             return IsWebGlSynchronousContent(relativePath) &&
-                   !IsWebGlBrowserRuntimeAsset(relativePath) &&
-                   !(hasCombinedScripts && IsLegacyIndividualScript(relativePath));
-        }
-
-        private static bool IsLegacyIndividualScript(string relativePath)
-        {
-            var fileName = Path.GetFileName(relativePath);
-            return relativePath.IndexOf("Cache/Files/", StringComparison.Ordinal) >= 0 &&
-                   string.Equals(Path.GetExtension(relativePath), ".js", StringComparison.OrdinalIgnoreCase) &&
-                   !fileName.StartsWith("scripts_combined_", StringComparison.Ordinal);
+                   !IsWebGlBrowserRuntimeAsset(relativePath);
         }
 
         private static bool IsWebGlBrowserRuntimeAsset(string relativePath)
@@ -206,10 +207,6 @@ namespace Balancy
                     manifestFiles.Add(relativePath);
             }
 
-            bool hasCombinedScripts = manifestFiles.Exists(relativePath =>
-                Path.GetFileName(relativePath).StartsWith("scripts_combined_", StringComparison.Ordinal) &&
-                string.Equals(Path.GetExtension(relativePath), ".js", StringComparison.OrdinalIgnoreCase));
-
             var synchronousFiles = new List<string>();
             int registeredFiles = 0;
 
@@ -217,7 +214,7 @@ namespace Balancy
             {
                 // The manifest is the synchronous existence index. Binary resources remain at
                 // their browser URL and are fetched only when a sprite/view actually requests them.
-                bool needsSynchronousContent = ShouldHydrateWebGlContent(relativePath, hasCombinedScripts);
+                bool needsSynchronousContent = ShouldHydrateWebGlContent(relativePath, false);
                 if (needsSynchronousContent)
                 {
                     synchronousFiles.Add(relativePath);

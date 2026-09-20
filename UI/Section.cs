@@ -189,7 +189,16 @@ namespace Balancy.UI
             element.SetOnClick(() =>
             {
                 if (info.UnnyView != null)
+                {
+                    Debug.LogError("OPEN VIEW = " + info.UnnyView.Id);
+                    if (info is GameOffer go)
+                    {
+                        Debug.Log(">>JSON = " + go.ToJsonString(3, true));    
+                    } else
+                        Debug.LogWarning("NOT FOUND AS OFFER");
+                    
                     info.UnnyView.OpenView(null, owner);
+                }
                 else
                     MainUI.ShowMessage("Error", "This element doesn't have a View associated with it.", "OK", null);
             });

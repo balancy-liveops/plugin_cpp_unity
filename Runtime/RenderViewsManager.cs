@@ -73,7 +73,7 @@ namespace Balancy
             //_webView.SetViewportRect(viewportX, viewportY, viewportWidth, viewportHeight);
             //_webView.SetDebugLogging(true);
 
-            SetViewDelays(0f, 0f);
+            SetViewDelays(0.03f, 0.08f);
             TryPrepareRequestedWebView();
         }
 
@@ -388,6 +388,106 @@ namespace Balancy
                 : filePath;
         }
 
+        internal enum LocalViewStorage
+        {
+            PhysicalFile,
+            Cache,
+            Resources
+        }
+
+        internal readonly struct LocalViewLocation
+        {
+            internal readonly LocalViewStorage Storage;
+            internal readonly string Path;
+
+            internal LocalViewLocation(LocalViewStorage storage, string path)
+            {
+                Storage = storage;
+                Path = path;
+            }
+        }
+
+        internal static LocalViewLocation ResolveLocalViewLocation(string filePath, string persistentDataPath,
+            string streamingAssetsPath, RuntimePlatform platform)
+        {
+            string normalized = NormalizeLocalPath(filePath)?.Replace('\\', '/');
+            if (string.IsNullOrEmpty(normalized))
+                return new LocalViewLocation(LocalViewStorage.PhysicalFile, normalized);
+
+            string persistentRoot = (persistentDataPath ?? string.Empty).Replace('\\', '/').TrimEnd('/');
+            string modelsRoot = persistentRoot + "/Balancy/Models/";
+            bool usesVirtualFileStorage = platform == RuntimePlatform.Android ||
+                platform == RuntimePlatform.WebGLPlayer;
+            if (usesVirtualFileStorage && !string.IsNullOrEmpty(persistentRoot) &&
+                normalized.StartsWith(modelsRoot, StringComparison.Ordinal))
+                return new LocalViewLocation(LocalViewStorage.Cache, normalized.Substring(modelsRoot.Length));
+
+            // Unity WebGL's native helper uses Application.persistentDataPath itself
+            // as the IndexedDB root (without the desktop /Balancy/Models suffix).
+            string persistentPrefix = persistentRoot + "/";
+            if (platform == RuntimePlatform.WebGLPlayer && !string.IsNullOrEmpty(persistentRoot) &&
+                normalized.StartsWith(persistentPrefix, StringComparison.Ordinal))
+                return new LocalViewLocation(LocalViewStorage.Cache, normalized.Substring(persistentPrefix.Length));
+
+            const string androidAssets = "/android_asset/Balancy/";
+            int androidAssetsIndex = normalized.IndexOf(androidAssets, StringComparison.Ordinal);
+            if (androidAssetsIndex >= 0)
+                return new LocalViewLocation(LocalViewStorage.Resources,
+                    normalized.Substring(androidAssetsIndex + androidAssets.Length));
+
+            string streamingRoot = (streamingAssetsPath ?? string.Empty).Replace('\\', '/').TrimEnd('/') + "/Balancy/";
+            if (usesVirtualFileStorage && !string.IsNullOrEmpty(streamingAssetsPath) &&
+                normalized.StartsWith(streamingRoot, StringComparison.Ordinal))
+                return new LocalViewLocation(LocalViewStorage.Resources, normalized.Substring(streamingRoot.Length));
+
+            const string browserStreamingAssets = "/StreamingAssets/Balancy/";
+            int streamingIndex = normalized.IndexOf(browserStreamingAssets, StringComparison.Ordinal);
+            if (platform == RuntimePlatform.WebGLPlayer && streamingIndex >= 0)
+                return new LocalViewLocation(LocalViewStorage.Resources,
+                    normalized.Substring(streamingIndex + browserStreamingAssets.Length));
+
+            // Older WebGL callbacks can contain an IDB prefix we do not know in
+            // managed code. Preserve the complete <game>_Cache segment instead
+            // of cutting at "Cache/" and losing the game identifier.
+            int cacheMarker = normalized.IndexOf("_Cache/", StringComparison.Ordinal);
+            if (platform == RuntimePlatform.WebGLPlayer && cacheMarker >= 0)
+            {
+                int segmentStart = normalized.LastIndexOf('/', cacheMarker);
+                return new LocalViewLocation(LocalViewStorage.Cache,
+                    normalized.Substring(segmentStart >= 0 ? segmentStart + 1 : 0));
+            }
+
+            return new LocalViewLocation(LocalViewStorage.PhysicalFile, normalized);
+        }
+
+        private static bool TryLoadLocalViewText(string filePath, out string content, out LocalViewLocation location)
+        {
+            location = ResolveLocalViewLocation(filePath, Application.persistentDataPath,
+                Application.streamingAssetsPath, Application.platform);
+#if (UNITY_WEBGL || UNITY_ANDROID) && !UNITY_EDITOR
+            if (location.Storage != LocalViewStorage.PhysicalFile)
+            {
+                IntPtr contentPtr = LibraryMethods.General.balancyLoadFileContent(
+                    location.Path, location.Storage == LocalViewStorage.Resources ? 1 : 0);
+                content = Marshal.PtrToStringAnsi(contentPtr);
+                return !string.IsNullOrEmpty(content);
+            }
+#endif
+            if (!File.Exists(location.Path))
+            {
+                content = null;
+                return false;
+            }
+            content = File.ReadAllText(location.Path);
+            return !string.IsNullOrEmpty(content);
+        }
+
+        private static string ReplaceViewFileName(string relativePath, string fileName)
+        {
+            int separator = relativePath.LastIndexOf('/');
+            return separator >= 0 ? relativePath.Substring(0, separator + 1) + fileName : fileName;
+        }
+
         public static void PrepareWebView(Action onReady = null, Action<string> onFailed = null)
         {
             Debug.Log("[RenderViewsManager] PrepareWebView requested");
@@ -439,18 +539,11 @@ namespace Balancy
                 try
                 {
                     var htmlStarted = BalancyWebView.PerformanceNow();
-                    string htmlContent;
-#if UNITY_WEBGL && !UNITY_EDITOR
-                    string cachePath = filePath;
-                    int cacheIndex = cachePath.IndexOf("Cache/", StringComparison.Ordinal);
-                    if (cacheIndex >= 0) cachePath = cachePath.Substring(cacheIndex);
-                    htmlContent = Marshal.PtrToStringAnsi(LibraryMethods.General.balancyLoadFileFromCache(cachePath));
-#else
-                    string normalizedPath = NormalizeLocalPath(filePath);
-                    if (!File.Exists(normalizedPath)) { onFailed?.Invoke(ViewOpenError.FileNotFound); return; }
-                    htmlContent = File.ReadAllText(normalizedPath);
-#endif
-                    if (string.IsNullOrEmpty(htmlContent)) { onFailed?.Invoke(ViewOpenError.LoadFailed); return; }
+                    if (!TryLoadLocalViewText(filePath, out string htmlContent, out _))
+                    {
+                        onFailed?.Invoke(ViewOpenError.FileNotFound);
+                        return;
+                    }
 #if UNITY_WEBGL && !UNITY_EDITOR
                     string baseUrl = null; // Browser resources use the WebGL cache/blob URL mapping.
 #else
@@ -493,27 +586,9 @@ namespace Balancy
         {
             Debug.Log($"[RenderViewsManager] Loading HTML content from cache: {filePath}");
 
-            // Extract relative path (remove /idbfs/.../guid_ prefix if present)
-            string relativePath = filePath;
-            if (relativePath.StartsWith("/idbfs/"))
+            if (!TryLoadLocalViewText(filePath, out string htmlContent, out var location))
             {
-                // Pattern: /idbfs/<hash>/<guid>_Cache/Files/...
-                int cacheIndex = relativePath.IndexOf("Cache/");
-                if (cacheIndex > 0)
-                {
-                    relativePath = relativePath.Substring(cacheIndex);
-                }
-            }
-
-            Debug.Log($"[RenderViewsManager] Relative path: {relativePath}");
-
-            // Load HTML content from C++ cache
-            IntPtr contentPtr = LibraryMethods.General.balancyLoadFileFromCache(relativePath);
-            string htmlContent = Marshal.PtrToStringAnsi(contentPtr);
-
-            if (string.IsNullOrEmpty(htmlContent))
-            {
-                Debug.LogError($"[RenderViewsManager] Failed to load HTML content from cache: {relativePath}");
+                Debug.LogError($"[RenderViewsManager] Failed to load HTML content: {filePath}");
                 onFailed?.Invoke(ViewOpenError.LoadFailed);
                 return false;
             }
@@ -521,8 +596,9 @@ namespace Balancy
             Debug.Log($"[RenderViewsManager] Loaded HTML content: {htmlContent.Length} bytes");
 
             // Load manifest.json if it exists
-            string manifestPath = relativePath.Replace("index.html", "manifest.json");
-            IntPtr manifestPtr = LibraryMethods.General.balancyLoadFileFromCache(manifestPath);
+            string manifestPath = ReplaceViewFileName(location.Path, "manifest.json");
+            IntPtr manifestPtr = LibraryMethods.General.balancyLoadFileContent(
+                manifestPath, location.Storage == LocalViewStorage.Resources ? 1 : 0);
             string manifestContent = Marshal.PtrToStringAnsi(manifestPtr);
 
             // Open WebView with HTML content

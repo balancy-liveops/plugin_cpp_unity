@@ -55,3 +55,12 @@ test('persistent preparation transports raw script text and version before openi
   await tick();
   assert.deepEqual(calls, [['shell-v2', code, 'version-v2']]);
 });
+
+test('IndexedDB hydration keeps extensionless state and does not globally suppress legacy scripts', () => {
+  const source = fs.readFileSync(path.join(root, 'Plugins/WebGL/BalancyIndexedDB.jslib'), 'utf8');
+  assert.match(source, /name === 'LocalDeviceData'/);
+  assert.match(source, /name === 'user\.info'/);
+  assert.match(source, /normalized\.indexOf\('_Profiles\/'\)/);
+  assert.doesNotMatch(source, /hasCombinedScripts/);
+  assert.doesNotMatch(source, /isLegacyScript/);
+});
