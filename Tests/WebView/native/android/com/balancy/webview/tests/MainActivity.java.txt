@@ -120,7 +120,9 @@ public class MainActivity extends Activity {
     void startBridge() {
         try {
             plugin.closeWebView();
-            java.io.File shell = new java.io.File(getFilesDir(), "shell.html");
+            java.io.File shellDirectory = new java.io.File(getFilesDir(), "Balancy URL Test %20 # ü");
+            check("encoded shell directory created", shellDirectory.mkdirs() || shellDirectory.isDirectory());
+            java.io.File shell = new java.io.File(shellDirectory, "shell page %20 # ü.html");
             try (java.io.FileOutputStream stream = new java.io.FileOutputStream(shell)) {
                 stream.write("<!doctype html><html data-balancy-shell><body><div id='root-container'></div></body></html>".getBytes("UTF-8"));
             }
@@ -130,7 +132,9 @@ public class MainActivity extends Activity {
             }
             pixel.recycle();
             UnityPlayer.receiver = (method, payload) -> handler.post(() -> bridgeMessage(method, payload));
-            plugin.prepareWebView("file://" + shell.getAbsolutePath());
+            String shellUrl = android.net.Uri.fromFile(shell).toString();
+            check("Android shell URL escapes spaces, percent and hash", shellUrl.contains("%20") && shellUrl.contains("%2520") && shellUrl.contains("%23"));
+            plugin.prepareWebView(shellUrl);
         } catch (Throwable error) { fail(error); }
     }
     void bridgeMessage(String method, String payload) {

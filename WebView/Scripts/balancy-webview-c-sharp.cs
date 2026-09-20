@@ -321,6 +321,44 @@ namespace Balancy.WebView
         private static string JsString(string value) => "(" + JsonUtility.ToJson(new StringValue { value = value ?? "" }) + ").value";
         [Serializable] private class StringValue { public string value; }
 
+        internal static bool TryGetLocalFilePath(string value, out string filePath)
+        {
+            filePath = null;
+            if (string.IsNullOrEmpty(value) ||
+                !Uri.TryCreate(value, UriKind.Absolute, out var fileUri) ||
+                !fileUri.IsFile)
+                return false;
+
+            // Unity/Mono LocalPath can decode percent sequences more than once. Decode
+            // the escaped URL path exactly once so a real filename containing "%20"
+            // remains "%20" while encoded spaces still become spaces.
+            filePath = Uri.UnescapeDataString(fileUri.AbsolutePath);
+#if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
+            if (filePath.Length >= 3 && filePath[0] == '/' && filePath[2] == ':')
+                filePath = filePath.Substring(1);
+            filePath = filePath.Replace('/', System.IO.Path.DirectorySeparatorChar);
+#endif
+            return !string.IsNullOrEmpty(filePath);
+        }
+
+        internal static string FilePathToUrl(string path)
+        {
+            string fullPath = System.IO.Path.GetFullPath(path).Replace('\\', '/');
+            string[] segments = fullPath.Split('/');
+            for (int i = 0; i < segments.Length; i++)
+            {
+                // Keep the Windows drive separator; encode every actual path segment.
+                if (i == 0 && segments[i].Length == 2 && segments[i][1] == ':')
+                    continue;
+                segments[i] = Uri.EscapeDataString(segments[i]);
+            }
+
+            string escapedPath = string.Join("/", segments);
+            return fullPath.StartsWith("/", StringComparison.Ordinal)
+                ? "file://" + escapedPath
+                : "file:///" + escapedPath;
+        }
+
         public static string ToWebViewUrl(string path)
         {
             if (string.IsNullOrEmpty(path)) return path ?? "";
@@ -328,18 +366,24 @@ namespace Balancy.WebView
             if (path.StartsWith(IosLocalUrlPrefix, StringComparison.OrdinalIgnoreCase)) return path;
             if (Uri.TryCreate(path, UriKind.Absolute, out var existingUri) && !existingUri.IsFile) return path;
 
-            string physicalPath = path.StartsWith("file://", StringComparison.OrdinalIgnoreCase)
-                ? new Uri(path).LocalPath
-                : System.IO.Path.GetFullPath(path);
+            string physicalPath;
+            if (path.StartsWith("file://", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!TryGetLocalFilePath(path, out physicalPath)) return path;
+            }
+            else physicalPath = System.IO.Path.GetFullPath(path);
             if (TryMakeIosLocalUrl(physicalPath, Application.persistentDataPath, "persistent", out var localUrl))
                 return localUrl;
             if (TryMakeIosLocalUrl(physicalPath, Application.streamingAssetsPath, "streaming", out localUrl))
                 return localUrl;
-            return new Uri(physicalPath).AbsoluteUri;
+            return FilePathToUrl(physicalPath);
 #else
-            if (path.StartsWith("file://", StringComparison.OrdinalIgnoreCase)) return path;
+            if (path.StartsWith("file://", StringComparison.OrdinalIgnoreCase))
+                return Uri.TryCreate(path, UriKind.Absolute, out var existingFileUri) && existingFileUri.IsFile
+                    ? existingFileUri.AbsoluteUri
+                    : path;
             if (path.StartsWith("/android_asset/", StringComparison.Ordinal)) return "file://" + path;
-            return new Uri(System.IO.Path.GetFullPath(path)).AbsoluteUri;
+            return FilePathToUrl(path);
 #endif
         }
 
@@ -974,7 +1018,8 @@ namespace Balancy.WebView
         /// <returns>True if the file exists and can be accessed, false otherwise</returns>
         public bool ValidateLocalFile(string url)
         {
-            if (string.IsNullOrEmpty(url) || !url.StartsWith("file://"))
+            if (string.IsNullOrEmpty(url) ||
+                !url.StartsWith("file://", StringComparison.OrdinalIgnoreCase))
             {
                 return true; // Not a local file, let WebView handle it
             }
@@ -987,7 +1032,11 @@ namespace Balancy.WebView
             }
             #endif
 
-            string filePath = url.Substring(7); // Remove "file://" prefix
+            if (!TryGetLocalFilePath(url, out string filePath))
+            {
+                Debug.LogError($"Invalid local file URL: {url}");
+                return false;
+            }
 
             // On Android, convert Unity path format if needed
             #if UNITY_ANDROID && !UNITY_EDITOR

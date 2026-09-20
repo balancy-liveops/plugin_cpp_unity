@@ -25,16 +25,23 @@ int main() {
  @autoreleasepool {
   [NSApplication sharedApplication]; [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
   _messageCallback = Message;
-  NSString *encodedDirectory = [NSTemporaryDirectory() stringByAppendingPathComponent:@"Balancy WebView URL Test"];
+  NSString *encodedDirectory = [NSTemporaryDirectory() stringByAppendingPathComponent:@"Balancy WebView URL Test %20 # ü"];
   [[NSFileManager defaultManager] createDirectoryAtPath:encodedDirectory withIntermediateDirectories:YES attributes:nil error:nil];
-  NSString *encodedShell = [encodedDirectory stringByAppendingPathComponent:@"shell page.html"];
+  NSString *encodedShell = [encodedDirectory stringByAppendingPathComponent:@"shell page %20 # ü.html"];
   [@"<!doctype html><title>Balancy</title>" writeToFile:encodedShell atomically:YES encoding:NSUTF8StringEncoding error:nil];
   NSString *encodedShellURL = [NSURL fileURLWithPath:encodedShell].absoluteString;
-  Check("fixture URL contains escaped spaces", [encodedShellURL containsString:@"%20"]);
+  Check("fixture URL escapes spaces, percent and hash", [encodedShellURL containsString:@"%20"] && [encodedShellURL containsString:@"%2520"] && [encodedShellURL containsString:@"%23"]);
   _loadCompletedCallback = LoadCompleted;
   loadFinished = false; loadSucceeded = false;
   Check("persistent encoded file URL starts", _balancyPrepareWebView([encodedShellURL UTF8String]));
   Check("persistent encoded file URL loads", WaitForLoad());
+  _loadCompletedCallback = NULL;
+  _balancyCloseWebView();
+
+  _loadCompletedCallback = LoadCompleted;
+  loadFinished = false; loadSucceeded = false;
+  Check("classic encoded file URL starts", _balancyOpenWebViewWithSize([encodedShellURL UTF8String], 320, 200));
+  Check("classic encoded file URL loads", WaitForLoad());
   _loadCompletedCallback = NULL;
   _balancyCloseWebView();
 

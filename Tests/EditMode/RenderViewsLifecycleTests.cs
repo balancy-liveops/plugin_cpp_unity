@@ -63,6 +63,39 @@ namespace Balancy.Tests
         }
 
         [Test]
+        public void EncodedLocalViewUrlResolvesForClassicAndPersistentModes()
+        {
+            string directory = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "Balancy URL тест % folder");
+            string filePath = System.IO.Path.Combine(directory, "index #1 %20 ü +?.html");
+            try
+            {
+                System.IO.Directory.CreateDirectory(directory);
+                System.IO.File.WriteAllText(filePath, "<!doctype html><title>encoded path</title>");
+
+                string fileUrl = BalancyWebView.ToWebViewUrl(filePath);
+                Assert.That(fileUrl, Does.Contain("%20"));
+                Assert.That(fileUrl, Does.Contain("%23"));
+                Assert.That(fileUrl, Does.Contain("%25"));
+                Assert.That(fileUrl, Does.Contain("%2B"));
+                Assert.That(fileUrl, Does.Contain("%3F"));
+                Assert.That(_webView.ValidateLocalFile(fileUrl), Is.True,
+                    "Classic OpenWebView validation must resolve an encoded file URL");
+
+                var normalize = ManagerType.GetMethod("NormalizeLocalPath",
+                    BindingFlags.Static | BindingFlags.NonPublic);
+                string persistentPath = (string)normalize.Invoke(null, new object[] { fileUrl });
+                Assert.That(persistentPath, Is.EqualTo(System.IO.Path.GetFullPath(filePath)));
+                Assert.That(System.IO.File.Exists(persistentPath), Is.True,
+                    "Persistent mode must read the same encoded local view");
+            }
+            finally
+            {
+                if (System.IO.Directory.Exists(directory))
+                    System.IO.Directory.Delete(directory, true);
+            }
+        }
+
+        [Test]
         public void CleanupRemovesSdkHandlersAndResetsSessionState()
         {
             var externalMessageCalls = 0;

@@ -643,9 +643,9 @@ public class BalancyWebViewPlugin {
         logDebug("Loading URL: " + url);
         
         if (url.startsWith("file://") && !url.startsWith("file:///android_asset/")) {
-            String filePath = url.substring(7);
-            java.io.File file = new java.io.File(filePath);
-            if (!file.exists()) {
+            String filePath = android.net.Uri.parse(url).getPath();
+            java.io.File file = filePath == null ? null : new java.io.File(filePath);
+            if (file == null || !file.exists()) {
                 Log.e(TAG, "File does not exist: " + filePath);
                 sendUnityMessage("OnAndroidLoadCompleted", "false");
                 return;

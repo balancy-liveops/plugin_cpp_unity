@@ -383,8 +383,8 @@ namespace Balancy
             if (string.IsNullOrEmpty(filePath))
                 return filePath;
 
-            return filePath.StartsWith("file://", StringComparison.OrdinalIgnoreCase)
-                ? filePath.Substring(7)
+            return BalancyWebView.TryGetLocalFilePath(filePath, out var physicalPath)
+                ? physicalPath
                 : filePath;
         }
 

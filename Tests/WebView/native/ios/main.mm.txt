@@ -39,7 +39,6 @@ static void WaitUntil(BOOL (^condition)(void), double deadline, dispatch_block_t
     [self.window.rootViewController.view addSubview:c.view];
     [c didMoveToParentViewController:self.window.rootViewController];
     [c preparePersistentShellLoad];
-    [c loadURL:@"about:blank"];
     return c;
 }
 - (BOOL)application:(UIApplication *)app didFinishLaunchingWithOptions:(NSDictionary *)options {
@@ -48,8 +47,18 @@ static void WaitUntil(BOOL (^condition)(void), double deadline, dispatch_block_t
     self.window.rootViewController = [UIViewController new]; [self.window makeKeyAndVisible];
     [self testLocalSchemeResolver];
     self.controller = [self makeController];
+
+    NSString *encodedDirectory = [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Caches/Balancy URL Test %20 # ü"];
+    [[NSFileManager defaultManager] createDirectoryAtPath:encodedDirectory
+                              withIntermediateDirectories:YES attributes:nil error:nil];
+    NSString *encodedShell = [encodedDirectory stringByAppendingPathComponent:@"shell page %20 # ü.html"];
+    [@"<!doctype html><title>Balancy encoded URL</title>" writeToFile:encodedShell
+        atomically:YES encoding:NSUTF8StringEncoding error:nil];
+    NSString *encodedShellURL = [NSURL fileURLWithPath:encodedShell].absoluteString;
+    Check(@"iOS fallback URL escapes spaces, percent and hash", [encodedShellURL containsString:@"%20"] && [encodedShellURL containsString:@"%2520"] && [encodedShellURL containsString:@"%23"]);
+    [self.controller loadURL:encodedShellURL];
     WaitUntil(^BOOL{ return loads > 0; }, CACurrentMediaTime()+15, ^{
-        Check(@"initial document finished loading", loads > 0);
+        Check(@"iOS fallback encoded file URL loads", loads > 0);
         if (loads > 0) [self testShow]; else [self finish];
     });
     return YES;

@@ -908,8 +908,12 @@ static BalancyWebViewController* CreateOrGetWebViewController(void (*messageCall
 - (BOOL)loadURL:(NSString *)urlString {
     // Handle local file URLs
     if ([urlString hasPrefix:@"file://"]) {
-        NSString *cleanUrl = urlString;
-        NSString *filePath = [cleanUrl stringByReplacingOccurrencesOfString:@"file://" withString:@""];
+        NSURL *parsedFileURL = [NSURL URLWithString:urlString];
+        NSString *filePath = parsedFileURL.isFileURL ? parsedFileURL.path : nil;
+        if (filePath == nil) {
+            NSString *encodedPath = [urlString substringFromIndex:@"file://".length];
+            filePath = [encodedPath stringByRemovingPercentEncoding] ?: encodedPath;
+        }
 
         NSURL *virtualURL = BalancyVirtualURLForFilePath(filePath);
         if (virtualURL != nil) {
@@ -918,7 +922,7 @@ static BalancyWebViewController* CreateOrGetWebViewController(void (*messageCall
             return YES;
         }
 
-        NSURL *fileURL = [NSURL fileURLWithPath:filePath];
+        NSURL *fileURL = parsedFileURL.isFileURL ? parsedFileURL : [NSURL fileURLWithPath:filePath];
         NSURL *broadReadAccessURL = GetPersistentDataRootURL();
 
         if (broadReadAccessURL == nil || ![filePath hasPrefix:broadReadAccessURL.path]) {
