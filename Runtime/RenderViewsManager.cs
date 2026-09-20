@@ -73,7 +73,7 @@ namespace Balancy
             //_webView.SetViewportRect(viewportX, viewportY, viewportWidth, viewportHeight);
             //_webView.SetDebugLogging(true);
 
-            SetViewDelays(0.03f, 0.08f);
+            SetViewDelays(0f, 0f);
             TryPrepareRequestedWebView();
         }
 
