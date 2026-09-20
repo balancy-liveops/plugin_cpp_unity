@@ -7,6 +7,9 @@ sdk=subprocess.check_output(['xcrun','--sdk','iphonesimulator','--show-sdk-path'
 subprocess.run(['xcrun','clang++','-std=c++17','-x','objective-c++','-fobjc-arc','-target','arm64-apple-ios17.0-simulator','-isysroot',sdk,'-framework','UIKit','-framework','WebKit','-framework','Foundation','-framework','CoreGraphics','-framework','QuartzCore','-I'+str(r/'WebView/Plugins/iOS'),str(pathlib.Path(__file__).parent/'ios/main.mm.txt'),str(r/'WebView/Plugins/iOS/BalancyWebView.mm'),'-o',str(app/'NativeTests')],check=True)
 (app/'Info.plist').write_bytes(plistlib.dumps(dict(CFBundleIdentifier='com.balancy.webview.ios-tests',CFBundleExecutable='NativeTests',CFBundleName='NativeTests',CFBundlePackageType='APPL',CFBundleVersion='1',CFBundleShortVersionString='1.0',MinimumOSVersion='17.0',LSRequiresIPhoneOS=True,UILaunchScreen={})))
 shutil.copy2(r/'WebView/Resources/balancy-webview-bridge.txt',app/'bridge.js')
+packaged=app/'Balancy';packaged.mkdir(exist_ok=True)
+shutil.copy2(r/'WebView/Resources/balancy-webview-bridge.txt',packaged/'balancy-webview-bridge.js')
+(packaged/'packaged snapshot.txt').write_text('packaged-v1')
 shutil.copy2(pathlib.Path(__file__).parent/'prefab-fixture.js.txt',app/'prefab-fixture.js')
 subprocess.run(['codesign','--force','--sign','-',str(app)],check=True)
 if a.device:

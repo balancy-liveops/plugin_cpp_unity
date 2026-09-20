@@ -1,5 +1,6 @@
 #import <UIKit/UIKit.h>
 #import "BalancyWebView.h"
+extern "C" void _balancyConfigureLocalResourceRoots(const char*, const char*);
 static NSMutableArray<NSString *> *results;
 static int failures, loads;
 static NSString *received;
@@ -45,12 +46,44 @@ static void WaitUntil(BOOL (^condition)(void), double deadline, dispatch_block_t
     results = [NSMutableArray new]; self.retiredControllers = [NSHashTable weakObjectsHashTable];
     self.window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
     self.window.rootViewController = [UIViewController new]; [self.window makeKeyAndVisible];
+    [self testLocalSchemeResolver];
     self.controller = [self makeController];
     WaitUntil(^BOOL{ return loads > 0; }, CACurrentMediaTime()+15, ^{
         Check(@"initial document finished loading", loads > 0);
         if (loads > 0) [self testShow]; else [self finish];
     });
     return YES;
+}
+- (void)testLocalSchemeResolver {
+    NSString *persistent = [NSHomeDirectory() stringByAppendingPathComponent:@"Documents"];
+    NSString *streaming = NSBundle.mainBundle.bundlePath;
+    _balancyConfigureLocalResourceRoots(persistent.UTF8String, streaming.UTF8String);
+
+    NSString *runtimeFile = [persistent stringByAppendingPathComponent:@"Balancy/Cache/runtime update.txt"];
+    [[NSFileManager defaultManager] createDirectoryAtPath:runtimeFile.stringByDeletingLastPathComponent
+                              withIntermediateDirectories:YES attributes:nil error:nil];
+    [@"runtime-v2" writeToFile:runtimeFile atomically:YES encoding:NSUTF8StringEncoding error:nil];
+
+    Class handlerClass = NSClassFromString(@"BalancyLocalSchemeHandler");
+    id handler = [[handlerClass alloc] init];
+    SEL resolve = NSSelectorFromString(@"resolveFilePath:");
+    NSString* (*resolvePath)(id, SEL, NSURL*) = (NSString* (*)(id, SEL, NSURL*))[handler methodForSelector:resolve];
+
+    NSString *resolvedPersistent = resolvePath(handler, resolve,
+        [NSURL URLWithString:@"balancy-local://local/persistent/Balancy/Cache/runtime%20update.txt"]);
+    NSString *resolvedStreaming = resolvePath(handler, resolve,
+        [NSURL URLWithString:@"balancy-local://local/streaming/Balancy/packaged%20snapshot.txt"]);
+    NSString *resolvedBridge = resolvePath(handler, resolve,
+        [NSURL URLWithString:@"balancy-local://local/resources/balancy-webview-bridge.js"]);
+    NSString *escaped = resolvePath(handler, resolve,
+        [NSURL URLWithString:@"balancy-local://local/streaming/../Info.plist"]);
+
+    Check(@"iOS scheme resolves persistent cloud overlay", [resolvedPersistent isEqual:runtimeFile]);
+    Check(@"iOS scheme resolves packaged StreamingAssets", [resolvedStreaming hasSuffix:@"/Balancy/packaged snapshot.txt"]);
+    Check(@"iOS scheme resolves packaged bridge", [resolvedBridge hasSuffix:@"/Balancy/balancy-webview-bridge.js"]);
+    Check(@"iOS scheme rejects traversal outside selected root", escaped == nil);
+    Check(@"iOS startup does not copy packaged snapshot", ![[NSFileManager defaultManager]
+        fileExistsAtPath:[persistent stringByAppendingPathComponent:@"Balancy/packaged snapshot.txt"]]);
 }
 - (void)testShow {
     Check(@"prepare keeps shell hidden", self.controller.view.hidden);
@@ -144,8 +177,14 @@ static void WaitUntil(BOOL (^condition)(void), double deadline, dispatch_block_t
     self.controller = [self makeController];
     [self.controller loadURL:[NSURL fileURLWithPath:shell].absoluteString];
     bridgeMessage = ^(NSString *raw) { [self receiveBridge:raw]; };
-    WaitUntil(^BOOL{ return !self.controller.webView.loading && [self.controller.webView.URL.path isEqual:shell]; }, CACurrentMediaTime()+15, ^{
-        BOOL loaded = !self.controller.webView.loading && [self.controller.webView.URL.path isEqual:shell];
+    BOOL (^fixtureLoaded)(void) = ^BOOL{
+        NSURL *url = self.controller.webView.URL;
+        return !self.controller.webView.loading &&
+            ([url.path isEqual:shell] ||
+             ([url.scheme isEqual:@"balancy-local"] && [url.path isEqual:@"/persistent/shell.html"]));
+    };
+    WaitUntil(fixtureLoaded, CACurrentMediaTime()+15, ^{
+        BOOL loaded = fixtureLoaded();
         Check(@"fixture shell navigation completed before injection", loaded);
         if (!loaded) { [self finish]; return; }
         NSString *bridge = [NSString stringWithContentsOfFile:[NSBundle.mainBundle pathForResource:@"bridge" ofType:@"js"] encoding:NSUTF8StringEncoding error:nil];
@@ -169,7 +208,10 @@ static void WaitUntil(BOOL (^condition)(void), double deadline, dispatch_block_t
         for (NSDictionary *request in requests) {
             int action = [request[@"action"] intValue]; NSString *result = @"{}";
             if(action == 10) result = @"Localized text";
-            if(action == 11) { self.imageRequests++; result = [NSURL fileURLWithPath:[NSHomeDirectory() stringByAppendingPathComponent:@"Documents/icon.png"]].absoluteString; }
+            if(action == 11) {
+                self.imageRequests++;
+                result = @"balancy-local://local/persistent/icon.png";
+            }
             [responses addObject:@{@"id":request[@"id"], @"result":result}];
         }
         [self send:@{@"type":@"batch-response",@"responses":responses}];

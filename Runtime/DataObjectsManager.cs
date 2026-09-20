@@ -304,17 +304,25 @@ namespace Balancy.Dictionaries
                     {
                         //Debug.Log("**==>> [WebGL] Preload complete, blob URL: " + blobUrl);
                     }
-                    else
-                    {
-                        Debug.LogError("**==>> [WebGL] Preload failed - file not found in IndexedDB");
-                    }
                 }
 
                 if (string.IsNullOrEmpty(blobUrl))
                 {
-                    Debug.LogError("**==>> [WebGL] Failed to get blob URL for: " + fullPath);
-                    SetSprite(null);
-                    yield break;
+                    // A packaged resource is intentionally absent from IndexedDB. Load it
+                    // directly from StreamingAssets instead of copying it into WASM memory.
+                    using (var resourceRequest = UnityWebRequestTexture.GetTexture(PathInResources))
+                    {
+                        yield return resourceRequest.SendWebRequest();
+                        if (resourceRequest.result == UnityWebRequest.Result.Success)
+                        {
+                            CreateSpriteFromTexture(DownloadHandlerTexture.GetContent(resourceRequest));
+                            yield break;
+                        }
+
+                        Debug.LogError($"[Balancy] WebGL: file is absent from IndexedDB and StreamingAssets: {_objectInfo.LocationPath}");
+                        SetSprite(null);
+                        yield break;
+                    }
                 }
 
                 //Debug.Log("**==>> [WebGL] Loading texture from blob URL: " + blobUrl);

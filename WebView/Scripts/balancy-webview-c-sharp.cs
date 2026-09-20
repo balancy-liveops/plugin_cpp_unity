@@ -343,8 +343,7 @@ namespace Balancy.WebView
 #endif
         }
 
-#if UNITY_IOS && !UNITY_EDITOR
-        private static bool TryMakeIosLocalUrl(string physicalPath, string rootPath, string storage, out string url)
+        internal static bool TryMakeIosLocalUrl(string physicalPath, string rootPath, string storage, out string url)
         {
             string normalizedPath = System.IO.Path.GetFullPath(physicalPath);
             string normalizedRoot = System.IO.Path.GetFullPath(rootPath).TrimEnd('/', '\\');
@@ -365,14 +364,15 @@ namespace Balancy.WebView
             url = IosLocalUrlPrefix + storage + "/" + string.Join("/", segments);
             return true;
         }
-#endif
+
+        internal static string GetIosBridgeUrl() => IosLocalUrlPrefix + "resources/" + BridgeFileName;
 
         private static string GetBridgeUrl()
         {
 #if UNITY_ANDROID && !UNITY_EDITOR
             return "file:///android_asset/Balancy/" + BridgeFileName;
 #elif UNITY_IOS && !UNITY_EDITOR
-            return IosLocalUrlPrefix + "resources/" + BridgeFileName;
+            return GetIosBridgeUrl();
 #else
             string path = System.IO.Path.Combine(Application.streamingAssetsPath, "Balancy", BridgeFileName);
             if (!System.IO.File.Exists(path))

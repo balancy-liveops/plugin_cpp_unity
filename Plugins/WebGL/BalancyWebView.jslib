@@ -453,7 +453,7 @@ var BalancyWebViewPlugin = {
       // Load file from IndexedDB
       BalancyIndexedDBFileHelper.loadFile(directory, fileName).then(function(data) {
         if (!data) {
-          console.error('[BalancyWebView Plugin] File not found in IndexedDB:', fullPath);
+          // A packaged StreamingAssets file is expected to be absent from IndexedDB.
           {{{ makeDynCall('vii', 'callback') }}}(userData, 0);
           return;
         }

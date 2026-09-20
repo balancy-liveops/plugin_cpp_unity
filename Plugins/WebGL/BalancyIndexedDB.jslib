@@ -185,55 +185,91 @@ mergeInto(LibraryManager.library, {
         }
     },
     
-    // Preload all files from IndexedDB (async, uses callback)
-    balancy_indexeddb_preloadAll: function(callback, userData) {
-        if (typeof BalancyIndexedDBFileHelper !== 'undefined') {
-            console.log('Starting IndexedDB preload...');
-            BalancyIndexedDBFileHelper.getAllFiles().then(function(files) {
-                //console.log('Loaded', files.length, 'files from IndexedDB, preloading to C++...');
-                var totalFiles = files.length;
-                var loadedFiles = 0;
-                
-                // Call callback for each file
-                files.forEach(function(file) {
-                    var fileNameLen = lengthBytesUTF8(file.fileName) + 1;
-                    var fileNamePtr = _malloc(fileNameLen);
-                    stringToUTF8(file.fileName, fileNamePtr, fileNameLen);
-                    
-                    if (file.fileType === 'text' || typeof file.data === 'string') {
-                        // Text file
-                        var dataLen = lengthBytesUTF8(file.data) + 1;
-                        var dataPtr = _malloc(dataLen);
-                        stringToUTF8(file.data, dataPtr, dataLen);
-                        var sizeToPass = dataLen - 1;
-                        //console.log('[Balancy] Preloading file:', file.fileName, 'size:', sizeToPass, 'bytes (text)');
-                        {{{ makeDynCall('viiii', 'callback') }}}(userData, fileNamePtr, dataPtr, sizeToPass);
-                        _free(dataPtr);
-                    } else if (file.data instanceof ArrayBuffer) {
-                        // Binary file - allocate buffer and copy
-                        var size = file.data.byteLength;
-                        var buffer = _malloc(size);
-                        HEAPU8.set(new Uint8Array(file.data), buffer);
-                        //console.log('[Balancy] Preloading file:', file.fileName, 'size:', size, 'bytes (binary)');
-                        {{{ makeDynCall('viiii', 'callback') }}}(userData, fileNamePtr, buffer, size);
-                        _free(buffer);
-                    }
-                    
-                    _free(fileNamePtr);
-                    loadedFiles++;
-                });
-                
-                console.log('✅ Preloaded', loadedFiles, 'files from IndexedDB to C++ memory cache');
-                
-                // Signal completion by calling with null fileName
-                {{{ makeDynCall('viiii', 'callback') }}}(userData, 0, 0, -1);
-            }).catch(function(error) {
-                console.error('Error preloading files:', error);
-                {{{ makeDynCall('viiii', 'callback') }}}(userData, 0, 0, -1);
+    // Build a synchronous file index, but copy only content-read text files to WASM.
+    // Binary assets remain in IndexedDB and are loaded asynchronously on demand.
+    balancy_indexeddb_preloadAll: function(directory, callback, userData) {
+        var directoryStr = UTF8ToString(directory);
+
+        function isSynchronousContent(fileName) {
+            var lower = fileName.toLowerCase();
+            return ['.json', '.txt', '.xml', '.csv', '.yaml', '.yml', '.js',
+                    '.banim', '.html', '.css', '.lottie'].some(function(ext) {
+                return lower.endsWith(ext);
             });
-        } else {
+        }
+
+        function notify(fileName, data) {
+            var fileNameLen = lengthBytesUTF8(fileName) + 1;
+            var fileNamePtr = _malloc(fileNameLen);
+            stringToUTF8(fileName, fileNamePtr, fileNameLen);
+
+            if (typeof data === 'string') {
+                var dataLen = lengthBytesUTF8(data) + 1;
+                var dataPtr = _malloc(dataLen);
+                stringToUTF8(data, dataPtr, dataLen);
+                {{{ makeDynCall('viiii', 'callback') }}}(userData, fileNamePtr, dataPtr, dataLen - 1);
+                _free(dataPtr);
+            } else if (data instanceof ArrayBuffer || ArrayBuffer.isView(data)) {
+                var bytes = data instanceof ArrayBuffer
+                    ? new Uint8Array(data)
+                    : new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+                var buffer = _malloc(bytes.byteLength);
+                HEAPU8.set(bytes, buffer);
+                {{{ makeDynCall('viiii', 'callback') }}}(userData, fileNamePtr, buffer, bytes.byteLength);
+                _free(buffer);
+            } else {
+                // Metadata-only entry: C++ records existence without retaining content.
+                {{{ makeDynCall('viiii', 'callback') }}}(userData, fileNamePtr, 0, 0);
+            }
+
+            _free(fileNamePtr);
+        }
+
+        if (typeof BalancyIndexedDBFileHelper === 'undefined') {
             console.error('BalancyIndexedDBFileHelper not loaded');
             {{{ makeDynCall('viiii', 'callback') }}}(userData, 0, 0, -1);
+            return;
         }
+
+        BalancyIndexedDBFileHelper.getAllFileNamesInDirectory(directoryStr).then(function(fileNames) {
+            var hasCombinedScripts = fileNames.some(function(fileName) {
+                var name = fileName.split('/').pop();
+                return name.indexOf('scripts_combined_') === 0 && name.toLowerCase().endsWith('.js');
+            });
+            var textFiles = fileNames.filter(function(fileName) {
+                var isLegacyScript = fileName.indexOf('Cache/Files/') >= 0 &&
+                    fileName.toLowerCase().endsWith('.js');
+                return isSynchronousContent(fileName) && !(hasCombinedScripts && isLegacyScript);
+            });
+            var textFileSet = new Set(textFiles);
+
+            // Publish existence immediately. Text entries are overwritten with their content below.
+            fileNames.forEach(function(fileName) {
+                if (!textFileSet.has(fileName))
+                    notify(fileName, null);
+            });
+
+            return Promise.all(textFiles.map(function(fileName) {
+                return BalancyIndexedDBFileHelper.loadFile(directoryStr, fileName)
+                    .then(function(data) {
+                        notify(fileName, data);
+                        return data ? 1 : 0;
+                    })
+                    .catch(function(error) {
+                        console.error('Error preloading synchronous file:', fileName, error);
+                        notify(fileName, null);
+                        return 0;
+                    });
+            })).then(function(results) {
+                var loadedFiles = results.reduce(function(total, value) { return total + value; }, 0);
+                console.log('[Balancy] IndexedDB index ready:', fileNames.length,
+                    'files;', loadedFiles, 'synchronous text files copied to WASM');
+                {{{ makeDynCall('viiii', 'callback') }}}(userData, 0, 0, -1);
+            });
+        }).catch(function(error) {
+            console.error('Error indexing IndexedDB files:', error);
+            {{{ makeDynCall('viiii', 'callback') }}}(userData, 0, 0, -1);
+        });
     }
+
 });

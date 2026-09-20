@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.IO;
 using Balancy.Dictionaries;
 using UnityEngine;
@@ -9,6 +10,61 @@ namespace Balancy
 {
     internal class UnityFileManager
     {
+        internal enum PackagedResourceAccess
+        {
+            DirectFileSystem,
+            AndroidAssetManager,
+            WebGlHydration
+        }
+
+        internal static PackagedResourceAccess GetPackagedResourceAccess(RuntimePlatform platform)
+        {
+            switch (platform)
+            {
+                case RuntimePlatform.Android:
+                    return PackagedResourceAccess.AndroidAssetManager;
+                case RuntimePlatform.WebGLPlayer:
+                    return PackagedResourceAccess.WebGlHydration;
+                default:
+                    // iOS/macOS/desktop StreamingAssets are ordinary bundle files.
+                    return PackagedResourceAccess.DirectFileSystem;
+            }
+        }
+
+        internal static bool RequiresStartupCopy(RuntimePlatform platform) => false;
+
+        internal static bool IsWebGlSynchronousContent(string relativePath)
+        {
+            var ext = Path.GetExtension(relativePath).ToLowerInvariant();
+            return ext == ".json" || ext == ".txt" || ext == ".xml" || ext == ".csv" ||
+                   ext == ".yaml" || ext == ".yml" || ext == ".js" || ext == ".banim" ||
+                   ext == ".html" || ext == ".css" || ext == ".lottie";
+        }
+
+        internal static bool ShouldHydrateWebGlContent(string relativePath, bool hasCombinedScripts)
+        {
+            return IsWebGlSynchronousContent(relativePath) &&
+                   !IsWebGlBrowserRuntimeAsset(relativePath) &&
+                   !(hasCombinedScripts && IsLegacyIndividualScript(relativePath));
+        }
+
+        private static bool IsLegacyIndividualScript(string relativePath)
+        {
+            var fileName = Path.GetFileName(relativePath);
+            return relativePath.IndexOf("Cache/Files/", StringComparison.Ordinal) >= 0 &&
+                   string.Equals(Path.GetExtension(relativePath), ".js", StringComparison.OrdinalIgnoreCase) &&
+                   !fileName.StartsWith("scripts_combined_", StringComparison.Ordinal);
+        }
+
+        private static bool IsWebGlBrowserRuntimeAsset(string relativePath)
+        {
+            var fileName = Path.GetFileName(relativePath);
+            return fileName == "balancy-webview-bridge.js" ||
+                   fileName == "balancy-webview.umd.js" ||
+                   fileName == "balancy-webgl-init.js" ||
+                   fileName == "jszip.min.js";
+        }
+
 #if UNITY_WEBGL && !UNITY_EDITOR
         private static bool _preloadComplete = false;
 
@@ -115,44 +171,110 @@ namespace Balancy
         }
 
 #if UNITY_WEBGL && !UNITY_EDITOR
+        private const int WebGlPreloadBatchSize = 8;
+
+        private sealed class WebGlPreloadRequest
+        {
+            public string RelativePath;
+            public UnityWebRequest Request;
+            public UnityWebRequestAsyncOperation Operation;
+        }
+
         private static IEnumerator PreloadStreamingAssets(string resourcesPath)
         {
-            var manifestPath = Path.Combine(resourcesPath, "balancy_files_manifest.txt");
-            var manifestRequest = UnityWebRequest.Get(manifestPath);
-            yield return manifestRequest.SendWebRequest();
+            var manifestPath = resourcesPath.TrimEnd('/') + "/balancy_files_manifest.txt";
+            string manifestText;
 
-            if (manifestRequest.result != UnityWebRequest.Result.Success)
+            using (var manifestRequest = UnityWebRequest.Get(manifestPath))
             {
-                Debug.LogWarning($"[Balancy] No manifest file found in StreamingAssets, skipping preload: {manifestRequest.error}");
-                yield break;
+                yield return manifestRequest.SendWebRequest();
+
+                if (manifestRequest.result != UnityWebRequest.Result.Success)
+                {
+                    Debug.LogWarning($"[Balancy] No manifest file found in StreamingAssets, skipping preload: {manifestRequest.error}");
+                    yield break;
+                }
+
+                manifestText = manifestRequest.downloadHandler.text;
             }
 
-            var lines = manifestRequest.downloadHandler.text.Split('\n');
-            int filesPreloaded = 0;
-
-            foreach (var line in lines)
+            var manifestFiles = new List<string>();
+            foreach (var line in manifestText.Split('\n'))
             {
                 var relativePath = line.Trim().TrimStart('.', '/');
-                if (string.IsNullOrEmpty(relativePath) || relativePath == "balancy_files_manifest.txt")
-                    continue;
+                if (!string.IsNullOrEmpty(relativePath) && relativePath != "balancy_files_manifest.txt")
+                    manifestFiles.Add(relativePath);
+            }
 
-                var fileUrl = Path.Combine(resourcesPath, relativePath);
-                var fileRequest = UnityWebRequest.Get(fileUrl);
-                yield return fileRequest.SendWebRequest();
+            bool hasCombinedScripts = manifestFiles.Exists(relativePath =>
+                Path.GetFileName(relativePath).StartsWith("scripts_combined_", StringComparison.Ordinal) &&
+                string.Equals(Path.GetExtension(relativePath), ".js", StringComparison.OrdinalIgnoreCase));
 
-                if (fileRequest.result == UnityWebRequest.Result.Success)
+            var synchronousFiles = new List<string>();
+            int registeredFiles = 0;
+
+            foreach (var relativePath in manifestFiles)
+            {
+                // The manifest is the synchronous existence index. Binary resources remain at
+                // their browser URL and are fetched only when a sprite/view actually requests them.
+                bool needsSynchronousContent = ShouldHydrateWebGlContent(relativePath, hasCombinedScripts);
+                if (needsSynchronousContent)
                 {
-                    var fileData = fileRequest.downloadHandler.data;
-                    Balancy.LibraryMethods.General.balancyPreloadFileFromStreamingAssets(relativePath, fileData, fileData.Length);
-                    filesPreloaded++;
+                    synchronousFiles.Add(relativePath);
                 }
                 else
                 {
-                    Debug.LogWarning($"[Balancy] Failed to preload {relativePath}: {fileRequest.error}");
+                    LibraryMethods.General.balancyRegisterFileFromStreamingAssets(
+                        relativePath, Array.Empty<byte>(), 0, 0);
+                }
+                registeredFiles++;
+            }
+
+            int contentFiles = 0;
+            long contentBytes = 0;
+            var startedAt = Time.realtimeSinceStartupAsDouble;
+
+            for (int offset = 0; offset < synchronousFiles.Count; offset += WebGlPreloadBatchSize)
+            {
+                var requests = new List<WebGlPreloadRequest>();
+                int count = Math.Min(WebGlPreloadBatchSize, synchronousFiles.Count - offset);
+
+                for (int i = 0; i < count; i++)
+                {
+                    var relativePath = synchronousFiles[offset + i];
+                    var request = UnityWebRequest.Get(resourcesPath.TrimEnd('/') + "/" + relativePath);
+                    requests.Add(new WebGlPreloadRequest
+                    {
+                        RelativePath = relativePath,
+                        Request = request,
+                        Operation = request.SendWebRequest()
+                    });
+                }
+
+                foreach (var pending in requests)
+                {
+                    yield return pending.Operation;
+
+                    if (pending.Request.result == UnityWebRequest.Result.Success)
+                    {
+                        var data = pending.Request.downloadHandler.data;
+                        LibraryMethods.General.balancyRegisterFileFromStreamingAssets(
+                            pending.RelativePath, data, data.Length, 1);
+                        contentFiles++;
+                        contentBytes += data.Length;
+                    }
+                    else
+                    {
+                        Debug.LogWarning($"[Balancy] Failed to preload synchronous resource {pending.RelativePath}: {pending.Request.error}");
+                    }
+
+                    pending.Request.Dispose();
                 }
             }
 
-            Debug.Log($"[Balancy] Preloaded {filesPreloaded} files from StreamingAssets");
+            var elapsedMs = (Time.realtimeSinceStartupAsDouble - startedAt) * 1000.0;
+            Debug.Log($"[Balancy] WebGL resource index ready: {registeredFiles} files; " +
+                      $"{contentFiles} synchronous text files, {contentBytes} bytes loaded in {elapsedMs:F1} ms");
         }
 #endif
 

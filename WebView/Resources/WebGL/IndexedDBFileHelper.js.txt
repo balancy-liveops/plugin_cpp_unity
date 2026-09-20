@@ -212,6 +212,37 @@ var BalancyIndexedDBFileHelper = {
         });
     },
     
+    // Enumerate keys without materializing record.data. This keeps large binary
+    // assets in IndexedDB while still providing a synchronous existence index to C++.
+    getAllFileNamesInDirectory: function(directory) {
+        return BalancyIndexedDBFileHelper.ensureInitialized().then(function() {
+            return new Promise(function(resolve, reject) {
+                var transaction = BalancyIndexedDBFileHelper.db.transaction([BalancyIndexedDBFileHelper.STORES.FILES], 'readonly');
+                var store = transaction.objectStore(BalancyIndexedDBFileHelper.STORES.FILES);
+                var index = store.index('directory');
+                var files = [];
+                var request = index.openKeyCursor(IDBKeyRange.only(directory));
+
+                request.onsuccess = function(event) {
+                    var cursor = event.target.result;
+                    if (cursor) {
+                        var fullPath = String(cursor.primaryKey);
+                        var prefix = directory.endsWith('/') ? directory : directory + '/';
+                        if (fullPath.indexOf(prefix) === 0)
+                            files.push(fullPath.substring(prefix.length));
+                        cursor.continue();
+                    } else {
+                        resolve(files);
+                    }
+                };
+
+                request.onerror = function() {
+                    reject(request.error);
+                };
+            });
+        });
+    },
+
     applyTempFolder: function(tempFolder) {
         return BalancyIndexedDBFileHelper.ensureInitialized().then(function() {
             // tempFolder is the prefix to remove (e.g., "Temp/")
