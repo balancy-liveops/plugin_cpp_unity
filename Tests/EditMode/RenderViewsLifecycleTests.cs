@@ -96,6 +96,43 @@ namespace Balancy.Tests
         }
 
         [Test]
+        public void PersistentViewUsesCurrentGameViewSizeBeforeContentDispatch()
+        {
+            var originalResize = BalancyWebView.ResizePersistentWindow;
+            var sizes = new System.Collections.Generic.List<Vector2Int>();
+            var state = new PersistentViewState(_ => true, () => {}, () => {}, () => {},
+                () => {}, _ => {}, () => 0);
+            try
+            {
+                BalancyWebView.ResizePersistentWindow = (width, height) =>
+                    sizes.Add(new Vector2Int(width, height));
+                typeof(BalancyWebView).GetField("_persistent",
+                    BindingFlags.Instance | BindingFlags.NonPublic).SetValue(_webView, state);
+
+                _webView.SetScriptsCode("bundle");
+                var version = typeof(BalancyWebView).GetField("_scriptsVersion",
+                    BindingFlags.Instance | BindingFlags.NonPublic).GetValue(_webView);
+                typeof(BalancyWebView).GetField("_shellScriptsVersion",
+                    BindingFlags.Instance | BindingFlags.NonPublic).SetValue(_webView, version);
+                typeof(BalancyWebView).GetField("_acknowledgedScriptsVersion",
+                    BindingFlags.Instance | BindingFlags.NonPublic).SetValue(_webView, version);
+                state.Prepare(() => true, null, null);
+                state.Receive("shellReady", null, state.ShellId, null);
+
+                Assert.That(_webView.ShowView("<div>responsive</div>", "", ""), Is.True);
+                Assert.That(sizes, Is.Empty, "Sizing must happen when a queued view is actually dispatched");
+                state.Tick();
+                Assert.That(sizes, Is.EqualTo(new[] { new Vector2Int(Screen.width, Screen.height) }),
+                    "Persistent HTML must be dispatched against the current GameView viewport");
+            }
+            finally
+            {
+                state.Reset();
+                BalancyWebView.ResizePersistentWindow = originalResize;
+            }
+        }
+
+        [Test]
         public void CleanupRemovesSdkHandlersAndResetsSessionState()
         {
             var externalMessageCalls = 0;

@@ -39,6 +39,8 @@ The 2026-09-17 fixture also instantiates two cached prefabs per View (one detach
 
 ## Emergency exit regression (2026-09-18)
 
-Persistent hide and emergency close now remove the transient native button and cancel its timer. A new View starts with the button hidden; the emergency feature remains enabled by default and still requires a triple tap/click. Disabling it prevents the button from appearing. Tests cover initial state, exit/reopen, ordinary hide/reopen, disable and reenable. macOS: 210 checks passed; Android: 75 checks passed; iOS 26: 77 checks passed. iOS 17 compiled, but its simulator stalled at app launch, so this run does not validate iOS 17. TypeScript core: 130 tests passed, including iframe emergency-exit reuse and reenable tests.
+Persistent hide and emergency close now remove the transient native button and cancel its timer. A new View starts with the button hidden; the emergency feature remains enabled by default and still requires a triple tap/click. Disabling it prevents the button from appearing. Tests cover initial state, exit/reopen, ordinary hide/reopen, disable and reenable. macOS: 212 checks passed; Android: 75 checks passed; iOS 26: 77 checks passed. iOS 17 compiled, but its simulator stalled at app launch, so this run does not validate iOS 17. TypeScript core: 130 tests passed, including iframe emergency-exit reuse and reenable tests.
+
+The macOS harness also verifies that a shell prepared with an earlier size adopts the current Unity Game View dimensions before it is shown and preserves them while becoming visible.
 
 The macOS universal library and Unity WebGL resources were rebuilt. Android AAR classes were compiled with `javac --release 8` against API 35 and replaced in the existing AAR, preserving its manifest and metadata (the offline Gradle build lacked AGP 8.6.0). Only production plugin classes are packaged.

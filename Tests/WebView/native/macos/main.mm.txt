@@ -65,8 +65,11 @@ int main() {
    Check("sized persistent prepare starts", _balancyPrepareWebViewWithSize("about:blank", size.width, size.height));
    Check("persistent matches classic viewport", NSEqualSizes(_sharedController.webView.bounds.size, classic));
    Check("sized preparation stays hidden", !_sharedController.window.visible);
+   NSSize currentGameView = NSMakeSize(size.height, size.width);
+   _balancySetWindowSize(currentGameView.width, currentGameView.height);
+   Check("prepared shell adopts current Game View viewport", NSEqualSizes(_sharedController.webView.bounds.size, currentGameView));
    _balancyShowWebView();
-   Check("show preserves prepared viewport", NSEqualSizes(_sharedController.webView.bounds.size, size));
+   Check("show preserves current Game View viewport", NSEqualSizes(_sharedController.webView.bounds.size, currentGameView));
    _balancyCloseWebView();
   }
   Check("legacy prepare entry point remains callable", _balancyPrepareWebView("about:blank"));

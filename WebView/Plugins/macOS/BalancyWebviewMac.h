@@ -25,6 +25,13 @@ void _balancySetOfflineCacheEnabled(bool enabled);
 void _balancySetDebugLogging(bool enabled);
 void _balancySetGameUIMode(bool enabled);
 
+// Persistent WebView configuration
+bool _balancyPrepareWebView(const char* shellUrl);
+bool _balancyPrepareWebViewWithSize(const char* shellUrl, int width, int height);
+void _balancySetWindowSize(int width, int height);
+void _balancyShowWebView();
+void _balancyHideWebView();
+
 // Animation configuration
 void _balancySetShowDelay(float delaySeconds);
 void _balancySetAnimationDuration(float durationSeconds);

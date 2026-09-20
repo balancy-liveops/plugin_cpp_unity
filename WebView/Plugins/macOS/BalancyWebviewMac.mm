@@ -1169,6 +1169,16 @@ bool _balancyPrepareWebView(const char* shellUrl) {
     return _balancyPrepareWebViewWithSize(shellUrl, 800, 600);
 }
 
+// Persistent shells can be prepared before Unity finishes laying out the Game View.
+// Match classic mode at dispatch/show time without recreating the WKWebView.
+void _balancySetWindowSize(int width, int height) {
+    @autoreleasepool {
+        if (_sharedController == nil || width <= 0 || height <= 0) return;
+        [_sharedController.window setContentSize:NSMakeSize(width, height)];
+        [_sharedController.window center];
+    }
+}
+
 // Persistent-mode: fade the WebView window in.
 void _balancyShowWebView() {
     @autoreleasepool {

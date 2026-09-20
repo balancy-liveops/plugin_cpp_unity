@@ -26,6 +26,12 @@ namespace Balancy.WebView
         private string _scriptsVersion = Guid.NewGuid().ToString("N");
         private string _acknowledgedScriptsVersion;
         private string _shellScriptsCode, _shellScriptsUrl, _shellScriptsVersion;
+        internal static Action<int, int> ResizePersistentWindow =
+#if UNITY_EDITOR_OSX || UNITY_STANDALONE_OSX
+            _balancySetWindowSize;
+#else
+            null;
+#endif
         // Temporary opt-in diagnostics; do not enable native payload/debug logging for timings.
         public static bool PerformanceLoggingEnabled { get; set; }
         public static double PerformanceNow() => PerformanceLoggingEnabled
@@ -282,6 +288,7 @@ namespace Balancy.WebView
             SendPersistentMessage,
             () => { PerformanceLog("showCommand", _performanceViewStart, _persistent?.CurrentId,
                 "configuredDelayMs=" + (_showDelay * 1000) + " configuredFadeMs=" + (_animationDuration * 1000));
+                ApplyPersistentWindowSize();
                 ApplyAnimationSettings();
                 _balancyShowWebView(); _isWebViewOpen = true; },
             () => { _balancyHideWebView(); _isWebViewOpen = false; },
@@ -923,6 +930,8 @@ namespace Balancy.WebView
         // Match the Game View dimensions used by ordinary OpenWebView.
         [DllImport("libBalancyWebViewMac")]
         private static extern bool _balancyPrepareWebViewWithSize(string shellUrl, int width, int height);
+        [DllImport("libBalancyWebViewMac")]
+        private static extern void _balancySetWindowSize(int width, int height);
         private static bool _balancyPrepareWebView(string shellUrl)
             => _balancyPrepareWebViewWithSize(shellUrl, Screen.width, Screen.height);
         [DllImport("libBalancyWebViewMac")]
@@ -1243,6 +1252,7 @@ namespace Balancy.WebView
             // Resolve the installed version at dispatch, after any pending shell replacement.
             if (Persistent.CanShow) _performanceViewStart = PerformanceNow();
             return Persistent.Show(id => {
+                ApplyPersistentWindowSize();
                 var started = PerformanceNow();
                 var payload = JsonUtility.ToJson(new PersistentLoadMessage {
                 type = "loadView", viewId = id, performanceLogging = PerformanceLoggingEnabled, htmlBase64 = Base64(html), baseUrl = baseUrl,
@@ -1259,6 +1269,7 @@ namespace Balancy.WebView
         public void ShowWebView()
         {
             if (!Persistent.Enabled || Persistent.CurrentId == null || !Persistent.Visible) return;
+            ApplyPersistentWindowSize();
             _balancyShowWebView(); _isWebViewOpen = true;
         }
 
@@ -1693,6 +1704,11 @@ namespace Balancy.WebView
         #endregion
 
         #region Private Methods
+
+        private static void ApplyPersistentWindowSize()
+        {
+            ResizePersistentWindow?.Invoke(Screen.width, Screen.height);
+        }
 
         // Apply all current settings to the WebView
         private void ApplySettings()
