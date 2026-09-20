@@ -2,8 +2,17 @@ extern "C" void UnitySendMessage(const char*, const char*, const char*) {}
 // Include production implementation so private native controller lifetimes are exercised.
 #import "../../../../WebView/Plugins/macOS/BalancyWebviewMac.mm"
 static int failures, checks, messages;
+static bool loadFinished, loadSucceeded;
 static void Check(const char *name, bool ok) { checks++; printf("%s %s\n",ok ? "PASS" : "FAIL",name); if(!ok) failures++; }
 static void Message(const char *) { messages++; }
+static void LoadCompleted(bool success) { loadFinished = true; loadSucceeded = success; }
+static bool WaitForLoad(void) {
+ NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:5.0];
+ while (!loadFinished && deadline.timeIntervalSinceNow > 0) {
+  [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:.01]];
+ }
+ return loadFinished && loadSucceeded;
+}
 @interface LateMessage : WKScriptMessage
 @property(nonatomic,strong) WKWebView *source;
 @end
@@ -16,6 +25,28 @@ int main() {
  @autoreleasepool {
   [NSApplication sharedApplication]; [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
   _messageCallback = Message;
+  NSString *encodedDirectory = [NSTemporaryDirectory() stringByAppendingPathComponent:@"Balancy WebView URL Test"];
+  [[NSFileManager defaultManager] createDirectoryAtPath:encodedDirectory withIntermediateDirectories:YES attributes:nil error:nil];
+  NSString *encodedShell = [encodedDirectory stringByAppendingPathComponent:@"shell page.html"];
+  [@"<!doctype html><title>Balancy</title>" writeToFile:encodedShell atomically:YES encoding:NSUTF8StringEncoding error:nil];
+  NSString *encodedShellURL = [NSURL fileURLWithPath:encodedShell].absoluteString;
+  Check("fixture URL contains escaped spaces", [encodedShellURL containsString:@"%20"]);
+  _loadCompletedCallback = LoadCompleted;
+  loadFinished = false; loadSucceeded = false;
+  Check("persistent encoded file URL starts", _balancyPrepareWebView([encodedShellURL UTF8String]));
+  Check("persistent encoded file URL loads", WaitForLoad());
+  _loadCompletedCallback = NULL;
+  _balancyCloseWebView();
+
+  BalancyEmbeddedWebViewController *encodedEmbedded = [[BalancyEmbeddedWebViewController alloc] initWithWidth:64 height:64];
+  _loadCompletedCallback = LoadCompleted;
+  loadFinished = false; loadSucceeded = false;
+  Check("embedded encoded file URL starts", [encodedEmbedded loadURL:encodedShellURL]);
+  Check("embedded encoded file URL loads", WaitForLoad());
+  _loadCompletedCallback = NULL;
+  [encodedEmbedded close];
+  encodedEmbedded = nil;
+  [[NSFileManager defaultManager] removeItemAtPath:encodedDirectory error:nil];
   // Exercise exported entry points: ordinary and prepared windows must agree.
   for (NSValue *value in @[[NSValue valueWithSize:NSMakeSize(360,640)],
                            [NSValue valueWithSize:NSMakeSize(640,360)]]) {

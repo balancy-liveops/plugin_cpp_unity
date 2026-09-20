@@ -21,6 +21,24 @@ static CacheCompletedCallback _cacheCompletedCallback = NULL;
 // from both PersistentDataPath and StreamingAssets (different directory trees).
 static NSString* const kReadAccessRoot = @"/";
 
+// Unity passes file URLs, not filesystem paths. Keep the URL semantics intact so
+// escaped characters such as "%20" resolve to their actual path components.
+static NSURL *BalancyFileURLFromString(NSString *url) {
+    if (![url hasPrefix:@"file://"]) {
+        return nil;
+    }
+
+    NSURL *fileURL = [NSURL URLWithString:url];
+    if (fileURL != nil && fileURL.isFileURL) {
+        return fileURL;
+    }
+
+    // Preserve compatibility with older callers that supplied unescaped spaces.
+    NSString *filePath = [url substringFromIndex:@"file://".length];
+    NSString *decodedPath = [filePath stringByRemovingPercentEncoding];
+    return [NSURL fileURLWithPath:decodedPath ?: filePath];
+}
+
 // Unity logging function
 extern "C" void UnitySendMessage(const char* obj, const char* method, const char* msg) __attribute__((weak));
 
@@ -239,8 +257,10 @@ void LogToUnity(const char* message) {
 
 - (BOOL)loadURL:(NSString *)url {
     if ([url hasPrefix:@"file://"]) {
-        NSString *filePath = [url stringByReplacingOccurrencesOfString:@"file://" withString:@""];
-        NSURL *fileURL = [NSURL fileURLWithPath:filePath];
+        NSURL *fileURL = BalancyFileURLFromString(url);
+        if (fileURL == nil) {
+            return NO;
+        }
         NSURL *readAccessURL = [NSURL fileURLWithPath:kReadAccessRoot isDirectory:YES];
 
         [_webView loadFileURL:fileURL allowingReadAccessToURL:readAccessURL];
@@ -534,6 +554,7 @@ void LogToUnity(const char* message) {
 
 - (void)webView:(WKWebView *)webView didFailNavigation:(WKNavigation *)navigation withError:(NSError *)error {
     if (webView != _webView) return;
+    NSLog(@"[BalancyWebView] Embedded navigation failed for %@: %@", webView.URL, error);
     if (_loadCompletedCallback) {
         _loadCompletedCallback(false);
     }
@@ -541,6 +562,7 @@ void LogToUnity(const char* message) {
 
 - (void)webView:(WKWebView *)webView didFailProvisionalNavigation:(WKNavigation *)navigation withError:(NSError *)error {
     if (webView != _webView) return;
+    NSLog(@"[BalancyWebView] Embedded provisional navigation failed for %@: %@", webView.URL, error);
     if (_loadCompletedCallback) {
         _loadCompletedCallback(false);
     }
@@ -700,8 +722,10 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
     }
     
     if ([url hasPrefix:@"file://"]) {
-        NSString *filePath = [url stringByReplacingOccurrencesOfString:@"file://" withString:@""];
-        NSURL *fileURL = [NSURL fileURLWithPath:filePath];
+        NSURL *fileURL = BalancyFileURLFromString(url);
+        if (fileURL == nil) {
+            return NO;
+        }
         NSURL *readAccessURL = [NSURL fileURLWithPath:kReadAccessRoot isDirectory:YES];
 
         [_webView loadFileURL:fileURL allowingReadAccessToURL:readAccessURL];
@@ -1050,6 +1074,7 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
 
 - (void)webView:(WKWebView *)webView didFailNavigation:(WKNavigation *)navigation withError:(NSError *)error {
     if (webView != _webView) return;
+   NSLog(@"[BalancyWebView] Navigation failed for %@: %@", webView.URL, error);
    if (_loadCompletedCallback) {
        _loadCompletedCallback(false);
    }
@@ -1057,6 +1082,7 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
 
 - (void)webView:(WKWebView *)webView didFailProvisionalNavigation:(WKNavigation *)navigation withError:(NSError *)error {
     if (webView != _webView) return;
+   NSLog(@"[BalancyWebView] Provisional navigation failed for %@: %@", webView.URL, error);
    if (_loadCompletedCallback) {
        _loadCompletedCallback(false);
    }
