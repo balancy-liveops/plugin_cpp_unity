@@ -32,6 +32,7 @@ namespace Balancy.WebView
 #else
             null;
 #endif
+        internal static Func<Vector2Int> ResolveWebViewSize = GetCurrentWebViewSize;
         // Temporary opt-in diagnostics; do not enable native payload/debug logging for timings.
         public static bool PerformanceLoggingEnabled { get; set; }
         public static double PerformanceNow() => PerformanceLoggingEnabled
@@ -933,7 +934,10 @@ namespace Balancy.WebView
         [DllImport("libBalancyWebViewMac")]
         private static extern void _balancySetWindowSize(int width, int height);
         private static bool _balancyPrepareWebView(string shellUrl)
-            => _balancyPrepareWebViewWithSize(shellUrl, Screen.width, Screen.height);
+        {
+            Vector2Int size = ResolveWebViewSize();
+            return _balancyPrepareWebViewWithSize(shellUrl, size.x, size.y);
+        }
         [DllImport("libBalancyWebViewMac")]
         private static extern void _balancyShowWebView();
         [DllImport("libBalancyWebViewMac")]
@@ -1012,8 +1016,8 @@ namespace Balancy.WebView
         public bool OpenWebView(string url, string ownerJson, string additionalInfo)
         {
 #if UNITY_EDITOR_OSX || (!UNITY_EDITOR && (UNITY_IOS || UNITY_ANDROID || UNITY_WEBGL))
-            // Use Screen dimensions to match game view size
-            return OpenWebView(url, ownerJson, additionalInfo, Screen.width, Screen.height);
+            Vector2Int size = ResolveWebViewSize();
+            return OpenWebView(url, ownerJson, additionalInfo, size.x, size.y);
 #endif
             Debug.LogWarning("Embedded WebView is only supported in Unity Editor on macOS, iOS, Android, and WebGL");
 
@@ -1705,9 +1709,22 @@ namespace Balancy.WebView
 
         #region Private Methods
 
+        private static Vector2Int GetCurrentWebViewSize()
+        {
+#if UNITY_EDITOR
+            Vector2 gameViewSize = UnityEditor.Handles.GetMainGameViewSize();
+            int editorWidth = Mathf.RoundToInt(gameViewSize.x);
+            int editorHeight = Mathf.RoundToInt(gameViewSize.y);
+            if (editorWidth > 0 && editorHeight > 0)
+                return new Vector2Int(editorWidth, editorHeight);
+#endif
+            return new Vector2Int(Mathf.Max(1, Screen.width), Mathf.Max(1, Screen.height));
+        }
+
         private static void ApplyPersistentWindowSize()
         {
-            ResizePersistentWindow?.Invoke(Screen.width, Screen.height);
+            Vector2Int size = ResolveWebViewSize();
+            ResizePersistentWindow?.Invoke(size.x, size.y);
         }
 
         // Apply all current settings to the WebView

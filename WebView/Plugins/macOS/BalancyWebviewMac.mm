@@ -50,7 +50,7 @@ void LogToUnity(const char* message) {
 }
 
 // Forward declarations
-@interface BalancyWebViewController : NSWindowController <WKNavigationDelegate, WKScriptMessageHandler>
+@interface BalancyWebViewController : NSWindowController <WKNavigationDelegate, WKScriptMessageHandler, NSWindowDelegate>
 @property (nonatomic, strong) WKWebView *webView;
 @property (nonatomic, strong) WKUserContentController *userContentController;
 @property (nonatomic, assign) BOOL debugLogging;
@@ -647,6 +647,7 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
         [window center];
         
         self = [self initWithWindow:window];
+        window.delegate = self;
         
         WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
         
@@ -831,6 +832,17 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
     }
 }
 
+- (BOOL)windowShouldClose:(NSWindow *)sender {
+    if (sender != self.window) return YES;
+    // The title-bar close button must follow the same lifecycle as an in-view close:
+    // C# hides the persistent window, clears the active DOM and waits for viewCleared.
+    if (_messageCallback) {
+        _messageCallback("{\"action\":200,\"params\":{}}");
+        return NO;
+    }
+    return YES;
+}
+
 - (void)close {
     [self hideForPersistentMode];
     [[NSNotificationCenter defaultCenter] removeObserver:self];
@@ -852,6 +864,7 @@ static BalancyEmbeddedWebViewController* _embeddedController = nil;
     [_webView stopLoading];
     [_webView removeFromSuperview];
     _webView = nil;
+    [self window].delegate = nil;
     [[self window] close];
 }
 

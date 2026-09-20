@@ -99,6 +99,7 @@ namespace Balancy.Tests
         public void PersistentViewUsesCurrentGameViewSizeBeforeContentDispatch()
         {
             var originalResize = BalancyWebView.ResizePersistentWindow;
+            var originalSizeResolver = BalancyWebView.ResolveWebViewSize;
             var sizes = new System.Collections.Generic.List<Vector2Int>();
             var state = new PersistentViewState(_ => true, () => {}, () => {}, () => {},
                 () => {}, _ => {}, () => 0);
@@ -106,6 +107,7 @@ namespace Balancy.Tests
             {
                 BalancyWebView.ResizePersistentWindow = (width, height) =>
                     sizes.Add(new Vector2Int(width, height));
+                BalancyWebView.ResolveWebViewSize = () => new Vector2Int(480, 800);
                 typeof(BalancyWebView).GetField("_persistent",
                     BindingFlags.Instance | BindingFlags.NonPublic).SetValue(_webView, state);
 
@@ -122,13 +124,14 @@ namespace Balancy.Tests
                 Assert.That(_webView.ShowView("<div>responsive</div>", "", ""), Is.True);
                 Assert.That(sizes, Is.Empty, "Sizing must happen when a queued view is actually dispatched");
                 state.Tick();
-                Assert.That(sizes, Is.EqualTo(new[] { new Vector2Int(Screen.width, Screen.height) }),
-                    "Persistent HTML must be dispatched against the current GameView viewport");
+                Assert.That(sizes, Is.EqualTo(new[] { new Vector2Int(480, 800) }),
+                    "Persistent HTML must use the current portrait GameView viewport without swapping axes");
             }
             finally
             {
                 state.Reset();
                 BalancyWebView.ResizePersistentWindow = originalResize;
+                BalancyWebView.ResolveWebViewSize = originalSizeResolver;
             }
         }
 

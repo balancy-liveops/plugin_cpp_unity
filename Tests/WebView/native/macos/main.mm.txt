@@ -85,6 +85,13 @@ int main() {
   Check("emergency exit sends close", messages == 1);
   messages = 0;
   Check("exit removes emergency button and timer", emergency.emergencyExitButton == nil && emergency.emergencyExitHideTimer == nil);
+  Check("title-bar close is delegated to SDK lifecycle", ![emergency windowShouldClose:emergency.window] && messages == 1);
+  Check("title-bar close keeps persistent shell alive", emergency.window.visible && emergency.webView != nil);
+  messages = 0;
+  [emergency hideForPersistentMode];
+  _balancySetWindowSize(480, 800);
+  [emergency startShowAnimation];
+  Check("persistent shell reopens after title-bar close", emergency.window.visible && NSEqualSizes(emergency.webView.bounds.size, NSMakeSize(480, 800)));
   [emergency hideForPersistentMode]; [emergency startShowAnimation];
   Check("reopen does not inherit emergency", emergency.emergencyExitButton == nil);
   [emergency showEmergencyExitButton]; [emergency hideForPersistentMode]; [emergency startShowAnimation];
