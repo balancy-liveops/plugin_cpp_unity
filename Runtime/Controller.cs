@@ -89,13 +89,7 @@ namespace Balancy
             Balancy.UnzipBridge.Initialize(); // Initialize Unity ZIP bridge for all platforms
 
             LibraryMethods.General.balancySetInvokeInMainThreadCallback(InvokeInMainThread);
-            FreezeDiagnostics.Log("SESSION sdk=latest diagnostic=startup-pipeline-v2 platform=" + Application.platform
-                + " unity=" + Application.unityVersion + " device=" + SystemInfo.deviceModel
-                + " launchType=" + appConfig.LaunchType);
-            long filesStarted = FreezeDiagnostics.Now;
-            FreezeDiagnostics.Log("FILES_INIT BEGIN");
             yield return UnityFileManager.InitRuntime();
-            FreezeDiagnostics.End("FILES_INIT END (includes coroutine waits)", filesStarted, 0);
 
             if (!_isInitialized || generation != _lifecycleGeneration)
                 yield break;
@@ -112,8 +106,6 @@ namespace Balancy
             CppAppConfig config = CreateConfigForCPP(appConfig);
             IntPtr configPtr = Marshal.AllocHGlobal(Marshal.SizeOf(config));
             bool structureInitialized = false;
-            long nativeStarted = FreezeDiagnostics.Now;
-            FreezeDiagnostics.Log("NATIVE_INIT BEGIN");
             try
             {
                 Marshal.StructureToPtr(config, configPtr, false);
@@ -136,7 +128,6 @@ namespace Balancy
             }
             finally
             {
-                FreezeDiagnostics.End("NATIVE_INIT END", nativeStarted, 0);
                 if (structureInitialized)
                     Marshal.DestroyStructure(configPtr, typeof(CppAppConfig));
                 Marshal.FreeHGlobal(configPtr);
@@ -360,7 +351,7 @@ namespace Balancy
             return originalPlatform;
         }
         
-        private static void CompleteDataReady(Balancy.Callbacks.DataUpdatedStatus status, long started)
+        private static void CompleteDataReady(Balancy.Callbacks.DataUpdatedStatus status)
         {
             // A CMS update can re-version scripts/views. GetObjectView memoizes resolved
             // views, so invalidate only after the matching script snapshot is ready.
@@ -371,7 +362,6 @@ namespace Balancy
             if (status.IsCloudSynced)
                 InvokeSubscribersSafely(OnCloudSynced, callback => callback());
             InvokeSubscribersSafely(Balancy.Callbacks.OnDataUpdated, callback => callback(status));
-            FreezeDiagnostics.End("DATA_READY END cloud=" + status.IsCloudSynced, started, 0);
         }
 
         [AOT.MonoPInvokeCallback(typeof(Balancy.ProgressUpdateCallback))]
@@ -425,20 +415,16 @@ namespace Balancy
                         bool isCMSUpdated = notificationDataIsReady.IsCMSUpdated;
                         bool isProfileUpdated = notificationDataIsReady.IsProfileUpdated;
 #endif
-                        long dataReadyStarted = FreezeDiagnostics.Now;
-                        FreezeDiagnostics.Log("DATA_READY BEGIN cloud=" + isCloudSynced
-                            + " cms=" + isCMSUpdated + " profile=" + isProfileUpdated);
                         var dataStatus = new Balancy.Callbacks.DataUpdatedStatus(
                             isCloudSynced, isCMSUpdated, isProfileUpdated);
                         int dataReadyGeneration = _lifecycleGeneration;
                         RenderViewsManager.HandleContentUpdatedAndWait(dataStatus, () =>
                         {
                             if (!_isInitialized || dataReadyGeneration != _lifecycleGeneration) return;
-                            CompleteDataReady(dataStatus, dataReadyStarted);
+                            CompleteDataReady(dataStatus);
                         });
                         break;
                     case Notifications.NotificationType.BackgroundPreloadCompleted:
-                        FreezeDiagnostics.Log("BACKGROUND_PRELOAD_EVENT");
                         InvokeSubscribersSafely(Balancy.Callbacks.OnBackgroundPreloadCompleted, callback => callback());
                         break;
                     case Notifications.NotificationType.AuthFailed:
@@ -847,13 +833,12 @@ namespace Balancy
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.General.InvokeInMainThreadCallback))]
         private static void InvokeInMainThread(int id)
         {
-            long queued = FreezeDiagnostics.Now;
             int generation = _lifecycleGeneration;
             UnityMainThreadDispatcher.EnqueueFromAnyThread(() =>
-                InvokeNativeMainThreadCallback(id, generation, queued));
+                InvokeNativeMainThreadCallback(id, generation));
         }
 
-        private static void InvokeNativeMainThreadCallback(int id, int generation, long queued)
+        private static void InvokeNativeMainThreadCallback(int id, int generation)
         {
             if (!_nativeInitialized || generation != _lifecycleGeneration) return;
 
@@ -864,14 +849,11 @@ namespace Balancy
             {
                 lock (_deferredNativeCallbacksLock)
                     _deferredNativeCallbacks.Enqueue(() =>
-                        InvokeNativeMainThreadCallback(id, generation, queued));
+                        InvokeNativeMainThreadCallback(id, generation));
                 return;
             }
 
-            FreezeDiagnostics.End("NATIVE_CALLBACK_QUEUE_WAIT id=" + id, queued, 100);
-            long started = FreezeDiagnostics.Now;
-            try { LibraryMethods.General.balancyInvokeMethodInMainThread(id); }
-            finally { FreezeDiagnostics.End("NATIVE_CALLBACK id=" + id, started); }
+            LibraryMethods.General.balancyInvokeMethodInMainThread(id);
         }
         
         internal static void NotifyNativeFileCompletionsDrained()

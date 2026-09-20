@@ -28,10 +28,7 @@ namespace Balancy.UI
             var profile = Balancy.Profiles.System;
             var shop = profile?.ShopsInfo?.ActiveShopInfo;
             if (shop?.Shop?.UnnyView != null)
-                shop.Shop.UnnyView.OpenView(() =>
-                {
-                    Debug.Log("Shop Opened");
-                }, shop);
+                shop.Shop.UnnyView.OpenView(null, shop);
             else
                 Debug.LogWarning("No Shop to open");
         }

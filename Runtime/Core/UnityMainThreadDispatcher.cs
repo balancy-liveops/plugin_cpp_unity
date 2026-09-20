@@ -175,7 +175,6 @@ namespace Balancy
         // Execute actions from the queue on the main thread (called in Play mode)
         private void Update()
         {
-            FreezeDiagnostics.Frame();
             ProcessQueue();
             
 #if UNITY_WEBGL && !UNITY_EDITOR
@@ -209,7 +208,7 @@ namespace Balancy
             if (_mainThreadId == -1)
                 _mainThreadId = System.Threading.Thread.CurrentThread.ManagedThreadId;
 
-            long batchStarted = FreezeDiagnostics.Now;
+            double batchStarted = Time.realtimeSinceStartupAsDouble;
             int processed = 0;
             int scheduled;
             lock (_executionQueue) scheduled = _executionQueue.Count;
@@ -222,7 +221,6 @@ namespace Balancy
                     action = _executionQueue.Dequeue();
                 }
 
-                long actionStarted = FreezeDiagnostics.Now;
                 try
                 {
                     action.Invoke();
@@ -231,17 +229,16 @@ namespace Balancy
                 {
                     Debug.LogException(e);
                 }
-                finally { FreezeDiagnostics.End("DISPATCH_ACTION", actionStarted); }
                 processed++;
 
 #if !UNITY_EDITOR
                 // Once gameplay can start, keep queued SDK callbacks inside a small
                 // per-frame budget. Newly queued work keeps FIFO order for later frames.
-                if (Controller.IsReadyToUse && FreezeDiagnostics.Ms(batchStarted) >= 4.0)
+                if (Controller.IsReadyToUse
+                    && (Time.realtimeSinceStartupAsDouble - batchStarted) * 1000.0 >= 4.0)
                     break;
 #endif
             }
-            FreezeDiagnostics.End("DISPATCH_BATCH count=" + processed, batchStarted);
         }
 
         // Cleanup the instance on destroy
@@ -262,7 +259,6 @@ namespace Balancy
         
         private void OnApplicationPause(bool pauseStatus)
         {
-            FreezeDiagnostics.Pause(pauseStatus);
             if (!Controller.IsReadyToUse)
                 return;
 

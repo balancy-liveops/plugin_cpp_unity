@@ -161,8 +161,6 @@ namespace Balancy
             internal bool Success;
             internal string Folder;
             internal string Error;
-            internal int Entries;
-            internal double WorkerMs;
         }
 
         private static readonly SemaphoreSlim UnzipGate = new SemaphoreSlim(1, 1);
@@ -170,7 +168,6 @@ namespace Balancy
         private static ExtractResult ExtractArchive(ZipArchive archive, string destinationFolder)
         {
             var result = new ExtractResult { Folder = destinationFolder };
-            var started = System.Diagnostics.Stopwatch.GetTimestamp();
             try
             {
                 if (Directory.Exists(destinationFolder))
@@ -194,7 +191,6 @@ namespace Balancy
                     if (!string.IsNullOrEmpty(directoryPath))
                         Directory.CreateDirectory(directoryPath);
                     entry.ExtractToFile(destinationPath, true);
-                    result.Entries++;
                 }
                 result.Success = true;
             }
@@ -207,11 +203,6 @@ namespace Balancy
                         Directory.Delete(destinationFolder, true);
                 }
                 catch { }
-            }
-            finally
-            {
-                result.WorkerMs = (System.Diagnostics.Stopwatch.GetTimestamp() - started) * 1000.0
-                    / System.Diagnostics.Stopwatch.Frequency;
             }
             return result;
         }
@@ -245,7 +236,7 @@ namespace Balancy
             }
         }
 
-        private static IEnumerator AwaitExtraction(string id, Task<ExtractResult> task, long totalStarted)
+        private static IEnumerator AwaitExtraction(string id, Task<ExtractResult> task)
         {
             while (!task.IsCompleted)
                 yield return null;
@@ -257,11 +248,6 @@ namespace Balancy
                 result = new ExtractResult { Error = task.Exception?.GetBaseException().ToString() ?? "Extraction task failed" };
             else
                 result = task.Result;
-
-            FreezeDiagnostics.Log("UNZIP_WORKER END id=" + id + " success=" + result.Success
-                + " entries=" + result.Entries + " worker_ms="
-                + result.WorkerMs.ToString("F1", System.Globalization.CultureInfo.InvariantCulture));
-            FreezeDiagnostics.End("UNZIP_TOTAL END id=" + id, totalStarted, 0);
 
             if (!result.Success)
                 Debug.LogError("[Balancy] Failed to unzip " + id + ": " + result.Error);
@@ -278,13 +264,10 @@ namespace Balancy
         /// </summary>
         private static IEnumerator UnzipAsync(string id, string zipFilePath)
         {
-            long totalStarted = FreezeDiagnostics.Now;
-            FreezeDiagnostics.Log("UNZIP_TOTAL BEGIN id=" + id);
-
 #if UNITY_ANDROID && !UNITY_EDITOR
             if (zipFilePath.Contains("/android_asset/"))
             {
-                yield return UnzipFromAndroidStreamingAssets(id, zipFilePath, totalStarted);
+                yield return UnzipFromAndroidStreamingAssets(id, zipFilePath);
                 yield break;
             }
 #endif
@@ -300,13 +283,12 @@ namespace Balancy
                 Path.GetDirectoryName(zipFilePath),
                 Path.GetFileNameWithoutExtension(zipFilePath));
 
-            FreezeDiagnostics.Log("UNZIP_WORKER BEGIN id=" + id);
             var task = Task.Run(() => ExtractFileOnWorker(zipFilePath, destinationFolder));
-            yield return AwaitExtraction(id, task, totalStarted);
+            yield return AwaitExtraction(id, task);
         }
 
 #if UNITY_ANDROID && !UNITY_EDITOR
-        private static IEnumerator UnzipFromAndroidStreamingAssets(string id, string zipFilePath, long totalStarted)
+        private static IEnumerator UnzipFromAndroidStreamingAssets(string id, string zipFilePath)
         {
             string assetPath = zipFilePath;
             if (zipFilePath.StartsWith("/android_asset/"))
@@ -346,9 +328,8 @@ namespace Balancy
                 string destinationFolder = Path.Combine(
                     Application.persistentDataPath, "Balancy", "Models", extractedRelativePath);
 
-                FreezeDiagnostics.Log("UNZIP_WORKER BEGIN id=" + id + " bytes=" + zipData.Length);
                 var task = Task.Run(() => ExtractBytesOnWorker(zipData, destinationFolder));
-                yield return AwaitExtraction(id, task, totalStarted);
+                yield return AwaitExtraction(id, task);
             }
         }
 #endif

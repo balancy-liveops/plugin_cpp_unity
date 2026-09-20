@@ -1762,7 +1762,6 @@ void _balancyConfigureLocalResourceRoots(const char* persistentDataPath, const c
             gBalancyPersistentDataRootPath = BalancyStandardizedRoot(persistent);
             gBalancyStreamingAssetsRootPath = BalancyStandardizedRoot(streaming);
         }
-        NSLog(@"[BalancyWebView] Local resource roots configured without StreamingAssets copy");
     }
 }
 

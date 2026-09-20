@@ -151,7 +151,6 @@ namespace Balancy
             var resourcesPath = Path.Combine(Application.streamingAssetsPath, "Balancy/");
             DataObjectsManager.Init(Application.persistentDataPath, resourcesPath);
 
-            FreezeDiagnostics.Log("ANDROID_NATIVE_ASSET_MANAGER ready=True");
             yield return null;
 #elif UNITY_IOS && !UNITY_EDITOR
             // iOS can synchronously read the packaged snapshot from the app bundle.
@@ -208,7 +207,6 @@ namespace Balancy
             }
 
             var synchronousFiles = new List<string>();
-            int registeredFiles = 0;
 
             foreach (var relativePath in manifestFiles)
             {
@@ -224,12 +222,7 @@ namespace Balancy
                     LibraryMethods.General.balancyRegisterFileFromStreamingAssets(
                         relativePath, Array.Empty<byte>(), 0, 0);
                 }
-                registeredFiles++;
             }
-
-            int contentFiles = 0;
-            long contentBytes = 0;
-            var startedAt = Time.realtimeSinceStartupAsDouble;
 
             for (int offset = 0; offset < synchronousFiles.Count; offset += WebGlPreloadBatchSize)
             {
@@ -257,8 +250,6 @@ namespace Balancy
                         var data = pending.Request.downloadHandler.data;
                         LibraryMethods.General.balancyRegisterFileFromStreamingAssets(
                             pending.RelativePath, data, data.Length, 1);
-                        contentFiles++;
-                        contentBytes += data.Length;
                     }
                     else
                     {
@@ -269,9 +260,6 @@ namespace Balancy
                 }
             }
 
-            var elapsedMs = (Time.realtimeSinceStartupAsDouble - startedAt) * 1000.0;
-            Debug.Log($"[Balancy] WebGL resource index ready: {registeredFiles} files; " +
-                      $"{contentFiles} synchronous text files, {contentBytes} bytes loaded in {elapsedMs:F1} ms");
         }
 #endif
 

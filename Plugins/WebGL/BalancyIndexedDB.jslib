@@ -254,17 +254,12 @@ mergeInto(LibraryManager.library, {
                 return BalancyIndexedDBFileHelper.loadFile(directoryStr, fileName)
                     .then(function(data) {
                         notify(fileName, data);
-                        return data ? 1 : 0;
                     })
                     .catch(function(error) {
                         console.error('Error preloading synchronous file:', fileName, error);
                         notify(fileName, null);
-                        return 0;
                     });
-            })).then(function(results) {
-                var loadedFiles = results.reduce(function(total, value) { return total + value; }, 0);
-                console.log('[Balancy] IndexedDB index ready:', fileNames.length,
-                    'files;', loadedFiles, 'synchronous text files copied to WASM');
+            })).then(function() {
                 {{{ makeDynCall('viiii', 'callback') }}}(userData, 0, 0, -1);
             });
         }).catch(function(error) {

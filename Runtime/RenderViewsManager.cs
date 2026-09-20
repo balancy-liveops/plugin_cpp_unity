@@ -148,14 +148,12 @@ namespace Balancy
                 if (bundle != null)
                 {
                     _webView.SetScriptsFile(bundle.Path, bundle.Version);
-                    Debug.Log($"[RenderViewsManager] Scripts bundle ready: version={bundle.Version} path={bundle.Path}");
                     BalancyWebView.PerformanceLog("resolveScriptsBundle", started, null,
                         "mode=file version=" + bundle.Version + " pathChars=" + bundle.Path.Length);
                 }
                 else
                 {
                     string scriptsCode = ReadScripts();
-                    Debug.Log($"[RenderViewsManager] Legacy scripts compiled: {scriptsCode.Length} characters");
                     _webView.SetScriptsCode(scriptsCode);
                     BalancyWebView.PerformanceLog("readScriptsBundle", started, null,
                         "mode=legacy scriptChars=" + scriptsCode.Length);
