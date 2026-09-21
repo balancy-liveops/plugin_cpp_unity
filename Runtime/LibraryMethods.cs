@@ -862,6 +862,14 @@ namespace Balancy
             public static extern void balancyGenenal_LevelFailed();
 
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            [return: MarshalAs(UnmanagedType.I1)]
+            public static extern bool balancyTasks_Update(string taskId, string runId, int operation, int value);
+            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+            public delegate void TaskLifecycleCallback([MarshalAs(UnmanagedType.LPStr)] string taskId,
+                [MarshalAs(UnmanagedType.LPStr)] string runId, [MarshalAs(UnmanagedType.I1)] bool active);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyTasks_SetLifecycleCallback(TaskLifecycleCallback callback);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyTasks_ActivateTask(IntPtr taskPointer, IntPtr gameEventPointer);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyTasks_DeactivateTask(IntPtr taskPointer);

@@ -7,6 +7,8 @@ namespace Balancy.Data.SmartObjects
         private string _unnyIdTask;
         private string _unnyIdParent;
         private int _progress;
+        private string _runId;
+        private string _numericProgress;
         private int _status;
         private int _startTime;
         private int _completeTime;
@@ -18,6 +20,14 @@ namespace Balancy.Data.SmartObjects
         public string ParentUnnyId => _unnyIdParent;
 
         public int Progress => _progress;
+        public string RunId => _runId;
+        /// <summary>Exact JSON number for TaskFieldNumber; use TryGetNumericProgress for int64.</summary>
+        public string NumericProgress => _numericProgress;
+        public bool TryGetNumericProgress(out long value) => long.TryParse(_numericProgress,
+            System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out value);
+        public bool TryGetNumericProgress(out double value) => double.TryParse(_numericProgress,
+            System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out value);
+        public CustomTaskContext CreateCustomContext() => new CustomTaskContext(TaskUnnyId, RunId);
 
         public Balancy.Models.LiveOps.TaskStatus Status => (Balancy.Models.LiveOps.TaskStatus)_status;
 
@@ -28,6 +38,8 @@ namespace Balancy.Data.SmartObjects
         public override void InitData()
         {
             base.InitData();
+            InitAndSubscribeForParamChange("runId", () => _runId = GetStringParam("runId"));
+            InitAndSubscribeForParamChange("numericProgress", () => _numericProgress = GetStringParam("numericProgress"));
 
             InitAndSubscribeForParamChange("unnyIdTask", Update_unnyIdTask);
             InitAndSubscribeForParamChange("unnyIdParent", Update_unnyIdParent);

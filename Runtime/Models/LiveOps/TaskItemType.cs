@@ -13,6 +13,9 @@ namespace Balancy.Models.LiveOps
         Item = 1,
         CompleteLevel = 2,
         CompleteLevelStreak = 3,
+        Custom = 4,
+        FieldNumber = 5,
+        Condition = 6,
     }
 
     public enum TaskStatus

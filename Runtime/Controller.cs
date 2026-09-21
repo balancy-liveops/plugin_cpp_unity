@@ -102,6 +102,7 @@ namespace Balancy
             ScriptCompletionManager.Init();
 
             CustomConditions.Register();
+            CustomTasks.Register();
 
             CppAppConfig config = CreateConfigForCPP(appConfig);
             IntPtr configPtr = Marshal.AllocHGlobal(Marshal.SizeOf(config));
@@ -175,6 +176,7 @@ namespace Balancy
             RunCleanupStep(ScriptCompletionManager.CleanUp);
             RunCleanupStep(RenderViewsManager.CleanUp);
             RunCleanupStep(Balancy.Dictionaries.DataObjectsManager.CleanUp);
+            RunCleanupStep(CustomTasks.Unregister);
             RunCleanupStep(Profiles.CleanUp);
             RunCleanupStep(CMS.CleanUp);
             RunCleanupStep(CustomConditions.Unregister);

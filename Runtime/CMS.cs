@@ -352,6 +352,10 @@ namespace Balancy
                 case "LiveOps.BattlePass.RewardLine": return new Balancy.Models.LiveOps.BattlePass.RewardLine();
                 case "LiveOps.BattlePass.BattlePassConfig": return new Balancy.Models.LiveOps.BattlePass.BattlePassConfig();
                 case "LiveOps.BattlePass.GameEvent": return new Balancy.Models.LiveOps.BattlePass.GameEvent();
+                case "LiveOps.Tasks.BaseTask": return new Balancy.Models.LiveOps.Tasks.BaseTask();
+                case "LiveOps.Tasks.TaskCustom": return new Balancy.Models.LiveOps.Tasks.TaskCustom();
+                case "LiveOps.Tasks.TaskFieldNumber": return new Balancy.Models.LiveOps.Tasks.TaskFieldNumber();
+                case "LiveOps.Tasks.TaskCondition": return new Balancy.Models.LiveOps.Tasks.TaskCondition();
                 case "LiveOps.Tasks.TaskItem": return new Balancy.Models.LiveOps.Tasks.TaskItem();
                 case "LiveOps.Tasks.TaskCompleteLevels": return new Balancy.Models.LiveOps.Tasks.TaskCompleteLevels();
                 case "LiveOps.Tasks.TaskCompleteLevelsStreak": return new Balancy.Models.LiveOps.Tasks.TaskCompleteLevelsStreak();

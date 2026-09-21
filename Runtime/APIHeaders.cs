@@ -807,6 +807,17 @@ namespace Balancy
 
         public static class Tasks
         {
+            public static Balancy.Data.SmartObjects.TaskInfo GetTaskInfo(Balancy.Models.LiveOps.Tasks.BaseTask task)
+                => task == null ? null : Profiles.System?.TasksInfo?.FindTaskInfoByTaskUnnyId(task.UnnyId);
+            public static bool SetProgress(Balancy.Data.SmartObjects.TaskInfo task, int value)
+                => task != null && task.CreateCustomContext().SetProgress(value);
+            public static bool AddProgress(Balancy.Data.SmartObjects.TaskInfo task, int amount = 1)
+                => task != null && task.CreateCustomContext().AddProgress(amount);
+            public static bool CompleteTask(Balancy.Data.SmartObjects.TaskInfo task)
+                => task != null && task.CreateCustomContext().Complete();
+            public static bool FailTask(Balancy.Data.SmartObjects.TaskInfo task)
+                => task != null && task.CreateCustomContext().Fail();
+
             public static void ActivateTask(Balancy.Models.LiveOps.Tasks.BaseTask task, GameEvent gameEvent = null) {
                 Balancy.LibraryMethods.API.balancyTasks_ActivateTask(
                     task?.GetRawPointer() ?? IntPtr.Zero,
