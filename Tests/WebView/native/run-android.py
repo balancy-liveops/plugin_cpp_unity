@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Build a real-WebView test APK without Gradle, then optionally run on an already booted emulator."""
 import argparse, os, pathlib, subprocess, zipfile, time, shutil
-p=argparse.ArgumentParser(); p.add_argument('--sdk',type=pathlib.Path,required=True);p.add_argument('--java-home',type=pathlib.Path,required=True);p.add_argument('--output',type=pathlib.Path,required=True);p.add_argument('--serial');p.add_argument('--aar',type=pathlib.Path,help='Test the published AAR instead of compiling plugin sources (requires Java 8 bytecode)');a=p.parse_args()
+p=argparse.ArgumentParser(); p.add_argument('--sdk',type=pathlib.Path,required=True);p.add_argument('--java-home',type=pathlib.Path,required=True);p.add_argument('--output',type=pathlib.Path,required=True);p.add_argument('--serial');p.add_argument('--aar',type=pathlib.Path,help='Test the published AAR instead of compiling plugin sources (requires Java 8 bytecode)');p.add_argument('--d8-jar',type=pathlib.Path,help='Use an older R8/D8 jar to check consumer toolchain compatibility');p.add_argument('--core-libs',type=pathlib.Path,help='Directory with ABI/libBalancyCore.so; enables JNI VM regression checks (requires --aar)');a=p.parse_args()
+if a.core_libs and not a.aar:p.error('--core-libs requires --aar')
 r=pathlib.Path(__file__).resolve().parents[3];src=pathlib.Path(__file__).resolve().parent/'android';out=a.output;out.mkdir(parents=True,exist_ok=True)
 classes=out/'classes';classes.mkdir(exist_ok=True);bt=a.sdk/'build-tools/35.0.0';android=a.sdk/'platforms/android-35/android.jar';java=a.java_home/'bin'
 env={**os.environ,'JAVA_HOME':str(a.java_home)}
@@ -21,10 +22,15 @@ if a.aar:
  plugin_jar=out/'plugin.jar';plugin_jar.write_bytes(jar_data)
  classpath+=os.pathsep+str(plugin_jar);plugin_inputs=[];dex_inputs=[plugin_jar]
 run([java/'javac','--release','8','-classpath',classpath,'-d',classes,*sources.rglob('*.java'),*plugin_inputs])
-run([bt/'d8','--lib',android,'--output',out,*classes.rglob('*.class'),*dex_inputs])
+d8=[java/'java','-cp',a.d8_jar,'com.android.tools.r8.D8'] if a.d8_jar else [bt/'d8']
+run([*d8,'--min-api','22','--lib',android,'--output',out,*classes.rglob('*.class'),*dex_inputs])
 apk=out/'native-tests.apk';run([bt/'aapt2','link','-I',android,'--manifest',src/'AndroidManifest.xml','-o',apk])
 with zipfile.ZipFile(apk,'a') as f:
  f.write(out/'classes.dex','classes.dex')
+ if a.core_libs:
+  libs=list(a.core_libs.glob('*/libBalancyCore.so'))
+  if not libs:raise SystemExit('No ABI/libBalancyCore.so files found')
+  for lib in libs:f.write(lib,'lib/'+str(lib.relative_to(a.core_libs)))
  f.write(r/'WebView/Resources/balancy-webview-bridge.txt','assets/bridge.js')
  f.write(src.parent/'prefab-fixture.js.txt','assets/prefab-fixture.js')
 key=out/'test.keystore'
@@ -36,7 +42,7 @@ if a.serial:
  run([*adb,'install',apk],stdout=subprocess.DEVNULL)
  run([*adb,'shell','am','force-stop','com.balancy.webview.tests'])
  run([*adb,'shell','run-as','com.balancy.webview.tests','rm','-f','files/results.txt'])
- run([*adb,'shell','am','start','-n','com.balancy.webview.tests/.MainActivity'])
+ run([*adb,'shell','am','start','-n','com.balancy.webview.tests/.MainActivity',*(['--ez','testNativeRuntime','true'] if a.core_libs else [])])
  for i in range(120):
   result=subprocess.run(list(map(str,[*adb,'shell','run-as','com.balancy.webview.tests','cat','files/results.txt'])),capture_output=True,text=True)
   if result.returncode==0 and 'RESULT ' in result.stdout:

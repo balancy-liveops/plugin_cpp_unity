@@ -33,6 +33,20 @@ public class MainActivity extends Activity {
         UnityPlayer.currentActivity = this;
         plugin = BalancyWebViewPlugin.getInstance(); plugin.initialize(); plugin.setDebugLogging(false);
         try {
+            if (getIntent().getBooleanExtra("testNativeRuntime", false)) {
+                Class<?> runtime = Class.forName("com.balancy.core.NativeRuntime");
+                Method getVm = runtime.getMethod("getJavaVM");
+                long vm = (Long)getVm.invoke(null);
+                check("core JNI returns a nonzero Java VM", vm != 0);
+                check("core JNI returns the same VM across calls", vm == (Long)getVm.invoke(null));
+                final long[] workerVm = new long[1];
+                Thread worker = new Thread(() -> {
+                    try { workerVm[0] = (Long)getVm.invoke(null); }
+                    catch (Exception error) { workerVm[0] = 0; }
+                });
+                worker.start(); worker.join();
+                check("core JNI returns the same VM on another attached thread", workerVm[0] == vm && vm != 0);
+            }
             ViewGroup root = findViewById(android.R.id.content);
             int before = root.getChildCount(); plugin.initialize(); plugin.initialize();
             check("repeated initialize retains one container", root.getChildCount() == before);

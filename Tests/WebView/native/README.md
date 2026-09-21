@@ -15,7 +15,7 @@ python3 Tests/WebView/native/run-android.py --sdk "$ANDROID_SDK_ROOT" --java-hom
 To test the shipped binary rather than recompiling the plugin source, add
 `--aar WebView/Plugins/Android/balancywebview.aar` and use a fresh output directory.
 This also rejects an AAR containing class files newer than Java 8 (major version 52),
-protecting compatibility with clients whose Android toolchain uses Java 11.
+checking the bytecode target. This alone does not guarantee compatibility with older D8 versions.
 The harness itself still uses SDK build-tools 35; it does not replace a full build
 in the client's Unity/AGP environment.
 
@@ -67,3 +67,37 @@ missed the native fallback overwriting `_receiveMessageFromUnity`. The updated
 fixture fails on the old Java implementation and passes 76 checks with the fix,
 including 20 image/dependency preparation and clear cycles. This is a native
 protocol regression test, not a full reproduction of a client's View scripts.
+
+## Older Android build-tool compatibility (2026-09-21)
+
+Build the production AAR with the Gradle Java 17 toolchain and Java 8 source/target.
+Do not remove the compiler pin: javac 21 can emit unnamed `MethodParameters`
+metadata even when targeting Java 8; R8/D8 3.3.75 crashes parsing the released
+1.9.2 AAR. The rebuilt AAR passes that same D8.
+
+The runner accepts `--d8-jar /path/to/r8.jar` to test an older consumer compiler:
+
+```sh
+python3 Tests/WebView/native/run-android.py --sdk "$ANDROID_SDK_ROOT" --java-home "$JAVA_HOME" --output /tmp/balancy-old-d8-test --aar WebView/Plugins/Android/balancywebview.aar --d8-jar /path/to/r8-3.3.75.jar --serial emulator-5554
+```
+
+R8 3.3.75 is available from Google's Maven repository at
+`https://dl.google.com/dl/android/maven2/com/android/tools/r8/3.3.75/r8-3.3.75.jar`.
+Use Java 17 for this regression run. Local result: 76/76 checks passed with the
+rebuilt binary and old D8. This reproduces the reported D8 failure family; it is
+not a full build with the client's exact Unity 2021.3.58/Gradle setup.
+
+`BalancyIOSLinkSmokeBuild` also guards simulator architecture APIs with
+`UNITY_2022_3_OR_NEWER`; older editors preserve their default architecture.
+Compilation and player builds were subsequently validated with Unity 2021.3.45f2;
+see the compatibility report below for results and runtime limits.
+
+## Unity 2021 JNI initialization regression
+
+Use `--aar WebView/Plugins/Android/balancywebview.aar --core-libs Plugins/Android`
+to package the actual core libraries and test JNI VM retrieval on two threads.
+The new Java entry point replaces the unavailable Unity 2021 `AndroidJNI.GetJavaVM`
+API. The AAR and rebuilt core binaries must ship together. 79/79 checks passed on
+the emulator, also in an APK built with Gradle 7.5.1 / AGP 7.4.2 / Java 11.
+See `../../Integration/UNITY_2021_COMPATIBILITY.md` for the Unity build results, licensing
+constraints and the limits of these checks.

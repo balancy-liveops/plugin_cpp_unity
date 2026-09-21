@@ -37,12 +37,16 @@ namespace Balancy.Editor
                 throw new InvalidOperationException("The iOS link smoke test requires at least one enabled scene.");
 
             var previousSdk = PlayerSettings.iOS.sdkVersion;
+#if UNITY_2022_3_OR_NEWER
             var previousSimulatorArchitecture = PlayerSettings.iOS.simulatorSdkArchitecture;
+#endif
             try
             {
                 PlayerSettings.iOS.sdkVersion = sdkVersion;
+#if UNITY_2022_3_OR_NEWER
                 if (sdkVersion == iOSSdkVersion.SimulatorSDK)
                     PlayerSettings.iOS.simulatorSdkArchitecture = AppleMobileArchitectureSimulator.Universal;
+#endif
 
                 var report = BuildPipeline.BuildPlayer(new BuildPlayerOptions
                 {
@@ -58,7 +62,9 @@ namespace Balancy.Editor
             finally
             {
                 PlayerSettings.iOS.sdkVersion = previousSdk;
+#if UNITY_2022_3_OR_NEWER
                 PlayerSettings.iOS.simulatorSdkArchitecture = previousSimulatorArchitecture;
+#endif
             }
         }
     }

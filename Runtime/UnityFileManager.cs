@@ -139,13 +139,19 @@ namespace Balancy
             // Android: native AAssetManager keeps the synchronous C++ file contract while
             // reading packaged files lazily, without copying every text asset through C#/JNI.
             var streamingAssetsSubpath = "Balancy/";
+            using (var nativeRuntime = new AndroidJavaClass("com.balancy.core.NativeRuntime"))
             using (var unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer"))
             using (var activity = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity"))
             using (var assetManager = activity.Call<AndroidJavaObject>("getAssets"))
             {
+                // AndroidJNI.GetJavaVM is unavailable in Unity 2021. Use a JNI call
+                // to the core library while retaining direct AAssetManager reads.
+                var javaVm = new System.IntPtr(nativeRuntime.CallStatic<long>("getJavaVM"));
+                if (javaVm == System.IntPtr.Zero)
+                    throw new System.InvalidOperationException("Balancy could not obtain the Android Java VM.");
                 Balancy.LibraryMethods.General.balancyInitUnityFileHelperAndroidWithAssetManager(
                     Application.persistentDataPath, streamingAssetsSubpath, codePath,
-                    AndroidJNI.GetJavaVM(), assetManager.GetRawObject());
+                    javaVm, assetManager.GetRawObject());
             }
 
             var resourcesPath = Path.Combine(Application.streamingAssetsPath, "Balancy/");

@@ -14,6 +14,7 @@ android {
         
         versionCode 1
         versionName "1.0.0"
+        consumerProguardFiles "consumer-rules.pro"
         
         ndk {
             abiFilters 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
@@ -47,4 +48,12 @@ android {
 dependencies {
     // No dependencies needed for WebView functionality
     // Unity integration happens at runtime via reflection
+}
+
+// javac 21 can emit unnamed MethodParameters even for target 8, crashing old
+// D8 versions shipped with Unity 2021. Keep the producer compiler reproducible.
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
 }
