@@ -12,6 +12,13 @@ Boot an emulator, then run from the Balancy SDK root:
 python3 Tests/WebView/native/run-android.py --sdk "$ANDROID_SDK_ROOT" --java-home "$JAVA_HOME" --output /tmp/balancy-android-test --serial emulator-5554
 ```
 
+To test the shipped binary rather than recompiling the plugin source, add
+`--aar WebView/Plugins/Android/balancywebview.aar` and use a fresh output directory.
+This also rejects an AAR containing class files newer than Java 8 (major version 52),
+protecting compatibility with clients whose Android toolchain uses Java 11.
+The harness itself still uses SDK build-tools 35; it does not replace a full build
+in the client's Unity/AGP environment.
+
 Uses SDK platform/build-tools 35 and a temporary locally signed APK. The runner uninstalls only `com.balancy.webview.tests` to avoid conflicting test signing keys. It tests repeated initialization, hidden preparation, immediate show, cancellation of delayed show, null/escaped legacy owner, double close, delayed injection targeting a retired view, 30 native replacements, real bridge image decoding under changing base URLs, cache reuse, DOM clearing, and weak-reference collection of retired WebViews.
 
 ## iOS Simulator
