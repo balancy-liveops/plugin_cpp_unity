@@ -5,11 +5,12 @@ namespace Balancy
 {
     internal static class CustomTasks
     {
-        private sealed class Entry { public TaskCustom Model; public CustomTaskContext Context; }
+        private sealed class Entry { public TaskCustom Model; public CustomTaskContext Context; public bool Stopped; }
         private static readonly Dictionary<string, Entry> Entries = new Dictionary<string, Entry>();
         private static readonly LibraryMethods.API.TaskLifecycleCallback Callback = OnLifecycle;
         private static int _generation;
         private static bool _registered;
+        internal static bool IsAvailable => _registered;
         internal static void Register()
         {
             RegisterCore(() => LibraryMethods.API.balancyTasks_SetLifecycleCallback(Callback));
@@ -18,7 +19,11 @@ namespace Balancy
         {
             if (_registered) return;
             System.Threading.Interlocked.Increment(ref _generation);
-            register();
+            try { register(); }
+            catch (EntryPointNotFoundException) {
+                UnityEngine.Debug.LogWarning("Balancy custom tasks require an updated native library; legacy SDK initialization will continue.");
+                return;
+            }
             _registered = true;
         }
         internal static void Unregister()
@@ -62,6 +67,7 @@ namespace Balancy
                     }
                     return;
                 }
+                var generation = System.Threading.Volatile.Read(ref _generation);
                 var context = new CustomTaskContext(id, run);
                 var model = resolve(context);
                 if (model == null) return;
@@ -69,12 +75,14 @@ namespace Balancy
                     if (previous.Context.RunId == run) return;
                     Entries.Remove(id);
                     Stop(previous);
+                    if (generation != System.Threading.Volatile.Read(ref _generation) || resolve(context) == null) return;
                 }
                 var entry = new Entry { Model = model, Context = context };
                 Entries[id] = entry;
                 try { model.OnStart(context); }
                 catch {
-                    Entries.Remove(id);
+                    if (Entries.TryGetValue(id, out var current) && ReferenceEquals(current, entry))
+                        Entries.Remove(id);
                     Stop(entry);
                     throw;
                 }
@@ -82,6 +90,8 @@ namespace Balancy
         }
         private static void Stop(Entry entry)
         {
+            if (entry.Stopped) return;
+            entry.Stopped = true;
             entry.Context.Invalidate();
             try { entry.Model.OnStop(entry.Context); }
             catch (Exception exception) { UnityEngine.Debug.LogException(exception); }

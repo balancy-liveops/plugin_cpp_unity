@@ -21,7 +21,7 @@ namespace Balancy
         public bool Fail() => Update(3, 0);
         private bool Update(int operation, int value)
         {
-            if (!Controller.IsNativeInitialized || string.IsNullOrEmpty(TaskId) || string.IsNullOrEmpty(RunId) || value < 0)
+            if (!CustomTasks.IsAvailable || !Controller.IsNativeInitialized || string.IsNullOrEmpty(TaskId) || string.IsNullOrEmpty(RunId) || value < 0)
                 return false;
             return UpdateCore(operation, value, LibraryMethods.API.balancyTasks_Update);
         }

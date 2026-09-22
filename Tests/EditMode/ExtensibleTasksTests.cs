@@ -19,8 +19,10 @@ namespace Balancy.Tests
         {
             public readonly List<string> Events = new List<string>();
             public bool ThrowOnStart;
-            public override void OnStart(CustomTaskContext context) { Events.Add("start:" + context.RunId); if (ThrowOnStart) throw new InvalidOperationException("task-start-test"); }
-            public override void OnStop(CustomTaskContext context) { Events.Add("stop:" + context.RunId); }
+            public Action BeforeStart;
+            public Action BeforeStop;
+            public override void OnStart(CustomTaskContext context) { Events.Add("start:" + context.RunId); BeforeStart?.Invoke(); if (ThrowOnStart) throw new InvalidOperationException("task-start-test"); }
+            public override void OnStop(CustomTaskContext context) { Events.Add("stop:" + context.RunId); BeforeStop?.Invoke(); }
         }
         [SetUp] public void SetUp() { Call("UnregisterCore", new Action(() => {})); }
         [TearDown] public void TearDown() { Call("UnregisterCore", new Action(() => {})); }
@@ -51,12 +53,35 @@ namespace Balancy.Tests
             Dispatch("one", true, quest);
             CollectionAssert.AreEqual(new[]{"start:one","stop:one"}, quest.Events);
         }
+        [Test] public void ShutdownInsideThrowingStartStopsExactlyOnce() {
+            var quest = new Quest { ThrowOnStart = true, BeforeStart = () => Call("UnregisterCore", new Action(() => {})) };
+            LogAssert.Expect(LogType.Exception, new Regex("task-start-test"));
+            Dispatch("one", true, quest);
+            CollectionAssert.AreEqual(new[]{"start:one","stop:one"}, quest.Events);
+        }
         [Test] public void RegistrationIsIdempotentAndShutdownCanRetryAfterFailure() {
             int count=0;
             Call("RegisterCore",new Action(()=>++count)); Call("RegisterCore",new Action(()=>++count));
             Assert.That(count,Is.EqualTo(1));
             Assert.Throws<TargetInvocationException>(()=>Call("UnregisterCore",new Action(()=>throw new InvalidOperationException())));
             Call("RegisterCore",new Action(()=>++count)); Assert.That(count,Is.EqualTo(2));
+        }
+        [Test] public void ShutdownDuringReplacementStopDoesNotStartAnotherHandler() {
+            var first = new Quest { BeforeStop = () => Call("UnregisterCore", new Action(() => {})) };
+            var next = new Quest();
+            Dispatch("first", true, first);
+            Dispatch("next", true, next);
+            CollectionAssert.AreEqual(new[]{"start:first","stop:first"}, first.Events);
+            Assert.That(next.Events, Is.Empty);
+        }
+        [Test] public void MissingTaskExportDoesNotAbortLegacyStartupAndCanRetry() {
+            LogAssert.Expect(LogType.Warning, new Regex("custom tasks require an updated native library"));
+            Assert.DoesNotThrow(() => Call("RegisterCore", new Action(() => throw new EntryPointNotFoundException())));
+            int unregisters=0, registrations=0;
+            Call("UnregisterCore", new Action(() => ++unregisters));
+            Assert.That(unregisters, Is.Zero);
+            Call("RegisterCore", new Action(() => ++registrations));
+            Assert.That(registrations, Is.EqualTo(1));
         }
         [Test] public void ContextRoutesEveryOperationWithCapturedActivationToken() {
             var context=Context("task","original"); var seen=new List<string>();

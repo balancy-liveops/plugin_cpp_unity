@@ -230,7 +230,23 @@ built-in task cases; it does not replace that class-resolution mechanism.
 
 Compatibility: CustomTasks registers its native callback during SDK initialization,
 even when no tasks are configured. Ship the matching native libraries with this C#
-wrapper on every platform; an older binary missing balancyTasks_SetLifecycleCallback
-can fail initialization. Shared native condition subscription code also changed, so
+wrapper on every platform. With an older dynamically loaded binary missing
+balancyTasks_SetLifecycleCallback, registration logs a warning and legacy SDK
+initialization continues; custom mutation methods return false. Static iOS/WebGL
+builds still require matching exports to link. Shared native condition subscription code also changed, so
 not using tasks is not by itself an isolation guarantee. See the C++ compatibility
 audit for the focused regression coverage and platform limitations.
+
+
+Activation/restart and failed restoration publish a single RunId. Contexts captured
+from their notifications remain valid for that run; profile/manager reload deliberately
+starts a new run token. OnStop is invoked at most once per started handler, including
+when OnStart calls Main.Stop() and then throws. Context invalidation happens before OnStop.
+
+Before distributing the package, verify all native slices with the C++ repository's
+`tools/check_task_exports.py`. A successful Editor test does not validate other native
+platforms; the compatibility fallback is intended for older dynamic binaries only.
+
+Review regression validation: 13/13 ExtensibleTasksTests passed in an isolated Unity
+6000.5.1f1 EditMode project. This includes shutdown from OnStart/OnStop and registration
+against a missing-export stub. The user's open Unity project was not restarted.
