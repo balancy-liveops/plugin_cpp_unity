@@ -250,3 +250,9 @@ platforms; the compatibility fallback is intended for older dynamic binaries onl
 Review regression validation: 13/13 ExtensibleTasksTests passed in an isolated Unity
 6000.5.1f1 EditMode project. This includes shutdown from OnStart/OnStop and registration
 against a missing-export stub. The user's open Unity project was not restarted.
+
+TaskCondition observes effective overrides, including overrides of a specific
+condition reference. Config-model refresh is rebound and reevaluated on the next SDK
+scheduler frame so override application cannot reenter game condition handlers.
+Profile field changes continue to drive progress directly. The release workflow
+requires the native export gate to pass before creating the distributable archive.

@@ -15,6 +15,12 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Verify native task ABI on every shipping platform
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y llvm
+          python3 .github/scripts/check_task_exports.py --plugins Plugins
+
       - name: Get version from tag
         id: get_version
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
