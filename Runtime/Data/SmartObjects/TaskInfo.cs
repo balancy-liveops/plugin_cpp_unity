@@ -21,10 +21,8 @@ namespace Balancy.Data.SmartObjects
 
         public int Progress => _progress;
         public string RunId => _runId;
-        /// <summary>Exact JSON number for TaskFieldNumber; use TryGetNumericProgress for int64.</summary>
+        /// <summary>Observed numeric value for TaskFieldNumber, including fractional progress.</summary>
         public string NumericProgress => _numericProgress;
-        public bool TryGetNumericProgress(out long value) => long.TryParse(_numericProgress,
-            System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out value);
         public bool TryGetNumericProgress(out double value) => double.TryParse(_numericProgress,
             System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out value);
         public CustomTaskContext CreateCustomContext() => new CustomTaskContext(TaskUnnyId, RunId);

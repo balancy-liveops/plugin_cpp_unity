@@ -11,11 +11,9 @@ changes do not create templates in a game's CMS. See the C++ repository's
 - `TaskItem`, `TaskCompleteLevels`, `TaskCompleteLevelsStreak`: existing behavior.
 - `TaskFieldNumber`: observe `fullPath` (SmartObjects.ProfileFullPath: profile + path),
   `comparison` (Equal=0, Greater=1, GreaterOrEqual=2, Lower=3,
-  LowerOrEqual=4, NotEqual=5), and a numeric target. `numberType=0` uses `value`
-  for int/float fields; `numberType=1` uses `longValue` for signed int64 fields.
-  Long profile fields and targets can use the SDK's decimal-string representation.
-  Numeric integer pairs compare exactly; fractional values use the existing SDK
-  float-comparison tolerance. Missing fields/profiles and invalid types do not pass.
+  LowerOrEqual=4, NotEqual=5), and one float target (`value`) for int/float fields.
+  Comparisons use float precision and the existing SDK float-comparison tolerance.
+  Long fields are unsupported. Missing fields/profiles and invalid types do not pass.
   The current value is evaluated on activation/reload and on changes, not counted
   as a delta since activation. Less-than conditions can therefore complete immediately.
 - `TaskCondition`: `unnyIdCondition` references any Conditions.Base descendant,
@@ -27,8 +25,8 @@ They reject manual progress/completion/failure operations.
 
 `TaskInfo.Progress` remains an int for compatibility. For a field-number task it is
 clamped to [0, int.MaxValue] and fractional parts are truncated. Use `NumericProgress`
-(the exact numeric text) or `TryGetNumericProgress(out long/double)` for actual numeric
-values. int64 values are never routed through double for comparison or persistence.
+(the observed numeric text) or `TryGetNumericProgress(out double)` for actual numeric
+values, including fractions.
 
 ## Custom tasks
 

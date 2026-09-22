@@ -68,16 +68,17 @@ namespace Balancy.Tests
             Assert.That(update.Invoke(Context("task",""),new object[]{0,1,send}),Is.False);
             Assert.That(seen.Count,Is.EqualTo(4));
         }
-        [Test] public void NumericProgressPreservesInt64AndUsesInvariantCulture() {
+        [Test] public void NumericProgressSupportsIntAndFloatWithInvariantCulture() {
             var info=new TaskInfo(); var field=typeof(TaskInfo).GetField("_numericProgress",BindingFlags.Instance|BindingFlags.NonPublic);
             var old=CultureInfo.CurrentCulture;
             try {
                 CultureInfo.CurrentCulture=CultureInfo.GetCultureInfo("fr-FR");
-                field.SetValue(info,"9007199254740993");
-                Assert.That(info.TryGetNumericProgress(out long integer),Is.True); Assert.That(integer,Is.EqualTo(9007199254740993L));
+                field.SetValue(info,"17");
+                Assert.That(info.TryGetNumericProgress(out double integer),Is.True); Assert.That(integer,Is.EqualTo(17));
                 field.SetValue(info,"1.25");
                 Assert.That(info.TryGetNumericProgress(out double number),Is.True); Assert.That(number,Is.EqualTo(1.25));
-                Assert.That(info.TryGetNumericProgress(out integer),Is.False);
+                field.SetValue(info,"invalid");
+                Assert.That(info.TryGetNumericProgress(out number),Is.False);
             } finally {CultureInfo.CurrentCulture=old;}
         }
         [Test] public void NativeInteropRegistersHooksAndRejectsAnInactiveTask() {
