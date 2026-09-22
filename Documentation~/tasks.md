@@ -256,3 +256,12 @@ condition reference. Config-model refresh is rebound and reevaluated on the next
 scheduler frame so override application cannot reenter game condition handlers.
 Profile field changes continue to drive progress directly. The release workflow
 requires the native export gate to pass before creating the distributable archive.
+
+
+### Configuration refresh and wrapper compatibility
+
+An active `TaskCondition` or `TaskFieldNumber` observes changes to its task configuration as well as its current condition/profile dependency. Applying or removing a task override (condition reference, field path, target or comparison) schedules a dependency rebind and reevaluation on the next SDK frame. This preserves the activation's RunId and progress; an already completed task stays completed. Deactivation, completion and manager cleanup cancel pending work, so it cannot mutate a later activation. Ordinary profile changes remain immediate.
+
+Built-in task wrappers are fallbacks for the existing C# `CMS.OnTypeRequested` and TypeScript `CMS.onTypeRequested` factory callbacks. A callback that previously handled a task template keeps its priority. TypeScript explicitly registered constructors (`CMS.register`) retain priority over the callback. Both numeric progress helpers reject NaN and infinity.
+
+Progress/status changes are published atomically: list listeners see a coherent task snapshot before property notifications. Updates that leave progress, status and numeric progress unchanged do not publish list notifications. Reload deliberately renews RunId even for existing built-in tasks, which writes that field to the profile. Legacy event/offer listeners using ConditionsManager have their own deferred queue, so an override-triggered transition can take two SDK frames. These are explicit timing/persistence changes; Own, Collect, Spend and streak completion rules remain unchanged.

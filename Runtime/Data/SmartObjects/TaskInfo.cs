@@ -24,7 +24,7 @@ namespace Balancy.Data.SmartObjects
         /// <summary>Observed numeric value for TaskFieldNumber, including fractional progress.</summary>
         public string NumericProgress => _numericProgress;
         public bool TryGetNumericProgress(out double value) => double.TryParse(_numericProgress,
-            System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out value);
+            System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out value) && !double.IsNaN(value) && !double.IsInfinity(value);
         public CustomTaskContext CreateCustomContext() => new CustomTaskContext(TaskUnnyId, RunId);
 
         public Balancy.Models.LiveOps.TaskStatus Status => (Balancy.Models.LiveOps.TaskStatus)_status;

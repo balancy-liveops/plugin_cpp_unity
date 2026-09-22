@@ -125,6 +125,22 @@ namespace Balancy.Tests
                 Assert.That(factory.Invoke(null,new object[]{"Game.MyQuest"}),Is.TypeOf<Quest>());
             } finally {CMS.OnTypeRequested=old;}
         }
+        [TestCase("NaN")][TestCase("Infinity")][TestCase("-Infinity")][TestCase("1e999")]
+        public void NumericProgressRejectsNonFiniteValues(string text) {
+            var info=new TaskInfo();
+            typeof(TaskInfo).GetField("_numericProgress",BindingFlags.Instance|BindingFlags.NonPublic).SetValue(info,text);
+            Assert.That(info.TryGetNumericProgress(out var value),Is.False);
+        }
+        [TestCase("LiveOps.Tasks.BaseTask")][TestCase("LiveOps.Tasks.TaskItem")]
+        [TestCase("LiveOps.Tasks.TaskCompleteLevels")][TestCase("LiveOps.Tasks.TaskCompleteLevelsStreak")]
+        public void ExistingTaskFactoryCallbackKeepsPriority(string name) {
+            var old=CMS.OnTypeRequested;
+            try {
+                var expected=new Quest(); CMS.OnTypeRequested=type=>type==name ? expected : null;
+                var factory=typeof(CMS).GetMethod("InstantiateByType",BindingFlags.NonPublic|BindingFlags.Static);
+                Assert.That(factory.Invoke(null,new object[]{name}),Is.SameAs(expected));
+            } finally {CMS.OnTypeRequested=old;}
+        }
         [Test] public void FactoriesRecognizeAllNewBuiltInModels() {
             var factory=typeof(CMS).GetMethod("InstantiateByType",BindingFlags.NonPublic|BindingFlags.Static);
             Assert.That(factory.Invoke(null,new object[]{"LiveOps.Tasks.BaseTask"}),Is.TypeOf<BaseTask>());
