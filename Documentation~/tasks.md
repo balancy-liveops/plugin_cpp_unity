@@ -156,3 +156,81 @@ UI values such as "7 of 10". Zero also supports arbitrary game-defined completio
 without an additional mode field. A normalized float (0..1), explicit-only completion,
 or a separate completion-mode enum are alternatives, not the current API contract.
 The CMS field remains named `count`; `TargetProgress` was a naming suggestion only.
+
+## Task, TaskInfo and CustomTaskContext
+
+`Task` is the CMS definition. `TaskInfo` is the current player's mutable record:
+status, progress, timestamps and RunId. A task document has at most one such record
+per player (not one per event); before activation and after deactivation GetTaskInfo
+returns null. Completed/Claimed records remain until deactivation or reactivation.
+The CMS model instance is cached by the existing model system, not recreated per run.
+
+`CreateCustomContext()` makes a lightweight C# handle containing the current TaskId
+and RunId. It does not activate anything, copy player state, register subscriptions,
+or call OnStart. Calling it twice for the same run returns two different objects
+with identical IDs. Both can operate on that run; neither invalidates the other.
+They share the same underlying TaskInfo, so completing through one prevents further
+progress changes through both.
+
+A context variable never automatically becomes null. After restart/restore/profile
+reload, its old RunId no longer matches: mutation returns false and context.Info
+returns null. After deactivation, context.Info is also null. After completion or
+failure, context.Info may still return the terminal record while mutations fail.
+OnStop also invalidates the particular context delivered to the lifecycle hooks.
+Independently created contexts are still protected by native RunId/status checks.
+
+Why a separate handle? The existing TaskInfo can be reused and updated on restart.
+An old asynchronous callback holding that mutable info could accidentally modify
+the *new* run. A captured context permanently targets the original run instead:
+
+```csharp
+API.Tasks.ActivateTask(task);
+var info = API.Tasks.GetTaskInfo(task);
+var first = info.CreateCustomContext();
+var second = info.CreateCustomContext(); // same run; does not replace first
+API.Tasks.ActivateTask(task);             // explicit restart
+bool accepted = first.AddProgress(1);    // false: first run ended
+// second.AddProgress(1) would also return false.
+```
+
+For immediate UI/game commands, a context need not be managed explicitly:
+
+| API.Tasks method | Argument / purpose |
+| --- | --- |
+| ActivateTask | Task plus optional event; creates or restarts the record |
+| DeactivateTask | Task; removes the record and stops tracking |
+| GetTaskInfo | Task; returns its current player record or null |
+| SetProgress / AddProgress | Current TaskInfo and int; custom tasks only |
+| CompleteTask / FailTask | Current TaskInfo; custom tasks only |
+| RestoreFailedTask | Task; restores a failed record while preserving progress |
+| ClaimReward | Task; grants reward only for Completed, once per completion |
+
+The progress/completion convenience methods capture a context at the moment they
+are called. Do not use a retained mutable TaskInfo in delayed callbacks when you
+intend to target an earlier run: keep the context instead. Putting forwarding methods
+on TaskInfo would be a possible convenience API, but would not remove this distinction.
+Claim, deactivate and restart intentionally target the current record by task ID;
+they do not have the stale-run protection of context mutation methods.
+
+OnStart/OnStop are virtual overrides, not C# events. Subscribe to game events in
+OnStart and detach them in OnStop. OnStart is queued for activation, restart, failed
+restoration and reloading an in-progress task. OnStop cleans up a previously started
+handler on completion, failure, deactivation, replacement and SDK teardown. Claim does
+not trigger another OnStop because completion already stopped tracking. The hooks run
+on the Unity main thread after native mutation; a run already ended before dispatch
+is skipped and therefore does not necessarily produce a start/stop pair.
+
+Class construction still uses the existing CMS.OnTypeRequested factory and inheritance
+fallback. GeneratedMain already registers the generated factory (including TestTask).
+No extra callback registration is needed for generated classes. Manual replacement of
+CMS.OnTypeRequested is only for custom factories and must preserve unrelated mappings.
+Inheritance identifies a fallback parent; the generated factory creates the exact C#
+subclass so its fields and virtual overrides are available. The SDK change adds the new
+built-in task cases; it does not replace that class-resolution mechanism.
+
+Compatibility: CustomTasks registers its native callback during SDK initialization,
+even when no tasks are configured. Ship the matching native libraries with this C#
+wrapper on every platform; an older binary missing balancyTasks_SetLifecycleCallback
+can fail initialization. Shared native condition subscription code also changed, so
+not using tasks is not by itself an isolation guarantee. See the C++ compatibility
+audit for the focused regression coverage and platform limitations.
