@@ -13,6 +13,7 @@ namespace Balancy.UI
         [SerializeField] private TMP_Text timerText;
 
         private Func<int> _getSecondsLeft;
+        private Func<bool> _isFinished;
         private Action _onClick;
         
         private CancellationTokenSource _cancellationTokenSource;
@@ -27,10 +28,11 @@ namespace Balancy.UI
             _onClick?.Invoke();
         }
 
-        public void Init(Sprite sprite, Func<int> getSecondsLeft)
+        public void Init(Sprite sprite, Func<int> getSecondsLeft, Func<bool> isFinished = null)
         {
             if (sprite != null) SetIcon(sprite);
             _getSecondsLeft = getSecondsLeft;
+            _isFinished = isFinished;
 
             _cancellationTokenSource = Tasks.Periodic(1, UpdateTimer);
         }
@@ -52,8 +54,10 @@ namespace Balancy.UI
 
         private void UpdateTimer(float time)
         {
-            var secondsLeft = _getSecondsLeft?.Invoke() ?? 0;
-            timerText.SetText(TimeFormatter.FormatUnixTime(secondsLeft));
+            if (_isFinished?.Invoke() == true)
+                timerText.SetText("FINISHED");
+            else
+                timerText.SetText(TimeFormatter.FormatUnixTime(_getSecondsLeft?.Invoke() ?? 0));
         }
     }
 }

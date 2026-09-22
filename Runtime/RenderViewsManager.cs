@@ -106,7 +106,7 @@ namespace Balancy
         {
             Balancy.Callbacks.OnOfferDeactivated -= HandleOfferDeactivated;
             Balancy.Callbacks.OnOfferGroupDeactivated -= HandleOfferGroupDeactivated;
-            Balancy.Callbacks.OnEventDeactivated -= HandleEventDeactivated;
+            Balancy.Callbacks.OnEventRemoved -= HandleEventRemoved;
             Balancy.Callbacks.OnLocalizationChanged -= HandleLocalizationChanged;
             Balancy.Callbacks.OnDataUpdated -= HandleContentUpdated;
 
@@ -121,6 +121,7 @@ namespace Balancy
 
             _prepareRequested = _dataAvailable = _scriptsLoaded = false;
             _pendingPrepared = null; _pendingPrepareFailed = null;
+            ++_ownerEpoch;
             ViewOwners.Clear();
             _onMessageReceived = null;
             m_LastOpenedOwnerPtr = IntPtr.Zero;
@@ -176,6 +177,7 @@ namespace Balancy
         }
 
         private static IntPtr m_LastOpenedOwnerPtr = IntPtr.Zero;
+        private static int _ownerEpoch;
         private static readonly Dictionary<string, IntPtr> ViewOwners = new Dictionary<string, IntPtr>();
         private static void HandleViewReleased(string id) => ViewOwners.Remove(id);
         private static void HandleLocalizationChanged(string code) => _webView?.InvalidateCache(true);
@@ -282,20 +284,32 @@ namespace Balancy
             Balancy.Callbacks.OnOfferGroupDeactivated -= HandleOfferGroupDeactivated;
             Balancy.Callbacks.OnOfferGroupDeactivated += HandleOfferGroupDeactivated;
             
-            Balancy.Callbacks.OnEventDeactivated -= HandleEventDeactivated;
-            Balancy.Callbacks.OnEventDeactivated += HandleEventDeactivated;
+            Balancy.Callbacks.OnEventRemoved -= HandleEventRemoved;
+            Balancy.Callbacks.OnEventRemoved += HandleEventRemoved;
             Balancy.Callbacks.OnLocalizationChanged -= HandleLocalizationChanged;
             Balancy.Callbacks.OnLocalizationChanged += HandleLocalizationChanged;
             Balancy.Callbacks.OnDataUpdated -= HandleContentUpdated;
             // Controller invokes HandleContentUpdated before public subscribers.
         }
 
-        private static void HandleEventDeactivated(EventInfo eventInfo)
+        private static void HandleEventRemoved(EventInfo eventInfo)
         {
-            if (eventInfo.GameEvent?.ManualRemove ?? false)
-                return;
-            
-            CheckForClosing(eventInfo);
+            var pointer = eventInfo.GetRawPointer();
+            if (pointer == IntPtr.Zero) return;
+            foreach (var id in new List<string>(ViewOwners.Keys))
+                if (ViewOwners[id] == pointer) ViewOwners[id] = IntPtr.Zero;
+            if (m_LastOpenedOwnerPtr != pointer) return;
+            m_LastOpenedOwnerPtr = IntPtr.Zero;
+            // Let stopEventManually's successful response reach JS before disposing the view.
+            if (_webView != null)
+                _webView.StartCoroutine(CloseRemovedEventView(_webView, _ownerEpoch));
+        }
+
+        private static System.Collections.IEnumerator CloseRemovedEventView(BalancyWebView view, int epoch)
+        {
+            yield return null;
+            if (_webView == view && _ownerEpoch == epoch && m_LastOpenedOwnerPtr == IntPtr.Zero)
+                CloseView();
         }
 
         private static void HandleOfferGroupDeactivated(OfferGroupInfo offerGroupInfo)
@@ -320,6 +334,7 @@ namespace Balancy
 
         internal static void OnProfileUpdated()
         {
+            ++_ownerEpoch;
             ViewOwners.Clear();
             _webView?.InvalidateCache();
             // Profile was recreated — all smart object pointers (offers, events, etc.)
@@ -331,6 +346,7 @@ namespace Balancy
         
         private static void HandleWebViewClosed()
         {
+            ++_ownerEpoch;
             m_LastOpenedOwnerPtr = IntPtr.Zero;
         }
 
@@ -557,6 +573,7 @@ namespace Balancy
                         },
                         error => onFailed?.Invoke(ViewOpenError.LoadFailed), baseUrl))
                     {
+                        ++_ownerEpoch;
                         m_LastOpenedOwnerPtr = owner?.GetRawPointer() ?? IntPtr.Zero;
                         ViewOwners[_webView.CurrentViewId] = m_LastOpenedOwnerPtr;
                         BalancyWebView.PerformanceLog("openLocalAccepted", openStarted, _webView.CurrentViewId, "file=" + Path.GetFileName(filePath));
@@ -614,6 +631,7 @@ namespace Balancy
                 return false;
             }
 
+            ++_ownerEpoch;
             m_LastOpenedOwnerPtr = owner?.GetRawPointer() ?? IntPtr.Zero;
             string ownerJson = owner?.ToJsonString(DEFAULT_OWNER_DEPTH, false) ?? "";
 
@@ -696,6 +714,7 @@ namespace Balancy
 
             var urlToLoad = url;// + "?timestamp=" + Guid.NewGuid().ToString();
 
+            ++_ownerEpoch;
             m_LastOpenedOwnerPtr = owner?.GetRawPointer() ?? IntPtr.Zero;
             // Guard against a null owner (e.g. opening a standalone view): a null ownerJson gets
             // marshalled to the native OpenWebView as a null char* and crashes (SIGSEGV). The

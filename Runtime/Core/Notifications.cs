@@ -32,6 +32,7 @@ namespace Balancy.Core
 
             OnNewEventActivated = 100,
             OnEventDeactivated = 101,
+            OnEventRemoved = 113,
             OnNewOfferActivated = 102,
             OnOfferDeactivated = 103,
             OnNewOfferGroupActivated = 104,
@@ -137,6 +138,12 @@ namespace Balancy.Core
 
         [Preserve, StructLayout(LayoutKind.Sequential)]
         public class LiveOpsNotification_OnEventDeactivated : LiveOpsNotificationBase
+        {
+            public IntPtr EventInfo;
+        }
+
+        [Preserve, StructLayout(LayoutKind.Sequential)]
+        public class LiveOpsNotification_OnEventRemoved : LiveOpsNotificationBase
         {
             public IntPtr EventInfo;
         }

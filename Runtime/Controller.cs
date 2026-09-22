@@ -483,6 +483,18 @@ namespace Balancy
                             InvokeSubscribersSafely(Balancy.Callbacks.OnEventDeactivated, callback => callback(eventInfo));
                         break;
                     }
+                    case Notifications.NotificationType.OnEventRemoved: {
+#if UNITY_WEBGL && !UNITY_EDITOR
+                        IntPtr eventInfoPtr = LibraryMethods.General.balancyNotification_GetEventInfo(notificationId);
+                        var eventInfo = JsonBasedObject.CreateObject<EventInfo>(eventInfoPtr);
+#else
+                        var liveOpsEvent = Marshal.PtrToStructure<Notifications.LiveOpsNotification_OnEventRemoved>(notificationPtr);
+                        var eventInfo = JsonBasedObject.CreateObject<EventInfo>(liveOpsEvent.EventInfo);
+#endif
+                        if (eventInfo != null)
+                            InvokeSubscribersSafely(Balancy.Callbacks.OnEventRemoved, callback => callback(eventInfo));
+                        break;
+                    }
                     case Notifications.NotificationType.OnNewOfferActivated: {
 #if UNITY_WEBGL && !UNITY_EDITOR
                         IntPtr offerInfoPtr = LibraryMethods.General.balancyNotification_GetOfferInfo(notificationId);

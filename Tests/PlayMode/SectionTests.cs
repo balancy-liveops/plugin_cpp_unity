@@ -71,6 +71,43 @@ namespace Balancy.Tests
             UnityEngine.Object.Destroy(placeholder); UnityEngine.Object.Destroy(downloaded); UnityEngine.Object.Destroy(texture);
         }
         [UnityTest]
+        public IEnumerator FinishedIconRemainsUntilItsInstanceIsRemoved()
+        {
+            yield return null; // Section.Start subscribes to the lifecycle callbacks.
+            var first = Add("first-instance");
+            var next = Add("next-instance");
+            var info = new Balancy.Data.SmartObjects.EventInfo();
+            typeof(Balancy.Data.SmartObjects.EventInfo).GetField("_instanceId", Private)
+                .SetValue(info, "first-instance");
+            Callbacks.OnEventDeactivated?.Invoke(info);
+            Assert.That(first.gameObject.activeSelf, Is.True, "Finished must remain openable");
+            Callbacks.OnEventRemoved?.Invoke(info);
+            Assert.That(first.gameObject.activeSelf, Is.False);
+            Assert.That(next.gameObject.activeSelf, Is.True, "A later occurrence keeps its icon");
+            Callbacks.OnEventRemoved?.Invoke(info);
+            Assert.That(next.gameObject.activeSelf, Is.True);
+            yield return null;
+            Assert.That(content.childCount, Is.EqualTo(1));
+        }
+
+        [UnityTest]
+        public IEnumerator TimerReadsFinishedStateWithoutDeactivatedSubscription()
+        {
+            bool finished = false;
+            var element = Add("timer-instance");
+            var stateField = typeof(Element).GetField("_isFinished", Private);
+            stateField.SetValue(element, new Func<bool>(() => finished));
+            var update = typeof(Element).GetMethod("UpdateTimer", Private);
+            update.Invoke(element, new object[] { 0f });
+            var label = (TMP_Text)Get(element, "timerText");
+            Assert.That(label.text, Is.Not.EqualTo("FINISHED"));
+            finished = true;
+            update.Invoke(element, new object[] { 0f });
+            Assert.That(label.text, Is.EqualTo("FINISHED"));
+            yield return null;
+        }
+
+        [UnityTest]
         public IEnumerator ButtonAndTimerExistBeforeIconCompletes()
         {
             Action<Sprite> complete = null;

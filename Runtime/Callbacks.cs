@@ -94,6 +94,7 @@ namespace Balancy
         public static OnErrorDelegate OnConfigFailedToLoad = null;
         public static OnEventInfoDelegate OnNewEventActivated = null;
         public static OnEventInfoDelegate OnEventDeactivated = null;
+        public static OnEventInfoDelegate OnEventRemoved = null;
         public static OnOfferInfoDelegate OnNewOfferActivated = null;
         public static OnOfferInfoDelegatePurchased OnOfferDeactivated = null;
         public static OnOfferGroupInfoDelegate OnNewOfferGroupActivated = null;
@@ -207,6 +208,7 @@ namespace Balancy
             
             OnNewEventActivated += eventInfo => Debug.Log(" => Balancy.OnNewEventActivated: " + eventInfo?.GameEvent?.Name);
             OnEventDeactivated += eventInfo => Debug.Log(" => Balancy.OnEventDeactivated: " + eventInfo?.GameEvent?.Name);
+            OnEventRemoved += eventInfo => Debug.Log(" => Balancy.OnEventRemoved: " + eventInfo?.GameEvent?.Name);
             OnNewOfferActivated += offerInfo => Debug.Log(" => Balancy.OnNewOfferActivated: " + offerInfo?.GameOffer?.Name);
             OnOfferDeactivated += (offerInfo, wasPurchased) => Debug.Log(" => Balancy.OnOfferDeactivated: " + offerInfo?.GameOffer?.Name + " ; wasPurchased = " + wasPurchased);
             OnNewOfferGroupActivated += offerGroupInfo => Debug.Log(" => Balancy.OnNewOfferGroupActivated: " + offerGroupInfo?.GameOfferGroup?.Name);
@@ -248,6 +250,7 @@ namespace Balancy
             OnConfigFailedToLoad = null;
             OnNewEventActivated = null;
             OnEventDeactivated = null;
+            OnEventRemoved = null;
             OnNewOfferActivated = null;
             OnOfferDeactivated = null;
             OnNewOfferGroupActivated = null;

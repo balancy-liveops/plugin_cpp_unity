@@ -63,6 +63,29 @@ namespace Balancy.Tests
         }
 
         [Test]
+        public void RemovedEventInvalidatesEveryCachedOwnerButUnrelatedEventDoesNot()
+        {
+            var info = new Balancy.Data.SmartObjects.EventInfo();
+            var pointer = typeof(Balancy.Models.JsonBasedObject).GetField("_pointer",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            pointer.SetValue(info, new IntPtr(123));
+            var owners = (System.Collections.Generic.Dictionary<string, IntPtr>)ManagerType
+                .GetField("ViewOwners", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
+            owners["old"] = new IntPtr(123);
+            owners["another"] = new IntPtr(456);
+            LastOwner.SetValue(null, new IntPtr(456));
+            var removed = ManagerType.GetMethod("HandleEventRemoved", BindingFlags.Static | BindingFlags.NonPublic);
+            removed.Invoke(null, new object[] { info });
+            Assert.That(owners["old"], Is.EqualTo(IntPtr.Zero));
+            Assert.That(owners["another"], Is.EqualTo(new IntPtr(456)));
+            Assert.That(LastOwner.GetValue(null), Is.EqualTo(new IntPtr(456)));
+            LastOwner.SetValue(null, new IntPtr(123));
+            removed.Invoke(null, new object[] { info });
+            Assert.That(LastOwner.GetValue(null), Is.EqualTo(IntPtr.Zero));
+            pointer.SetValue(info, IntPtr.Zero);
+        }
+
+        [Test]
         public void EncodedLocalViewUrlResolvesForClassicAndPersistentModes()
         {
             string directory = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "Balancy URL тест % folder");

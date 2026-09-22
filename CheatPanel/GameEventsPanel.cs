@@ -19,6 +19,7 @@ namespace Balancy.CheatPanel
         {
             Balancy.Callbacks.OnNewEventActivated += OnNewEventActivated;
             Balancy.Callbacks.OnEventDeactivated += OnEventDeactivated;
+            Balancy.Callbacks.OnEventRemoved += OnEventDeactivated;
             
             Refresh();
         }
@@ -28,6 +29,7 @@ namespace Balancy.CheatPanel
         {
             Balancy.Callbacks.OnNewEventActivated -= OnNewEventActivated;
             Balancy.Callbacks.OnEventDeactivated -= OnEventDeactivated;
+            Balancy.Callbacks.OnEventRemoved -= OnEventDeactivated;
         }
 
         private void OnEventDeactivated(EventInfo eventInfo)

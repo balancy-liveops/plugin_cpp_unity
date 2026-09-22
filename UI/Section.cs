@@ -24,7 +24,7 @@ namespace Balancy.UI
         private void Awake()
         {
             Balancy.Callbacks.OnNewEventActivated += OnNewEventActivated;
-            Balancy.Callbacks.OnEventDeactivated += OnEventDeactivated;
+            Balancy.Callbacks.OnEventRemoved += OnEventRemoved;
             Balancy.Callbacks.OnNewOfferActivated += OnNewOfferActivated;
             Balancy.Callbacks.OnNewOfferGroupActivated += OnNewOfferGroupActivated;
             Balancy.Callbacks.OnOfferDeactivated += OnOfferDeactivated;
@@ -41,7 +41,7 @@ namespace Balancy.UI
         private void OnDestroy()
         {
             Balancy.Callbacks.OnNewEventActivated -= OnNewEventActivated;
-            Balancy.Callbacks.OnEventDeactivated -= OnEventDeactivated;
+            Balancy.Callbacks.OnEventRemoved -= OnEventRemoved;
             Balancy.Callbacks.OnNewOfferActivated -= OnNewOfferActivated;
             Balancy.Callbacks.OnNewOfferGroupActivated -= OnNewOfferGroupActivated;
             Balancy.Callbacks.OnOfferDeactivated -= OnOfferDeactivated;
@@ -53,7 +53,7 @@ namespace Balancy.UI
             CleanUp();
         }
         
-        private void OnEventDeactivated(EventInfo eventInfo) => RemoveElement(eventInfo.GameEventUnnyId);
+        private void OnEventRemoved(EventInfo eventInfo) => RemoveElement(eventInfo.InstanceId);
 
         private void OnOfferDeactivated(OfferInfo offerInfo, bool wasPurchased) => RemoveElement(offerInfo.InstanceId);
 
@@ -104,7 +104,7 @@ namespace Balancy.UI
 
         private void TryToAddEvent(EventInfo info)
         {
-            AddView(info.GameEventUnnyId, info.GameEvent, info, info.GetSecondsLeftBeforeDeactivation);
+            AddView(info.InstanceId, info.GameEvent, info, info.GetSecondsLeftBeforeDeactivation);
         }
 
         private void TryToAddOffer(OfferInfo info)
@@ -135,7 +135,7 @@ namespace Balancy.UI
             _activeElements.Add(id, entry);
 
             // Keep the prefab's placeholder and make the button usable before I/O.
-            element.Init(null, getSecondsLeft);
+            element.Init(null, getSecondsLeft, owner is EventInfo eventInfo ? () => eventInfo.IsFinished : (Func<bool>)null);
             element.SetOnClick(() =>
             {
                 if (info.UnnyView != null)

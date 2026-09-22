@@ -14,6 +14,21 @@ namespace Balancy.Tests
         public void TearDown() => ClearAll.Invoke(null, null);
 
         [Test]
+        public void RemovedHasItsOwnSubscriptionAndIsClearedOnShutdown()
+        {
+            int deactivated = 0, removed = 0;
+            Callbacks.OnEventDeactivated += _ => deactivated++;
+            Callbacks.OnEventRemoved += _ => removed++;
+            Callbacks.OnEventRemoved?.Invoke(null);
+            Assert.That(removed, Is.EqualTo(1));
+            Assert.That(deactivated, Is.Zero);
+            ClearAll.Invoke(null, null);
+            Assert.That(Callbacks.OnEventRemoved, Is.Null);
+            var enumType = typeof(Callbacks).Assembly.GetType("Balancy.Core.Notifications+NotificationType");
+            Assert.That((int)System.Enum.Parse(enumType, "OnEventRemoved"), Is.EqualTo(113));
+        }
+
+        [Test]
         public void PaymentReadyNotifiesExistingAndLateSubscribersExactlyOnce()
         {
             var firstCalls = 0;
