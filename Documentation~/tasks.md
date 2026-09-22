@@ -30,7 +30,7 @@ values, including fractions.
 
 ## Custom tasks
 
-Create a CMS template inheriting **LiveOps.Tasks.TaskCustom**. Add game-specific
+Create a concrete CMS template inheriting the abstract **LiveOps.Tasks.TaskCustom**. Add game-specific
 fields and generate/register the C# model in the usual way. A direct BaseTask descendant
 loads as BaseTask but has no goal behavior and does not accept custom mutations.
 Existing built-in descendants keep their native tracking; overriding GetTaskType in
@@ -118,3 +118,41 @@ LevelFailed API events, not arbitrary writes to the Level profile property.
 
 Client-side lifecycle validation protects integration invariants, not the authenticity
 of game events on a modified client. Authoritative rewards require server validation.
+
+
+### Custom progress and completion contract
+
+`LiveOps.Tasks.TaskCustom` is an **abstract CMS template**. Create a concrete child
+such as `Game.KillEnemiesTask`, then create task documents from that child. There are
+no direct TaskCustom documents. The native CMS registers `prepareDefaultParser<TaskCustom>()`
+without `parseList<TaskCustom>()`; the inheritance resolver uses that registered parser
+for concrete descendants (including descendants through intermediate abstract templates).
+CMS abstraction does not require making the SDK fallback model class abstract: native
+instances of that class provide the behavior for documents of user-defined templates.
+
+- `count` is a target for automatic completion, not a cap on stored progress.
+- With `count > 0`, setting or adding progress completes the task when the result is
+  **greater than or equal to** count. For count=10, both 10 and 12 complete it.
+- With `count = 0`, progress never completes the task automatically. The game must
+  explicitly call Complete. Zero does not cause immediate completion on activation.
+- Negative count is invalid authoring data: set a minimum of zero in the CMS. As a
+  runtime fallback, count < 0 behaves like zero and disables automatic completion.
+- Explicit Complete is allowed for any active custom task, including a positive-count
+  task below its target. It preserves progress rather than forcing it to the target.
+- SetProgress replaces the current value (and can lower it while InProgress);
+  AddProgress adds a nonnegative increment. Progress is a nonnegative int32; negative
+  input and addition overflow are rejected. Terminal tasks reject further changes.
+- For example, the game tracks kills and calls AddProgress(1) after each kill, or
+  SetProgress(7) with its current total. The SDK does not detect custom gameplay events.
+- Integer percentages are supported by using count=100 and progress values such as
+  25, 50 and 100. Fractional custom progress such as 25.5 is not supported. For a
+  count-based UI, compute the ratio as floating-point progress/count only when count>0;
+  clamp it for display if needed. A manually completed task need not have a ratio of 1.
+- Completion records CompleteTime but does not grant the reward. Claim grants the
+  configured reward once for that completion; explicit reactivation starts a new cycle.
+
+The target-counter design preserves existing int32 Progress compatibility and useful
+UI values such as "7 of 10". Zero also supports arbitrary game-defined completion
+without an additional mode field. A normalized float (0..1), explicit-only completion,
+or a separate completion-mode enum are alternatives, not the current API contract.
+The CMS field remains named `count`; `TargetProgress` was a naming suggestion only.
