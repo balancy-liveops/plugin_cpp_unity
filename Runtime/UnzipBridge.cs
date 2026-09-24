@@ -45,7 +45,16 @@ namespace Balancy
             _dispatcher = UnityMainThreadDispatcher.Instance();
             LibraryMethods.General.balancySetUnzipCallback(OnUnzipRequest);
             LibraryMethods.General.balancySetExtractZipFromMemoryCallback(_extractZipCallback);
-            LibraryMethods.General.balancySetReleaseExtractedZipCallback(_releaseExtractedZipCallback);
+            try
+            {
+                LibraryMethods.General.balancySetReleaseExtractedZipCallback(_releaseExtractedZipCallback);
+            }
+            catch (EntryPointNotFoundException)
+            {
+                // Native plugin predates the release callback: extraction still works, the
+                // buffer is not returned. Rebuild the native libraries to close the leak.
+                Debug.LogWarning("[Balancy] Native plugin lacks balancySetReleaseExtractedZipCallback; extracted zip buffers will not be released");
+            }
 
 #if UNITY_WEBGL && !UNITY_EDITOR
             Debug.Log("[Balancy] UnzipBridge initialized - using JavaScript JSZip for WebGL");
