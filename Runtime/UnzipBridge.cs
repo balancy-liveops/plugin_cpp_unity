@@ -26,6 +26,10 @@ namespace Balancy
         private static UnityMainThreadDispatcher _dispatcher;
         private static volatile bool _isStopped = false;
 
+        // Keep the native-registered delegates rooted for the lifetime of the domain.
+        private static readonly LibraryMethods.General.ExtractZipFromMemoryCallback _extractZipCallback = OnExtractZipFromMemory;
+        private static readonly LibraryMethods.General.ReleaseExtractedZipCallback _releaseExtractedZipCallback = OnReleaseExtractedZip;
+
 #if UNITY_WEBGL && !UNITY_EDITOR
         // WebGL: DllImport to JavaScript unzip function
         [DllImport("__Internal")]
@@ -40,7 +44,8 @@ namespace Balancy
             _isStopped = false;
             _dispatcher = UnityMainThreadDispatcher.Instance();
             LibraryMethods.General.balancySetUnzipCallback(OnUnzipRequest);
-            LibraryMethods.General.balancySetExtractZipFromMemoryCallback(OnExtractZipFromMemory);
+            LibraryMethods.General.balancySetExtractZipFromMemoryCallback(_extractZipCallback);
+            LibraryMethods.General.balancySetReleaseExtractedZipCallback(_releaseExtractedZipCallback);
 
 #if UNITY_WEBGL && !UNITY_EDITOR
             Debug.Log("[Balancy] UnzipBridge initialized - using JavaScript JSZip for WebGL");
@@ -72,12 +77,12 @@ namespace Balancy
         /// Called by C++ when it needs to extract ZIP from memory
         /// </summary>
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.General.ExtractZipFromMemoryCallback))]
-        private static string OnExtractZipFromMemory(IntPtr zipDataPtr, int dataSize, bool includeHeaders)
+        private static IntPtr OnExtractZipFromMemory(IntPtr zipDataPtr, int dataSize, bool includeHeaders)
         {
             if (zipDataPtr == IntPtr.Zero || dataSize <= 0)
             {
                 Debug.LogError("[Balancy] OnExtractZipFromMemory: Invalid ZIP data");
-                return string.Empty;
+                return IntPtr.Zero;
             }
             
             try
@@ -86,14 +91,37 @@ namespace Balancy
                 byte[] zipData = new byte[dataSize];
                 Marshal.Copy(zipDataPtr, zipData, 0, dataSize);
                 
-                // Extract and return the result
-                return ExtractZipFromMemory(zipData, includeHeaders);
+                // Extract and hand native a buffer it returns through OnReleaseExtractedZip.
+                return AllocateNativeUtf8(ExtractZipFromMemory(zipData, includeHeaders));
             }
             catch (Exception ex)
             {
                 Debug.LogError($"[Balancy] OnExtractZipFromMemory failed: {ex.Message}\n{ex.StackTrace}");
-                return string.Empty;
+                return IntPtr.Zero;
             }
+        }
+
+        [AOT.MonoPInvokeCallback(typeof(LibraryMethods.General.ReleaseExtractedZipCallback))]
+        private static void OnReleaseExtractedZip(IntPtr buffer)
+        {
+            if (buffer != IntPtr.Zero)
+                Marshal.FreeHGlobal(buffer);
+        }
+
+        /// <summary>
+        /// Copies text into an unmanaged NUL-terminated UTF-8 buffer owned by the managed
+        /// side. Native must return it through OnReleaseExtractedZip; an empty string yields
+        /// IntPtr.Zero so native reports "empty" without a release round-trip.
+        /// </summary>
+        internal static IntPtr AllocateNativeUtf8(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+                return IntPtr.Zero;
+            byte[] bytes = System.Text.Encoding.UTF8.GetBytes(text);
+            IntPtr buffer = Marshal.AllocHGlobal(bytes.Length + 1);
+            Marshal.Copy(bytes, 0, buffer, bytes.Length);
+            Marshal.WriteByte(buffer, bytes.Length, 0);
+            return buffer;
         }
         
         /// <summary>
