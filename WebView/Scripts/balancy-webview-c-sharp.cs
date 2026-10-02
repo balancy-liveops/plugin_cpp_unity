@@ -343,6 +343,68 @@ namespace Balancy.WebView
         }
 
         [Serializable]
+        private class BridgePerformanceMessage
+        {
+            public string @event, viewId;
+            public float elapsedMs;
+            public BridgePerformanceSnapshot snapshot;
+        }
+
+        [Serializable]
+        private class BridgePerformanceSnapshot
+        {
+            public int domNodes, viewNodes, liveElements, liveComponents, liveInstances;
+            public int pendingPreparations, listeners, timers, viewDisposers, trackedAnimations, activeLottie;
+            public int cachedBanim, cachedLottie, cachedPrefabs, pendingRequests;
+            public int frameCount, updateCalls;
+            public float frameP95Ms;
+            public bool updateLoopRunning;
+        }
+
+        private static void LogBridgePerformance(string message)
+        {
+            if (!PerformanceLoggingEnabled) return;
+            if (Application.platform != RuntimePlatform.Android)
+            {
+                Debug.Log("[BalancyPerf] " + message);
+                return;
+            }
+
+            // Android Logcat truncates long Unity messages. Keep lifecycle snapshots
+            // in one short line so the before/after cleanup counters remain visible.
+            try
+            {
+                var info = JsonUtility.FromJson<BridgePerformanceMessage>(message);
+                if (info == null || (info.@event != "viewReady" && info.@event != "viewWillDispose" && info.@event != "viewDisposed"))
+                    return;
+                var snapshot = info.snapshot;
+                if (snapshot == null)
+                {
+                    Debug.Log("[BalancyPerf] bridge event=" + info.@event + " view=" + info.viewId + " snapshotMissing=true");
+                    return;
+                }
+
+                var culture = System.Globalization.CultureInfo.InvariantCulture;
+                Debug.Log("[BalancyPerf] bridge event=" + info.@event + " view=" + info.viewId +
+                    " elapsedMs=" + info.elapsedMs.ToString("F1", culture) +
+                    " dom=" + snapshot.domNodes + " viewNodes=" + snapshot.viewNodes +
+                    " elements=" + snapshot.liveElements + " components=" + snapshot.liveComponents +
+                    " instances=" + snapshot.liveInstances + " pendingPrep=" + snapshot.pendingPreparations +
+                    " listeners=" + snapshot.listeners + " timers=" + snapshot.timers +
+                    " disposers=" + snapshot.viewDisposers + " animations=" + snapshot.trackedAnimations +
+                    " lottie=" + snapshot.activeLottie + " pendingRequests=" + snapshot.pendingRequests +
+                    " updateLoop=" + snapshot.updateLoopRunning + " updateCalls=" + snapshot.updateCalls +
+                    " frames=" + snapshot.frameCount + " frameP95Ms=" + snapshot.frameP95Ms.ToString("F1", culture) +
+                    " cachedBanim=" + snapshot.cachedBanim + " cachedLottie=" + snapshot.cachedLottie +
+                    " cachedPrefabs=" + snapshot.cachedPrefabs);
+            }
+            catch (Exception error)
+            {
+                Debug.LogWarning("[BalancyPerf] bridge summary failed: " + error.Message);
+            }
+        }
+
+        [Serializable]
         private class PersistentLoadMessage
         {
             public string type = "loadView", viewId, htmlBase64, ownerJsonBase64, additionalInfoBase64, baseUrl, scriptsVersion;
@@ -1838,7 +1900,7 @@ namespace Balancy.WebView
                 var parsed = JsonUtility.FromJson<PersistentMessage>(message);
                 if (parsed != null && parsed.type == "webview-performance")
                 {
-                    if (PerformanceLoggingEnabled) Debug.Log("[BalancyPerf] " + message);
+                    LogBridgePerformance(message);
                     return;
                 }
                 if (parsed != null && parsed.type == "shellReady" && Persistent.Preparing && parsed.shellId == Persistent.ShellId)
