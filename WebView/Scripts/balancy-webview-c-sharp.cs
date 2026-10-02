@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 using UnityEngine;
+using UnityEngine.Profiling;
 
 namespace Balancy.WebView
 {
@@ -20,6 +21,10 @@ namespace Balancy.WebView
     public class BalancyWebView : MonoBehaviour
     {
         private const string BridgeFileName = "balancy-webview-bridge.js";
+#if UNITY_EDITOR
+        private static TextAsset _editorBridgeAsset;
+        private static string _editorBridgeUrl;
+#endif
         private const string IosLocalUrlPrefix = "balancy-local://local/";
         private string _scriptsCode = "";
         private string _scriptsUrl = "";
@@ -40,8 +45,30 @@ namespace Balancy.WebView
         public static void PerformanceLog(string stage, double started, string viewId = null, string detail = null)
         {
             if (!PerformanceLoggingEnabled || started <= 0) return;
+            bool lifecycle = stage == "viewReadyReceived" || stage == "viewClearedReceived"
+                || stage == "classicNavigationComplete";
             Debug.Log("[BalancyPerf] host stage=" + stage + " view=" + (viewId ?? "-") + " ms=" +
-                (PerformanceNow() - started).ToString("F2", System.Globalization.CultureInfo.InvariantCulture) + " " + detail);
+                (PerformanceNow() - started).ToString("F2", System.Globalization.CultureInfo.InvariantCulture) + " " + detail +
+                (lifecycle ? PerformanceMemory() : ""));
+        }
+        private static string PerformanceMemory()
+        {
+            try
+            {
+                const double mb = 1024.0 * 1024.0;
+                var culture = System.Globalization.CultureInfo.InvariantCulture;
+                // Unity counters cover the game process. Android WebView renderer memory
+                // may live in another process, so compare these with bridge snapshots.
+                return " managedMB=" + (GC.GetTotalMemory(false) / mb).ToString("F1", culture) +
+                    " unityAllocatedMB=" + (Profiler.GetTotalAllocatedMemoryLong() / mb).ToString("F1", culture) +
+                    " unityReservedMB=" + (Profiler.GetTotalReservedMemoryLong() / mb).ToString("F1", culture);
+            }
+            catch (Exception) { return " memoryUnavailable=true"; }
+        }
+        private static void PerformanceCloseMemory()
+        {
+            if (PerformanceLoggingEnabled)
+                Debug.Log("[BalancyPerf] host stage=webViewClosed view=-" + PerformanceMemory());
         }
         private double _performanceShellStart, _performanceViewStart, _performanceCloseStart;
 
@@ -421,23 +448,28 @@ namespace Balancy.WebView
 
         private static string GetBridgeUrl()
         {
-#if UNITY_ANDROID && !UNITY_EDITOR
+#if UNITY_EDITOR
+            // StreamingAssets may contain an older player-build copy. In the
+            // Editor the package resource is authoritative and is written once
+            // per imported asset, so repeated View opens do not touch the disk.
+            var bridge = Resources.Load<TextAsset>("balancy-webview-bridge");
+            if (bridge == null) throw new InvalidOperationException("balancy-webview-bridge resource is missing");
+            string directory = System.IO.Path.Combine(Application.persistentDataPath, "Balancy", "EditorWebView");
+            string path = System.IO.Path.Combine(directory, BridgeFileName);
+            if (_editorBridgeAsset != bridge || _editorBridgeUrl == null || !System.IO.File.Exists(path))
+            {
+                System.IO.Directory.CreateDirectory(directory);
+                System.IO.File.WriteAllText(path, bridge.text);
+                _editorBridgeAsset = bridge;
+                _editorBridgeUrl = ToWebViewUrl(path);
+            }
+            return _editorBridgeUrl;
+#elif UNITY_ANDROID
             return "file:///android_asset/Balancy/" + BridgeFileName;
-#elif UNITY_IOS && !UNITY_EDITOR
+#elif UNITY_IOS
             return GetIosBridgeUrl();
 #else
             string path = System.IO.Path.Combine(Application.streamingAssetsPath, "Balancy", BridgeFileName);
-            if (!System.IO.File.Exists(path))
-            {
-                // Editor runs do not execute a player build preprocessor. Materialize the
-                // package resource beside the shell without changing the runtime path.
-                var bridge = Resources.Load<TextAsset>("balancy-webview-bridge");
-                if (bridge == null) throw new InvalidOperationException("balancy-webview-bridge resource is missing");
-                string directory = System.IO.Path.Combine(Application.persistentDataPath, "Balancy", "EditorWebView");
-                System.IO.Directory.CreateDirectory(directory);
-                path = System.IO.Path.Combine(directory, BridgeFileName);
-                System.IO.File.WriteAllText(path, bridge.text);
-            }
             return ToWebViewUrl(path);
 #endif
         }
@@ -1311,6 +1343,7 @@ namespace Balancy.WebView
             // Reset debug logging state to prevent log accumulation
             _debugLogging = false;
             
+            PerformanceCloseMemory();
             OnClosed?.Invoke();
         }
 
