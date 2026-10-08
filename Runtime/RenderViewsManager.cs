@@ -593,7 +593,7 @@ namespace Balancy
                 onShown?.Invoke();
 #else
             string fileUrl = BalancyWebView.ToWebViewUrl(filePath);
-            if (OpenView(fileUrl, owner, onFailed))
+            if (OpenView(fileUrl, owner, onFailed, revealWhenReady: true))
                 onShown?.Invoke();
 #endif
         }
@@ -687,7 +687,11 @@ namespace Balancy
             }
         }
         
-        public static bool OpenView(string url, JsonBasedObject owner = null, Action<ViewOpenError> onFailed = null)
+        public static bool OpenView(string url, JsonBasedObject owner = null, Action<ViewOpenError> onFailed = null) =>
+            OpenView(url, owner, onFailed, revealWhenReady: false);
+
+        // revealWhenReady: a Balancy view page that sends BalancyIsReady. Arbitrary URLs never do, so they show at load.
+        private static bool OpenView(string url, JsonBasedObject owner, Action<ViewOpenError> onFailed, bool revealWhenReady)
         {
             if (string.IsNullOrEmpty(url))
             {
@@ -737,7 +741,7 @@ namespace Balancy
                 // Use game view size for popup mode to match embedded mode behavior
                 // Debug.LogWarning("[RenderViewsManager] OpenView " + urlToLoad + " in popup mode.");
                 // Debug.LogWarning("[RenderViewsManager] ownerJson " + ownerJson);
-                success = _webView.OpenWebView(urlToLoad, ownerJson, additionalInfo);
+                success = _webView.OpenWebView(urlToLoad, ownerJson, additionalInfo, revealWhenReady);
                 // Debug.LogWarning("[RenderViewsManager] success " + success);
             }
             
@@ -776,8 +780,19 @@ namespace Balancy
         }
 #endif
 
+        private static readonly string ReadyRequestToken = "\"action\":" + (int)RequestAction.BalancyIsReady;
+
+        // BalancyIsReady from the page, before the application filter: visibility does not depend on its decision.
+        private static bool IsReadyRequest(string msg)
+        {
+            int at = msg?.IndexOf(ReadyRequestToken, StringComparison.Ordinal) ?? -1;
+            int end = at + ReadyRequestToken.Length;
+            return at >= 0 && (end >= msg.Length || !char.IsDigit(msg[end]));
+        }
+
         private static void OnMessageReceived(string msg)
         {
+            if (IsReadyRequest(msg)) _webView?.SignalClassicPageReady();
             if (_onMessageReceived != null)
             {
                 bool proceed = _onMessageReceived(msg);

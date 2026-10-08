@@ -324,6 +324,14 @@ namespace Balancy.WebView
             () => OnClosed?.Invoke(), id => OnViewReleased?.Invoke(id),
             () => Time.realtimeSinceStartup));
 
+        // Classic Balancy views open hidden on Android and are revealed by the page's ready signal (BalancyIsReady,
+        // sent after the root init settles), as the WebGL host does; the timeout keeps a silent page from staying hidden.
+        internal const double ClassicRevealTimeoutSeconds = 3;
+        private bool _openHidden;
+        private ClassicRevealGate _classicReveal;
+        private ClassicRevealGate ClassicReveal => _classicReveal ?? (_classicReveal = new ClassicRevealGate(
+            RevealClassicView, () => Time.realtimeSinceStartup));
+
         private bool SendPersistentMessage(string message)
         {
             if (!PerformanceLoggingEnabled) return _balancySendMessage(message);
@@ -413,7 +421,11 @@ namespace Balancy.WebView
 
         public bool CanShowPersistentView() => Persistent.CanShow;
         public string CurrentViewId => Persistent.CurrentId;
-        private void Update() => _persistent?.Tick();
+        private void Update()
+        {
+            _persistent?.Tick();
+            _classicReveal?.Tick();
+        }
         private static string Base64(string value) => Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(value ?? ""));
         private static string JsString(string value) => "(" + JsonUtility.ToJson(new StringValue { value = value ?? "" }) + ").value";
         [Serializable] private class StringValue { public string value; }
@@ -728,7 +740,9 @@ namespace Balancy.WebView
             try
             {
                 var plugin = GetPluginInstance();
-                return plugin.Call<bool>("openWebView", url, _instance._ownerJson, width, height);
+                return _instance._openHidden
+                    ? plugin.Call<bool>("openWebView", url, _instance._ownerJson, width, height, true)
+                    : plugin.Call<bool>("openWebView", url, _instance._ownerJson, width, height);
             }
             catch (System.Exception e)
             {
@@ -1118,6 +1132,16 @@ namespace Balancy.WebView
             return false;
         }
         
+        // A Balancy view page sends BalancyIsReady; where the native layer can open hidden, wait for it (ClassicRevealGate).
+        internal bool OpenWebView(string url, string ownerJson, string additionalInfo, bool revealWhenReady)
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            _openHidden = revealWhenReady;
+#endif
+            try { return OpenWebView(url, ownerJson, additionalInfo); }
+            finally { _openHidden = false; }
+        }
+
         /// <summary>
         /// Validates a local file URL before attempting to load it
         /// </summary>
@@ -1248,6 +1272,11 @@ namespace Balancy.WebView
             // before creation were ignored on macOS. Apply before navigation completes.
             if (success) ApplyAnimationSettings();
             _isWebViewOpen = success;
+            if (success && _openHidden)
+            {
+                ClassicReveal.Begin(ClassicRevealTimeoutSeconds);
+                PerformanceLog("classicOpenHidden", _performanceViewStart);
+            }
             return success;
         }
 
@@ -1371,6 +1400,17 @@ namespace Balancy.WebView
             _balancyShowWebView(); _isWebViewOpen = true;
         }
 
+        // The page sent BalancyIsReady: reveal a classic view that was opened hidden.
+        internal void SignalClassicPageReady() => _classicReveal?.Signal("ready");
+
+        private void RevealClassicView(string reason)
+        {
+            if (!_isWebViewOpen) return;
+            _balancyShowWebView();
+            PerformanceLog("classicReveal", _performanceViewStart, null, "reason=" + reason +
+                " configuredDelayMs=" + (_showDelay * 1000) + " configuredFadeMs=" + (_animationDuration * 1000));
+        }
+
         public void HideWebView()
         {
             if (!Persistent.Enabled) return;
@@ -1395,6 +1435,7 @@ namespace Balancy.WebView
         /// </summary>
         public void CloseWebView()
         {
+            _classicReveal?.Cancel();
             if (!_isWebViewOpen && !Persistent.Enabled) return;
             Persistent.Reset();
             // Also destroy a prepared but hidden shell.
@@ -1917,6 +1958,8 @@ namespace Balancy.WebView
                     PerformanceLog("viewClearedReceived", _performanceCloseStart, parsed.viewId);
                 if (parsed != null && parsed.type == "viewLoadError" && parsed.viewId == Persistent.CurrentId)
                     Persistent.RequestRestart();
+                if (parsed != null && parsed.type == "shellError" && !Persistent.Enabled)
+                    _classicReveal?.Signal("bootstrapError");
                 if (parsed != null && (parsed.type == "viewLoadError" || parsed.type == "shellError"))
                     PerformanceLog(parsed.type, parsed.type == "shellError" ? _performanceShellStart : _performanceViewStart, parsed.viewId ?? parsed.shellId);
                 if (parsed != null && Persistent.Receive(parsed.type, parsed.viewId, parsed.shellId, parsed.error)) return;
@@ -1971,6 +2014,7 @@ namespace Balancy.WebView
                 if (!success) _instance.Persistent.Fail("Persistent shell navigation or injection failed");
                 return; // Success is signalled by the bridge's shellReady ACK.
             }
+            if (!success) _instance._classicReveal?.Signal("loadFailed");
             _instance.OnLoadCompleted?.Invoke(success);
         }
 
