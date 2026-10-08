@@ -51,9 +51,13 @@ namespace Balancy
             public Order order;
             public Order[] orders;
             public Grant grant;
-            public string nextBefore, error;
+            public string nextBefore, error, grantId;
             public bool applied, requiresPersistence, acknowledged;
         }
+        [Serializable] private class PresentationShow
+        { public string type, requestId, title, nativeLabel; public bool browserPopup; }
+        [Serializable] private class UnavailablePresentationShow : PresentationShow
+        { public string xsollaUnavailable; }
         [Serializable] private class PresentationUpdate
         { public string type, requestId, state, message; }
         [Serializable] private class PresentationCheckoutUpdate : PresentationUpdate
@@ -62,7 +66,7 @@ namespace Balancy
         {
             public string type, requestId, title, nativeLabel, state, message, choice;
             public bool browserPopup, popupOpened;
-            public string checkoutUrl;
+            public string checkoutUrl, xsollaUnavailable;
         }
         internal static Func<string> SessionIdentity = () => Copy(LibraryMethods.API.balancyXsollaGetSessionIdentity());
         internal static Func<Actions.BalancyProductInfo, string> Prepare = PrepareNative;
@@ -97,8 +101,11 @@ namespace Balancy
         private static XsollaOptions options;
         private static Purchase current;
         private static Task recovery;
+        private static string recoverySession;
+        private static int recoveryEpoch;
         private static int generation;
         private static int nextCallbackId;
+        private static readonly Dictionary<string, Actions.BalancyProductInfo> deferredReports = new Dictionary<string, Actions.BalancyProductInfo>();
         private static readonly HashSet<string> reportedGrants = new HashSet<string>();
         private static readonly Dictionary<int, TaskCompletionSource<string>> requests = new Dictionary<int, TaskCompletionSource<string>>();
         private static readonly LibraryMethods.API.XsollaCallback nativeCallback = NativeResponse;
@@ -145,6 +152,7 @@ namespace Balancy
             foreach (var request in requests.Values) request.TrySetCanceled();
             requests.Clear();
             reportedGrants.Clear();
+            deferredReports.Clear();
         }
         internal static bool TryIntercept(Actions.BalancyProductInfo product, Action<bool, string> callback, Action native)
         {
@@ -152,10 +160,20 @@ namespace Balancy
             if (current != null) { SafeCallback(callback, false, "xsolla_purchase_in_progress"); return true; }
             try
             {
-                var prepared = JsonUtility.FromJson<Prepared>(Prepare(product));
-                if (prepared == null || string.IsNullOrEmpty(prepared.productId) || !Guid.TryParse(prepared.requestId, out _) || prepared.context == null)
-                    throw new InvalidOperationException("xsolla_purchase_context_unavailable");
-                var purchase = new Purchase(product, prepared, callback, native);
+                Prepared prepared = null;
+                string unavailable = null;
+                try
+                {
+                    prepared = JsonUtility.FromJson<Prepared>(Prepare(product));
+                    if (prepared == null || string.IsNullOrEmpty(prepared.productId) || !Guid.TryParse(prepared.requestId, out _) || prepared.context == null)
+                        throw new InvalidOperationException("xsolla_purchase_context_unavailable");
+                }
+                catch
+                {
+                    prepared = null;
+                    unavailable = "Xsolla checkout is not available right now. You can continue with your regular payment method.";
+                }
+                var purchase = new Purchase(product, prepared, callback, native, unavailable);
                 current = purchase;
                 purchase.Show();
             }
@@ -180,6 +198,7 @@ namespace Balancy
             internal readonly string Id;
             private readonly Actions.BalancyProductInfo product;
             private readonly Prepared prepared;
+            private readonly string unavailable;
             private readonly Action<bool, string> callback;
             private readonly Action native;
             private readonly string session = SessionIdentity();
@@ -189,8 +208,8 @@ namespace Balancy
             private bool finished, ready, started, busy, completed, callbackReported, presentationDismissed;
             private string orderId;
             private bool checkoutAttempted;
-            internal Purchase(Actions.BalancyProductInfo product, Prepared prepared, Action<bool, string> callback, Action native)
-            { Id = prepared.requestId; this.product = product; this.prepared = prepared; this.callback = callback; this.native = native; }
+            internal Purchase(Actions.BalancyProductInfo product, Prepared prepared, Action<bool, string> callback, Action native, string unavailable)
+            { Id = prepared?.requestId ?? Guid.NewGuid().ToString(); this.product = product; this.prepared = prepared; this.callback = callback; this.native = native; this.unavailable = unavailable; }
             private void Guard() { if (finished || epoch != generation || session != SessionIdentity()) throw new OperationCanceledException("xsolla_session_changed"); }
             internal void Show()
             {
@@ -205,8 +224,10 @@ namespace Balancy
                     for (int i = 0; i < 50 && !ready && !presentationDismissed; i++)
                     {
                         Guard();
-                        Send(JsonUtility.ToJson(new PresentationMessage { type = "paymentChoiceShow", requestId = Id,
-                            title = "Choose how to pay", nativeLabel = NativeLabel(config), browserPopup = BrowserPopup }));
+                        PresentationShow show = unavailable == null ? new PresentationShow() : new UnavailablePresentationShow { xsollaUnavailable = unavailable };
+                        show.type = "paymentChoiceShow"; show.requestId = Id; show.title = "Choose how to pay";
+                        show.nativeLabel = NativeLabel(config); show.browserPopup = BrowserPopup;
+                        Send(JsonUtility.ToJson(show));
                         await Task.Delay(200);
                     }
                     if (!ready && !presentationDismissed) Finish(false, "xsolla_payment_view_timeout");
@@ -225,6 +246,7 @@ namespace Balancy
                 }
                 if (message.type == "paymentChoiceRetry")
                 {
+                    if (unavailable != null) return;
                     if (busy) return;
                     if (BrowserPopup && !message.popupOpened) { Update("error", "Allow popups to open secure checkout"); return; }
                     started = true; Run(); return;
@@ -239,6 +261,7 @@ namespace Balancy
                 }
                 else if (message.choice == "xsolla")
                 {
+                    if (unavailable != null) return;
                     if (BrowserPopup && !message.popupOpened) { Update("error", "Allow popups to open secure checkout"); return; }
                     started = true; Run();
                 }
@@ -345,7 +368,7 @@ namespace Balancy
             }
             private async void DiscardReservation()
             {
-                if (checkoutAttempted || epoch != generation || session != SessionIdentity()) return;
+                if (prepared == null || checkoutAttempted || epoch != generation || session != SessionIdentity()) return;
                 try { await Request("discard", "{\"requestId\":" + Quote(Id) + "}"); await Persist(); }
                 catch (Exception error) { Debug.LogWarning("Xsolla unused reservation cleanup: " + error.Message); }
             }
@@ -361,7 +384,9 @@ namespace Balancy
         internal static Task RecoverPurchases()
         {
             if (options == null || !options.Enabled) return Task.CompletedTask;
-            if (recovery != null && !recovery.IsCompleted) return recovery;
+            var session = SessionIdentity();
+            if (recovery != null && !recovery.IsCompleted && recoveryEpoch == generation && recoverySession == session) return recovery;
+            recoveryEpoch = generation; recoverySession = session;
             return recovery = Recover();
         }
         private static async Task Recover()
@@ -388,21 +413,49 @@ namespace Balancy
             ValidateOrder(completion.order, orderId, livePurchase);
             if (completion.grant == null || string.IsNullOrEmpty(completion.grant.grantId) || completion.order.state != "paid")
                 throw new InvalidOperationException("xsolla_unverified_completion");
+            var reportKey = session + ":" + completion.grant.grantId;
+            // Retain the descriptor when this session newly applied a grant, including
+            // failures before ack. Retry may return applied:false for that same grant.
+            if ((completion.applied || livePurchase != null) && product != null && !reportedGrants.Contains(reportKey))
+                deferredReports[reportKey] = product;
             if (completion.requiresPersistence) await Persist();
             EnsureSession(session, epoch);
-            // Completion already saved the coherent grant ledger and inventory. Ack failure is recoverable.
-            try { await Request("ack", "{\"orderId\":" + Quote(orderId) + ",\"grantId\":" + Quote(completion.grant.grantId) + "}"); }
-            catch (Exception error) { Debug.LogWarning("Xsolla payment acknowledgment pending: " + error.Message); }
+            // The applied ledger survives ack failures. Only a correlated acknowledgment
+            // permits definitive callbacks/Success; retry reconciles the existing grant.
+            var acknowledgment = await Request("ack", "{\"orderId\":" + Quote(orderId) + ",\"grantId\":" + Quote(completion.grant.grantId) + "}");
             EnsureSession(session, epoch);
+            ValidateAcknowledgment(acknowledgment, completion.grant.grantId);
             // A live retry can have applied the grant before a failed durability barrier.
             // Recovery of a previous session reports only a newly applied grant.
-            if ((completion.applied || livePurchase != null) && product != null && reportedGrants.Add(session + ":" + completion.grant.grantId))
+            if (deferredReports.TryGetValue(reportKey, out var reportProduct) && reportedGrants.Add(reportKey))
             {
+                deferredReports.Remove(reportKey);
                 var payment = new Core.PaymentInfo { ProductId = completion.grant.baseProductId, OrderId = completion.grant.orderId,
                     Price = completion.grant.priceBalancy, PriceUSD = completion.grant.priceUSD, Currency = "USD",
                     Receipt = "{\"orderId\":" + Quote(orderId) + "}" };
-                try { product.ReportThePurchase(payment); } catch (Exception error) { Debug.LogException(error); }
+                try { reportProduct.ReportThePurchase(payment); } catch (Exception error) { Debug.LogException(error); }
             }
+        }
+        internal static void ValidateAcknowledgment(string json, string grantId)
+        {
+            if (!HasStrictAcknowledgmentFields(json)) throw new InvalidOperationException("xsolla_invalid_acknowledgment");
+            var acknowledgment = Parse(json);
+            if (!acknowledgment.acknowledged || acknowledgment.grantId != grantId)
+                throw new InvalidOperationException("xsolla_invalid_acknowledgment");
+        }
+        // JsonUtility coerces numeric/string booleans. The ACK endpoint's strict
+        // two-field object schema requires literal true and a JSON string grant ID,
+        // in either order. An anchored schema rejects nested/duplicate/escaped keys.
+        private static bool HasStrictAcknowledgmentFields(string json)
+        {
+            if (json == null) return false;
+            const string space = @"[ \t\r\n]*";
+            const string jsonString = @"""(?:[^""\\\x00-\x1F]|\\(?:[""\\/bfnrt]|u[0-9a-fA-F]{4}))*""";
+            var acknowledged = @"""acknowledged""" + space + ":" + space + "true";
+            var grant = @"""grantId""" + space + ":" + space + jsonString;
+            var schema = @"\A" + space + @"\{" + space + "(?:" + acknowledged + space + "," + space + grant + "|" +
+                grant + space + "," + space + acknowledged + ")" + space + @"\}" + space + @"\z";
+            return System.Text.RegularExpressions.Regex.IsMatch(json, schema);
         }
         private static void EnsureSession(string session, int epoch)
         { if (epoch != generation || session != SessionIdentity()) throw new OperationCanceledException("xsolla_session_changed"); }
@@ -416,7 +469,7 @@ namespace Balancy
         private static string ContextJson(Context context)
         {
             var fields = new List<string>();
-            void Add(string name, string value) { if (value != null) fields.Add(Quote(name) + ":" + Quote(value)); }
+            void Add(string name, string value) { if (!string.IsNullOrEmpty(value)) fields.Add(Quote(name) + ":" + Quote(value)); }
             Add("type", context.type); Add("storeItemUnnyId", context.storeItemUnnyId);
             Add("offerInstanceId", context.offerInstanceId); Add("offerUnnyId", context.offerUnnyId); Add("slotUnnyId", context.slotUnnyId);
             return "{" + string.Join(",", fields) + "}";
@@ -458,7 +511,7 @@ namespace Balancy
         {
             if (order.context == null || !Enum.TryParse(order.context.type, out Actions.BalancyProductInfo.PurchaseType kind)) return null;
             return new Actions.BalancyProductInfo((Models.SmartObjects.StoreItem)null) { ProductId = order.productId, Type = kind,
-                StoreItemUnnyId = order.context.storeItemUnnyId, OfferInstanceId = order.context.offerInstanceId, OfferUnnyId = order.context.offerUnnyId ?? order.context.slotUnnyId };
+                StoreItemUnnyId = order.context.storeItemUnnyId, OfferInstanceId = order.context.offerInstanceId, OfferUnnyId = !string.IsNullOrEmpty(order.context.offerUnnyId) ? order.context.offerUnnyId : order.context.slotUnnyId };
         }
         private static string PrepareNative(Actions.BalancyProductInfo product)
         {
