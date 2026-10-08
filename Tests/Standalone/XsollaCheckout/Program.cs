@@ -63,14 +63,24 @@ class Program {
     if(action=="checkout" && envelope.RootElement.GetProperty("context").EnumerateObject().Count()!=2)throw new Exception("context optional fields were added");
    }
    actions.Add(action); if(action=="ack") { ack++; return Task.FromResult(ValidAck); }
-   return Task.FromResult(action=="checkout" ? "{\"order\":{\"id\":\"order\",\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"requestedProductId\":\"sku\",\"state\":\"pending\",\"checkoutUrl\":\"https://sandbox-secure.xsolla.com/paystation4/?token=test\"}}" : "{\"order\":{\"id\":\"order\",\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"requestedProductId\":\"sku\",\"state\":\"paid\"}}");
+   return Task.FromResult(action=="checkout" ? "{\"order\":{\"id\":\"order\",\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"requestedProductId\":\"sku\",\"productId\":\"sku\",\"state\":\"pending\",\"checkoutUrl\":\"https://sandbox-secure.xsolla.com/paystation4/?token=test\"}}" : "{\"order\":{\"id\":\"order\",\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"requestedProductId\":\"sku\",\"productId\":\"sku\",\"state\":\"paid\"}}");
   };
-  XsollaPurchasing.Complete=id=>{ complete++; return Task.FromResult("{\"order\":{\"id\":\"order\",\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"requestedProductId\":\"sku\",\"state\":\"paid\"},\"grant\":{\"grantId\":\"grant\"},\"applied\":true,\"requiresPersistence\":true}"); };
+  XsollaPurchasing.Complete=id=>{ complete++; return Task.FromResult("{\"order\":{\"id\":\"order\",\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"requestedProductId\":\"sku\",\"productId\":\"sku\",\"state\":\"paid\"},\"grant\":{\"grantId\":\"grant\"},\"applied\":true,\"requiresPersistence\":true}"); };
   API.Xsolla.Configure(new XsollaOptions {Enabled=true,Country="US"});
  }
  static void Start()=>XsollaPurchasing.TryIntercept(new Actions.BalancyProductInfo(null),(ok,error)=>{callbackCount++;success=ok;},()=>nativeCount++);
  static void Choice(string choice,string id=null)=>XsollaPurchasing.ReceivePresentationMessage("{\"type\":\"paymentChoiceSelected\",\"requestId\":\""+(id??requestId)+"\",\"choice\":\""+choice+"\"}");
  static async Task Wait()=> await Task.Delay(20);
+ static XsollaPurchasing.Order FixtureOrder(string id,string state="paid",bool reconciled=false,bool acknowledged=false) => new() {
+  id=id,state=state,requestId="request-"+id,productId="sku-"+id,requestedProductId="sku-"+id,
+  reconciliationRequired=reconciled,acknowledged=acknowledged,context=new XsollaPurchasing.Context {type="StoreItem",storeItemUnnyId="doc-"+id}
+ };
+ static string CompletionFixture(XsollaPurchasing.Order order,bool applied=true)=>UnityEngine.JsonUtility.ToJson(new XsollaPurchasing.Result {
+  order=order,grant=new XsollaPurchasing.Grant {grantId="grant-"+order.id,orderId=order.id,baseProductId=order.productId},applied=applied,requiresPersistence=true
+ });
+ static string PendingFixture(params XsollaPurchasing.Order[] orders)=>UnityEngine.JsonUtility.ToJson(new XsollaPurchasing.Result {orders=orders});
+ static string OrderFixture(XsollaPurchasing.Order order)=>UnityEngine.JsonUtility.ToJson(new XsollaPurchasing.Result {order=order});
+ static async Task RecoverAllowErrors() {try{await API.Xsolla.RecoverPurchases();}catch(InvalidOperationException){} }
  static async Task Main() {
   Reset(); API.Xsolla.Configure(null); Check(!XsollaPurchasing.TryIntercept(new Actions.BalancyProductInfo(null),null,null),"disabled preserves native flow");
   foreach(var prepareFault in new[]{"checkpoint","auth","invalid-contract"}) {
@@ -106,18 +116,18 @@ class Program {
   Reset(); Start(); var deferredCheckout=new TaskCompletionSource<string>(); var originalRequest=XsollaPurchasing.Request;
   XsollaPurchasing.Request=(a,b)=> a=="checkout"?deferredCheckout.Task:originalRequest(a,b);
   Choice("xsolla"); presentationFailed("renderer closed");
-  deferredCheckout.SetResult("{\"order\":{\"id\":\"order\",\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"requestedProductId\":\"sku\",\"state\":\"paid\"}}");
+  deferredCheckout.SetResult("{\"order\":{\"id\":\"order\",\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"requestedProductId\":\"sku\",\"productId\":\"sku\",\"state\":\"paid\"}}");
   await Wait(); Check(success&&callbackCount==1&&complete==1&&ack==1&&leaseDisposed==1,"external renderer closure preserves paid tracking and callback");
-  Reset(); Start(); var wait=new TaskCompletionSource<string>(); XsollaPurchasing.Request=(action,body)=>{ actions.Add(action); return wait.Task; }; Choice("xsolla"); Choice("xsolla"); Check(actions.Count==1,"duplicate Xsolla click creates once"); Choice("cancel"); wait.SetResult("{\"order\":{\"id\":\"order\",\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"requestedProductId\":\"sku\",\"state\":\"paid\"}}"); await Wait(); Check(!success&&complete==0&&nativeCount==0,"dismiss pending never falls back or applies late response");
-  Reset(); Start(); XsollaPurchasing.Request=(a,b)=>{session="player-b";return Task.FromResult("{\"order\":{\"id\":\"order\",\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"requestedProductId\":\"sku\",\"state\":\"paid\"}}");}; Choice("xsolla"); await Wait(); Check(complete==0&&ack==0&&Reports==0,"session change prevents completion and callbacks");
+  Reset(); Start(); var wait=new TaskCompletionSource<string>(); XsollaPurchasing.Request=(action,body)=>{ actions.Add(action); return wait.Task; }; Choice("xsolla"); Choice("xsolla"); Check(actions.Count==1,"duplicate Xsolla click creates once"); Choice("cancel"); wait.SetResult("{\"order\":{\"id\":\"order\",\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"requestedProductId\":\"sku\",\"productId\":\"sku\",\"state\":\"paid\"}}"); await Wait(); Check(!success&&complete==0&&nativeCount==0,"dismiss pending never falls back or applies late response");
+  Reset(); Start(); XsollaPurchasing.Request=(a,b)=>{session="player-b";return Task.FromResult("{\"order\":{\"id\":\"order\",\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"requestedProductId\":\"sku\",\"productId\":\"sku\",\"state\":\"paid\"}}");}; Choice("xsolla"); await Wait(); Check(complete==0&&ack==0&&Reports==0,"session change prevents completion and callbacks");
   Reset(); Start(); int flushCount=0; XsollaPurchasing.Persist=()=> ++flushCount==1?Task.CompletedTask:Task.FromException(new Exception("disk failure")); Choice("xsolla"); await Wait(); Check(complete==1&&ack==0&&Reports==0&&!success,"storage failure never acknowledges"); Choice("cancel");
-  Reset(); XsollaPurchasing.Request=(a,b)=>{ if(a=="pending")return Task.FromResult("{\"orders\":[{\"id\":\"order\",\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"requestedProductId\":\"sku\",\"state\":\"paid\",\"context\":{\"type\":\"StoreItem\"}}]}"); ack++;return Task.FromResult(ValidAck);}; XsollaPurchasing.Complete=id=>{complete++;return Task.FromResult("{\"order\":{\"id\":\"order\",\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"requestedProductId\":\"sku\",\"state\":\"paid\"},\"grant\":{\"grantId\":\"grant\"},\"applied\":false}");}; await API.Xsolla.RecoverPurchases(); Check(complete==1&&ack==1&&Reports==0,"recovery acknowledges durable duplicate without re-reporting reward");
+  Reset(); XsollaPurchasing.Request=(a,b)=>{ if(a=="pending")return Task.FromResult("{\"orders\":[{\"id\":\"order\",\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"requestedProductId\":\"sku\",\"productId\":\"sku\",\"state\":\"paid\",\"context\":{\"type\":\"StoreItem\"}}]}"); ack++;return Task.FromResult(ValidAck);}; XsollaPurchasing.Complete=id=>{complete++;return Task.FromResult("{\"order\":{\"id\":\"order\",\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"requestedProductId\":\"sku\",\"productId\":\"sku\",\"state\":\"paid\"},\"grant\":{\"grantId\":\"grant\"},\"applied\":false}");}; await API.Xsolla.RecoverPurchases(); Check(complete==1&&ack==1&&Reports==1,"authenticated unacknowledged duplicate reports after verified retry and ack");
   foreach(var url in new[]{"https://sandbox-secure.xsolla.com/paystation4/?token=fixture","https://secure.xsolla.com/paystation4/?token=fixture"}) { XsollaPurchasing.ValidateCheckoutUrl(url); Check(true,"accept official checkout URL "+url); }
   Reset(); Start(); var sandboxRequest=XsollaPurchasing.Request; XsollaPurchasing.Request=async(a,b)=>(await sandboxRequest(a,b)).Replace("sandbox-secure.xsolla.com","secure.xsolla.com"); Choice("xsolla"); await Wait(); Check(success&&callbackCount==1&&opens==1&&ack==1,"server production checkout host follows same verified flow"); Choice("cancel");
   foreach(var url in new[]{"http://sandbox-secure.xsolla.com/paystation4/?token=a","http://secure.xsolla.com/paystation4/?token=a","https://evil.com/paystation4/?token=a","https://secure.xsolla.com/paystation4/","https://x@sandbox-secure.xsolla.com/paystation4/?token=a","https://sandbox-secure.xsolla.com:8443/paystation4/?token=a","https://secure.xsolla.com:8443/paystation4/?token=a","https://secure.xsolla.com.evil.com/paystation4/?token=a","https://sandbox-secure.xsolla.com.evil.com/paystation4/?token=a","https://secure-xsolla.com/paystation4/?token=a","https://secure.xsolla.com/wrong-path/?token=a","https://secure.xsolla.com/paystation4/?token=a#fragment"}) { bool blocked=false;try{XsollaPurchasing.ValidateCheckoutUrl(url);}catch{blocked=true;} Check(blocked,"reject unsafe URL "+url); }
   Reset(); Start(); XsollaPurchasing.Request=(a,b)=>Task.FromResult("{\"order\":{\"id\":\"foreign-owned\",\"state\":\"paid\",\"requestId\":\"00000000-0000-4000-8000-000000000002\"}}"); Choice("xsolla"); await Wait(); Check(complete==0&&ack==0&&Reports==0&&!success,"foreign owned request cannot finish active purchase"); Choice("cancel");
   Reset(); Start(); int attempts=0; XsollaPurchasing.Persist=()=> ++attempts==2?Task.FromException(new Exception("temporary disk failure")):Task.CompletedTask;
-  XsollaPurchasing.Complete=id=>{complete++;return Task.FromResult("{\"order\":{\"id\":\"order\",\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"requestedProductId\":\"sku\",\"state\":\"paid\"},\"grant\":{\"grantId\":\"grant\"},\"applied\":"+(complete==1?"true":"false")+",\"requiresPersistence\":true}");};
+  XsollaPurchasing.Complete=id=>{complete++;return Task.FromResult("{\"order\":{\"id\":\"order\",\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"requestedProductId\":\"sku\",\"productId\":\"sku\",\"state\":\"paid\"},\"grant\":{\"grantId\":\"grant\"},\"applied\":"+(complete==1?"true":"false")+",\"requiresPersistence\":true}");};
   Choice("xsolla"); await Wait(); Check(Reports==0&&ack==0,"live storage fault keeps callback unreported");
   XsollaPurchasing.ReceivePresentationMessage("{\"type\":\"paymentChoiceRetry\",\"requestId\":\""+requestId+"\"}"); await Wait(); Check(success&&Reports==1&&complete==2&&ack==1,"live retry reports once after durable duplicate completion");
   foreach(var ackFault in new[]{"network","409-refund","malformed","empty","false","string-true","numeric-true","wrong-grant"}) {
@@ -146,7 +156,7 @@ class Program {
   bool recoveryAckRejected=false;try{await API.Xsolla.RecoverPurchases();}catch(Exception){recoveryAckRejected=true;}
   Check(recoveryAckRejected&&complete==1&&Reports==0,"recovery propagates ack failure without reporting a newly applied grant");
   Reset(); var recoveryFixtureRequest=XsollaPurchasing.Request; var recoveryFixtureComplete=XsollaPurchasing.Complete;
-  const string PendingPaid="{\"orders\":[{\"id\":\"order\",\"state\":\"paid\",\"context\":{\"type\":\"StoreItem\"}}]}";
+  const string PendingPaid="{\"orders\":[{\"id\":\"order\",\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"requestedProductId\":\"sku\",\"productId\":\"sku\",\"state\":\"paid\",\"context\":{\"type\":\"StoreItem\"}}]}";
   bool recoveryAcceptedAck=false;
   XsollaPurchasing.Request=(a,b)=>{
    if(a=="pending")return Task.FromResult(recoveryAcceptedAck?"{\"orders\":[]}":PendingPaid);
@@ -192,6 +202,57 @@ class Program {
   Choice("xsolla");await Wait();Choice("cancel");session="player-b";
   var beforeScopeRead=XsollaPurchasing.Request;XsollaPurchasing.Request=(a,b)=>{if(a=="get")oldScopeReads++;return beforeScopeRead(a,b);};
   await API.Xsolla.RecoverPurchases();Check(oldScopeReads==0&&Reports==0&&callbackCount==1,"new scope never reads back or reports previous scope deferred ACK");
+  foreach(var terminal in new[]{"canceled","reconciliation"}) {
+   Reset(); bool initial=true;int healthyAck=0,terminalGet=0;
+   XsollaPurchasing.Complete=id=>{complete++;return Task.FromResult(CompletionFixture(FixtureOrder(id),initial));};
+   XsollaPurchasing.Request=(a,b)=>{
+    string id=a=="pending"?null:JsonDocument.Parse(b).RootElement.GetProperty("orderId").GetString();
+    if(a=="pending")return Task.FromResult(PendingFixture(FixtureOrder(initial?"terminal":"healthy")));
+    if(a=="ack"){if(id=="terminal")return Task.FromException<string>(new Exception("lost ack"));healthyAck++;return Task.FromResult("{\"acknowledged\":true,\"grantId\":\"grant-healthy\"}");}
+    terminalGet++;return Task.FromResult(OrderFixture(FixtureOrder(id,terminal=="canceled"?"canceled":"paid",terminal=="reconciliation")));
+   };
+   await RecoverAllowErrors();initial=false;await RecoverAllowErrors();
+   Check(healthyAck==1&&Reports==1&&terminalGet==1,"deferred "+terminal+" cannot starve independent paid pending");
+  }
+  Reset();int isolatedHealthyAck=0;
+  XsollaPurchasing.Request=(a,b)=>a=="pending"?Task.FromResult(PendingFixture(FixtureOrder("broken"),FixtureOrder("healthy"))):
+   Task.FromResult("{\"acknowledged\":true,\"grantId\":\"grant-healthy\"}");
+  XsollaPurchasing.Complete=id=>{if(id=="broken")return Task.FromException<string>(new Exception("checkpoint unavailable"));isolatedHealthyAck++;return Task.FromResult(CompletionFixture(FixtureOrder(id)));};
+  await RecoverAllowErrors();Check(isolatedHealthyAck==1&&Reports==1,"one pending completion failure cannot block later independent paid order");
+  Reset(); bool seed=true;var readIds=new List<string>();int afterLimitAck=0;
+  var many=Enumerable.Range(0,70).Select(i=>FixtureOrder("terminal-"+i)).ToArray();
+  XsollaPurchasing.Complete=id=>{complete++;return Task.FromResult(CompletionFixture(FixtureOrder(id)));};
+  XsollaPurchasing.Request=(a,b)=>{
+   if(a=="pending")return Task.FromResult(PendingFixture(seed?many:new[]{FixtureOrder("healthy")}));
+   string id=JsonDocument.Parse(b).RootElement.GetProperty("orderId").GetString();
+   if(a=="ack"){if(seed)return Task.FromException<string>(new Exception("lost ack"));afterLimitAck++;return Task.FromResult("{\"acknowledged\":true,\"grantId\":\"grant-healthy\"}");}
+   readIds.Add(id);return Task.FromResult(OrderFixture(FixtureOrder(id,"canceled")));
+  };
+  await RecoverAllowErrors();Check(complete==70,"more than 64 deferred finalizations never block another verified completion");
+  seed=false;await RecoverAllowErrors();Check(afterLimitAck==1&&Reports==1&&readIds.Count==64,"healthy pending succeeds before bounded 64 terminal readbacks");
+  XsollaPurchasing.Request=(a,b)=>{if(a=="pending")return Task.FromResult(PendingFixture());string id=JsonDocument.Parse(b).RootElement.GetProperty("orderId").GetString();readIds.Add(id);return Task.FromResult(OrderFixture(FixtureOrder(id,"canceled")));};
+  await RecoverAllowErrors();Check(readIds.Count==128&&readIds.Contains("terminal-69"),"deferred readback rotates fairly and retains entries beyond first batch");
+  foreach(var mismatch in new[]{"request","requested-product","canonical-product","completion-request","completion-product"}) {
+   Reset(); bool initial=true;int readbackComplete=0;
+   XsollaPurchasing.Request=(a,b)=>{
+    if(a=="pending")return Task.FromResult(initial?PendingFixture(FixtureOrder("known")):PendingFixture());
+    if(a=="ack")return Task.FromException<string>(new Exception("lost ack"));
+    var order=FixtureOrder("known");if(mismatch=="request")order.requestId="other";if(mismatch=="requested-product")order.requestedProductId="other";if(mismatch=="canonical-product")order.productId="other";
+    return Task.FromResult(OrderFixture(order));
+   };
+   XsollaPurchasing.Complete=id=>{complete++;if(!initial)readbackComplete++;var order=FixtureOrder(id);if(!initial&&mismatch=="completion-request")order.requestId="other";if(!initial&&mismatch=="completion-product")order.productId="other";return Task.FromResult(CompletionFixture(order,initial));};
+   await RecoverAllowErrors();initial=false;await RecoverAllowErrors();
+   Check(Reports==0&&readbackComplete==(mismatch.StartsWith("completion-")?1:0),"lost ACK fallback rejects "+mismatch+" identity mismatch without definitive notification");
+  }
+  Reset();int checkpointAttempts=0;bool checkpointAccepted=false;
+  XsollaPurchasing.Request=(a,b)=>{if(a=="pending")return Task.FromResult(checkpointAccepted?PendingFixture():PendingFixture(FixtureOrder("checkpoint")));ack++;checkpointAccepted=true;return Task.FromResult("{\"acknowledged\":true,\"grantId\":\"grant-checkpoint\"}");};
+  XsollaPurchasing.Complete=id=>++checkpointAttempts==1?Task.FromException<string>(new Exception("checkpoint failed after grant")):Task.FromResult(CompletionFixture(FixtureOrder(id),false));
+  await RecoverAllowErrors();Check(Reports==0&&ack==0,"failed core checkpoint payload cannot authorize callback or ack");
+  await API.Xsolla.RecoverPurchases();Check(Reports==1&&ack==1&&callbackCount==0,"verified unacknowledged applied-false retry repairs checkpoint callback gap");
+  await API.Xsolla.RecoverPurchases();Check(Reports==1,"checkpoint recovery global notification remains at most once in same scope");
+  Reset();XsollaPurchasing.Request=(a,b)=>a=="pending"?Task.FromResult(PendingFixture(FixtureOrder("history"))):Task.FromResult("{\"acknowledged\":true,\"grantId\":\"grant-history\"}");
+  XsollaPurchasing.Complete=id=>Task.FromResult(CompletionFixture(FixtureOrder(id,acknowledged:true),false));
+  await API.Xsolla.RecoverPurchases();Check(Reports==0,"acknowledged historical completion never creates a new global report despite pending race");
   Reset(); int pendingReads=0; Controller.IsReadyToUse=true; XsollaPurchasing.Request=(a,b)=>{pendingReads++;return Task.FromResult("{\"orders\":[]}");}; XsollaPurchasing.Resume(); await Wait(); Check(pendingReads==1,"application resume scans recoverable orders");
   Reset(); XsollaPurchasing.Request=(a,b)=>Task.FromResult("{\"orders\":[],\"nextBefore\":\"unchanged\"}"); bool cursorBlocked=false;try{await API.Xsolla.RecoverPurchases();}catch(InvalidOperationException){cursorBlocked=true;} Check(cursorBlocked,"repeated recovery cursor cannot loop forever");
   Reset(); XsollaPurchasing.BrowserPopup=true; Start(); Choice("xsolla"); await Wait(); Check(opens==0&&complete==0&&!actions.Contains("checkout"),"blocked browser popup never creates an order");

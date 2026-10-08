@@ -106,8 +106,9 @@ namespace Balancy
         private static int generation;
         private static bool nativeExportsUnavailable;
         private static int nextCallbackId;
-        private const int MaximumDeferredOrders = 64;
-        private sealed class DeferredOrder { internal string OrderId, GrantId; }
+        private const int MaximumDeferredReads = 64;
+        private sealed class DeferredOrder { internal string OrderId, GrantId, RequestId, ProductId, RequestedProductId; }
+        private static readonly Queue<string> deferredReadQueue = new Queue<string>();
         private static string deferredSession;
         private static int deferredEpoch;
         private static readonly Dictionary<string, DeferredOrder> deferredOrders = new Dictionary<string, DeferredOrder>();
@@ -160,7 +161,7 @@ namespace Balancy
             requests.Clear();
             reportedGrants.Clear();
             deferredReports.Clear();
-            deferredOrders.Clear();
+            deferredOrders.Clear(); deferredReadQueue.Clear();
         }
         internal static bool TryIntercept(Actions.BalancyProductInfo product, Action<bool, string> callback, Action native)
         {
@@ -330,7 +331,7 @@ namespace Balancy
                         }
                         if (status.order.state == "paid")
                         {
-                            await Apply(orderId, product, session, epoch, prepared);
+                            await Apply(orderId, product, session, epoch, prepared, status.order);
                             Guard(); completed = true;
                             Update("success", "Payment completed");
                             ReportResult(true, null);
@@ -407,55 +408,85 @@ namespace Balancy
             var epoch = generation; var session = SessionIdentity(); string cursor = null;
             EnsureSession(session, epoch);
             InitializeDeferredScope(session, epoch);
-            // An accepted ACK with a lost response disappears from server pending.
-            // Read back bounded same-scope attempts independently and re-ACK safely.
-            foreach (var deferred in new List<DeferredOrder>(deferredOrders.Values))
-            {
-                EnsureSession(session, epoch);
-                var status = Parse(await Request("get", "{\"orderId\":" + Quote(deferred.OrderId) + "}"));
-                EnsureSession(session, epoch);
-                ValidateOrder(status.order, deferred.OrderId, null);
-                if (status.order.state != "paid" || status.order.reconciliationRequired)
-                    throw new InvalidOperationException("xsolla_reconciliation_required");
-                await Apply(deferred.OrderId, Descriptor(status.order), session, epoch);
-            }
+            var visited = new HashSet<string>();
+            var errors = new List<Exception>();
+            // Independent paid orders have priority over failed/terminal finalizations.
+            // A single order failure is reported after the other orders are processed.
             var cursors = new HashSet<string>();
-            do
+            try
             {
-                EnsureSession(session, epoch);
-                var result = Parse(await Request("pending", cursor == null ? "{}" : "{\"before\":" + Quote(cursor) + "}"));
-                EnsureSession(session, epoch);
-                foreach (var order in result.orders ?? Array.Empty<Order>())
-                    if (order.state == "paid" && !order.acknowledged)
-                        await Apply(order.id, Descriptor(order), session, epoch);
-                cursor = result.nextBefore;
-                if (!string.IsNullOrEmpty(cursor) && !cursors.Add(cursor)) throw new InvalidOperationException("xsolla_pending_cursor_repeated");
-            } while (!string.IsNullOrEmpty(cursor));
+                do
+                {
+                    EnsureSession(session, epoch);
+                    var result = Parse(await Request("pending", cursor == null ? "{}" : "{\"before\":" + Quote(cursor) + "}"));
+                    EnsureSession(session, epoch);
+                    foreach (var order in result.orders ?? Array.Empty<Order>())
+                    {
+                        if (order == null || order.state != "paid" || order.acknowledged || !visited.Add(order.id)) continue;
+                        try
+                        {
+                            if (order.reconciliationRequired) throw new InvalidOperationException("xsolla_reconciliation_required");
+                            await Apply(order.id, Descriptor(order), session, epoch, observedOrder: order);
+                        }
+                        catch (Exception error) { EnsureSession(session, epoch); errors.Add(error); }
+                    }
+                    cursor = result.nextBefore;
+                    if (!string.IsNullOrEmpty(cursor) && !cursors.Add(cursor)) throw new InvalidOperationException("xsolla_pending_cursor_repeated");
+                } while (!string.IsNullOrEmpty(cursor));
+            }
+            catch (Exception error) { EnsureSession(session, epoch); errors.Add(error); }
+            // An accepted ACK with a lost response disappears from server pending.
+            // Keep every known order until ACK/scope change; bound GETs, not retention.
+            // Rotate every attempted order so terminal/failed entries cannot starve later entries.
+            int remaining = deferredReadQueue.Count, reads = 0;
+            while (remaining-- > 0 && reads < MaximumDeferredReads)
+            {
+                var orderId = deferredReadQueue.Dequeue();
+                if (!deferredOrders.TryGetValue(orderId, out var deferred)) continue;
+                deferredReadQueue.Enqueue(orderId);
+                if (!visited.Add(orderId)) continue;
+                reads++;
+                try
+                {
+                    EnsureSession(session, epoch);
+                    var status = Parse(await Request("get", "{\"orderId\":" + Quote(orderId) + "}"));
+                    EnsureSession(session, epoch);
+                    ValidateDeferredOrder(status.order, deferred);
+                    if (status.order.state != "paid" || status.order.reconciliationRequired)
+                        throw new InvalidOperationException("xsolla_reconciliation_required");
+                    await Apply(orderId, Descriptor(status.order), session, epoch, observedOrder: status.order);
+                }
+                catch (Exception error) { EnsureSession(session, epoch); errors.Add(error); }
+            }
+            if (errors.Count > 0) throw new InvalidOperationException("xsolla_recovery_incomplete", new AggregateException(errors));
         }
-        private static async Task Apply(string orderId, Actions.BalancyProductInfo product, string session, int epoch, Prepared livePurchase = null)
+        private static async Task Apply(string orderId, Actions.BalancyProductInfo product, string session, int epoch, Prepared livePurchase = null, Order observedOrder = null)
         {
             EnsureSession(session, epoch);
             InitializeDeferredScope(session, epoch);
-            if (!deferredOrders.ContainsKey(orderId) && deferredOrders.Count >= MaximumDeferredOrders)
-                throw new InvalidOperationException("xsolla_deferred_finalization_limit");
+            if (deferredOrders.TryGetValue(orderId, out var expected) && observedOrder != null)
+                ValidateDeferredOrder(observedOrder, expected);
             var completion = Parse(await Complete(orderId));
             EnsureSession(session, epoch);
             ValidateOrder(completion.order, orderId, livePurchase);
-            if (completion.grant == null || string.IsNullOrEmpty(completion.grant.grantId) || completion.order.state != "paid")
+            if (observedOrder != null) ValidateObservedIdentity(completion.order, observedOrder);
+            if (deferredOrders.TryGetValue(orderId, out expected)) ValidateDeferredOrder(completion.order, expected);
+            if (completion.grant == null || string.IsNullOrEmpty(completion.grant.grantId) || completion.order.state != "paid" || completion.order.reconciliationRequired)
                 throw new InvalidOperationException("xsolla_unverified_completion");
             if (deferredOrders.TryGetValue(orderId, out var previous) && previous.GrantId != completion.grant.grantId)
                 throw new InvalidOperationException("xsolla_grant_identity_mismatch");
             var reportKey = session + ":" + completion.grant.grantId;
-            // Retain the descriptor when this session newly applied a grant, including
-            // failures before ack. Retry may return applied:false for that same grant.
-            if ((completion.applied || livePurchase != null) && product != null && !reportedGrants.Contains(reportKey))
+            // A core checkpoint may fail after applying its durable-ledger candidate.
+            // Only a subsequent successful verified completion may restore reporting:
+            // authenticated unacknowledged orders remain eligible even if applied:false.
+            // An acknowledged historical receipt cannot create a new notification.
+            bool verifiedUnacknowledged = observedOrder != null && !observedOrder.acknowledged && !completion.order.acknowledged;
+            if ((completion.applied || verifiedUnacknowledged) && product != null && !reportedGrants.Contains(reportKey))
                 deferredReports[reportKey] = product;
-            // Recheck after the await: concurrent live/recovery completions can fill
-            // the bound. A rejected insertion never sends ACK, so server pending
-            // retains that order for retry after tracked finalizations are drained.
-            if (!deferredOrders.ContainsKey(orderId) && deferredOrders.Count >= MaximumDeferredOrders)
-                throw new InvalidOperationException("xsolla_deferred_finalization_limit");
-            deferredOrders[orderId] = new DeferredOrder { OrderId = orderId, GrantId = completion.grant.grantId };
+            if (!deferredOrders.ContainsKey(orderId)) deferredReadQueue.Enqueue(orderId);
+            deferredOrders[orderId] = new DeferredOrder { OrderId = orderId, GrantId = completion.grant.grantId,
+                RequestId = completion.order.requestId, ProductId = completion.order.productId,
+                RequestedProductId = completion.order.requestedProductId };
             if (completion.requiresPersistence) await Persist();
             EnsureSession(session, epoch);
             // The applied ledger survives ack failures. Only a correlated acknowledgment
@@ -465,7 +496,7 @@ namespace Balancy
             ValidateAcknowledgment(acknowledgment, completion.grant.grantId);
             deferredOrders.Remove(orderId);
             // A live retry can have applied the grant before a failed durability barrier.
-            // Recovery of a previous session reports only a newly applied grant.
+            // The same-scope report is sent once after a validated acknowledgment.
             if (deferredReports.TryGetValue(reportKey, out var reportProduct) && reportedGrants.Add(reportKey))
             {
                 deferredReports.Remove(reportKey);
@@ -479,7 +510,7 @@ namespace Balancy
         {
             if (deferredSession == session && deferredEpoch == epoch) return;
             deferredSession = session; deferredEpoch = epoch;
-            deferredOrders.Clear(); deferredReports.Clear();
+            deferredOrders.Clear(); deferredReadQueue.Clear(); deferredReports.Clear();
         }
         internal static void ValidateAcknowledgment(string json, string grantId)
         {
@@ -510,6 +541,21 @@ namespace Balancy
                 (purchase != null && (order.requestId != purchase.requestId ||
                  (!string.IsNullOrEmpty(order.requestedProductId) && order.requestedProductId != purchase.productId))))
                 throw new InvalidOperationException("xsolla_order_identity_mismatch");
+        }
+        private static void ValidateObservedIdentity(Order order, Order observed)
+        {
+            ValidateOrder(order, observed.id, null);
+            if ((!string.IsNullOrEmpty(observed.requestId) && order.requestId != observed.requestId) ||
+                (!string.IsNullOrEmpty(observed.productId) && order.productId != observed.productId) ||
+                (!string.IsNullOrEmpty(observed.requestedProductId) && order.requestedProductId != observed.requestedProductId))
+                throw new InvalidOperationException("xsolla_order_identity_mismatch");
+        }
+        private static void ValidateDeferredOrder(Order order, DeferredOrder expected)
+        {
+            ValidateObservedIdentity(order, new Order { id = expected.OrderId, requestId = expected.RequestId,
+                productId = expected.ProductId, requestedProductId = expected.RequestedProductId });
+            if (!string.IsNullOrEmpty(order.grantId) && order.grantId != expected.GrantId)
+                throw new InvalidOperationException("xsolla_grant_identity_mismatch");
         }
         private static string ContextJson(Context context)
         {

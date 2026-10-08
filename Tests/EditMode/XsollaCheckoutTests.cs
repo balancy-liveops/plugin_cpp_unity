@@ -165,6 +165,82 @@ namespace Balancy.Tests
                 for (int i = 0; i < names.Length; i++) Set(names[i], originals[i]);
             }
         }
+        [TestCase("canceled")]
+        [TestCase("reconciliation")]
+        public void TerminalDeferredOrdersDoNotStarveHealthyPendingAndReadbackRotates(string terminal)
+        {
+            var names = new[] { "SessionIdentity", "Request", "Complete", "Persist" };
+            var originals = new object[names.Length];
+            for (int i = 0; i < names.Length; i++) originals[i] = Adapter.GetField(names[i], BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
+            void Set(string name, object value) => Adapter.GetField(name, BindingFlags.Static | BindingFlags.NonPublic).SetValue(null, value);
+            bool seed = false, healthy = false; int completions = 0, healthyAcks = 0;
+            var reads = new System.Collections.Generic.List<string>();
+            string Order(string id, string state = "paid", bool reconcile = false) => "{\"id\":\"" + id + "\",\"requestId\":\"request-" + id + "\",\"productId\":\"sku-" + id + "\",\"requestedProductId\":\"sku-" + id + "\",\"state\":\"" + state + "\",\"reconciliationRequired\":" + (reconcile ? "true" : "false") + "}";
+            try
+            {
+                Set("SessionIdentity", (Func<string>)(() => "unity-recovery-fixture"));
+                Set("Persist", (Func<System.Threading.Tasks.Task>)(() => System.Threading.Tasks.Task.CompletedTask));
+                Set("Complete", (Func<string, System.Threading.Tasks.Task<string>>)(id => {
+                    completions++;
+                    return System.Threading.Tasks.Task.FromResult("{\"order\":" + Order(id) + ",\"grant\":{\"grantId\":\"grant-" + id + "\"},\"applied\":true,\"requiresPersistence\":true}");
+                }));
+                Set("Request", (Func<string, string, System.Threading.Tasks.Task<string>>)((action, body) => {
+                    if (action == "pending")
+                    {
+                        var orders = new System.Collections.Generic.List<string>();
+                        if (seed) for (int i = 0; i < 70; i++) orders.Add(Order("terminal-" + i));
+                        else if (healthy) orders.Add(Order("healthy"));
+                        return System.Threading.Tasks.Task.FromResult("{\"orders\":[" + string.Join(",", orders) + "]}");
+                    }
+                    var request = UnityEngine.JsonUtility.FromJson<RecoveryOrderFixture>(body);
+                    if (action == "ack")
+                    {
+                        if (request.orderId != "healthy") return System.Threading.Tasks.Task.FromException<string>(new InvalidOperationException("ACK unavailable"));
+                        healthyAcks++; return System.Threading.Tasks.Task.FromResult("{\"acknowledged\":true,\"grantId\":\"grant-healthy\"}");
+                    }
+                    reads.Add(request.orderId);
+                    return System.Threading.Tasks.Task.FromResult("{\"order\":" + Order(request.orderId, terminal == "canceled" ? "canceled" : "paid", terminal == "reconciliation") + "}");
+                }));
+                API.Xsolla.Configure(new XsollaOptions { Enabled = true, Country = "US" });
+                seed = true;
+                Assert.Throws<InvalidOperationException>(() => API.Xsolla.RecoverPurchases().GetAwaiter().GetResult());
+                Assert.That(completions, Is.EqualTo(70));
+                seed = false; healthy = true;
+                Assert.Throws<InvalidOperationException>(() => API.Xsolla.RecoverPurchases().GetAwaiter().GetResult());
+                Assert.That(healthyAcks, Is.EqualTo(1)); Assert.That(completions, Is.EqualTo(71));
+                Assert.That(reads.Count, Is.EqualTo(64));
+                healthy = false;
+                Assert.Throws<InvalidOperationException>(() => API.Xsolla.RecoverPurchases().GetAwaiter().GetResult());
+                Assert.That(reads.Count, Is.EqualTo(128)); Assert.That(reads, Does.Contain("terminal-69"));
+                var deferred = Adapter.GetField("deferredOrders", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
+                Assert.That((int)deferred.GetType().GetProperty("Count").GetValue(deferred), Is.EqualTo(70));
+            }
+            finally
+            {
+                API.Xsolla.Configure(null);
+                for (int i = 0; i < names.Length; i++) Set(names[i], originals[i]);
+            }
+        }
+        [Serializable] private class RecoveryOrderFixture { public string orderId; }
+        [TestCase("requestId", "RequestId")]
+        [TestCase("productId", "ProductId")]
+        [TestCase("requestedProductId", "RequestedProductId")]
+        [TestCase("grantId", "GrantId")]
+        public void DeferredReadbackValidatesEveryVerifiedIdentityField(string orderField, string deferredField)
+        {
+            var orderType = Adapter.GetNestedType("Order", BindingFlags.NonPublic);
+            var deferredType = Adapter.GetNestedType("DeferredOrder", BindingFlags.NonPublic);
+            var order = UnityEngine.JsonUtility.FromJson("{\"id\":\"order\",\"requestId\":\"request\",\"productId\":\"base-sku\",\"requestedProductId\":\"override-sku\",\"grantId\":\"grant\"}", orderType);
+            var deferred = Activator.CreateInstance(deferredType);
+            foreach (var pair in new[] { new[] { "OrderId", "order" }, new[] { "RequestId", "request" }, new[] { "ProductId", "base-sku" }, new[] { "RequestedProductId", "override-sku" }, new[] { "GrantId", "grant" } })
+                deferredType.GetField(pair[0], BindingFlags.Instance | BindingFlags.NonPublic).SetValue(deferred, pair[1]);
+            var validate = Adapter.GetMethod("ValidateDeferredOrder", BindingFlags.Static | BindingFlags.NonPublic);
+            Assert.DoesNotThrow(() => validate.Invoke(null, new[] { order, deferred }));
+            Assert.That(deferredType.GetField(deferredField, BindingFlags.Instance | BindingFlags.NonPublic).GetValue(deferred), Is.Not.Null);
+            orderType.GetField(orderField).SetValue(order, "foreign");
+            var failure = Assert.Throws<TargetInvocationException>(() => validate.Invoke(null, new[] { order, deferred }));
+            Assert.That(failure.InnerException, Is.TypeOf<InvalidOperationException>());
+        }
         [Test] public void CloudProfileFailureMarshalMatchesActualNativeHeaderLayout()
         {
             // Actual Notifications.h probe: non-polymorphic int32 type + aligned char* message.
