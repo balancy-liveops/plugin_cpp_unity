@@ -39,6 +39,8 @@ Every purchase first reserves its exact reward/context in C++ and saves the prof
 
 Closing the selector after submitting checkout dismisses its presentation and polling, without canceling the provider transaction or launching the standard provider. The original init callback reports a pending result; resume/explicit recovery processes a later paid order. Changing session or profile prevents a delayed response from granting or reporting for another player.
 
+The selector keeps its success state visible until **Done**. A purchased offer closing its game View releases that background owner without hiding the payment overlay; Done then restores the hidden shell or closes a transient renderer. External renderer closure during checkout dismisses presentation while paid tracking continues. Closing the pending selector deliberately stops that watch; recovery remains available.
+
 Successful live completion preserves existing `OnHardPurchased*` callbacks. A live retry after a persistence error reports once after successful persistence. Startup recovery does not repeat callbacks for grants that were already applied. Callback delivery itself is not guaranteed across a process crash. Refunds requiring correction remain a reconciliation case; the SDK does not subtract already spent rewards automatically.
 
 ## Verification

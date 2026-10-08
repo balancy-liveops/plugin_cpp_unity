@@ -75,6 +75,7 @@ namespace Balancy
             _webView = BalancyWebView.Instance;
             _webView.OnLoadCompleted += HandleLoadCompleted;
             _webView.OnClosed += HandleWebViewClosed;
+            _webView.OnPaymentBackgroundClosed += HandleWebViewClosed;
             _webView.OnViewReleased += HandleViewReleased;
 
             _webView.SetTransparentBackground(true);
@@ -122,6 +123,7 @@ namespace Balancy
                 _webView.OnMessage -= OnMessageReceived;
                 _webView.OnLoadCompleted -= HandleLoadCompleted;
                 _webView.OnClosed -= HandleWebViewClosed;
+                _webView.OnPaymentBackgroundClosed -= HandleWebViewClosed;
                 _webView.OnViewReleased -= HandleViewReleased;
                 if (_webView.IsPersistentModeEnabled()) _webView.CloseWebView();
             }
@@ -1245,6 +1247,10 @@ namespace Balancy
             if (_webView != null && _webView.IsPersistentModeEnabled())
             {
                 _webView.CloseView();
+            }
+            else if (_webView != null && _webView.TryClosePaymentBackground())
+            {
+                // The checkout overlay keeps the renderer until its lease finishes.
             }
             else if (UseEmbeddedWebView)
             {

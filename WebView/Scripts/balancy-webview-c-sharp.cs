@@ -320,7 +320,7 @@ namespace Balancy.WebView
                 ApplyAnimationSettings();
                 _balancyShowWebView(); _isWebViewOpen = true; },
             () => { _balancyHideWebView(); _isWebViewOpen = false; },
-            () => { _balancyCloseWebView(); _isWebViewOpen = false; },
+            () => { _balancyCloseWebView(); _isWebViewOpen = false; _paymentPresentation?.RendererClosed(); },
             () => OnClosed?.Invoke(), id => OnViewReleased?.Invoke(id),
             () => Time.realtimeSinceStartup));
 
@@ -1380,6 +1380,7 @@ namespace Balancy.WebView
         public void CloseView()
         {
             _performanceCloseStart = PerformanceNow();
+            if (TryClosePaymentBackground()) return;
             if (Persistent.Enabled) Persistent.Close();
             else CloseWebView();
         }

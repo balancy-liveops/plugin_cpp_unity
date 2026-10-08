@@ -25,6 +25,55 @@ namespace Balancy.Tests
             state.Prepare(() => true, null, null);
             state.Receive("shellReady", null, state.ShellId, null);
         }
+        [Test] public void PaymentOverlayRetainsShellWhenPurchasedOfferCloses()
+        {
+            Prepare(); state.Show(id => id, null, null); state.Tick();
+            var view = state.CurrentId;
+            state.Receive("viewReady", view, null, null);
+            state.ExternalPresentationActive = true;
+            state.RequestRestart(); state.Close();
+            state.Receive("viewCleared", view, null, null); state.Tick();
+            Assert.That(events, Does.Contain("closed")); // Game owner is released normally.
+            Assert.That(events, Does.Contain("release:" + view));
+            Assert.That(events, Does.Not.Contain("hide"));
+            Assert.That(events, Does.Not.Contain("destroy"));
+            Assert.That(state.CurrentId, Is.Null);
+            Assert.That(state.Visible, Is.False); // Only the system overlay remains visible.
+            int ready = 0;
+            state.Prepare(() => false, () => ready++, null);
+            Assert.That(ready, Is.EqualTo(1)); // Pending script update cannot deadlock the overlay.
+            state.ExternalPresentationActive = false; state.Tick();
+            Assert.That(events, Does.Contain("destroy"));
+        }
+
+        [Test] public void RendererFailureClearsPaymentShellPin()
+        {
+            Prepare(); state.ExternalPresentationActive = true;
+            state.Fail("Renderer terminated while payment overlay was active");
+            Assert.That(state.Enabled, Is.False);
+            Assert.That(state.ExternalPresentationActive, Is.False);
+            Assert.That(events, Is.EqualTo(new[] { "destroy" }));
+            Prepare(); state.RequestRestart(); state.Tick();
+            Assert.That(events.FindAll(e => e == "destroy").Count, Is.EqualTo(2));
+        }
+
+        [Test] public void PaymentPresentationRestoresVisibilityAfterBackgroundRelease()
+        {
+            var persistent = new BalancyWebView.PaymentPresentationState(true, true);
+            Assert.That(persistent.ShouldHideRenderer(true), Is.False);
+            persistent.BackgroundClosed();
+            Assert.That(persistent.ShouldHideRenderer(false), Is.True);
+            Assert.That(persistent.ShouldHideRenderer(true), Is.False); // A newer visible game view wins.
+            Assert.That(persistent.ShouldCloseRenderer, Is.False);
+            var hidden = new BalancyWebView.PaymentPresentationState(true, false);
+            Assert.That(hidden.ShouldHideRenderer(false), Is.True);
+            var classic = new BalancyWebView.PaymentPresentationState(false, true);
+            Assert.That(classic.ShouldCloseRenderer, Is.False);
+            classic.BackgroundClosed();
+            Assert.That(classic.ShouldCloseRenderer, Is.True);
+            Assert.That(new BalancyWebView.PaymentPresentationState(false, false).ShouldCloseRenderer, Is.True);
+        }
+
         [Test] public void IdleRestartDestroysContextAndWaitsForNewAck()
         {
             int starts = 0;

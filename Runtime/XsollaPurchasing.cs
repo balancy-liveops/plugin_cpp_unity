@@ -186,7 +186,7 @@ namespace Balancy
             private readonly int epoch = generation;
             private readonly XsollaOptions config = options;
             private IDisposable lease;
-            private bool finished, ready, started, busy;
+            private bool finished, ready, started, busy, completed, callbackReported, presentationDismissed;
             private string orderId;
             private bool checkoutAttempted;
             internal Purchase(Actions.BalancyProductInfo product, Prepared prepared, Action<bool, string> callback, Action native)
@@ -195,21 +195,21 @@ namespace Balancy
             internal void Show()
             {
                 InstallPopup(Id);
-                var acquired = Present(() => ShowWhenReady(), error => Finish(false, error));
+                var acquired = Present(() => ShowWhenReady(), PresentationFailed);
                 if (finished) acquired?.Dispose(); else lease = acquired;
             }
             private async void ShowWhenReady()
             {
                 try
                 {
-                    for (int i = 0; i < 50 && !ready; i++)
+                    for (int i = 0; i < 50 && !ready && !presentationDismissed; i++)
                     {
                         Guard();
                         Send(JsonUtility.ToJson(new PresentationMessage { type = "paymentChoiceShow", requestId = Id,
                             title = "Choose how to pay", nativeLabel = NativeLabel(config), browserPopup = BrowserPopup }));
                         await Task.Delay(200);
                     }
-                    if (!ready) Finish(false, "xsolla_payment_view_timeout");
+                    if (!ready && !presentationDismissed) Finish(false, "xsolla_payment_view_timeout");
                 }
                 catch (OperationCanceledException) { Finish(false, "xsolla_session_changed"); }
                 catch (Exception error) { Finish(false, error.Message); }
@@ -218,6 +218,11 @@ namespace Balancy
             {
                 try { Guard(); } catch (OperationCanceledException) { Finish(false, "xsolla_session_changed"); return; }
                 if (message.type == "paymentChoiceReady") { ready = true; return; }
+                if (completed)
+                {
+                    if (message.choice == "cancel") Finish(true, null); // Success button is Done.
+                    return;
+                }
                 if (message.type == "paymentChoiceRetry")
                 {
                     if (busy) return;
@@ -240,6 +245,7 @@ namespace Balancy
             }
             private void Update(string state, string message, string checkoutUrl = null)
             {
+                if (presentationDismissed) return;
                 object payload = checkoutUrl == null
                     ? new PresentationUpdate { type = "paymentChoiceUpdate", requestId = Id, state = state, message = message }
                     : new PresentationCheckoutUpdate { type = "paymentChoiceUpdate", requestId = Id, state = state, message = message, checkoutUrl = checkoutUrl };
@@ -247,7 +253,7 @@ namespace Balancy
             }
             private async void Run()
             {
-                if (busy || finished) return;
+                if (busy || finished || completed) return;
                 busy = true;
                 bool checkoutOpened = false;
                 try
@@ -290,7 +296,11 @@ namespace Balancy
                         if (status.order.state == "paid")
                         {
                             await Apply(orderId, product, session, epoch, prepared);
-                            Guard(); Update("success", "Payment completed"); Finish(true, null); return;
+                            Guard(); completed = true;
+                            Update("success", "Payment completed");
+                            ReportResult(true, null);
+                            if (presentationDismissed) Finish(true, null);
+                            return;
                         }
                         if (status.order.state == "canceled" || status.order.state == "creation_failed" || status.order.reconciliationRequired)
                             throw new InvalidOperationException(status.order.reconciliationRequired ? "xsolla_reconciliation_required" : "xsolla_order_" + status.order.state);
@@ -299,8 +309,31 @@ namespace Balancy
                     throw new InvalidOperationException("xsolla_purchase_pending");
                 }
                 catch (OperationCanceledException) { Finish(false, "xsolla_session_changed"); }
-                catch (Exception error) { if (!finished) Update("error", error.Message); }
+                catch (Exception error)
+                {
+                    if (!finished)
+                    {
+                        if (presentationDismissed) Finish(false, error.Message);
+                        else Update("error", error.Message);
+                    }
+                }
                 finally { busy = false; }
+            }
+            private void PresentationFailed(string error)
+            {
+                if (finished) return;
+                if (!started) { Finish(false, error); return; }
+                // A renderer closure is a presentation event, never a payment cancellation.
+                presentationDismissed = true;
+                Release();
+                if (completed) Finish(true, null);
+                else if (!busy) Finish(false, "xsolla_purchase_pending");
+            }
+            private void ReportResult(bool success, string error)
+            {
+                if (callbackReported) return;
+                callbackReported = true;
+                SafeCallback(callback, success, error);
             }
             private void Release()
             {
@@ -322,7 +355,7 @@ namespace Balancy
                 finished = true; Release();
                 DiscardReservation();
                 if (ReferenceEquals(current, this)) current = null;
-                SafeCallback(callback, success, error);
+                ReportResult(success, error);
             }
         }
         internal static Task RecoverPurchases()

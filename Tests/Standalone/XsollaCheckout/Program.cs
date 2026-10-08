@@ -42,14 +42,14 @@ namespace Balancy {
 namespace Balancy.Core { public class PaymentInfo { public string ProductId,OrderId,Currency,Receipt; public float Price,PriceUSD; } }
 class Program {
  public static int Reports; static int passed, callbackCount, nativeCount, leaseDisposed, ack, complete, opens;
- static string requestId, session; static bool success; static List<string> actions = new();
+ static string requestId, session; static Action<string> presentationFailed; static bool success; static List<string> actions = new();
  class Lease:IDisposable { public void Dispose() => leaseDisposed++; }
  static void Check(bool condition,string name) { if(!condition) throw new Exception(name); passed++; Console.WriteLine("PASS "+name); }
  static void Reset() {
   XsollaPurchasing.Stop(); Controller.IsReadyToUse=false; requestId = null; session="player-a"; Reports=callbackCount=nativeCount=leaseDisposed=ack=complete=opens=0; success=false; actions.Clear();
   XsollaPurchasing.SessionIdentity=()=>session;
   XsollaPurchasing.Prepare=_=>"{\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"productId\":\"sku\",\"context\":{\"type\":\"StoreItem\",\"storeItemUnnyId\":\"doc\"}}";
-  XsollaPurchasing.Present=(ready,failed)=>{ ready(); return new Lease(); };
+  XsollaPurchasing.Present=(ready,failed)=>{ presentationFailed=failed; ready(); return new Lease(); };
   XsollaPurchasing.Send=json=> { var msg=UnityEngine.JsonUtility.FromJson<XsollaPurchasing.PresentationMessage>(json); if(msg.type=="paymentChoiceShow") { requestId=msg.requestId; XsollaPurchasing.ReceivePresentationMessage("{\"type\":\"paymentChoiceReady\",\"requestId\":\""+requestId+"\"}"); } };
   XsollaPurchasing.OpenCheckout=_=>opens++;
   XsollaPurchasing.Persist=()=>Task.CompletedTask;
@@ -74,6 +74,15 @@ class Program {
   Reset(); Start(); Choice("native"); Check(nativeCount==1&&callbackCount==0&&leaseDisposed==1,"native choice preserves registered developer callback"); Choice("native"); Check(nativeCount==1,"duplicate native choice ignored");
   Reset(); Start(); Choice("xsolla","unrelated"); Check(opens==0,"foreign presentation message ignored"); Choice("cancel"); Check(callbackCount==1&&!success&&complete==0&&leaseDisposed==1,"cancel before payment grants nothing");
   Reset(); Start(); Choice("xsolla"); await Wait(); Check(success&&callbackCount==1&&opens==1&&complete==1&&ack==1&&Reports==1,"paid flow grants reports persists and acknowledges");
+  Check(leaseDisposed==0,"success stays visible until Done");
+  Choice("xsolla"); XsollaPurchasing.ReceivePresentationMessage("{\"type\":\"paymentChoiceRetry\",\"requestId\":\""+requestId+"\"}");
+  Check(complete==1&&callbackCount==1,"success cannot retry or charge again");
+  Choice("cancel"); Check(leaseDisposed==1&&callbackCount==1&&success,"Done releases presentation without second callback");
+  Reset(); Start(); var deferredCheckout=new TaskCompletionSource<string>(); var originalRequest=XsollaPurchasing.Request;
+  XsollaPurchasing.Request=(a,b)=> a=="checkout"?deferredCheckout.Task:originalRequest(a,b);
+  Choice("xsolla"); presentationFailed("renderer closed");
+  deferredCheckout.SetResult("{\"order\":{\"id\":\"order\",\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"requestedProductId\":\"sku\",\"state\":\"paid\"}}");
+  await Wait(); Check(success&&callbackCount==1&&complete==1&&ack==1&&leaseDisposed==1,"external renderer closure preserves paid tracking and callback");
   Reset(); Start(); var wait=new TaskCompletionSource<string>(); XsollaPurchasing.Request=(action,body)=>{ actions.Add(action); return wait.Task; }; Choice("xsolla"); Choice("xsolla"); Check(actions.Count==1,"duplicate Xsolla click creates once"); Choice("cancel"); wait.SetResult("{\"order\":{\"id\":\"order\",\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"requestedProductId\":\"sku\",\"state\":\"paid\"}}"); await Wait(); Check(!success&&complete==0&&nativeCount==0,"dismiss pending never falls back or applies late response");
   Reset(); Start(); XsollaPurchasing.Request=(a,b)=>{session="player-b";return Task.FromResult("{\"order\":{\"id\":\"order\",\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"requestedProductId\":\"sku\",\"state\":\"paid\"}}");}; Choice("xsolla"); await Wait(); Check(complete==0&&ack==0&&Reports==0,"session change prevents completion and callbacks");
   Reset(); Start(); int flushCount=0; XsollaPurchasing.Persist=()=> ++flushCount==1?Task.CompletedTask:Task.FromException(new Exception("disk failure")); Choice("xsolla"); await Wait(); Check(complete==1&&ack==0&&Reports==0&&!success,"storage failure never acknowledges"); Choice("cancel");

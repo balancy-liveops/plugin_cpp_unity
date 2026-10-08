@@ -9,6 +9,8 @@ namespace Balancy.WebView
         internal bool Enabled { get; private set; }
         internal bool Preparing { get; private set; }
         internal bool Visible { get; set; }
+        // The system payment overlay shares this shell but has its own lifetime.
+        internal bool ExternalPresentationActive { get; set; }
         internal string ShellId { get; private set; }
         internal string CurrentId { get; private set; }
         internal string ClosingId { get; private set; }
@@ -34,7 +36,7 @@ namespace Balancy.WebView
 
         internal bool Prepare(Func<bool> start, Action ready, Action<string> failed)
         {
-            if (Enabled && !Preparing && !restartRequested) { ready?.Invoke(); return true; }
+            if (Enabled && !Preparing && (!restartRequested || ExternalPresentationActive)) { ready?.Invoke(); return true; }
             onPrepared += ready; onPrepareFailed += failed;
             if (Enabled) return true;
             startShell = start;
@@ -66,7 +68,7 @@ namespace Balancy.WebView
 
         private bool RestartIfIdle()
         {
-            if (!restartRequested || Preparing || ClosingId != null || (CurrentId != null && sent)) return false;
+            if (ExternalPresentationActive || !restartRequested || Preparing || ClosingId != null || (CurrentId != null && sent)) return false;
             restartRequested = false;
             destroy();
             Preparing = true;
@@ -94,7 +96,7 @@ namespace Balancy.WebView
             var wasSent = sent;
             CurrentId = null; createMessage = null; onReady = null; onFailed = null; sent = false;
             deadlines.Remove("view"); Visible = false;
-            hide();
+            if (!ExternalPresentationActive) hide();
             if (wasSent)
             {
                 ClosingId = id;
@@ -128,7 +130,7 @@ namespace Balancy.WebView
                     var failed = onFailed;
                     deadlines.Remove("view"); released?.Invoke(CurrentId);
                     CurrentId = null; createMessage = null; onReady = null; onFailed = null; sent = false;
-                    Visible = false; hide(); closed(); failed?.Invoke(error ?? "View load failed"); return true;
+                    Visible = false; if (!ExternalPresentationActive) hide(); closed(); failed?.Invoke(error ?? "View load failed"); return true;
                 case "viewCleared":
                     if (ClosingId == null || viewId != ClosingId) return true;
                     deadlines.Remove("clear"); released?.Invoke(ClosingId); ClosingId = null;
@@ -157,7 +159,7 @@ namespace Balancy.WebView
         {
             if (CurrentId != null) released?.Invoke(CurrentId);
             if (ClosingId != null) released?.Invoke(ClosingId);
-            Enabled = Preparing = Visible = sent = restartRequested = false;
+            Enabled = Preparing = Visible = sent = restartRequested = ExternalPresentationActive = false;
             startShell = null;
             ShellId = CurrentId = ClosingId = null;
             onPrepared = onReady = null; onPrepareFailed = onFailed = null; createMessage = null;
