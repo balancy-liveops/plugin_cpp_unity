@@ -757,6 +757,25 @@ namespace Balancy
         public static class API
         {
             [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+            internal delegate void XsollaCallback(int callbackId, [MarshalAs(UnmanagedType.I1)] bool success, [MarshalAs(UnmanagedType.LPStr)] string json);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            internal static extern IntPtr balancyXsollaGetSessionIdentity();
+#if UNITY_WEBGL && !UNITY_EDITOR
+            [DllImport("__Internal", CallingConvention = CallingConvention.Cdecl)]
+            internal static extern void balancyXsollaFlushStorage(int callbackId, XsollaCallback callback);
+            [DllImport("__Internal", CallingConvention = CallingConvention.Cdecl)]
+            internal static extern void balancyXsollaInstallPopupOpener(string requestId);
+            [DllImport("__Internal", CallingConvention = CallingConvention.Cdecl)]
+            internal static extern void balancyXsollaRemovePopupOpener(string requestId);
+#endif
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            internal static extern IntPtr balancyXsollaPreparePurchase(int kind, IntPtr owner, IntPtr storeItem);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            internal static extern void balancyXsollaRequest(string action, string bodyJson, int callbackId, XsollaCallback callback);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            internal static extern void balancyXsollaComplete(string orderId, int callbackId, XsollaCallback callback);
+
+            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
             internal delegate void ResponseCallback(int callbackId, IntPtr responseData);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]

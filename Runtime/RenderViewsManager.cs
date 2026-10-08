@@ -24,6 +24,13 @@ namespace Balancy
 
         internal static Func<string, bool> _onMessageReceived;
 
+        internal static IDisposable PresentPaymentChoice(Action ready, Action<string> failed)
+        {
+            if (_webView == null) throw new InvalidOperationException("WebView is unavailable");
+            if (!_scriptsLoaded) RefreshScripts();
+            return _webView.BeginPaymentPresentation(ready, failed);
+        }
+
         private static BalancyWebView _webView;
         private static bool _prepareRequested, _dataAvailable, _scriptsLoaded;
         private static Action _pendingPrepared;
@@ -778,6 +785,7 @@ namespace Balancy
 
         private static void OnMessageReceived(string msg)
         {
+            if (XsollaPurchasing.ReceivePresentationMessage(msg)) return;
             if (_onMessageReceived != null)
             {
                 bool proceed = _onMessageReceived(msg);

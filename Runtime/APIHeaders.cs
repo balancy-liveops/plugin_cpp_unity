@@ -941,6 +941,10 @@ namespace Balancy
         }
 
         public static void NotifyAppPause(int secondsElapsed) => LibraryMethods.Extra.balancyNotifyAppPause(secondsElapsed);
-        public static void NotifyAppResume() => LibraryMethods.Extra.balancyNotifyAppResume();
+        public static void NotifyAppResume()
+        {
+            LibraryMethods.Extra.balancyNotifyAppResume();
+            XsollaPurchasing.Resume();
+        }
     }
 }

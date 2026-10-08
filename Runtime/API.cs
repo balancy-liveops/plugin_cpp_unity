@@ -33,6 +33,13 @@ namespace Balancy
                 return;
             }
 
+            if (XsollaPurchasing.TryIntercept(productInfo, callback, () => HardPurchaseNative(productInfo, callback)))
+                return;
+            HardPurchaseNative(productInfo, callback);
+        }
+
+        private static void HardPurchaseNative(Actions.BalancyProductInfo productInfo, Action<bool, string> callback)
+        {
             var pending = new CallbacksData(productInfo, callback);
             lock (_purchaseCallbacksLock)
                 _callbacks.Add(pending);

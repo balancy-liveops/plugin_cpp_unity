@@ -18,7 +18,7 @@ namespace Balancy.WebView
     /// // Open WebView - it will be invisible for 200ms, then fade in over 300ms
     /// BalancyWebView.Instance.OpenWebView("https://example.com", ownerJson, additionalInfo);
     /// </summary>
-    public class BalancyWebView : MonoBehaviour
+    public partial class BalancyWebView : MonoBehaviour
     {
         private const string BridgeFileName = "balancy-webview-bridge.js";
 #if UNITY_EDITOR

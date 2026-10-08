@@ -98,6 +98,7 @@ namespace Balancy
             LibraryMethods.Models.balancySetUserDataInitializedCallback(UserDataInitialized);
             Profiles.Init();
             RenderViewsManager.Init();
+            XsollaPurchasing.Start();
             RunFunctionManager.Init();
             ScriptCompletionManager.Init();
 
@@ -170,6 +171,7 @@ namespace Balancy
             RunCleanupStep(Balancy.Network.UnityWebRequestBridge.Clear);
             RunCleanupStep(Balancy.Network.UnityWebSocketBridge.Clear);
             RunCleanupStep(UnzipBridge.Cleanup);
+            RunCleanupStep(XsollaPurchasing.Stop);
             RunCleanupStep(Tasks.StopAllTasks);
             RunCleanupStep(API.CleanUpPendingCallbacks);
             RunCleanupStep(RunFunctionManager.CleanUp);
