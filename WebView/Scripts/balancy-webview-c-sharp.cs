@@ -539,30 +539,10 @@ namespace Balancy.WebView
         private static string HtmlAttribute(string value) => (value ?? "")
             .Replace("&", "&amp;").Replace("\"", "&quot;").Replace("<", "&lt;").Replace(">", "&gt;");
 
-        private static string BuildRuntimeBootstrap(string bridgeUrl, string scriptsUrl, string scriptsCode,
-            string scriptsVersion, string shellId, string owner, string settings)
-        {
-            string installSource = string.IsNullOrEmpty(scriptsUrl)
-                ? "install(" + JsString(scriptsCode) + ");\n"
-                : "var request = new XMLHttpRequest();\n" +
-                  "request.open('GET', " + JsString(scriptsUrl) + ", true);\n" +
-                  "request.onload = function() { if (request.status === 0 || (request.status >= 200 && request.status < 300)) install(request.responseText); else fail(new Error('Scripts file HTTP ' + request.status)); };\n" +
-                  "request.onerror = function() { fail(new Error('Failed to load scripts file')); };\n" +
-                  "request.send();\n";
-
-            return
-                "window.balancyPerformanceEnabled = " + (PerformanceLoggingEnabled ? "true" : "false") + ";\n" +
-                "window.balancyShellId = " + JsString(shellId) + ";\n" +
-                "window.balancyViewOwner = JSON.parse(" + JsString(owner) + ");\n" +
-                "window.balancySettings = JSON.parse(" + JsString(settings) + ");\n" +
-                "(function() {\n" +
-                "function fail(error) { try { if (window.balancy) window.balancy._postHostError(error); } catch (_) {} console.error(error); }\n" +
-                "function install(code) { try { window.balancy._installScripts(code, " + JsString(scriptsVersion) + "); Promise.resolve(window.balancy.initResponseHandler()).catch(fail); } catch (error) { fail(error); } }\n" +
-                "function start() { try { if (!window.balancy) throw new Error('Balancy bridge did not initialize'); " + installSource + " } catch (error) { fail(error); } }\n" +
-                "if (window.balancy) { start(); return; }\n" +
-                "var bridge = document.createElement('script'); bridge.src = " + JsString(bridgeUrl) + "; bridge.onload = start; bridge.onerror = function() { fail(new Error('Failed to load Balancy bridge')); }; (document.head || document.documentElement).appendChild(bridge);\n" +
-                "})();\ntrue;";
-        }
+        internal static string BuildRuntimeBootstrap(string bridgeUrl, string scriptsUrl, string scriptsCode,
+            string scriptsVersion, string shellId, string owner, string settings) =>
+            RuntimeBootstrap.Build(JsString, PerformanceLoggingEnabled, bridgeUrl, scriptsUrl, scriptsCode,
+                scriptsVersion, shellId, owner, settings);
         #if UNITY_EDITOR_OSX
         private RenderTexture _embeddedTexture = null;
         #endif
