@@ -249,12 +249,21 @@ namespace Balancy
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyUnzipCompleted(string id, string zipFolderPath);
             
+            // Returns a NUL-terminated UTF-8 buffer allocated by the managed side. Native
+            // copies it and immediately hands it back through ReleaseExtractedZipCallback;
+            // returning a managed string here would let the marshaler allocate a buffer
+            // that native can never free (one leak per extracted archive).
             [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-            [return: MarshalAs(UnmanagedType.LPStr)]
-            public delegate string ExtractZipFromMemoryCallback(IntPtr zipData, int dataSize, bool includeHeaders);
+            public delegate IntPtr ExtractZipFromMemoryCallback(IntPtr zipData, int dataSize, bool includeHeaders);
+
+            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+            public delegate void ReleaseExtractedZipCallback(IntPtr buffer);
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancySetExtractZipFromMemoryCallback(ExtractZipFromMemoryCallback callback);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancySetReleaseExtractedZipCallback(ReleaseExtractedZipCallback callback);
             
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]

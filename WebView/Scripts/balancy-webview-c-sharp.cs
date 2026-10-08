@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 using UnityEngine;
+using UnityEngine.Profiling;
 
 namespace Balancy.WebView
 {
@@ -20,6 +21,10 @@ namespace Balancy.WebView
     public class BalancyWebView : MonoBehaviour
     {
         private const string BridgeFileName = "balancy-webview-bridge.js";
+#if UNITY_EDITOR
+        private static TextAsset _editorBridgeAsset;
+        private static string _editorBridgeUrl;
+#endif
         private const string IosLocalUrlPrefix = "balancy-local://local/";
         private string _scriptsCode = "";
         private string _scriptsUrl = "";
@@ -40,8 +45,30 @@ namespace Balancy.WebView
         public static void PerformanceLog(string stage, double started, string viewId = null, string detail = null)
         {
             if (!PerformanceLoggingEnabled || started <= 0) return;
+            bool lifecycle = stage == "viewReadyReceived" || stage == "viewClearedReceived"
+                || stage == "classicNavigationComplete";
             Debug.Log("[BalancyPerf] host stage=" + stage + " view=" + (viewId ?? "-") + " ms=" +
-                (PerformanceNow() - started).ToString("F2", System.Globalization.CultureInfo.InvariantCulture) + " " + detail);
+                (PerformanceNow() - started).ToString("F2", System.Globalization.CultureInfo.InvariantCulture) + " " + detail +
+                (lifecycle ? PerformanceMemory() : ""));
+        }
+        private static string PerformanceMemory()
+        {
+            try
+            {
+                const double mb = 1024.0 * 1024.0;
+                var culture = System.Globalization.CultureInfo.InvariantCulture;
+                // Unity counters cover the game process. Android WebView renderer memory
+                // may live in another process, so compare these with bridge snapshots.
+                return " managedMB=" + (GC.GetTotalMemory(false) / mb).ToString("F1", culture) +
+                    " unityAllocatedMB=" + (Profiler.GetTotalAllocatedMemoryLong() / mb).ToString("F1", culture) +
+                    " unityReservedMB=" + (Profiler.GetTotalReservedMemoryLong() / mb).ToString("F1", culture);
+            }
+            catch (Exception) { return " memoryUnavailable=true"; }
+        }
+        private static void PerformanceCloseMemory()
+        {
+            if (PerformanceLoggingEnabled)
+                Debug.Log("[BalancyPerf] host stage=webViewClosed view=-" + PerformanceMemory());
         }
         private double _performanceShellStart, _performanceViewStart, _performanceCloseStart;
 
@@ -316,6 +343,68 @@ namespace Balancy.WebView
         }
 
         [Serializable]
+        private class BridgePerformanceMessage
+        {
+            public string @event, viewId;
+            public float elapsedMs;
+            public BridgePerformanceSnapshot snapshot;
+        }
+
+        [Serializable]
+        private class BridgePerformanceSnapshot
+        {
+            public int domNodes, viewNodes, liveElements, liveComponents, liveInstances;
+            public int pendingPreparations, listeners, timers, viewDisposers, trackedAnimations, activeLottie;
+            public int cachedBanim, cachedLottie, cachedPrefabs, pendingRequests;
+            public int frameCount, updateCalls;
+            public float frameP95Ms;
+            public bool updateLoopRunning;
+        }
+
+        private static void LogBridgePerformance(string message)
+        {
+            if (!PerformanceLoggingEnabled) return;
+            if (Application.platform != RuntimePlatform.Android)
+            {
+                Debug.Log("[BalancyPerf] " + message);
+                return;
+            }
+
+            // Android Logcat truncates long Unity messages. Keep lifecycle snapshots
+            // in one short line so the before/after cleanup counters remain visible.
+            try
+            {
+                var info = JsonUtility.FromJson<BridgePerformanceMessage>(message);
+                if (info == null || (info.@event != "viewReady" && info.@event != "viewWillDispose" && info.@event != "viewDisposed"))
+                    return;
+                var snapshot = info.snapshot;
+                if (snapshot == null)
+                {
+                    Debug.Log("[BalancyPerf] bridge event=" + info.@event + " view=" + info.viewId + " snapshotMissing=true");
+                    return;
+                }
+
+                var culture = System.Globalization.CultureInfo.InvariantCulture;
+                Debug.Log("[BalancyPerf] bridge event=" + info.@event + " view=" + info.viewId +
+                    " elapsedMs=" + info.elapsedMs.ToString("F1", culture) +
+                    " dom=" + snapshot.domNodes + " viewNodes=" + snapshot.viewNodes +
+                    " elements=" + snapshot.liveElements + " components=" + snapshot.liveComponents +
+                    " instances=" + snapshot.liveInstances + " pendingPrep=" + snapshot.pendingPreparations +
+                    " listeners=" + snapshot.listeners + " timers=" + snapshot.timers +
+                    " disposers=" + snapshot.viewDisposers + " animations=" + snapshot.trackedAnimations +
+                    " lottie=" + snapshot.activeLottie + " pendingRequests=" + snapshot.pendingRequests +
+                    " updateLoop=" + snapshot.updateLoopRunning + " updateCalls=" + snapshot.updateCalls +
+                    " frames=" + snapshot.frameCount + " frameP95Ms=" + snapshot.frameP95Ms.ToString("F1", culture) +
+                    " cachedBanim=" + snapshot.cachedBanim + " cachedLottie=" + snapshot.cachedLottie +
+                    " cachedPrefabs=" + snapshot.cachedPrefabs);
+            }
+            catch (Exception error)
+            {
+                Debug.LogWarning("[BalancyPerf] bridge summary failed: " + error.Message);
+            }
+        }
+
+        [Serializable]
         private class PersistentLoadMessage
         {
             public string type = "loadView", viewId, htmlBase64, ownerJsonBase64, additionalInfoBase64, baseUrl, scriptsVersion;
@@ -421,23 +510,28 @@ namespace Balancy.WebView
 
         private static string GetBridgeUrl()
         {
-#if UNITY_ANDROID && !UNITY_EDITOR
+#if UNITY_EDITOR
+            // StreamingAssets may contain an older player-build copy. In the
+            // Editor the package resource is authoritative and is written once
+            // per imported asset, so repeated View opens do not touch the disk.
+            var bridge = Resources.Load<TextAsset>("balancy-webview-bridge");
+            if (bridge == null) throw new InvalidOperationException("balancy-webview-bridge resource is missing");
+            string directory = System.IO.Path.Combine(Application.persistentDataPath, "Balancy", "EditorWebView");
+            string path = System.IO.Path.Combine(directory, BridgeFileName);
+            if (_editorBridgeAsset != bridge || _editorBridgeUrl == null || !System.IO.File.Exists(path))
+            {
+                System.IO.Directory.CreateDirectory(directory);
+                System.IO.File.WriteAllText(path, bridge.text);
+                _editorBridgeAsset = bridge;
+                _editorBridgeUrl = ToWebViewUrl(path);
+            }
+            return _editorBridgeUrl;
+#elif UNITY_ANDROID
             return "file:///android_asset/Balancy/" + BridgeFileName;
-#elif UNITY_IOS && !UNITY_EDITOR
+#elif UNITY_IOS
             return GetIosBridgeUrl();
 #else
             string path = System.IO.Path.Combine(Application.streamingAssetsPath, "Balancy", BridgeFileName);
-            if (!System.IO.File.Exists(path))
-            {
-                // Editor runs do not execute a player build preprocessor. Materialize the
-                // package resource beside the shell without changing the runtime path.
-                var bridge = Resources.Load<TextAsset>("balancy-webview-bridge");
-                if (bridge == null) throw new InvalidOperationException("balancy-webview-bridge resource is missing");
-                string directory = System.IO.Path.Combine(Application.persistentDataPath, "Balancy", "EditorWebView");
-                System.IO.Directory.CreateDirectory(directory);
-                path = System.IO.Path.Combine(directory, BridgeFileName);
-                System.IO.File.WriteAllText(path, bridge.text);
-            }
             return ToWebViewUrl(path);
 #endif
         }
@@ -445,30 +539,10 @@ namespace Balancy.WebView
         private static string HtmlAttribute(string value) => (value ?? "")
             .Replace("&", "&amp;").Replace("\"", "&quot;").Replace("<", "&lt;").Replace(">", "&gt;");
 
-        private static string BuildRuntimeBootstrap(string bridgeUrl, string scriptsUrl, string scriptsCode,
-            string scriptsVersion, string shellId, string owner, string settings)
-        {
-            string installSource = string.IsNullOrEmpty(scriptsUrl)
-                ? "install(" + JsString(scriptsCode) + ");\n"
-                : "var request = new XMLHttpRequest();\n" +
-                  "request.open('GET', " + JsString(scriptsUrl) + ", true);\n" +
-                  "request.onload = function() { if (request.status === 0 || (request.status >= 200 && request.status < 300)) install(request.responseText); else fail(new Error('Scripts file HTTP ' + request.status)); };\n" +
-                  "request.onerror = function() { fail(new Error('Failed to load scripts file')); };\n" +
-                  "request.send();\n";
-
-            return
-                "window.balancyPerformanceEnabled = " + (PerformanceLoggingEnabled ? "true" : "false") + ";\n" +
-                "window.balancyShellId = " + JsString(shellId) + ";\n" +
-                "window.balancyViewOwner = JSON.parse(" + JsString(owner) + ");\n" +
-                "window.balancySettings = JSON.parse(" + JsString(settings) + ");\n" +
-                "(function() {\n" +
-                "function fail(error) { try { if (window.balancy) window.balancy._postHostError(error); } catch (_) {} console.error(error); }\n" +
-                "function install(code) { try { window.balancy._installScripts(code, " + JsString(scriptsVersion) + "); Promise.resolve(window.balancy.initResponseHandler()).catch(fail); } catch (error) { fail(error); } }\n" +
-                "function start() { try { if (!window.balancy) throw new Error('Balancy bridge did not initialize'); " + installSource + " } catch (error) { fail(error); } }\n" +
-                "if (window.balancy) { start(); return; }\n" +
-                "var bridge = document.createElement('script'); bridge.src = " + JsString(bridgeUrl) + "; bridge.onload = start; bridge.onerror = function() { fail(new Error('Failed to load Balancy bridge')); }; (document.head || document.documentElement).appendChild(bridge);\n" +
-                "})();\ntrue;";
-        }
+        internal static string BuildRuntimeBootstrap(string bridgeUrl, string scriptsUrl, string scriptsCode,
+            string scriptsVersion, string shellId, string owner, string settings) =>
+            RuntimeBootstrap.Build(JsString, PerformanceLoggingEnabled, bridgeUrl, scriptsUrl, scriptsCode,
+                scriptsVersion, shellId, owner, settings);
         #if UNITY_EDITOR_OSX
         private RenderTexture _embeddedTexture = null;
         #endif
@@ -1311,6 +1385,7 @@ namespace Balancy.WebView
             // Reset debug logging state to prevent log accumulation
             _debugLogging = false;
             
+            PerformanceCloseMemory();
             OnClosed?.Invoke();
         }
 
@@ -1805,7 +1880,7 @@ namespace Balancy.WebView
                 var parsed = JsonUtility.FromJson<PersistentMessage>(message);
                 if (parsed != null && parsed.type == "webview-performance")
                 {
-                    if (PerformanceLoggingEnabled) Debug.Log("[BalancyPerf] " + message);
+                    LogBridgePerformance(message);
                     return;
                 }
                 if (parsed != null && parsed.type == "shellReady" && Persistent.Preparing && parsed.shellId == Persistent.ShellId)

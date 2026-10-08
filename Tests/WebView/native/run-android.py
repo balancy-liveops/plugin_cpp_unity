@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Build a real-WebView test APK without Gradle, then optionally run on an already booted emulator."""
 import argparse, os, pathlib, subprocess, zipfile, time, shutil
-p=argparse.ArgumentParser(); p.add_argument('--sdk',type=pathlib.Path,required=True);p.add_argument('--java-home',type=pathlib.Path,required=True);p.add_argument('--output',type=pathlib.Path,required=True);p.add_argument('--serial');p.add_argument('--aar',type=pathlib.Path,help='Test the published AAR instead of compiling plugin sources (requires Java 8 bytecode)');p.add_argument('--d8-jar',type=pathlib.Path,help='Use an older R8/D8 jar to check consumer toolchain compatibility');p.add_argument('--core-libs',type=pathlib.Path,help='Directory with ABI/libBalancyCore.so; enables JNI VM regression checks (requires --aar)');a=p.parse_args()
+p=argparse.ArgumentParser(); p.add_argument('--sdk',type=pathlib.Path,required=True);p.add_argument('--java-home',type=pathlib.Path,required=True);p.add_argument('--output',type=pathlib.Path,required=True);p.add_argument('--serial');p.add_argument('--aar',type=pathlib.Path,help='Test the published AAR instead of compiling plugin sources (requires Java 8 bytecode)');p.add_argument('--d8-jar',type=pathlib.Path,help='Use an older R8/D8 jar to check consumer toolchain compatibility');p.add_argument('--core-libs',type=pathlib.Path,help='Directory with ABI/libBalancyCore.so; enables JNI VM regression checks (requires --aar)');p.add_argument('--build-tools',default='35.0.0',help='SDK build-tools version');a=p.parse_args()
 if a.core_libs and not a.aar:p.error('--core-libs requires --aar')
 r=pathlib.Path(__file__).resolve().parents[3];src=pathlib.Path(__file__).resolve().parent/'android';out=a.output;out.mkdir(parents=True,exist_ok=True)
-classes=out/'classes';classes.mkdir(exist_ok=True);bt=a.sdk/'build-tools/35.0.0';android=a.sdk/'platforms/android-35/android.jar';java=a.java_home/'bin'
+classes=out/'classes';classes.mkdir(exist_ok=True);bt=a.sdk/'build-tools'/a.build_tools;android=a.sdk/'platforms/android-35/android.jar';java=a.java_home/'bin'
 env={**os.environ,'JAVA_HOME':str(a.java_home)}
 def run(args,**kw): return subprocess.run(list(map(str,args)),check=True,env=env,**kw)
 sources=out/'sources';sources.mkdir(exist_ok=True)
@@ -33,6 +33,7 @@ with zipfile.ZipFile(apk,'a') as f:
   for lib in libs:f.write(lib,'lib/'+str(lib.relative_to(a.core_libs)))
  f.write(r/'WebView/Resources/balancy-webview-bridge.txt','assets/bridge.js')
  f.write(src.parent/'prefab-fixture.js.txt','assets/prefab-fixture.js')
+ f.write(src.parent/'classic-bootstrap.js.txt','assets/classic-bootstrap.js')
 key=out/'test.keystore'
 if not key.exists():run([java/'keytool','-genkeypair','-keystore',key,'-storepass','android','-keypass','android','-alias','test','-dname','CN=Local SDK Tests','-keyalg','RSA','-validity','30'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
 run([bt/'apksigner','sign','--ks',key,'--ks-pass','pass:android',apk])
