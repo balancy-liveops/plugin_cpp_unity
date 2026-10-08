@@ -1,0 +1,17 @@
+window.balancyPerformanceEnabled = false;
+window.balancyShellId = ({"value":"golden-shell"}).value;
+window.balancyViewOwner = JSON.parse(({"value":"{\"unnyIdGameEvent\":\"42\"}"}).value);
+window.balancySettings = JSON.parse(({"value":"{\"trackWebViewEvents\":false}"}).value);
+(function() {
+function fail(error) { try { if (window.balancy) window.balancy._postHostError(error); } catch (_) {} console.error(error); }
+function install(code) { try { window.balancy._installScripts(code, ({"value":"golden-version"}).value); Promise.resolve(window.balancy.initResponseHandler()).catch(fail); } catch (error) { fail(error); } }
+function start() { try { if (!window.balancy) throw new Error('Balancy bridge did not initialize'); var request = new XMLHttpRequest();
+request.open('GET', ({"value":"__SCRIPTS_URL__"}).value, true);
+request.onload = function() { if (request.status === 0 || (request.status >= 200 && request.status < 300)) install(request.responseText); else fail(new Error('Scripts file HTTP ' + request.status)); };
+request.onerror = function() { fail(new Error('Failed to load scripts file')); };
+request.send();
+ } catch (error) { fail(error); } }
+if (window.balancy && typeof window.balancy._installScripts === 'function') { start(); return; }
+var bridge = document.createElement('script'); bridge.src = ({"value":"__BRIDGE_URL__"}).value; bridge.onload = start; bridge.onerror = function() { fail(new Error('Failed to load Balancy bridge')); }; (document.head || document.documentElement).appendChild(bridge);
+})();
+true;

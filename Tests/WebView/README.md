@@ -11,7 +11,10 @@ The same fixture can run without starting the editor using installed Mono and th
 ```sh
 python3 Tests/WebView/validate.py
 node --test Tests/WebView/webgl-plugin.test.cjs
+node --test Tests/WebView/classic-bootstrap.test.cjs
 ```
+
+`validate.py` also runs `Balancy.Tests.RuntimeBootstrapTests`, which keep `native/classic-bootstrap.js.txt` identical to the page loader `RuntimeBootstrap` builds. `classic-bootstrap.test.cjs` and the Android harness execute that file, so after changing the loader run `python3 Tests/WebView/validate.py --update-fixtures`, then both. Unity's bundled Mono works when no system Mono is installed: `--mcs <Editor>/Data/MonoBleedingEdge/bin/mcs --mono <Editor>/Data/MonoBleedingEdge/bin/mono`.
 
 Optional compiler checks use an existing Unity project's generated `Balancy.csproj` and `Balancy.WebView.csproj` references:
 
