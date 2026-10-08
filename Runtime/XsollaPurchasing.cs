@@ -21,7 +21,7 @@ namespace Balancy
     {
         public static class Xsolla
         {
-            /// <summary>Opt in to the sandbox selector. No API key or bearer token belongs in these options.</summary>
+            /// <summary>Opt in to the Xsolla selector; checkout mode is configured on the server. No API key or bearer token belongs in these options.</summary>
             public static void Configure(XsollaOptions options) => XsollaPurchasing.Configure(options);
             /// <summary>Resume verified purchases after interruption. Closing Pay Station does not cancel an order.</summary>
             public static Task RecoverPurchases() => XsollaPurchasing.RecoverPurchases();
@@ -434,7 +434,7 @@ namespace Balancy
         }
         internal static void ValidateCheckoutUrl(string value)
         {
-            if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) || uri.Scheme != "https" || uri.Host != "sandbox-secure.xsolla.com" ||
+            if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) || uri.Scheme != "https" || (uri.Host != "sandbox-secure.xsolla.com" && uri.Host != "secure.xsolla.com") ||
                 !string.IsNullOrEmpty(uri.UserInfo) || !uri.IsDefaultPort || uri.AbsolutePath != "/paystation4/" ||
                 !string.IsNullOrEmpty(uri.Fragment) || !System.Text.RegularExpressions.Regex.IsMatch(uri.Query, "(?:^\\?|&)token=[^&#]+"))
                 throw new InvalidOperationException("xsolla_invalid_checkout_url");

@@ -1,10 +1,10 @@
-# Xsolla sandbox checkout in Unity
+# Xsolla checkout in Unity
 
 This SDK branch adds an opt-in selector for paid `InitPurchase`, `InitPurchaseShop`, and both `InitPurchaseOffer` variants. Free purchases retain their existing path. Selecting the standard provider invokes the developer's existing hard-purchase callback.
 
 ## Setup
 
-Build native libraries from the matching `balancy_cpp` checkout before enabling this feature. Existing binaries do not contain the new Xsolla exports. Use the existing macOS/iOS/Android/Unity WebGL build scripts; Unity WebGL requires its Unity-compatible Emscripten toolchain. This change does not overwrite pre-existing modified plugin binaries.
+This branch ships native plugin libraries rebuilt from the matching `balancy_cpp` checkout, including the Xsolla exports. When updating the core, rebuild plugins with the existing macOS/iOS/Android/Unity WebGL scripts; Unity WebGL requires its Unity-compatible Emscripten toolchain. User edits in `Prefabs/BalancyLauncher.cs` are preserved separately from the integration commits.
 
 Configure the Xsolla platform, API key and webhook secret on the payments server, enable sandbox checkout, and configure signed combined webhooks. No merchant secrets or bearer tokens belong in Unity configuration.
 
@@ -27,7 +27,7 @@ await Balancy.API.Xsolla.RecoverPurchases();
 Balancy.API.Xsolla.Configure(null);
 ```
 
-The C++ core uses the current SDK auth session and environment for every player API request. Existing network endpoint overrides apply to local development; SDK options do not expose tokens or payment keys. The current implementation accepts sandbox Pay Station URLs only.
+The C++ core uses the current SDK auth session and environment for every player API request. Existing network endpoint overrides apply to local development; SDK options do not expose tokens or payment keys. The payments server selects sandbox or production checkout. Unity accepts only HTTPS Pay Station URLs at the exact official hosts `sandbox-secure.xsolla.com` and `secure.xsolla.com`, with the expected path and token. Keep sandbox enabled on the server while testing.
 
 ## Presentation and completion
 
@@ -49,4 +49,4 @@ Successful live completion preserves existing `OnHardPurchased*` callbacks. A li
 - `node scripts/checks/xsolla-webgl-storage.cjs`: WebGL popup ownership, storage completion and fault handling.
 - Unity EditMode: `Balancy.Tests.XsollaCheckoutTests`; regression suites `PurchaseLifecycleTests` and `PersistentWebViewTests`.
 
-These tests make no Xsolla payment. A real sandbox charge, public webhook delivery, and platform builds still need their corresponding environment and matching native libraries.
+The shipped plugin artifacts are built from the matching core source. The automated C# and EditMode tests verify adapter contracts, lifecycle, URL validation, and storage barriers with fixtures; built artifacts do not establish on-device payment behavior. These tests make no Xsolla payment. An actual paid sandbox checkout on each target device and public signed webhook delivery still require end-to-end verification in the corresponding environment.

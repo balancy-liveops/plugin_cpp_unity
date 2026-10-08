@@ -23,9 +23,17 @@ namespace Balancy.Tests
             var intercept = Adapter.GetMethod("TryIntercept", BindingFlags.Static | BindingFlags.NonPublic);
             Assert.That(intercept.Invoke(null, new object[] { new Actions.BalancyProductInfo((Models.SmartObjects.StoreItem)null), null, null }), Is.False);
         }
-        [TestCase("http://sandbox-secure.xsolla.com/paystation4/")]
+        [TestCase("http://sandbox-secure.xsolla.com/paystation4/?token=fixture")]
+        [TestCase("http://secure.xsolla.com/paystation4/?token=fixture")]
+        [TestCase("https://secure.xsolla.com.evil.com/paystation4/?token=fixture")]
+        [TestCase("https://sandbox-secure.xsolla.com.evil.com/paystation4/?token=fixture")]
+        [TestCase("https://secure-xsolla.com/paystation4/?token=fixture")]
+        [TestCase("https://secure.xsolla.com:8443/paystation4/?token=fixture")]
+        [TestCase("https://user@secure.xsolla.com/paystation4/?token=fixture")]
+        [TestCase("https://secure.xsolla.com/wrong-path/?token=fixture")]
+        [TestCase("https://secure.xsolla.com/paystation4/?token=fixture#fragment")]
         [TestCase("https://secure.xsolla.com/paystation4/")]
-        [TestCase("https://evil.com/paystation4/")]
+        [TestCase("https://evil.com/paystation4/?token=fixture")]
         [TestCase("https://sandbox-secure.xsolla.com/paystation4/")]
         [TestCase("https://sandbox-secure.xsolla.com/paystation4/?token=")]
         [TestCase("https://sandbox-secure.xsolla.com/paystation4/?token=a#fragment")]
@@ -37,10 +45,12 @@ namespace Balancy.Tests
             var error = Assert.Throws<TargetInvocationException>(() => method.Invoke(null, new object[] { url }));
             Assert.That(error.InnerException, Is.TypeOf<InvalidOperationException>());
         }
-        [Test] public void CheckoutAllowsSandboxPayStation()
+        [TestCase("https://sandbox-secure.xsolla.com/paystation4/?token=fixture")]
+        [TestCase("https://secure.xsolla.com/paystation4/?token=fixture")]
+        public void CheckoutAllowsOfficialPayStation(string url)
         {
             var method = Adapter.GetMethod("ValidateCheckoutUrl", BindingFlags.Static | BindingFlags.NonPublic);
-            Assert.DoesNotThrow(() => method.Invoke(null, new object[] { "https://sandbox-secure.xsolla.com/paystation4/?token=fixture" }));
+            Assert.DoesNotThrow(() => method.Invoke(null, new object[] { url }));
         }
         [Test] public void CallbackUsesOneByteNativeBooleanAndStableAbi()
         {
