@@ -33,5 +33,14 @@ namespace Balancy.WebView
         {
             if (Pending && clock() >= deadline) Signal("timeout");
         }
+
+        // A page message that is (or batches) a request with this action; the bridge serializes "action":201.
+        internal static bool IsRequest(string message, int action)
+        {
+            string token = "\"action\":" + action;
+            int at = message?.IndexOf(token, StringComparison.Ordinal) ?? -1;
+            int end = at + token.Length;
+            return at >= 0 && (end >= message.Length || !char.IsDigit(message[end]));
+        }
     }
 }

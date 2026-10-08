@@ -780,19 +780,10 @@ namespace Balancy
         }
 #endif
 
-        private static readonly string ReadyRequestToken = "\"action\":" + (int)RequestAction.BalancyIsReady;
-
-        // BalancyIsReady from the page, before the application filter: visibility does not depend on its decision.
-        private static bool IsReadyRequest(string msg)
-        {
-            int at = msg?.IndexOf(ReadyRequestToken, StringComparison.Ordinal) ?? -1;
-            int end = at + ReadyRequestToken.Length;
-            return at >= 0 && (end >= msg.Length || !char.IsDigit(msg[end]));
-        }
-
         private static void OnMessageReceived(string msg)
         {
-            if (IsReadyRequest(msg)) _webView?.SignalClassicPageReady();
+            // BalancyIsReady from the page, before the application filter: visibility does not depend on its decision.
+            if (ClassicRevealGate.IsRequest(msg, (int)RequestAction.BalancyIsReady)) _webView?.SignalClassicPageReady();
             if (_onMessageReceived != null)
             {
                 bool proceed = _onMessageReceived(msg);

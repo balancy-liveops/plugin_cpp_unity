@@ -62,6 +62,18 @@ namespace Balancy.Tests
             Assert.That(reveals, Is.EqualTo(new[] { "loadFailed" }));
         }
 
+        [Test] public void ReadyRequestIsRecognisedInTheMessagesTheBridgeSends()
+        {
+            // Captured from a classic Car Race open (Android, SDK 1.9.6).
+            const string single = "{\"type\":\"request\",\"viewId\":\"262590147493413ca62d207a26b1eb39\",\"sender\":null,\"id\":\"50\",\"action\":201,\"params\":{\"id\":\"none\"}}";
+            Assert.That(ClassicRevealGate.IsRequest(single, 201), Is.True);
+            Assert.That(ClassicRevealGate.IsRequest("{\"type\":\"batch\",\"requests\":[{\"id\":\"7\",\"action\":10},{\"id\":\"8\",\"action\":201}]}", 201), Is.True);
+            Assert.That(ClassicRevealGate.IsRequest("{\"type\":\"request\",\"id\":\"9\",\"action\":2010}", 201), Is.False);
+            Assert.That(ClassicRevealGate.IsRequest("{\"type\":\"request\",\"id\":\"9\",\"action\":20}", 201), Is.False);
+            Assert.That(ClassicRevealGate.IsRequest("{\"type\":\"request\",\"id\":\"9\",\"action\":201", 201), Is.True);
+            Assert.That(ClassicRevealGate.IsRequest(null, 201), Is.False);
+        }
+
         [Test] public void EachOpenGetsItsOwnDeadline()
         {
             gate.Begin(3);
