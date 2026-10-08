@@ -62,6 +62,37 @@ namespace Balancy.Tests
             Assert.That(reveals, Is.EqualTo(new[] { "loadFailed" }));
         }
 
+        [Test] public void TimeoutBeforeThePageFinishesShowsTheViewAgainWhenItDoes()
+        {
+            // Android's onPageFinished hides a WebView opened with startHidden once more, undoing the earlier reveal.
+            gate.Begin(3);
+            now = 3; gate.Tick();
+            Assert.That(reveals, Is.EqualTo(new[] { "timeout" }));
+            Assert.That(gate.LoadCompleted(), Is.True);
+            Assert.That(gate.LoadCompleted(), Is.False);
+        }
+
+        [Test] public void ReadyAfterThePageFinishedNeedsNoSecondShow()
+        {
+            gate.Begin(3);
+            Assert.That(gate.LoadCompleted(), Is.False);
+            gate.Signal("ready");
+            Assert.That(reveals, Is.EqualTo(new[] { "ready" }));
+            Assert.That(gate.LoadCompleted(), Is.False);
+        }
+
+        [Test] public void ClosingOrReopeningForgetsAnEarlyReveal()
+        {
+            gate.Begin(3);
+            now = 3; gate.Tick();
+            gate.Cancel();
+            Assert.That(gate.LoadCompleted(), Is.False);
+            gate.Begin(3);
+            now = 6; gate.Tick();
+            gate.Begin(3);
+            Assert.That(gate.LoadCompleted(), Is.False);
+        }
+
         [Test] public void ReadyRequestIsRecognisedInTheMessagesTheBridgeSends()
         {
             // Captured from a classic Car Race open (Android, SDK 1.9.6).

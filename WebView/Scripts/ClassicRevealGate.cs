@@ -9,6 +9,7 @@ namespace Balancy.WebView
         private readonly Action<string> reveal;
         private readonly Func<double> clock;
         private double deadline = -1;
+        private bool loading, revealedWhileLoading;
 
         internal ClassicRevealGate(Action<string> reveal, Func<double> clock)
         {
@@ -18,20 +19,39 @@ namespace Balancy.WebView
 
         internal bool Pending => deadline >= 0;
 
-        internal void Begin(double timeoutSeconds) => deadline = clock() + timeoutSeconds;
+        internal void Begin(double timeoutSeconds)
+        {
+            deadline = clock() + timeoutSeconds;
+            loading = true;
+            revealedWhileLoading = false;
+        }
 
-        internal void Cancel() => deadline = -1;
+        internal void Cancel()
+        {
+            deadline = -1;
+            loading = revealedWhileLoading = false;
+        }
 
         internal void Signal(string reason)
         {
             if (!Pending) return;
             deadline = -1;
+            if (loading) revealedWhileLoading = true;
             reveal(reason);
         }
 
         internal void Tick()
         {
             if (Pending && clock() >= deadline) Signal("timeout");
+        }
+
+        // The page finished loading. Android's onPageFinished hides a WebView opened with startHidden once more, so a
+        // reveal that came before it (only the timeout can) has to be repeated. Returns whether to show it again.
+        internal bool LoadCompleted()
+        {
+            bool showAgain = revealedWhileLoading;
+            loading = revealedWhileLoading = false;
+            return showAgain;
         }
 
         // A page message that is (or batches) a request with this action; the bridge serializes "action":201.

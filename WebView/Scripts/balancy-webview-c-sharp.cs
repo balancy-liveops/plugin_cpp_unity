@@ -1987,6 +1987,7 @@ namespace Balancy.WebView
         private static void OnLoadCompletedReceived(bool success)
         {
             if (_instance == null) return;
+            bool pageFinished = success;
             bool preparingShell = _instance.Persistent.Preparing;
             if (!preparingShell) PerformanceLog("classicNavigationComplete", _instance._performanceViewStart, null, "success=" + success);
             if (preparingShell) PerformanceLog("shellNavigationComplete", _instance._performanceShellStart, _instance.Persistent.ShellId, "success=" + success);
@@ -2014,7 +2015,10 @@ namespace Balancy.WebView
                 if (!success) _instance.Persistent.Fail("Persistent shell navigation or injection failed");
                 return; // Success is signalled by the bridge's shellReady ACK.
             }
+            // On Android, onPageFinished hides a view opened with startHidden again: repeat a reveal that came before it.
+            bool showAgain = pageFinished && (_instance._classicReveal?.LoadCompleted() ?? false);
             if (!success) _instance._classicReveal?.Signal("loadFailed");
+            if (showAgain) _instance.RevealClassicView("pageFinished");
             _instance.OnLoadCompleted?.Invoke(success);
         }
 
