@@ -40,13 +40,20 @@ namespace Balancy.WebView
             reveal(reason);
         }
 
+        // Unity injects the page's loader when the page finishes loading, so its ready signal or bootstrap error comes
+        // after LoadCompleted. One that arrives while the page is still loading was sent by the previous page.
+        internal void PageSignal(string reason)
+        {
+            if (!loading) Signal(reason);
+        }
+
         internal void Tick()
         {
             if (Pending && clock() >= deadline) Signal("timeout");
         }
 
         // The page finished loading. Android's onPageFinished hides a WebView opened with startHidden once more, so a
-        // reveal that came before it (only the timeout can) has to be repeated. Returns whether to show it again.
+        // reveal that came before it (the timeout or a load error) has to be repeated. Returns whether to show it again.
         internal bool LoadCompleted()
         {
             bool showAgain = revealedWhileLoading;

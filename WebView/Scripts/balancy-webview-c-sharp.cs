@@ -1402,7 +1402,7 @@ namespace Balancy.WebView
         }
 
         // The page sent BalancyIsReady: reveal a classic view that was opened hidden.
-        internal void SignalClassicPageReady() => _classicReveal?.Signal("ready");
+        internal void SignalClassicPageReady() => _classicReveal?.PageSignal("ready");
 
         private void RevealClassicView(string reason)
         {
@@ -1960,7 +1960,7 @@ namespace Balancy.WebView
                 if (parsed != null && parsed.type == "viewLoadError" && parsed.viewId == Persistent.CurrentId)
                     Persistent.RequestRestart();
                 if (parsed != null && parsed.type == "shellError" && !Persistent.Enabled)
-                    _classicReveal?.Signal("bootstrapError");
+                    _classicReveal?.PageSignal("bootstrapError");
                 if (parsed != null && (parsed.type == "viewLoadError" || parsed.type == "shellError"))
                     PerformanceLog(parsed.type, parsed.type == "shellError" ? _performanceShellStart : _performanceViewStart, parsed.viewId ?? parsed.shellId);
                 if (parsed != null && Persistent.Receive(parsed.type, parsed.viewId, parsed.shellId, parsed.error)) return;
