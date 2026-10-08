@@ -184,7 +184,12 @@ namespace Balancy.WebView
         public void OnAndroidRenderProcessGone(string reason)
         {
             if (Persistent.Enabled) Persistent.Fail("Android WebView renderer " + reason);
-            else { CloseWebView(); OnLoadCompleted?.Invoke(false); }
+            else
+            {
+                var failedOpen = _classicReveal?.Fail();
+                CloseWebView(); OnLoadCompleted?.Invoke(false);
+                failedOpen?.Invoke();
+            }
         }
 
         public void OnAndroidLoadCompleted(string successString)
@@ -1134,14 +1139,29 @@ namespace Balancy.WebView
         }
         
         // A Balancy view page sends BalancyIsReady; where the native layer can open hidden, wait for it (ClassicRevealGate).
-        internal bool OpenWebView(string url, string ownerJson, string additionalInfo, bool revealWhenReady)
+        // onShown runs once the view is visible, which for a hidden open is its reveal.
+        internal bool OpenWebView(string url, string ownerJson, string additionalInfo, bool revealWhenReady, Action onShown, Action onFailed)
         {
 #if UNITY_ANDROID && !UNITY_EDITOR
             _openHidden = revealWhenReady;
 #endif
-            try { return OpenWebView(url, ownerJson, additionalInfo); }
+            bool hidden = _openHidden, opened;
+            try { opened = OpenWebView(url, ownerJson, additionalInfo); }
             finally { _openHidden = false; }
+            if (!opened) return false;
+            if (!hidden) { onShown?.Invoke(); return true; }
+            ClassicReveal.Begin(ClassicRevealTimeoutSeconds, Guarded(onShown), Guarded(onFailed));
+            PerformanceLog("classicOpenHidden", _performanceViewStart);
+            return true;
         }
+
+        // The gate runs these from Update and page messages: a game callback that throws must not stop the SDK's own
+        // handling (the ready request still has to reach the core).
+        private static Action Guarded(Action callback) => callback == null ? null : () =>
+        {
+            try { callback(); }
+            catch (Exception exception) { Debug.LogException(exception); }
+        };
 
         /// <summary>
         /// Validates a local file URL before attempting to load it
@@ -1273,11 +1293,6 @@ namespace Balancy.WebView
             // before creation were ignored on macOS. Apply before navigation completes.
             if (success) ApplyAnimationSettings();
             _isWebViewOpen = success;
-            if (success && _openHidden)
-            {
-                ClassicReveal.Begin(ClassicRevealTimeoutSeconds);
-                PerformanceLog("classicOpenHidden", _performanceViewStart);
-            }
             return success;
         }
 

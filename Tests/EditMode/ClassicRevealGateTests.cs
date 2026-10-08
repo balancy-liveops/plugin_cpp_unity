@@ -19,6 +19,8 @@ namespace Balancy.Tests
 
         [TearDown] public void TearDown() => gate.Cancel();
 
+        private void BeginWithCallbacks() => gate.Begin(30, () => log.Add("shown"), () => log.Add("failed"));
+
         [Test] public void FirstReadySignalRevealsOnceAndClearsTheTimeout()
         {
             gate.Begin(3);
@@ -44,6 +46,7 @@ namespace Balancy.Tests
         {
             gate.PageSignal("ready"); gate.PageSignal("bootstrapError"); gate.Signal("loadFailed");
             now = 100; gate.Tick();
+            Assert.That(gate.Fail(), Is.Null);
             Assert.That(log, Is.Empty);
         }
 
@@ -114,6 +117,56 @@ namespace Balancy.Tests
             gate.LoadCompleted();
             gate.PageSignal("ready");
             Assert.That(log, Is.EqualTo(new[] { "ready" }));
+        }
+
+        [Test] public void ShownRunsOnceRightAfterTheReveal()
+        {
+            BeginWithCallbacks();
+            gate.LoadCompleted();
+            Assert.That(log, Is.Empty);
+            gate.PageSignal("ready");
+            gate.PageSignal("ready");
+            now = 60; gate.Tick();
+            Assert.That(log, Is.EqualTo(new[] { "ready", "shown" }));
+        }
+
+        [Test] public void TimeoutRevealRunsShownOnceThoughTheViewIsShownAgain()
+        {
+            BeginWithCallbacks();
+            now = 30; gate.Tick();
+            Assert.That(gate.LoadCompleted(), Is.True);
+            Assert.That(log, Is.EqualTo(new[] { "timeout", "shown" }));
+        }
+
+        [Test] public void ClosingBeforeTheRevealRunsNeitherCallback()
+        {
+            BeginWithCallbacks();
+            gate.Cancel();
+            gate.LoadCompleted(); gate.PageSignal("ready");
+            now = 60; gate.Tick();
+            Assert.That(gate.Fail(), Is.Null);
+            Assert.That(log, Is.Empty);
+        }
+
+        [Test] public void RendererLossBeforeTheRevealFailsTheOpenOnce()
+        {
+            BeginWithCallbacks();
+            var failed = gate.Fail();
+            Assert.That(log, Is.Empty); // the caller runs it after the teardown
+            failed();
+            Assert.That(gate.Fail(), Is.Null);
+            now = 60; gate.Tick();
+            Assert.That(log, Is.EqualTo(new[] { "failed" }));
+            Assert.That(gate.Pending, Is.False);
+        }
+
+        [Test] public void RendererLossAfterTheRevealIsNotAFailedOpen()
+        {
+            BeginWithCallbacks();
+            gate.LoadCompleted();
+            gate.PageSignal("ready");
+            Assert.That(gate.Fail(), Is.Null);
+            Assert.That(log, Is.EqualTo(new[] { "ready", "shown" }));
         }
 
         [Test] public void ReadyRequestIsRecognisedInTheMessagesTheBridgeSends()

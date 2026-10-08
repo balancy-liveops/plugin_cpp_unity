@@ -10,6 +10,7 @@ namespace Balancy.WebView
         private readonly Func<double> clock;
         private double deadline = -1;
         private bool loading, revealedWhileLoading;
+        private Action shown, failed;
 
         internal ClassicRevealGate(Action<string> reveal, Func<double> clock)
         {
@@ -19,17 +20,22 @@ namespace Balancy.WebView
 
         internal bool Pending => deadline >= 0;
 
-        internal void Begin(double timeoutSeconds)
+        // As in persistent mode, shown runs when the view becomes visible and failed when it dies before that;
+        // closing it first runs neither.
+        internal void Begin(double timeoutSeconds, Action shown = null, Action failed = null)
         {
             deadline = clock() + timeoutSeconds;
             loading = true;
             revealedWhileLoading = false;
+            this.shown = shown;
+            this.failed = failed;
         }
 
         internal void Cancel()
         {
             deadline = -1;
             loading = revealedWhileLoading = false;
+            shown = failed = null;
         }
 
         internal void Signal(string reason)
@@ -37,7 +43,10 @@ namespace Balancy.WebView
             if (!Pending) return;
             deadline = -1;
             if (loading) revealedWhileLoading = true;
+            var callback = shown;
+            shown = failed = null;
             reveal(reason);
+            callback?.Invoke();
         }
 
         // Unity injects the page's loader when the page finishes loading, so its ready signal or bootstrap error comes
@@ -45,6 +54,16 @@ namespace Balancy.WebView
         internal void PageSignal(string reason)
         {
             if (!loading) Signal(reason);
+        }
+
+        // The view died before its reveal (Android's renderer went away): ends the gate and returns the open's failed
+        // callback, for the caller to run after the teardown, as persistent mode does.
+        internal Action Fail()
+        {
+            if (!Pending) return null;
+            var callback = failed;
+            Cancel();
+            return callback;
         }
 
         internal void Tick()

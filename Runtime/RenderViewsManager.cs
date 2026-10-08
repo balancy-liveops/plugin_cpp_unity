@@ -593,8 +593,7 @@ namespace Balancy
                 onShown?.Invoke();
 #else
             string fileUrl = BalancyWebView.ToWebViewUrl(filePath);
-            if (OpenView(fileUrl, owner, onFailed, revealWhenReady: true))
-                onShown?.Invoke();
+            OpenView(fileUrl, owner, onFailed, revealWhenReady: true, onShown);
 #endif
         }
 
@@ -688,10 +687,11 @@ namespace Balancy
         }
         
         public static bool OpenView(string url, JsonBasedObject owner = null, Action<ViewOpenError> onFailed = null) =>
-            OpenView(url, owner, onFailed, revealWhenReady: false);
+            OpenView(url, owner, onFailed, revealWhenReady: false, onShown: null);
 
         // revealWhenReady: a Balancy view page that sends BalancyIsReady. Arbitrary URLs never do, so they show at load.
-        private static bool OpenView(string url, JsonBasedObject owner, Action<ViewOpenError> onFailed, bool revealWhenReady)
+        // onShown runs once the view is visible: for a page opened hidden, at its reveal.
+        private static bool OpenView(string url, JsonBasedObject owner, Action<ViewOpenError> onFailed, bool revealWhenReady, Action onShown)
         {
             if (string.IsNullOrEmpty(url))
             {
@@ -732,6 +732,7 @@ namespace Balancy
             {
 #if UNITY_EDITOR_OSX
                 success = BalancyWebViewEmbedded.Instance.InitializeEmbeddedWebView(urlToLoad, ownerJson, additionalInfo);
+                if (success) onShown?.Invoke();
 #elif UNITY_EDITOR
                 CreateErrorMessage();
 #endif
@@ -741,7 +742,8 @@ namespace Balancy
                 // Use game view size for popup mode to match embedded mode behavior
                 // Debug.LogWarning("[RenderViewsManager] OpenView " + urlToLoad + " in popup mode.");
                 // Debug.LogWarning("[RenderViewsManager] ownerJson " + ownerJson);
-                success = _webView.OpenWebView(urlToLoad, ownerJson, additionalInfo, revealWhenReady);
+                success = _webView.OpenWebView(urlToLoad, ownerJson, additionalInfo, revealWhenReady, onShown,
+                    () => onFailed?.Invoke(ViewOpenError.LoadFailed));
                 // Debug.LogWarning("[RenderViewsManager] success " + success);
             }
             
