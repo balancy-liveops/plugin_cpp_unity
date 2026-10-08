@@ -27,7 +27,8 @@ namespace Balancy.WebView
                 "function fail(error) { try { if (window.balancy) window.balancy._postHostError(error); } catch (_) {} console.error(error); }\n" +
                 "function install(code) { try { window.balancy._installScripts(code, " + jsString(scriptsVersion) + "); Promise.resolve(window.balancy.initResponseHandler()).catch(fail); } catch (error) { fail(error); } }\n" +
                 "function start() { try { if (!window.balancy) throw new Error('Balancy bridge did not initialize'); " + installSource + " } catch (error) { fail(error); } }\n" +
-                "if (window.balancy) { start(); return; }\n" +
+                // Android's onPageFinished shim creates window.balancy on classic pages; only the real bridge has _installScripts.
+                "if (window.balancy && typeof window.balancy._installScripts === 'function') { start(); return; }\n" +
                 "var bridge = document.createElement('script'); bridge.src = " + jsString(bridgeUrl) + "; bridge.onload = start; bridge.onerror = function() { fail(new Error('Failed to load Balancy bridge')); }; (document.head || document.documentElement).appendChild(bridge);\n" +
                 "})();\ntrue;";
         }
