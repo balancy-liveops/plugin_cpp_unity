@@ -325,8 +325,9 @@ namespace Balancy.WebView
             () => Time.realtimeSinceStartup));
 
         // Classic Balancy views open hidden on Android and are revealed by the page's ready signal (BalancyIsReady,
-        // sent after the root init settles), as the WebGL host does; the timeout keeps a silent page from staying hidden.
-        internal const double ClassicRevealTimeoutSeconds = 3;
+        // sent after the root init settles), as the WebGL host does. The timeout, persistent mode's view timeout, keeps
+        // a silent page from staying hidden.
+        internal const double ClassicRevealTimeoutSeconds = PersistentViewState.ViewTimeoutSeconds;
         private bool _openHidden;
         private ClassicRevealGate _classicReveal;
         private ClassicRevealGate ClassicReveal => _classicReveal ?? (_classicReveal = new ClassicRevealGate(
