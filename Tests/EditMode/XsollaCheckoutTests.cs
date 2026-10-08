@@ -111,6 +111,89 @@ namespace Balancy.Tests
             var descriptor = (Actions.BalancyProductInfo)Adapter.GetMethod("Descriptor", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null, new object[] { order });
             Assert.That(descriptor.OfferUnnyId, Is.EqualTo("slot"));
         }
+        [Serializable] private class ChoiceFixtureMessage { public string type, requestId, xsollaUnavailable; }
+        private sealed class ChoiceFixtureLease : IDisposable { public void Dispose() { } }
+        [TestCase(true)]
+        [TestCase(false)]
+        public void MissingXsollaExportsKeepNativeAndCancelUsable(bool missingPrepare)
+        {
+            var names = new[] { "Prepare", "SessionIdentity", "Present", "Send" };
+            var originals = new object[names.Length];
+            for (int i = 0; i < names.Length; i++) originals[i] = Adapter.GetField(names[i], BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
+            int identityCalls = 0, nativeCalls = 0, callbacks = 0;
+            string requestId = null, unavailable = null;
+            void Set(string name, object value) => Adapter.GetField(name, BindingFlags.Static | BindingFlags.NonPublic).SetValue(null, value);
+            void Receive(string choice, string id = null) => Adapter.GetMethod("ReceivePresentationMessage", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null,
+                new object[] { "{\"type\":\"paymentChoiceSelected\",\"requestId\":\"" + (id ?? requestId) + "\",\"choice\":\"" + choice + "\"}" });
+            void Start() => Adapter.GetMethod("TryIntercept", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null, new object[] {
+                new Actions.BalancyProductInfo((Models.SmartObjects.StoreItem)null), (Action<bool, string>)((ok, error) => callbacks++), (Action)(() => nativeCalls++) });
+            try
+            {
+                Set("Prepare", (Func<Actions.BalancyProductInfo, string>)(_ => missingPrepare ? throw new EntryPointNotFoundException("prepare") :
+                    "{\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"productId\":\"sku\",\"context\":{\"type\":\"StoreItem\",\"storeItemUnnyId\":\"doc\"}}"));
+                Set("SessionIdentity", (Func<string>)(() => { identityCalls++; throw new EntryPointNotFoundException("identity"); }));
+                Set("Present", (Func<Action, Action<string>, IDisposable>)((ready, failed) => { ready(); return new ChoiceFixtureLease(); }));
+                Set("Send", (Action<string>)(json => {
+                    var message = UnityEngine.JsonUtility.FromJson<ChoiceFixtureMessage>(json);
+                    if (message.type != "paymentChoiceShow") return;
+                    requestId = message.requestId; unavailable = message.xsollaUnavailable;
+                    Adapter.GetMethod("ReceivePresentationMessage", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null,
+                        new object[] { "{\"type\":\"paymentChoiceReady\",\"requestId\":\"" + requestId + "\"}" });
+                }));
+                API.Xsolla.Configure(new XsollaOptions { Enabled = true, Country = "US" });
+                Start(); int capturedCalls = identityCalls;
+                Assert.That(Guid.TryParse(requestId, out _), Is.True);
+                Assert.That(unavailable, Is.Not.Empty);
+                Receive("xsolla"); Receive("native");
+                Assert.That(nativeCalls, Is.EqualTo(1)); Assert.That(callbacks, Is.Zero);
+                Assert.That(identityCalls, Is.EqualTo(capturedCalls));
+                Start(); Receive("cancel");
+                Assert.That(callbacks, Is.EqualTo(1)); Assert.That(nativeCalls, Is.EqualTo(1));
+                Assert.That(identityCalls, Is.EqualTo(capturedCalls));
+                Start(); var staleId = requestId;
+                Adapter.GetMethod("DataUpdated", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null, new object[] { false, true });
+                Receive("native", staleId);
+                Assert.That(nativeCalls, Is.EqualTo(1)); Assert.That(callbacks, Is.EqualTo(2));
+                Assert.That(identityCalls, Is.EqualTo(capturedCalls));
+                Start(); staleId = requestId; API.Xsolla.Configure(null); Receive("native", staleId);
+                Assert.That(nativeCalls, Is.EqualTo(1)); Assert.That(callbacks, Is.EqualTo(3));
+                Assert.That(identityCalls, Is.EqualTo(capturedCalls));
+            }
+            finally
+            {
+                API.Xsolla.Configure(null);
+                for (int i = 0; i < names.Length; i++) Set(names[i], originals[i]);
+            }
+        }
+        [Test] public void CloudProfileFailureMarshalMatchesActualNativeHeaderLayout()
+        {
+            // Actual Notifications.h probe: non-polymorphic int32 type + aligned char* message.
+            var type = typeof(API).Assembly.GetType("Balancy.Core.Notifications+InitNotificationCloudProfileFailed", true);
+            int messageOffset = (sizeof(int) + IntPtr.Size - 1) / IntPtr.Size * IntPtr.Size;
+            Assert.That(System.Runtime.InteropServices.Marshal.OffsetOf(type, "Type").ToInt32(), Is.Zero);
+            Assert.That(System.Runtime.InteropServices.Marshal.OffsetOf(type, "Message").ToInt32(), Is.EqualTo(messageOffset));
+            Assert.That(System.Runtime.InteropServices.Marshal.SizeOf(type), Is.EqualTo(messageOffset + IntPtr.Size));
+            var message = System.Runtime.InteropServices.Marshal.StringToHGlobalAnsi("Profile load failed abi-profile, I'll retry in 4 seconds");
+            var notification = System.Runtime.InteropServices.Marshal.AllocHGlobal(messageOffset + IntPtr.Size);
+            try
+            {
+                System.Runtime.InteropServices.Marshal.WriteInt32(notification, 0, 3);
+                System.Runtime.InteropServices.Marshal.WriteIntPtr(notification, messageOffset, message);
+                var decoded = System.Runtime.InteropServices.Marshal.PtrToStructure(notification, type);
+                var kindType = typeof(API).Assembly.GetType("Balancy.Core.Notifications+NotificationBase", true);
+                var kind = System.Runtime.InteropServices.Marshal.PtrToStructure(notification, kindType);
+                Assert.That(Convert.ToInt32(kindType.GetField("Type").GetValue(kind)), Is.EqualTo(3));
+                var baseType = typeof(API).Assembly.GetType("Balancy.Core.Notifications+InitNotificationError", true);
+                var baseDecoded = System.Runtime.InteropServices.Marshal.PtrToStructure(notification, baseType);
+                TestContext.WriteLine("CloudProfileFailed derived Message=" + (type.GetField("Message").GetValue(decoded) ?? "null") + "; InitNotificationError Message=" + (baseType.GetField("Message").GetValue(baseDecoded) ?? "null"));
+                Assert.That(type.GetField("Message").GetValue(decoded), Is.EqualTo("Profile load failed abi-profile, I'll retry in 4 seconds"));
+            }
+            finally
+            {
+                System.Runtime.InteropServices.Marshal.FreeHGlobal(notification);
+                System.Runtime.InteropServices.Marshal.FreeHGlobal(message);
+            }
+        }
         [Test] public void CallbackUsesOneByteNativeBooleanAndStableAbi()
         {
             var methods = typeof(API).Assembly.GetType("Balancy.LibraryMethods+API", true);

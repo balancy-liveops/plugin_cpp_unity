@@ -104,7 +104,13 @@ namespace Balancy
         private static string recoverySession;
         private static int recoveryEpoch;
         private static int generation;
+        private static bool nativeExportsUnavailable;
         private static int nextCallbackId;
+        private const int MaximumDeferredOrders = 64;
+        private sealed class DeferredOrder { internal string OrderId, GrantId; }
+        private static string deferredSession;
+        private static int deferredEpoch;
+        private static readonly Dictionary<string, DeferredOrder> deferredOrders = new Dictionary<string, DeferredOrder>();
         private static readonly Dictionary<string, Actions.BalancyProductInfo> deferredReports = new Dictionary<string, Actions.BalancyProductInfo>();
         private static readonly HashSet<string> reportedGrants = new HashSet<string>();
         private static readonly Dictionary<int, TaskCompletionSource<string>> requests = new Dictionary<int, TaskCompletionSource<string>>();
@@ -113,6 +119,7 @@ namespace Balancy
         internal static void Configure(XsollaOptions value)
         {
             Stop();
+            nativeExportsUnavailable = false;
             options = null;
             if (value == null || !value.Enabled) { options = null; return; }
             if (value.Country == null || !System.Text.RegularExpressions.Regex.IsMatch(value.Country, "^[A-Z]{2}$"))
@@ -153,6 +160,7 @@ namespace Balancy
             requests.Clear();
             reportedGrants.Clear();
             deferredReports.Clear();
+            deferredOrders.Clear();
         }
         internal static bool TryIntercept(Actions.BalancyProductInfo product, Action<bool, string> callback, Action native)
         {
@@ -161,19 +169,23 @@ namespace Balancy
             try
             {
                 Prepared prepared = null;
-                string unavailable = null;
+                string unavailable = null, session = null;
                 try
                 {
+                    if (nativeExportsUnavailable) throw new InvalidOperationException("xsolla_native_api_unavailable");
                     prepared = JsonUtility.FromJson<Prepared>(Prepare(product));
                     if (prepared == null || string.IsNullOrEmpty(prepared.productId) || !Guid.TryParse(prepared.requestId, out _) || prepared.context == null)
                         throw new InvalidOperationException("xsolla_purchase_context_unavailable");
+                    session = SessionIdentity();
+                    if (string.IsNullOrEmpty(session)) throw new InvalidOperationException("xsolla_session_unavailable");
                 }
-                catch
+                catch (Exception error)
                 {
+                    if (error is EntryPointNotFoundException || error is DllNotFoundException) nativeExportsUnavailable = true;
                     prepared = null;
                     unavailable = "Xsolla checkout is not available right now. You can continue with your regular payment method.";
                 }
-                var purchase = new Purchase(product, prepared, callback, native, unavailable);
+                var purchase = new Purchase(product, prepared, callback, native, unavailable, session);
                 current = purchase;
                 purchase.Show();
             }
@@ -201,16 +213,16 @@ namespace Balancy
             private readonly string unavailable;
             private readonly Action<bool, string> callback;
             private readonly Action native;
-            private readonly string session = SessionIdentity();
+            private readonly string session;
             private readonly int epoch = generation;
             private readonly XsollaOptions config = options;
             private IDisposable lease;
             private bool finished, ready, started, busy, completed, callbackReported, presentationDismissed;
             private string orderId;
             private bool checkoutAttempted;
-            internal Purchase(Actions.BalancyProductInfo product, Prepared prepared, Action<bool, string> callback, Action native, string unavailable)
-            { Id = prepared?.requestId ?? Guid.NewGuid().ToString(); this.product = product; this.prepared = prepared; this.callback = callback; this.native = native; this.unavailable = unavailable; }
-            private void Guard() { if (finished || epoch != generation || session != SessionIdentity()) throw new OperationCanceledException("xsolla_session_changed"); }
+            internal Purchase(Actions.BalancyProductInfo product, Prepared prepared, Action<bool, string> callback, Action native, string unavailable, string session)
+            { Id = prepared?.requestId ?? Guid.NewGuid().ToString(); this.product = product; this.prepared = prepared; this.callback = callback; this.native = native; this.unavailable = unavailable; this.session = session; }
+            private void Guard() { if (finished || epoch != generation || (unavailable == null && session != SessionIdentity())) throw new OperationCanceledException("xsolla_session_changed"); }
             internal void Show()
             {
                 InstallPopup(Id);
@@ -384,6 +396,7 @@ namespace Balancy
         internal static Task RecoverPurchases()
         {
             if (options == null || !options.Enabled) return Task.CompletedTask;
+            if (nativeExportsUnavailable) return Task.FromException(new InvalidOperationException("xsolla_native_api_unavailable"));
             var session = SessionIdentity();
             if (recovery != null && !recovery.IsCompleted && recoveryEpoch == generation && recoverySession == session) return recovery;
             recoveryEpoch = generation; recoverySession = session;
@@ -392,6 +405,20 @@ namespace Balancy
         private static async Task Recover()
         {
             var epoch = generation; var session = SessionIdentity(); string cursor = null;
+            EnsureSession(session, epoch);
+            InitializeDeferredScope(session, epoch);
+            // An accepted ACK with a lost response disappears from server pending.
+            // Read back bounded same-scope attempts independently and re-ACK safely.
+            foreach (var deferred in new List<DeferredOrder>(deferredOrders.Values))
+            {
+                EnsureSession(session, epoch);
+                var status = Parse(await Request("get", "{\"orderId\":" + Quote(deferred.OrderId) + "}"));
+                EnsureSession(session, epoch);
+                ValidateOrder(status.order, deferred.OrderId, null);
+                if (status.order.state != "paid" || status.order.reconciliationRequired)
+                    throw new InvalidOperationException("xsolla_reconciliation_required");
+                await Apply(deferred.OrderId, Descriptor(status.order), session, epoch);
+            }
             var cursors = new HashSet<string>();
             do
             {
@@ -408,16 +435,27 @@ namespace Balancy
         private static async Task Apply(string orderId, Actions.BalancyProductInfo product, string session, int epoch, Prepared livePurchase = null)
         {
             EnsureSession(session, epoch);
+            InitializeDeferredScope(session, epoch);
+            if (!deferredOrders.ContainsKey(orderId) && deferredOrders.Count >= MaximumDeferredOrders)
+                throw new InvalidOperationException("xsolla_deferred_finalization_limit");
             var completion = Parse(await Complete(orderId));
             EnsureSession(session, epoch);
             ValidateOrder(completion.order, orderId, livePurchase);
             if (completion.grant == null || string.IsNullOrEmpty(completion.grant.grantId) || completion.order.state != "paid")
                 throw new InvalidOperationException("xsolla_unverified_completion");
+            if (deferredOrders.TryGetValue(orderId, out var previous) && previous.GrantId != completion.grant.grantId)
+                throw new InvalidOperationException("xsolla_grant_identity_mismatch");
             var reportKey = session + ":" + completion.grant.grantId;
             // Retain the descriptor when this session newly applied a grant, including
             // failures before ack. Retry may return applied:false for that same grant.
             if ((completion.applied || livePurchase != null) && product != null && !reportedGrants.Contains(reportKey))
                 deferredReports[reportKey] = product;
+            // Recheck after the await: concurrent live/recovery completions can fill
+            // the bound. A rejected insertion never sends ACK, so server pending
+            // retains that order for retry after tracked finalizations are drained.
+            if (!deferredOrders.ContainsKey(orderId) && deferredOrders.Count >= MaximumDeferredOrders)
+                throw new InvalidOperationException("xsolla_deferred_finalization_limit");
+            deferredOrders[orderId] = new DeferredOrder { OrderId = orderId, GrantId = completion.grant.grantId };
             if (completion.requiresPersistence) await Persist();
             EnsureSession(session, epoch);
             // The applied ledger survives ack failures. Only a correlated acknowledgment
@@ -425,6 +463,7 @@ namespace Balancy
             var acknowledgment = await Request("ack", "{\"orderId\":" + Quote(orderId) + ",\"grantId\":" + Quote(completion.grant.grantId) + "}");
             EnsureSession(session, epoch);
             ValidateAcknowledgment(acknowledgment, completion.grant.grantId);
+            deferredOrders.Remove(orderId);
             // A live retry can have applied the grant before a failed durability barrier.
             // Recovery of a previous session reports only a newly applied grant.
             if (deferredReports.TryGetValue(reportKey, out var reportProduct) && reportedGrants.Add(reportKey))
@@ -435,6 +474,12 @@ namespace Balancy
                     Receipt = "{\"orderId\":" + Quote(orderId) + "}" };
                 try { reportProduct.ReportThePurchase(payment); } catch (Exception error) { Debug.LogException(error); }
             }
+        }
+        private static void InitializeDeferredScope(string session, int epoch)
+        {
+            if (deferredSession == session && deferredEpoch == epoch) return;
+            deferredSession = session; deferredEpoch = epoch;
+            deferredOrders.Clear(); deferredReports.Clear();
         }
         internal static void ValidateAcknowledgment(string json, string grantId)
         {

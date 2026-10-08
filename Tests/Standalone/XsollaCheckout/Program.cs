@@ -26,7 +26,7 @@ namespace Balancy {
  } }
  public static class Constants { public enum BalancyPlatform { Undefined, IosAppStore, AndroidGooglePlay } }
  public class StubConfig { public Constants.BalancyPlatform BalancyPlatform; }
- public static class Controller { public static bool IsReadyToUse; public static StubConfig Config; public static event Action<bool,bool> OnDataUpdated; }
+ public static class Controller { public static bool IsReadyToUse; public static StubConfig Config; public static event Action<bool,bool> OnDataUpdated; public static void NotifyProfileChanged()=>OnDataUpdated?.Invoke(false,true); }
  public static class RenderViewsManager { public static IDisposable PresentPaymentChoice(Action ready,Action<string> failed) => null; public static void SendMessageToView(string msg) {} }
  public static class CMS { public static T GetModelByUnnyId<T>(string id) where T:class => null; }
  public static class Profiles { public static StubProfile System = new(); }
@@ -81,6 +81,21 @@ class Program {
    Choice("native"); Check(nativeCount==1&&callbackCount==0&&actions.Count==0&&leaseDisposed==1,"prepare "+prepareFault+" preserves explicit native callback without automatic fallback");
   }
   Reset(); XsollaPurchasing.Prepare=_=>throw new Exception("unavailable");Start();Choice("cancel");Check(callbackCount==1&&!success&&nativeCount==0&&actions.Count==0,"native-only selector cancellation grants nothing");
+  foreach(var missingExport in new[]{"prepare-and-identity","identity-only"}) {
+   Reset(); int identityCalls=0;
+   if(missingExport=="prepare-and-identity")XsollaPurchasing.Prepare=_=>throw new EntryPointNotFoundException("balancyXsollaPreparePurchase");
+   XsollaPurchasing.SessionIdentity=()=>{identityCalls++;throw new EntryPointNotFoundException("balancyXsollaGetSessionIdentity");};
+   Start(); int capturedCalls=identityCalls;
+   Check(Guid.TryParse(requestId,out _)&&!string.IsNullOrEmpty(unavailableChoice)&&callbackCount==0&&actions.Count==0,"missing "+missingExport+" still presents native-only selector");
+   Choice("xsolla");Choice("native");
+   Check(nativeCount==1&&callbackCount==0&&identityCalls==capturedCalls&&actions.Count==0,"missing "+missingExport+" native selection never calls missing identity export");
+   Start();capturedCalls=identityCalls;Choice("cancel");
+   Check(nativeCount==1&&callbackCount==1&&!success&&identityCalls==capturedCalls&&actions.Count==0,"missing "+missingExport+" cancellation never calls missing identity export");
+   Start();string staleId=requestId;Controller.NotifyProfileChanged();Choice("native",staleId);
+   Check(nativeCount==1&&callbackCount==2&&identityCalls==capturedCalls&&actions.Count==0,"missing "+missingExport+" profile lifecycle rejects stale native choice");
+   Start();string freshId=requestId;XsollaPurchasing.Stop();Choice("native",freshId);
+   Check(nativeCount==1&&callbackCount==3&&identityCalls==capturedCalls&&actions.Count==0,"missing "+missingExport+" SDK stop rejects stale native choice");
+  }
   Reset(); Start(); Choice("native"); Check(nativeCount==1&&callbackCount==0&&leaseDisposed==1,"native choice preserves registered developer callback"); Choice("native"); Check(nativeCount==1,"duplicate native choice ignored");
   Reset(); Start(); Choice("xsolla","unrelated"); Check(opens==0,"foreign presentation message ignored"); Choice("cancel"); Check(callbackCount==1&&!success&&complete==0&&leaseDisposed==1,"cancel before payment grants nothing");
   Reset(); Start(); Choice("xsolla"); await Wait(); Check(success&&callbackCount==1&&opens==1&&complete==1&&ack==1&&Reports==1,"paid flow grants reports persists and acknowledges");
@@ -132,7 +147,11 @@ class Program {
   Check(recoveryAckRejected&&complete==1&&Reports==0,"recovery propagates ack failure without reporting a newly applied grant");
   Reset(); var recoveryFixtureRequest=XsollaPurchasing.Request; var recoveryFixtureComplete=XsollaPurchasing.Complete;
   const string PendingPaid="{\"orders\":[{\"id\":\"order\",\"state\":\"paid\",\"context\":{\"type\":\"StoreItem\"}}]}";
-  XsollaPurchasing.Request=(a,b)=>a=="pending"?Task.FromResult(PendingPaid):recoveryFixtureRequest(a,b);
+  bool recoveryAcceptedAck=false;
+  XsollaPurchasing.Request=(a,b)=>{
+   if(a=="pending")return Task.FromResult(recoveryAcceptedAck?"{\"orders\":[]}":PendingPaid);
+   var result=recoveryFixtureRequest(a,b);if(a=="ack")recoveryAcceptedAck=true;return result;
+  };
   XsollaPurchasing.Complete=async id=>{var result=await recoveryFixtureComplete(id);return complete==1?result:result.Replace("\"applied\":true","\"applied\":false");};
   var withPendingRequest=XsollaPurchasing.Request;
   XsollaPurchasing.Request=(a,b)=>a=="ack"?Task.FromException<string>(new Exception("ack unavailable")):withPendingRequest(a,b);
@@ -147,13 +166,32 @@ class Program {
   oldPending.SetResult("{\"orders\":[]}"); bool oldSessionStopped=false;try{await oldRecovery;}catch(OperationCanceledException){oldSessionStopped=true;}
   Check(oldSessionStopped&&Reports==0,"stale recovery result is rejected after session change");
   Reset(); Start(); var racingRequest=XsollaPurchasing.Request; var racingComplete=XsollaPurchasing.Complete;
-  var liveAck=new TaskCompletionSource<string>(); var recoveryAck=new TaskCompletionSource<string>();int concurrentAckCalls=0;
+  var liveAck=new TaskCompletionSource<string>(); var recoveryAck=new TaskCompletionSource<string>();int concurrentAckCalls=0;bool concurrentAcceptedAck=false;
   XsollaPurchasing.Complete=async id=>{var result=await racingComplete(id);return complete==1?result:result.Replace("\"applied\":true","\"applied\":false");};
-  XsollaPurchasing.Request=(a,b)=>a=="pending"?Task.FromResult(PendingPaid):a=="ack"?(++concurrentAckCalls==1?liveAck.Task:recoveryAck.Task):racingRequest(a,b);
+  XsollaPurchasing.Request=(a,b)=>a=="pending"?Task.FromResult(concurrentAcceptedAck?"{\"orders\":[]}":PendingPaid):a=="ack"?(++concurrentAckCalls==1?liveAck.Task:recoveryAck.Task):racingRequest(a,b);
   Choice("xsolla");await Wait();var racingRecovery=API.Xsolla.RecoverPurchases();await Wait();
   Check(complete==2&&concurrentAckCalls==2&&Reports==0&&callbackCount==0,"concurrent recovery and live finalization wait for acknowledgment");
-  recoveryAck.SetResult(ValidAck);await racingRecovery;liveAck.SetResult(ValidAck);await Wait();
+  concurrentAcceptedAck=true;recoveryAck.SetResult(ValidAck);await racingRecovery;liveAck.SetResult(ValidAck);await Wait();
   Check(Reports==1&&callbackCount==1&&success,"concurrent recovery and live finalization report same grant once");Choice("cancel");
+  Reset();Start();var lostAckRequest=XsollaPurchasing.Request;var lostAckComplete=XsollaPurchasing.Complete;
+  bool serverAcceptedAck=false;int deferredReads=0;
+  XsollaPurchasing.Request=(a,b)=>{
+   if(a=="pending")return Task.FromResult("{\"orders\":[]}");
+   if(a=="get"&&serverAcceptedAck)deferredReads++;
+   if(a=="ack"&&!serverAcceptedAck){serverAcceptedAck=true;ack++;return Task.FromException<string>(new Exception("ACK accepted but response lost"));}
+   return lostAckRequest(a,b);
+  };
+  XsollaPurchasing.Complete=async id=>{var result=await lostAckComplete(id);return complete==1?result:result.Replace("\"applied\":true","\"applied\":false");};
+  Choice("xsolla");await Wait();Choice("cancel");
+  Check(serverAcceptedAck&&Reports==0&&callbackCount==1&&!success,"accepted ACK with lost response leaves retired init callback pending rather than success");
+  await API.Xsolla.RecoverPurchases();
+  Check(deferredReads==1&&complete==2&&ack==2&&Reports==1&&callbackCount==1&&!success,"empty server pending still recovers accepted ACK through same-scope order readback without reviving init callback");
+  await API.Xsolla.RecoverPurchases();Check(deferredReads==1&&complete==2&&Reports==1,"resolved accepted ACK is not read back or reported again");
+  Reset();Start();var scopeLostRequest=XsollaPurchasing.Request;int oldScopeReads=0;
+  XsollaPurchasing.Request=(a,b)=>a=="ack"?Task.FromException<string>(new Exception("lost ACK")):a=="pending"?Task.FromResult("{\"orders\":[]}"):scopeLostRequest(a,b);
+  Choice("xsolla");await Wait();Choice("cancel");session="player-b";
+  var beforeScopeRead=XsollaPurchasing.Request;XsollaPurchasing.Request=(a,b)=>{if(a=="get")oldScopeReads++;return beforeScopeRead(a,b);};
+  await API.Xsolla.RecoverPurchases();Check(oldScopeReads==0&&Reports==0&&callbackCount==1,"new scope never reads back or reports previous scope deferred ACK");
   Reset(); int pendingReads=0; Controller.IsReadyToUse=true; XsollaPurchasing.Request=(a,b)=>{pendingReads++;return Task.FromResult("{\"orders\":[]}");}; XsollaPurchasing.Resume(); await Wait(); Check(pendingReads==1,"application resume scans recoverable orders");
   Reset(); XsollaPurchasing.Request=(a,b)=>Task.FromResult("{\"orders\":[],\"nextBefore\":\"unchanged\"}"); bool cursorBlocked=false;try{await API.Xsolla.RecoverPurchases();}catch(InvalidOperationException){cursorBlocked=true;} Check(cursorBlocked,"repeated recovery cursor cannot loop forever");
   Reset(); XsollaPurchasing.BrowserPopup=true; Start(); Choice("xsolla"); await Wait(); Check(opens==0&&complete==0&&!actions.Contains("checkout"),"blocked browser popup never creates an order");
