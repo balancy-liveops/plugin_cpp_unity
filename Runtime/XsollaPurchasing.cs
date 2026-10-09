@@ -39,7 +39,7 @@ namespace Balancy
         [Serializable] internal class Prepared
         {
             public bool eligible;
-            public string reason, productId, baseProductId, requestId, ruleId, configVersion, priceUsd;
+            public string reason, productId, baseProductId, requestId, ruleId, configVersion, priceUsd, expiresAt;
             public Context context;
         }
         [Serializable] internal class BonusEntry { public string itemUnnyId; public int count; }
@@ -88,6 +88,7 @@ namespace Balancy
             public string checkoutUrl, xsollaUnavailable;
             public PaymentPresentation presentation;
         }
+        internal static Func<DateTimeOffset> UtcNow = () => DateTimeOffset.UtcNow;
         internal static Func<string> SessionIdentity = () => Copy(LibraryMethods.API.balancyXsollaGetSessionIdentity());
         internal static Func<Actions.BalancyProductInfo, string> Prepare = PrepareNative;
         internal static Func<string, string, Task<string>> Request = RequestNative;
@@ -244,7 +245,7 @@ namespace Balancy
             private readonly int epoch = generation;
             private readonly XsollaOptions config = options;
             private IDisposable lease;
-            private bool finished, ready, started, busy, completed, callbackReported, presentationDismissed, quoteReady;
+            private bool finished, ready, started, busy, completed, callbackReported, presentationDismissed, quoteReady, presentationReleased;
             private string orderId;
             private bool checkoutAttempted;
             internal Purchase(Actions.BalancyProductInfo product, Prepared prepared, Action<bool, string> callback, Action native, string unavailable, string session)
@@ -263,6 +264,8 @@ namespace Balancy
                             Guard();
                             var result = Parse(await Request("quote", "{\"requestId\":" + Quote(Id) + ",\"country\":" + Quote(config.Country) + ",\"language\":" + Quote(config.Language) + "}"));
                             Guard();
+                            QuoteExpiration(result.quote?.expiresAt); // Malformed TTL is not a usable offer.
+                            prepared.expiresAt = result.quote.expiresAt;
                             presentation = QuotePresentation(result.quote, prepared);
                             await Persist(); // The core's verified quote/bonus snapshot must also be durable.
                             Guard();
@@ -353,8 +356,10 @@ namespace Balancy
                     Guard(); Update("preparing", "Preparing secure checkout…");
                     if (orderId == null)
                     {
+                        if (await RejectExpiredQuote()) return;
                         await Persist(); // The reservation and reward snapshot must survive closing the app.
                         Guard();
+                        if (await RejectExpiredQuote()) return;
                         checkoutAttempted = true;
                         var response = await Request("checkout", "{\"requestId\":" + Quote(Id) + ",\"country\":" + Quote(config.Country) + ",\"language\":" + Quote(config.Language) + "}");
                         Guard();
@@ -410,6 +415,19 @@ namespace Balancy
                 }
                 finally { busy = false; }
             }
+            private async Task<bool> RejectExpiredQuote()
+            {
+                if (checkoutAttempted || orderId != null || UtcNow() < QuoteExpiration(prepared.expiresAt)) return false;
+                const string message = "Offer expired; start the purchase again";
+                Update("error", message);
+                presentationDismissed = true;
+                Release(); // Close an unused browser popup before any asynchronous cleanup.
+                try { await DiscardReservationAsync(); }
+                catch (Exception error) { Debug.LogWarning("Xsolla expired reservation cleanup: " + error.Message); }
+                Guard();
+                Finish(false, message);
+                return true;
+            }
             private void PresentationFailed(string error)
             {
                 if (finished) return;
@@ -428,16 +446,29 @@ namespace Balancy
             }
             private void Release()
             {
+                if (presentationReleased) return;
+                presentationReleased = true;
                 try { RemovePopup(Id); } catch (Exception error) { Debug.LogException(error); }
                 try { Send(JsonUtility.ToJson(new PresentationMessage { type = "paymentChoiceHide", requestId = Id })); }
                 catch (Exception error) { Debug.LogException(error); }
                 try { lease?.Dispose(); } catch (Exception error) { Debug.LogException(error); }
                 lease = null;
             }
+            private Task reservationDiscard;
+            private Task DiscardReservationAsync()
+            {
+                if (prepared == null || checkoutAttempted || epoch != generation || session != SessionIdentity()) return Task.CompletedTask;
+                return reservationDiscard ?? (reservationDiscard = DiscardUnused());
+            }
+            private async Task DiscardUnused()
+            {
+                await Request("discard", "{\"requestId\":" + Quote(Id) + "}");
+                if (epoch != generation || session != SessionIdentity()) return;
+                await Persist();
+            }
             private async void DiscardReservation()
             {
-                if (prepared == null || checkoutAttempted || epoch != generation || session != SessionIdentity()) return;
-                try { await Request("discard", "{\"requestId\":" + Quote(Id) + "}"); await Persist(); }
+                try { await DiscardReservationAsync(); }
                 catch (Exception error) { Debug.LogWarning("Xsolla unused reservation cleanup: " + error.Message); }
             }
             internal void Finish(bool success, string error)
@@ -646,6 +677,14 @@ namespace Balancy
                 !string.IsNullOrEmpty(uri.UserInfo) || !uri.IsDefaultPort || uri.AbsolutePath != "/paystation4/" ||
                 !string.IsNullOrEmpty(uri.Fragment) || !System.Text.RegularExpressions.Regex.IsMatch(uri.Query, "(?:^\\?|&)token=[^&#]+"))
                 throw new InvalidOperationException("xsolla_invalid_checkout_url");
+        }
+        internal static DateTimeOffset QuoteExpiration(string value)
+        {
+            if (value == null || !System.Text.RegularExpressions.Regex.IsMatch(value, @"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,7})?Z$") ||
+                !DateTimeOffset.TryParse(value, System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal, out var expiry))
+                throw new InvalidOperationException("xsolla_quote_expiry_invalid");
+            return expiry;
         }
         internal static PaymentPresentation QuotePresentation(PriceQuote quote, Prepared prepared)
         {

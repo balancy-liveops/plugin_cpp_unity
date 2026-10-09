@@ -219,7 +219,7 @@ namespace Balancy.Tests
             Assert.That(descriptor.OfferUnnyId, Is.EqualTo("slot"));
         }
         [Serializable] private class ChoiceFixtureMessage { public string type, requestId, xsollaUnavailable; }
-        private sealed class ChoiceFixtureLease : IDisposable { public void Dispose() { } }
+        private sealed class ChoiceFixtureLease : IDisposable { private readonly Action closed; internal ChoiceFixtureLease(Action closed = null) { this.closed = closed; } public void Dispose() { closed?.Invoke(); } }
         [TestCase(true)]
         [TestCase(false)]
         public void MissingXsollaExportsKeepNativeAndCancelUsable(bool missingPrepare)
@@ -271,6 +271,53 @@ namespace Balancy.Tests
                 API.Xsolla.Configure(null);
                 for (int i = 0; i < names.Length; i++) Set(names[i], originals[i]);
             }
+        }
+        [TestCase(false)]
+        [TestCase(true)]
+        public void ExpiredChooserNeverAttemptsCheckoutAndDurablyDiscards(bool expiresDuringFlush)
+        {
+            var names = new[] { "Prepare", "SessionIdentity", "Present", "Send", "Request", "Persist", "UtcNow", "OpenCheckout", "BrowserPopup" };
+            var originals = new object[names.Length];
+            for (int i = 0; i < names.Length; i++) originals[i] = Adapter.GetField(names[i], BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
+            void Set(string name, object value) => Adapter.GetField(name, BindingFlags.Static | BindingFlags.NonPublic).SetValue(null, value);
+            var now = DateTimeOffset.Parse("2098-12-31T23:59:59Z");
+            int discarded = 0, flushed = 0, checkoutRequests = 0, opened = 0, callbacks = 0, nativeCalls = 0, disposals = 0;
+            bool expirationArmed = false; string id = null, failure = null;
+            try
+            {
+                Set("UtcNow", (Func<DateTimeOffset>)(() => now)); Set("BrowserPopup", false);
+                Set("Prepare", (Func<Actions.BalancyProductInfo, string>)(_ => "{\"eligible\":true,\"ruleId\":\"rule\",\"configVersion\":\"v1\",\"baseProductId\":\"sku\",\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"productId\":\"sku\",\"context\":{\"type\":\"StoreItem\",\"storeItemUnnyId\":\"doc\"}}"));
+                Set("SessionIdentity", (Func<string>)(() => "expiry-player"));
+                Set("Present", (Func<Action, Action<string>, IDisposable>)((ready, failed) => { ready(); return new ChoiceFixtureLease(() => { disposals++; failed("host closed during cleanup"); }); }));
+                Set("Send", (Action<string>)(json => {
+                    var message = UnityEngine.JsonUtility.FromJson<ChoiceFixtureMessage>(json);
+                    if (message.type != "paymentChoiceShow") return;
+                    id = message.requestId;
+                    Adapter.GetMethod("ReceivePresentationMessage", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null,
+                        new object[] { "{\"type\":\"paymentChoiceReady\",\"requestId\":\"" + id + "\"}" });
+                }));
+                Set("OpenCheckout", (Action<string>)(_ => opened++));
+                Set("Persist", (Func<System.Threading.Tasks.Task>)(() => { flushed++; if (expirationArmed) now = DateTimeOffset.Parse("2099-01-01T00:00:00Z"); return System.Threading.Tasks.Task.CompletedTask; }));
+                Set("Request", (Func<string, string, System.Threading.Tasks.Task<string>>)((action, body) => {
+                    if (action == "quote") return System.Threading.Tasks.Task.FromResult("{\"quote\":{\"quoteId\":\"00000000-0000-4000-8000-000000000099\",\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"productId\":\"sku\",\"requestedProductId\":\"sku\",\"ruleId\":\"rule\",\"configVersion\":\"v1\",\"priceUsd\":\"4.99\",\"currency\":\"USD\",\"expiresAt\":\"2099-01-01T00:00:00Z\",\"bonus\":[]}}");
+                    if (action == "discard") discarded++;
+                    if (action == "checkout") checkoutRequests++;
+                    return System.Threading.Tasks.Task.FromResult("{}");
+                }));
+                API.Xsolla.Configure(new XsollaOptions { Enabled = true, Country = "US", CanOfferAlternativePayment = () => true });
+                Adapter.GetMethod("TryIntercept", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null, new object[] {
+                    new Actions.BalancyProductInfo((Models.SmartObjects.StoreItem)null), (Action<bool, string>)((ok, error) => { Assert.That(ok, Is.False); callbacks++; failure = error; }), (Action)(() => nativeCalls++) });
+                Assert.That(id, Is.Not.Null); int initialFlushes = flushed;
+                expirationArmed = expiresDuringFlush;
+                if (!expiresDuringFlush) now = DateTimeOffset.Parse("2099-01-01T00:00:00Z");
+                Adapter.GetMethod("ReceivePresentationMessage", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null,
+                    new object[] { "{\"type\":\"paymentChoiceSelected\",\"requestId\":\"" + id + "\",\"choice\":\"xsolla\"}" });
+                Assert.That(checkoutRequests, Is.Zero); Assert.That(opened, Is.Zero); Assert.That(nativeCalls, Is.Zero);
+                Assert.That(disposals, Is.EqualTo(1)); Assert.That(discarded, Is.EqualTo(1)); Assert.That(flushed, Is.GreaterThan(initialFlushes));
+                Assert.That(callbacks, Is.EqualTo(1)); Assert.That(failure, Is.EqualTo("Offer expired; start the purchase again"));
+                Assert.That(Adapter.GetField("current", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null), Is.Null);
+            }
+            finally { API.Xsolla.Configure(null); for (int i = 0; i < names.Length; i++) Set(names[i], originals[i]); }
         }
         [TestCase("canceled")]
         [TestCase("reconciliation")]

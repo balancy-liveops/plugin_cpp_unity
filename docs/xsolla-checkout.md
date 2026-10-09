@@ -67,3 +67,5 @@ The shipped plugin artifacts are built from the matching core source. The automa
 
 
 The TypeScript Node adapter enables durable Xsolla payment snapshots on POSIX (macOS/Linux), syncing the file and directory entries before acknowledgement. Its Node Windows Xsolla path is unavailable because it cannot guarantee rename durability on power loss; ordinary cache usage still works. This Node adapter limitation does not disable native Unity payments on Windows.
+
+A chooser held open past the verified quote expiry cannot submit checkout. Unity rechecks expiry before the attempt and after its asynchronous storage flush, closes the unused popup, discards and flushes the reservation, and reports `Offer expired; start the purchase again`. Start a new purchase to obtain a fresh quote. Existing submitted orders and recovery continue using their frozen snapshot independently of quote expiry.

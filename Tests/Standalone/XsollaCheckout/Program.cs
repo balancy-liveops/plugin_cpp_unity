@@ -46,17 +46,18 @@ class Program {
  const string ValidAck="{\"acknowledged\":true,\"grantId\":\"grant\"}";
  static List<string> presentationStates = new();
  static XsollaPurchasing.PaymentPresentation shownPresentation;
- static string requestId, session, unavailableChoice; static Action<string> presentationFailed; static bool success; static List<string> actions = new();
- class Lease:IDisposable { public void Dispose() => leaseDisposed++; }
+ static string requestId, session, unavailableChoice, lastError; static Action<string> presentationFailed; static bool success; static List<string> actions = new();
+ class Lease:IDisposable { readonly Action closed; public Lease(Action closed=null){this.closed=closed;} public void Dispose(){leaseDisposed++;closed?.Invoke();} }
  static void Check(bool condition,string name) { if(!condition) throw new Exception(name); passed++; Console.WriteLine("PASS "+name); }
  static void Reset() {
-  XsollaPurchasing.Stop(); LastReportedProduct=null; LastPayment=null; Controller.IsReadyToUse=false; requestId = null; unavailableChoice=null; session="player-a"; Reports=callbackCount=nativeCount=leaseDisposed=ack=complete=opens=presentations=0; shownPresentation=null; success=false; actions.Clear(); presentationStates.Clear();
+  XsollaPurchasing.Stop(); LastReportedProduct=null; LastPayment=null; Controller.IsReadyToUse=false; requestId = null; unavailableChoice=null; lastError=null; session="player-a"; Reports=callbackCount=nativeCount=leaseDisposed=ack=complete=opens=presentations=0; shownPresentation=null; success=false; actions.Clear(); presentationStates.Clear();
   XsollaPurchasing.SessionIdentity=()=>session;
   XsollaPurchasing.Prepare=_=>"{\"eligible\":true,\"ruleId\":\"rule\",\"configVersion\":\"v1\",\"baseProductId\":\"sku\",\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"productId\":\"sku\",\"context\":{\"type\":\"StoreItem\",\"storeItemUnnyId\":\"doc\"}}";
   XsollaPurchasing.Present=(ready,failed)=>{ presentations++; presentationFailed=failed; ready(); return new Lease(); };
   XsollaPurchasing.Send=json=> { var msg=UnityEngine.JsonUtility.FromJson<XsollaPurchasing.PresentationMessage>(json); if(msg.type=="paymentChoiceUpdate")presentationStates.Add(msg.state); if(msg.type=="paymentChoiceShow") { requestId=msg.requestId; unavailableChoice=msg.xsollaUnavailable; shownPresentation=msg.presentation; XsollaPurchasing.ReceivePresentationMessage("{\"type\":\"paymentChoiceReady\",\"requestId\":\""+requestId+"\"}"); } };
   XsollaPurchasing.OpenCheckout=_=>opens++;
   XsollaPurchasing.Persist=()=>Task.CompletedTask;
+  XsollaPurchasing.UtcNow=()=>DateTimeOffset.UtcNow;
   XsollaPurchasing.BrowserPopup=false; XsollaPurchasing.BonusName=id=>id;
   XsollaPurchasing.Request=(action,body)=> {
    using(var envelope=JsonDocument.Parse(body)) {
@@ -73,7 +74,7 @@ class Program {
   XsollaPurchasing.Complete=id=>{ complete++; return Task.FromResult("{\"order\":{\"id\":\"order\",\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"requestedProductId\":\"sku\",\"productId\":\"sku\",\"state\":\"paid\"},\"grant\":{\"grantId\":\"grant\"},\"applied\":true,\"requiresPersistence\":true}"); };
   API.Xsolla.Configure(new XsollaOptions {Enabled=true,Country="US",CanOfferAlternativePayment=()=>true});
  }
- static void Start()=>XsollaPurchasing.TryIntercept(new Actions.BalancyProductInfo(null),(ok,error)=>{callbackCount++;success=ok;},()=>nativeCount++);
+ static void Start()=>XsollaPurchasing.TryIntercept(new Actions.BalancyProductInfo(null),(ok,error)=>{callbackCount++;success=ok;lastError=error;},()=>nativeCount++);
  static void Choice(string choice,string id=null)=>XsollaPurchasing.ReceivePresentationMessage("{\"type\":\"paymentChoiceSelected\",\"requestId\":\""+(id??requestId)+"\",\"choice\":\""+choice+"\"}");
  static async Task Wait()=> await Task.Delay(20);
  static XsollaPurchasing.Order FixtureOrder(string id,string state="paid",bool reconciled=false,bool acknowledged=false) => new() {
@@ -127,6 +128,17 @@ class Program {
   XsollaPurchasing.Request=(a,b)=>a=="quote"?quoteWait.Task:delayedQuoteRequest(a,b);Start();
   XsollaPurchasing.ReceivePresentationMessage("{\"type\":\"paymentChoiceReady\",\"requestId\":\"00000000-0000-4000-8000-000000000001\"}");Choice("xsolla","00000000-0000-4000-8000-000000000001");
   Check(presentations==0&&!actions.Contains("checkout")&&Reports==0,"pending quote cannot show bonus or accept pre-presentation selection");session="player-b";quoteWait.SetResult(PriceQuoteFixture(DefaultPriceQuote()));await Wait();Check(presentations==0&&callbackCount==1&&!success&&Reports==0,"late quote from replaced profile never opens selector or submits checkout");
+  foreach(var expirationPoint in new[]{"chooser","after-flush"}) {
+   Reset();var fixedNow=DateTimeOffset.Parse("2098-12-31T23:59:59Z");XsollaPurchasing.UtcNow=()=>fixedNow;
+   XsollaPurchasing.Present=(ready,failed)=>{presentations++;presentationFailed=failed;ready();return new Lease(()=>failed("host closed during cleanup"));};
+   int flush=0;XsollaPurchasing.Persist=()=>{flush++;return Task.CompletedTask;};
+   Start();var flushesBeforeExpiry=flush;
+   if(expirationPoint=="chooser")fixedNow=DateTimeOffset.Parse("2099-01-01T00:00:00Z");
+   else XsollaPurchasing.Persist=()=>{flush++;fixedNow=DateTimeOffset.Parse("2099-01-01T00:00:00Z");return Task.CompletedTask;};
+   Choice("xsolla");await Wait();
+   Check(!actions.Contains("checkout")&&opens==0&&complete==0&&Reports==0&&nativeCount==0,"expired quote "+expirationPoint+" never submits or silently buys native");
+   Check(actions.Count(a=>a=="discard")==1&&flush>flushesBeforeExpiry&&leaseDisposed==1&&callbackCount==1&&!success&&lastError=="Offer expired; start the purchase again","expired quote "+expirationPoint+" discards once, flushes, releases and reports clear failure");
+  }
   foreach(var prepareFault in new[]{"checkpoint","auth","invalid-contract"}) {
    Reset(); XsollaPurchasing.Prepare=_=>prepareFault=="invalid-contract"?"{}":throw new InvalidOperationException("xsolla_"+prepareFault+"_unavailable");
    Start(); Check(Guid.TryParse(requestId,out _)&&!string.IsNullOrEmpty(unavailableChoice)&&callbackCount==0&&actions.Count==0,"prepare "+prepareFault+" keeps native selector available without checkout IO");
@@ -302,7 +314,7 @@ class Program {
   bool overrideAckFail=true;
   XsollaPurchasing.Prepare=_=>UnityEngine.JsonUtility.ToJson(new XsollaPurchasing.Prepared {eligible=true,ruleId="rule",configVersion="v1",baseProductId="canonical-sku",requestId=overrideOrder.requestId,productId="override-sku",context=overrideOrder.context});
   XsollaPurchasing.Complete=id=>{complete++;return Task.FromResult(CompletionFixture(overrideOrder,complete==1));};
-  XsollaPurchasing.Request=(a,b)=>a=="quote"?Task.FromResult("{\"quote\":{\"quoteId\":\"00000000-0000-4000-8000-000000000099\",\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"ruleId\":\"rule\",\"configVersion\":\"v1\",\"productId\":\"canonical-sku\",\"requestedProductId\":\"override-sku\",\"priceUsd\":\"4.99\",\"currency\":\"USD\",\"bonus\":[]}}"):a=="ack"?(overrideAckFail?Task.FromException<string>(new Exception("ack failed")):Task.FromResult("{\"acknowledged\":true,\"grantId\":\"grant-override\"}")):a=="pending"?Task.FromResult(PendingFixture(overrideOrder)):Task.FromResult(OrderFixture(overrideOrder));
+  XsollaPurchasing.Request=(a,b)=>a=="quote"?Task.FromResult("{\"quote\":{\"quoteId\":\"00000000-0000-4000-8000-000000000099\",\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"ruleId\":\"rule\",\"configVersion\":\"v1\",\"productId\":\"canonical-sku\",\"requestedProductId\":\"override-sku\",\"priceUsd\":\"4.99\",\"currency\":\"USD\",\"expiresAt\":\"2099-01-01T00:00:00Z\",\"bonus\":[]}}"):a=="ack"?(overrideAckFail?Task.FromException<string>(new Exception("ack failed")):Task.FromResult("{\"acknowledged\":true,\"grantId\":\"grant-override\"}")):a=="pending"?Task.FromResult(PendingFixture(overrideOrder)):Task.FromResult(OrderFixture(overrideOrder));
   XsollaPurchasing.TryIntercept(originalProduct,(ok,e)=>{callbackCount++;success=ok;},()=>nativeCount++);Choice("xsolla");await Wait();Choice("cancel");
   Check(complete==1&&Reports==0,"live override descriptor remains pending after verified apply and failed ack");
   overrideAckFail=false;await API.Xsolla.RecoverPurchases();
