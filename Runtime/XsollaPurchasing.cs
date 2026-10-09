@@ -110,6 +110,11 @@ namespace Balancy
             LibraryMethods.API.balancyXsollaInstallPopupOpener(id);
 #endif
         };
+        internal static Action<string> CheckoutDispatched = id => {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            LibraryMethods.API.balancyXsollaCheckoutDispatched(id);
+#endif
+        };
         internal static Action<string> RemovePopup = id => {
 #if UNITY_WEBGL && !UNITY_EDITOR
             LibraryMethods.API.balancyXsollaRemovePopupOpener(id);
@@ -345,6 +350,7 @@ namespace Balancy
                     ? new PresentationUpdate { type = "paymentChoiceUpdate", requestId = Id, state = state, message = message }
                     : new PresentationCheckoutUpdate { type = "paymentChoiceUpdate", requestId = Id, state = state, message = message, checkoutUrl = checkoutUrl };
                 Send(JsonUtility.ToJson(payload));
+                if (checkoutUrl != null) CheckoutDispatched(Id); // Hand off only after the URL was sent successfully.
             }
             private async void Run()
             {

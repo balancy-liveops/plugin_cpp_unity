@@ -767,6 +767,8 @@ namespace Balancy
             internal static extern void balancyXsollaInstallPopupOpener(string requestId);
             [DllImport("__Internal", CallingConvention = CallingConvention.Cdecl)]
             internal static extern void balancyXsollaRemovePopupOpener(string requestId);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            internal static extern void balancyXsollaCheckoutDispatched(string requestId);
 #endif
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             internal static extern IntPtr balancyXsollaPreparePurchase(int kind, IntPtr owner, IntPtr storeItem);

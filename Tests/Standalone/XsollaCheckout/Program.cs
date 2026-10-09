@@ -58,6 +58,7 @@ class Program {
   XsollaPurchasing.OpenCheckout=_=>opens++;
   XsollaPurchasing.Persist=()=>Task.CompletedTask;
   XsollaPurchasing.UtcNow=()=>DateTimeOffset.UtcNow;
+  XsollaPurchasing.RemovePopup=_=>{};XsollaPurchasing.CheckoutDispatched=_=>{};
   XsollaPurchasing.BrowserPopup=false; XsollaPurchasing.BonusName=id=>id;
   XsollaPurchasing.Request=(action,body)=> {
    using(var envelope=JsonDocument.Parse(body)) {
@@ -130,15 +131,25 @@ class Program {
   Check(presentations==0&&!actions.Contains("checkout")&&Reports==0,"pending quote cannot show bonus or accept pre-presentation selection");session="player-b";quoteWait.SetResult(PriceQuoteFixture(DefaultPriceQuote()));await Wait();Check(presentations==0&&callbackCount==1&&!success&&Reports==0,"late quote from replaced profile never opens selector or submits checkout");
   foreach(var expirationPoint in new[]{"chooser","after-flush"}) {
    Reset();var fixedNow=DateTimeOffset.Parse("2098-12-31T23:59:59Z");XsollaPurchasing.UtcNow=()=>fixedNow;
-   XsollaPurchasing.Present=(ready,failed)=>{presentations++;presentationFailed=failed;ready();return new Lease(()=>failed("host closed during cleanup"));};
+   bool popupClosedBeforeLease=false,popupClosedWhenDisposed=false;XsollaPurchasing.RemovePopup=_=>{popupClosedBeforeLease=true;};
+   XsollaPurchasing.Present=(ready,failed)=>{presentations++;presentationFailed=failed;ready();return new Lease(()=>{popupClosedWhenDisposed=popupClosedBeforeLease;failed("host closed during cleanup");});};
    int flush=0;XsollaPurchasing.Persist=()=>{flush++;return Task.CompletedTask;};
    Start();var flushesBeforeExpiry=flush;
    if(expirationPoint=="chooser")fixedNow=DateTimeOffset.Parse("2099-01-01T00:00:00Z");
    else XsollaPurchasing.Persist=()=>{flush++;fixedNow=DateTimeOffset.Parse("2099-01-01T00:00:00Z");return Task.CompletedTask;};
    Choice("xsolla");await Wait();
    Check(!actions.Contains("checkout")&&opens==0&&complete==0&&Reports==0&&nativeCount==0,"expired quote "+expirationPoint+" never submits or silently buys native");
-   Check(actions.Count(a=>a=="discard")==1&&flush>flushesBeforeExpiry&&leaseDisposed==1&&callbackCount==1&&!success&&lastError=="Offer expired; start the purchase again","expired quote "+expirationPoint+" discards once, flushes, releases and reports clear failure");
+   Check(actions.Count(a=>a=="discard")==1&&flush>flushesBeforeExpiry&&leaseDisposed==1&&popupClosedWhenDisposed&&callbackCount==1&&!success&&lastError=="Offer expired; start the purchase again","expired quote "+expirationPoint+" discards once, flushes, releases and reports clear failure");
   }
+  Reset();XsollaPurchasing.BrowserPopup=true;int popupDispatches=0;XsollaPurchasing.CheckoutDispatched=_=>popupDispatches++;
+  Start();XsollaPurchasing.ReceivePresentationMessage("{\"type\":\"paymentChoiceSelected\",\"requestId\":\""+requestId+"\",\"choice\":\"xsolla\",\"popupOpened\":true}");await Wait();
+  Check(success&&popupDispatches==1,"verified checkout URL relinquishes WebGL blank-popup ownership before completion closes presentation");Choice("cancel");
+  Reset();XsollaPurchasing.BrowserPopup=true;int failedDispatches=0;bool failedPopupClosed=false;var realSend=XsollaPurchasing.Send;
+  XsollaPurchasing.CheckoutDispatched=_=>failedDispatches++;XsollaPurchasing.RemovePopup=_=>failedPopupClosed=true;
+  XsollaPurchasing.Send=json=>{var message=UnityEngine.JsonUtility.FromJson<XsollaPurchasing.PresentationMessage>(json);if(message.checkoutUrl!=null)throw new Exception("iframe transport failed");realSend(json);};
+  Start();XsollaPurchasing.ReceivePresentationMessage("{\"type\":\"paymentChoiceSelected\",\"requestId\":\""+requestId+"\",\"choice\":\"xsolla\",\"popupOpened\":true}");await Wait();
+  Check(failedDispatches==0&&complete==0&&!success,"failed checkout URL transport retains blank popup ownership");Choice("cancel");
+  Check(failedPopupClosed&&leaseDisposed==1,"cleanup synchronously closes unused popup after failed checkout URL transport");
   foreach(var prepareFault in new[]{"checkpoint","auth","invalid-contract"}) {
    Reset(); XsollaPurchasing.Prepare=_=>prepareFault=="invalid-contract"?"{}":throw new InvalidOperationException("xsolla_"+prepareFault+"_unavailable");
    Start(); Check(Guid.TryParse(requestId,out _)&&!string.IsNullOrEmpty(unavailableChoice)&&callbackCount==0&&actions.Count==0,"prepare "+prepareFault+" keeps native selector available without checkout IO");

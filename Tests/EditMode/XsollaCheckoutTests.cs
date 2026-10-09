@@ -274,21 +274,44 @@ namespace Balancy.Tests
         }
         [TestCase(false)]
         [TestCase(true)]
+        public void WebGlPopupOwnershipIsHandedOffOnlyAfterSuccessfulUrlSend(bool fails)
+        {
+            var sendField = Adapter.GetField("Send", BindingFlags.Static | BindingFlags.NonPublic);
+            var dispatchField = Adapter.GetField("CheckoutDispatched", BindingFlags.Static | BindingFlags.NonPublic);
+            var oldSend = sendField.GetValue(null); var oldDispatch = dispatchField.GetValue(null);
+            int handedOff = 0; bool sent = false;
+            try
+            {
+                sendField.SetValue(null, (Action<string>)(_ => { if (fails) throw new InvalidOperationException("iframe transport failed"); sent = true; }));
+                dispatchField.SetValue(null, (Action<string>)(_ => { Assert.That(sent, Is.True); handedOff++; }));
+                var purchaseType = Adapter.GetNestedType("Purchase", BindingFlags.NonPublic);
+                var purchase = Activator.CreateInstance(purchaseType, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+                    null, new object[] { new Actions.BalancyProductInfo((Models.SmartObjects.StoreItem)null), null, null, null, "native-only", null }, null);
+                var update = purchaseType.GetMethod("Update", BindingFlags.Instance | BindingFlags.NonPublic);
+                var arguments = new object[] { "pending", "Waiting for payment", "https://sandbox-secure.xsolla.com/paystation4/?token=fixture" };
+                if (fails) Assert.Throws<TargetInvocationException>(() => update.Invoke(purchase, arguments));
+                else update.Invoke(purchase, arguments);
+                Assert.That(handedOff, Is.EqualTo(fails ? 0 : 1));
+            }
+            finally { sendField.SetValue(null, oldSend); dispatchField.SetValue(null, oldDispatch); }
+        }
+        [TestCase(false)]
+        [TestCase(true)]
         public void ExpiredChooserNeverAttemptsCheckoutAndDurablyDiscards(bool expiresDuringFlush)
         {
-            var names = new[] { "Prepare", "SessionIdentity", "Present", "Send", "Request", "Persist", "UtcNow", "OpenCheckout", "BrowserPopup" };
+            var names = new[] { "Prepare", "SessionIdentity", "Present", "Send", "Request", "Persist", "UtcNow", "OpenCheckout", "BrowserPopup", "RemovePopup", "CheckoutDispatched" };
             var originals = new object[names.Length];
             for (int i = 0; i < names.Length; i++) originals[i] = Adapter.GetField(names[i], BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
             void Set(string name, object value) => Adapter.GetField(name, BindingFlags.Static | BindingFlags.NonPublic).SetValue(null, value);
             var now = DateTimeOffset.Parse("2098-12-31T23:59:59Z");
             int discarded = 0, flushed = 0, checkoutRequests = 0, opened = 0, callbacks = 0, nativeCalls = 0, disposals = 0;
-            bool expirationArmed = false; string id = null, failure = null;
+            bool expirationArmed = false, popupClosed = false, popupClosedWhenDisposed = false; string id = null, failure = null;
             try
             {
                 Set("UtcNow", (Func<DateTimeOffset>)(() => now)); Set("BrowserPopup", false);
                 Set("Prepare", (Func<Actions.BalancyProductInfo, string>)(_ => "{\"eligible\":true,\"ruleId\":\"rule\",\"configVersion\":\"v1\",\"baseProductId\":\"sku\",\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"productId\":\"sku\",\"context\":{\"type\":\"StoreItem\",\"storeItemUnnyId\":\"doc\"}}"));
                 Set("SessionIdentity", (Func<string>)(() => "expiry-player"));
-                Set("Present", (Func<Action, Action<string>, IDisposable>)((ready, failed) => { ready(); return new ChoiceFixtureLease(() => { disposals++; failed("host closed during cleanup"); }); }));
+                Set("Present", (Func<Action, Action<string>, IDisposable>)((ready, failed) => { ready(); return new ChoiceFixtureLease(() => { disposals++; popupClosedWhenDisposed = popupClosed; failed("host closed during cleanup"); }); }));
                 Set("Send", (Action<string>)(json => {
                     var message = UnityEngine.JsonUtility.FromJson<ChoiceFixtureMessage>(json);
                     if (message.type != "paymentChoiceShow") return;
@@ -297,6 +320,8 @@ namespace Balancy.Tests
                         new object[] { "{\"type\":\"paymentChoiceReady\",\"requestId\":\"" + id + "\"}" });
                 }));
                 Set("OpenCheckout", (Action<string>)(_ => opened++));
+                Set("RemovePopup", (Action<string>)(_ => popupClosed = true));
+                Set("CheckoutDispatched", (Action<string>)(_ => Assert.Fail("Expired quote cannot hand a popup to the provider")));
                 Set("Persist", (Func<System.Threading.Tasks.Task>)(() => { flushed++; if (expirationArmed) now = DateTimeOffset.Parse("2099-01-01T00:00:00Z"); return System.Threading.Tasks.Task.CompletedTask; }));
                 Set("Request", (Func<string, string, System.Threading.Tasks.Task<string>>)((action, body) => {
                     if (action == "quote") return System.Threading.Tasks.Task.FromResult("{\"quote\":{\"quoteId\":\"00000000-0000-4000-8000-000000000099\",\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"productId\":\"sku\",\"requestedProductId\":\"sku\",\"ruleId\":\"rule\",\"configVersion\":\"v1\",\"priceUsd\":\"4.99\",\"currency\":\"USD\",\"expiresAt\":\"2099-01-01T00:00:00Z\",\"bonus\":[]}}");
@@ -313,7 +338,7 @@ namespace Balancy.Tests
                 Adapter.GetMethod("ReceivePresentationMessage", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null,
                     new object[] { "{\"type\":\"paymentChoiceSelected\",\"requestId\":\"" + id + "\",\"choice\":\"xsolla\"}" });
                 Assert.That(checkoutRequests, Is.Zero); Assert.That(opened, Is.Zero); Assert.That(nativeCalls, Is.Zero);
-                Assert.That(disposals, Is.EqualTo(1)); Assert.That(discarded, Is.EqualTo(1)); Assert.That(flushed, Is.GreaterThan(initialFlushes));
+                Assert.That(popupClosedWhenDisposed, Is.True); Assert.That(disposals, Is.EqualTo(1)); Assert.That(discarded, Is.EqualTo(1)); Assert.That(flushed, Is.GreaterThan(initialFlushes));
                 Assert.That(callbacks, Is.EqualTo(1)); Assert.That(failure, Is.EqualTo("Offer expired; start the purchase again"));
                 Assert.That(Adapter.GetField("current", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null), Is.Null);
             }
