@@ -19,7 +19,13 @@ namespace UnityEngine {
 }
 namespace Balancy.Models.SmartObjects { public class Item { public StubLocalizedName Name; } public class StubLocalizedName { public string Value; } public class StoreItem { public IntPtr GetRawPointer() => IntPtr.Zero; } }
 namespace Balancy {
- public class Actions { public class BalancyProductInfo {
+ public class Actions {
+ public static class Purchasing {
+  public class HardProductInfo { public string LocalizedPriceString, IsoCurrencyCode; public float LocalizedPrice; }
+  public static Action<string,Action<HardProductInfo>> GetInfo = (sku,callback)=>callback(new HardProductInfo());
+  internal static Action<string,Action<HardProductInfo>> GetHardPurchaseInfoCallback()=>GetInfo;
+ }
+ public class BalancyProductInfo {
   public enum PurchaseType { StoreItem, Offer, OfferGroup, ShopSlot }
   public string ProductId, StoreItemUnnyId, OfferInstanceId, OfferUnnyId; public PurchaseType Type;
   public BalancyProductInfo(Models.SmartObjects.StoreItem _) {} public void ReportThePurchase(Core.PaymentInfo info) { Program.Reports++; Program.LastReportedProduct=this; Program.LastPayment=info; }
@@ -51,6 +57,7 @@ class Program {
  static void Check(bool condition,string name) { if(!condition) throw new Exception(name); passed++; Console.WriteLine("PASS "+name); }
  static void Reset() {
   XsollaPurchasing.Stop(); LastReportedProduct=null; LastPayment=null; Controller.IsReadyToUse=false; requestId = null; unavailableChoice=null; lastError=null; session="player-a"; Reports=callbackCount=nativeCount=leaseDisposed=ack=complete=opens=presentations=0; shownPresentation=null; success=false; actions.Clear(); presentationStates.Clear();
+  Actions.Purchasing.GetInfo=(sku,callback)=>callback(new Actions.Purchasing.HardProductInfo());
   XsollaPurchasing.SessionIdentity=()=>session;
   XsollaPurchasing.Prepare=_=>"{\"eligible\":true,\"ruleId\":\"rule\",\"configVersion\":\"v1\",\"baseProductId\":\"sku\",\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"productId\":\"sku\",\"context\":{\"type\":\"StoreItem\",\"storeItemUnnyId\":\"doc\"}}";
   XsollaPurchasing.Present=(ready,failed)=>{ presentations++; presentationFailed=failed; ready(); return new Lease(); };
@@ -76,7 +83,7 @@ class Program {
   XsollaPurchasing.Complete=id=>{ complete++; return Task.FromResult("{\"order\":{\"id\":\"order\",\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"requestedProductId\":\"sku\",\"productId\":\"sku\",\"state\":\"paid\"},\"grant\":{\"grantId\":\"grant\"},\"applied\":true,\"requiresPersistence\":true}"); };
   API.Xsolla.Configure(new XsollaOptions {Enabled=true,Country="US",CanOfferAlternativePayment=()=>true});
  }
- static void Start()=>XsollaPurchasing.TryIntercept(new Actions.BalancyProductInfo(null),(ok,error)=>{callbackCount++;success=ok;lastError=error;},()=>nativeCount++);
+ static void Start(string sku=null)=>XsollaPurchasing.TryIntercept(new Actions.BalancyProductInfo(null){ProductId=sku},(ok,error)=>{callbackCount++;success=ok;lastError=error;},()=>nativeCount++);
  static void Choice(string choice,string id=null)=>XsollaPurchasing.ReceivePresentationMessage("{\"type\":\"paymentChoiceSelected\",\"requestId\":\""+(id??requestId)+"\",\"choice\":\""+choice+"\"}");
  static async Task Wait()=> await Task.Delay(20);
  static XsollaPurchasing.Order FixtureOrder(string id,string state="paid",bool reconciled=false,bool acknowledged=false) => new() {
@@ -379,6 +386,14 @@ class Program {
   Reset(); XsollaPurchasing.Request=(a,b)=>Task.FromResult("{\"orders\":[],\"nextBefore\":\"unchanged\"}"); bool cursorBlocked=false;try{await API.Xsolla.RecoverPurchases();}catch(InvalidOperationException){cursorBlocked=true;} Check(cursorBlocked,"repeated recovery cursor cannot loop forever");
   Reset(); XsollaPurchasing.BrowserPopup=true; Start(); Choice("xsolla"); await Wait(); Check(opens==0&&complete==0&&!actions.Contains("checkout"),"blocked browser popup never creates an order");
   XsollaPurchasing.ReceivePresentationMessage("{\"type\":\"paymentChoiceRetry\",\"requestId\":\""+requestId+"\",\"popupOpened\":true}"); await Wait(); Check(success&&complete==1&&opens==0,"browser retry navigates reserved popup without native OpenURL");
+  Reset(); Actions.Purchasing.GetInfo=(sku,callback)=>callback(new Actions.Purchasing.HardProductInfo { LocalizedPrice=4.99f, IsoCurrencyCode="USD", LocalizedPriceString="$4.99" });
+  Start("sku"); await Wait(); Check(shownPresentation?.nativePrice?.amount=="4.99"&&shownPresentation.nativePrice.currency=="USD"&&shownPresentation.nativePrice.display=="$4.99","native metadata travels with the authoritative quote"); Choice("cancel");
+  Reset(); Actions.Purchasing.GetInfo=(sku,callback)=>throw new Exception("store unavailable"); Start("sku"); await Wait(); Check(shownPresentation?.price!=null&&shownPresentation.nativePrice==null&&unavailableChoice==null,"native price lookup failure does not disable quoted checkout"); Choice("cancel");
+  Reset(); Actions.Purchasing.GetInfo=(sku,callback)=>callback(new Actions.Purchasing.HardProductInfo { LocalizedPrice=float.NaN, IsoCurrencyCode="USD" });
+  Check(await XsollaPurchasing.NativePresentationPrice("sku")==null,"invalid native metadata cannot promise a price");
+  Reset(); Action<Actions.Purchasing.HardProductInfo> latePrice=null; Actions.Purchasing.GetInfo=(sku,callback)=>latePrice=callback;
+  var missingPrice=XsollaPurchasing.NativePresentationPrice("sku"); Check(await missingPrice==null,"unanswered native metadata hook is bounded");
+  latePrice(new Actions.Purchasing.HardProductInfo { LocalizedPrice=9.99f, IsoCurrencyCode="USD" }); Check(await missingPrice==null,"late native metadata cannot replace an already completed price lookup");
   XsollaPurchasing.Stop(); Console.WriteLine(passed+" adapter scenarios passed");
  }
 }

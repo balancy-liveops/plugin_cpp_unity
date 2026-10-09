@@ -48,9 +48,9 @@ namespace Balancy
             public string quoteId, requestId, productId, requestedProductId, ruleId, configVersion, priceUsd, currency, expiresAt;
             public BonusEntry[] bonus;
         }
-        [Serializable] internal class DisplayPrice { public string amount, currency; }
+        [Serializable] internal class DisplayPrice { public string amount, currency, display; }
         [Serializable] internal class DisplayBonus { public string name; public int count; }
-        [Serializable] internal class PaymentPresentation { public DisplayPrice price; public DisplayBonus[] bonus; }
+        [Serializable] internal class PaymentPresentation { public DisplayPrice price, nativePrice; public DisplayBonus[] bonus; }
         [Serializable] internal class Order
         {
             public string id, state, productId, requestedProductId, requestId, sku, grantId, checkoutUrl, errorCode;
@@ -273,6 +273,8 @@ namespace Balancy
                             QuoteExpiration(result.quote?.expiresAt); // Malformed TTL is not a usable offer.
                             prepared.expiresAt = result.quote.expiresAt;
                             presentation = QuotePresentation(result.quote, prepared);
+                            presentation.nativePrice = await NativePresentationPrice(product?.ProductId);
+                            Guard();
                             await Persist(); // The core's verified quote/bonus snapshot must also be durable.
                             Guard();
                         }
@@ -697,6 +699,31 @@ namespace Balancy
                     System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal, out var expiry))
                 throw new InvalidOperationException("xsolla_quote_expiry_invalid");
             return expiry;
+        }
+        /// <summary>Use the existing native store metadata hook, with a bounded optional lookup.</summary>
+        internal static async Task<DisplayPrice> NativePresentationPrice(string productId)
+        {
+            if (string.IsNullOrEmpty(productId)) return null;
+            var completion = new TaskCompletionSource<DisplayPrice>();
+            try
+            {
+                Actions.Purchasing.GetHardPurchaseInfoCallback()(productId, info =>
+                {
+                    if (info == null || float.IsNaN(info.LocalizedPrice) || float.IsInfinity(info.LocalizedPrice) || info.LocalizedPrice < 0 ||
+                        info.IsoCurrencyCode == null || !System.Text.RegularExpressions.Regex.IsMatch(info.IsoCurrencyCode, @"\A[A-Z]{3}\z"))
+                    { completion.TrySetResult(null); return; }
+                    var amount = info.LocalizedPrice.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture);
+                    if (amount.Length > 32) { completion.TrySetResult(null); return; }
+                    var display = info.LocalizedPriceString;
+                    completion.TrySetResult(new DisplayPrice { amount = amount, currency = info.IsoCurrencyCode,
+                        display = !string.IsNullOrWhiteSpace(display) && display.Length <= 128 ? display : null });
+                });
+            }
+            catch { completion.TrySetResult(null); }
+            if (completion.Task.IsCompleted) return await completion.Task;
+            if (await Task.WhenAny(completion.Task, Task.Delay(2000)) == completion.Task) return await completion.Task;
+            completion.TrySetResult(null); // Ignore late metadata and retain the current checkout presentation.
+            return null;
         }
         internal static PaymentPresentation QuotePresentation(PriceQuote quote, Prepared prepared)
         {
