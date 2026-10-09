@@ -10,14 +10,14 @@ namespace AOT { public class MonoPInvokeCallbackAttribute : Attribute { public M
 namespace UnityEngine {
  public enum RuntimePlatform { IPhonePlayer, Android, Other }
  public static class Application { public static RuntimePlatform platform; public static void OpenURL(string s) {} }
- public static class Debug { public static void LogException(Exception e) { } public static void LogWarning(string s) { } }
+ public static class Debug { public static void LogException(Exception e) { } public static void LogWarning(string s) { } public static void LogError(string s) { } }
  public static class JsonUtility {
   static readonly JsonSerializerOptions Options = new() { IncludeFields = true };
   public static T FromJson<T>(string json) => JsonSerializer.Deserialize<T>(json, Options);
   public static string ToJson(object obj) => JsonSerializer.Serialize(obj, Options);
  }
 }
-namespace Balancy.Models.SmartObjects { public class Item { public StubLocalizedName Name; } public class StubLocalizedName { public string Value; } public class StoreItem { public IntPtr GetRawPointer() => IntPtr.Zero; } }
+namespace Balancy.Models.SmartObjects { public class Item { public StubLocalizedName Name; } public class StubLocalizedName { public string Value; } public class StoreItem { public StubLocalizedName Name; public IntPtr GetRawPointer() => IntPtr.Zero; } }
 namespace Balancy {
  public class Actions {
  public static class Purchasing {
@@ -34,10 +34,10 @@ namespace Balancy {
  public class StubConfig { public Constants.BalancyPlatform BalancyPlatform; }
  public static class Controller { public static bool IsReadyToUse; public static StubConfig Config; public static event Action<bool,bool> OnDataUpdated; public static void NotifyProfileChanged()=>OnDataUpdated?.Invoke(false,true); public static void NotifyCmsChanged()=>OnDataUpdated?.Invoke(true,false); }
  public static class RenderViewsManager { public static IDisposable PresentPaymentChoice(Action ready,Action<string> failed) => null; public static void SendMessageToView(string msg) {} public static bool SendPaymentMessageToView(string msg) => false; }
- public static class CMS { public static T GetModelByUnnyId<T>(string id) where T:class => null; }
+ public static class CMS { public static T GetModelByUnnyId<T>(string id) where T:class => null; public static T[] GetActiveConditionalTemplates<T>() => Array.Empty<T>(); }
  public static class Profiles { public static StubProfile System = new(); }
  public class StubProfile { public StubProfile ShopsInfo => this; public StubProfile SmartInfo => this; public Models.SmartObjects.StoreItem FindShopSlot(string id) => null; public Models.SmartObjects.StoreItem FindOfferInfo(string id) => null; public Models.SmartObjects.StoreItem FindOfferGroupInfo(string id) => null; }
- public static class LibraryMethods { public static class API {
+ public static class LibraryMethods { public static class General { public static IntPtr balancyDataObjectCompileAllScripts() => IntPtr.Zero; } public static class API {
   public delegate void XsollaCallback(int id,bool success,string json);
   public static IntPtr balancyXsollaGetSessionIdentity() => IntPtr.Zero;
   public static IntPtr balancyXsollaPreparePurchase(int kind,IntPtr owner,IntPtr store) => IntPtr.Zero;
@@ -46,6 +46,9 @@ namespace Balancy {
   public static void balancyXsollaComplete(string orderId,int id,XsollaCallback callback) {}
  } }
 }
+namespace Balancy.Models.Payments { public class AlternativePaymentRule { public int Priority; public string UnnyId; public Balancy.Models.UnnyObject ChoiceView; } }
+namespace Balancy.Dictionaries { public static class DataObjectsManager { public static object GetObjectView(string id, Action<string> callback) => null; } }
+namespace Balancy.Models { public class UnnyObject { public enum ObjectType { View=16 } public ObjectType Type; public string Id; } }
 namespace Balancy.Core { public class PaymentInfo { public string ProductId,OrderId,Currency,Receipt; public float Price,PriceUSD; } }
 class Program {
  public static int Reports; public static Actions.BalancyProductInfo LastReportedProduct; public static Balancy.Core.PaymentInfo LastPayment; static int passed, callbackCount, nativeCount, leaseDisposed, ack, complete, opens, presentations;
@@ -56,6 +59,8 @@ class Program {
  class Lease:IDisposable { readonly Action closed; public Lease(Action closed=null){this.closed=closed;} public void Dispose(){leaseDisposed++;closed?.Invoke();} }
  static void Check(bool condition,string name) { if(!condition) throw new Exception(name); passed++; Console.WriteLine("PASS "+name); }
  static void Reset() {
+  XsollaPurchasing.ResolveChoiceViewId = _ => "fixture-view";
+  XsollaPurchasing.LoadChoiceView = _ => Task.FromResult(new XsollaPurchasing.PaymentView {Html="<div></div>", ScriptsCode=""});
   XsollaPurchasing.Stop(); LastReportedProduct=null; LastPayment=null; Controller.IsReadyToUse=false; requestId = null; unavailableChoice=null; lastError=null; session="player-a"; Reports=callbackCount=nativeCount=leaseDisposed=ack=complete=opens=presentations=0; shownPresentation=null; success=false; actions.Clear(); presentationStates.Clear();
   Actions.Purchasing.GetInfo=(sku,callback)=>callback(new Actions.Purchasing.HardProductInfo());
   XsollaPurchasing.SessionIdentity=()=>session;
@@ -108,6 +113,17 @@ class Program {
   XsollaPurchasing.Stop();return Reports+"|"+LastPayment.OrderId;
  }
  static async Task Main() {
+  Reset(); XsollaPurchasing.ResolveChoiceViewId = _ => null; Start(); await Wait();
+  Check(nativeCount==1 && callbackCount==0 && presentations==0 && !actions.Contains("checkout"),"missing configured View falls back to native without checkout");
+  Reset(); XsollaPurchasing.LoadChoiceView = _ => Task.FromException<XsollaPurchasing.PaymentView>(new Exception("deleted asset")); Start(); await Wait();
+  Check(nativeCount==1 && callbackCount==0 && presentations==0 && actions.Contains("discard"),"missing View asset discards reservation before native fallback");
+  Reset(); Start(); await Wait(); XsollaPurchasing.ReceivePresentationMessage("{\"type\":\"paymentChoiceUnavailable\",\"requestId\":\""+requestId+"\"}"); await Wait();
+  Check(nativeCount==1 && callbackCount==0 && !actions.Contains("checkout"),"missing component falls back to native once");
+  XsollaPurchasing.ReceivePresentationMessage("{\"type\":\"paymentChoiceUnavailable\",\"requestId\":\""+requestId+"\"}");
+  Check(nativeCount==1,"late unavailable message does not repeat native purchase");
+  Reset(); var pendingView = new TaskCompletionSource<XsollaPurchasing.PaymentView>(); XsollaPurchasing.LoadChoiceView = _ => pendingView.Task; Start(); XsollaPurchasing.Stop();
+  pendingView.SetResult(new XsollaPurchasing.PaymentView { Html="<div></div>",ScriptsCode="" }); await Wait();
+  Check(nativeCount==0 && presentations==0 && !actions.Contains("checkout"),"late View load cannot show UI after SDK stop");
   Reset(); API.Xsolla.Configure(null); Check(!XsollaPurchasing.TryIntercept(new Actions.BalancyProductInfo(null),null,null),"disabled preserves native flow");
   foreach(var policy in new[]{"missing","false","throwing"}) {
    Reset();int preparationCalls=0; XsollaPurchasing.Prepare=_=>{preparationCalls++;throw new Exception("must not prepare");};

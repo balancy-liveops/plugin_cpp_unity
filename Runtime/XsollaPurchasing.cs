@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using UnityEngine;
@@ -71,8 +73,9 @@ namespace Balancy
             public string nextBefore, error, grantId;
             public bool applied, requiresPersistence, acknowledged;
         }
+        internal sealed class PaymentView { public string Html, ScriptsCode; }
         [Serializable] private class PresentationShow
-        { public string type, requestId, title, nativeLabel; public bool browserPopup; }
+        { public string type, requestId, title, nativeLabel, viewHtml, scriptsCode; public bool browserPopup; }
         [Serializable] private class QuotedPresentationShow : PresentationShow
         { public PaymentPresentation presentation; }
         [Serializable] private class UnavailablePresentationShow : PresentationShow
@@ -87,6 +90,28 @@ namespace Balancy
             public bool browserPopup, popupOpened;
             public string checkoutUrl, xsollaUnavailable;
             public PaymentPresentation presentation;
+        }
+        // Resolve from the rule before any await; package asset IDs never appear in SDK code.
+        internal static Func<string, string> ResolveChoiceViewId = ruleId =>
+        {
+            var rule = string.IsNullOrEmpty(ruleId)
+                ? CMS.GetActiveConditionalTemplates<Models.Payments.AlternativePaymentRule>().OrderByDescending(x => x.Priority).ThenBy(x => x.UnnyId).FirstOrDefault()
+                : CMS.GetModelByUnnyId<Models.Payments.AlternativePaymentRule>(ruleId);
+            var view = rule?.ChoiceView;
+            return view?.Type == Models.UnnyObject.ObjectType.View ? view.Id : null;
+        };
+        internal static Func<string, Task<PaymentView>> LoadChoiceView = LoadChoiceViewAsset;
+        private static async Task<PaymentView> LoadChoiceViewAsset(string id)
+        {
+            var source = new TaskCompletionSource<string>();
+            Balancy.Dictionaries.DataObjectsManager.GetObjectView(id, path => source.TrySetResult(path));
+            if (await Task.WhenAny(source.Task, Task.Delay(15000)) != source.Task)
+                throw new InvalidOperationException("Payment View not found: asset preload timed out");
+            var file = await source.Task;
+            if (string.IsNullOrEmpty(file) || !File.Exists(file)) throw new InvalidOperationException("Payment View not found: asset content unavailable");
+            var html = File.ReadAllText(file);
+            if (string.IsNullOrWhiteSpace(html)) throw new InvalidOperationException("Payment View not found: empty asset");
+            return new PaymentView { Html = html, ScriptsCode = Copy(LibraryMethods.General.balancyDataObjectCompileAllScripts()) };
         }
         internal static Func<DateTimeOffset> UtcNow = () => DateTimeOffset.UtcNow;
         internal static Func<string> SessionIdentity = () => Copy(LibraryMethods.API.balancyXsollaGetSessionIdentity());
@@ -218,7 +243,10 @@ namespace Balancy
                     prepared = null;
                     unavailable = "Xsolla checkout is not available right now. You can continue with your regular payment method.";
                 }
-                var purchase = new Purchase(product, prepared, callback, native, unavailable, session);
+                string viewId;
+                try { viewId = ResolveChoiceViewId(prepared?.ruleId); }
+                catch (Exception error) { Debug.LogError("[Balancy] Payment View not found: " + error.Message); viewId = null; }
+                var purchase = new Purchase(product, prepared, callback, native, unavailable, session, viewId);
                 current = purchase;
                 purchase.Show();
             }
@@ -233,7 +261,7 @@ namespace Balancy
         {
             PresentationMessage message;
             try { message = JsonUtility.FromJson<PresentationMessage>(json); } catch { return false; }
-            if (message == null || (message.type != "paymentChoiceReady" && message.type != "paymentChoiceSelected" && message.type != "paymentChoiceRetry")) return false;
+            if (message == null || (message.type != "paymentChoiceReady" && message.type != "paymentChoiceSelected" && message.type != "paymentChoiceRetry" && message.type != "paymentChoiceUnavailable")) return false;
             if (current == null || message.requestId != current.Id) return true;
             current.Receive(message);
             return true;
@@ -245,6 +273,8 @@ namespace Balancy
             private readonly Prepared prepared;
             private string unavailable;
             private PaymentPresentation presentation;
+            private readonly string viewId;
+            private PaymentView paymentView;
             private readonly Action<bool, string> callback;
             private readonly Action native;
             private readonly string session;
@@ -254,13 +284,23 @@ namespace Balancy
             private bool finished, ready, started, busy, completed, callbackReported, presentationDismissed, quoteReady, presentationReleased;
             private string orderId;
             private bool checkoutAttempted;
-            internal Purchase(Actions.BalancyProductInfo product, Prepared prepared, Action<bool, string> callback, Action native, string unavailable, string session)
-            { Id = prepared?.requestId ?? Guid.NewGuid().ToString(); this.product = product; this.prepared = prepared; this.callback = callback; this.native = native; this.unavailable = unavailable; this.session = session; }
+            internal Purchase(Actions.BalancyProductInfo product, Prepared prepared, Action<bool, string> callback, Action native, string unavailable, string session, string viewId)
+            { this.viewId = viewId; Id = prepared?.requestId ?? Guid.NewGuid().ToString(); this.product = product; this.prepared = prepared; this.callback = callback; this.native = native; this.unavailable = unavailable; this.session = session; }
             private void Guard() { if (finished || epoch != generation || (prepared != null && session != SessionIdentity())) throw new OperationCanceledException("xsolla_session_changed"); }
             internal async void Show()
             {
                 try
                 {
+                    Guard();
+                    try
+                    {
+                        if (string.IsNullOrEmpty(viewId)) throw new InvalidOperationException("Payment View not found: configure choiceView on the payment rule");
+                        paymentView = await LoadChoiceView(viewId);
+                        Guard();
+                        if (string.IsNullOrWhiteSpace(paymentView?.Html)) throw new InvalidOperationException("Payment View not found: empty asset");
+                    }
+                    catch (OperationCanceledException) { throw; }
+                    catch (Exception error) { Guard(); FallbackNative(error.Message); return; }
                     if (prepared != null)
                     {
                         Guard();
@@ -304,12 +344,13 @@ namespace Balancy
                     {
                         Guard();
                         PresentationShow show = unavailable == null ? new QuotedPresentationShow { presentation = presentation } : new UnavailablePresentationShow { xsollaUnavailable = unavailable };
-                        show.type = "paymentChoiceShow"; show.requestId = Id; show.title = "Choose how to pay";
+                        show.type = "paymentChoiceShow"; show.requestId = Id; show.title = CMS.GetModelByUnnyId<Models.SmartObjects.StoreItem>(product.StoreItemUnnyId)?.Name?.Value ?? product.ProductId ?? "";
                         show.nativeLabel = NativeLabel(config); show.browserPopup = BrowserPopup;
+                        show.viewHtml = paymentView.Html; show.scriptsCode = paymentView.ScriptsCode;
                         Send(JsonUtility.ToJson(show));
                         await Task.Delay(200);
                     }
-                    if (!ready && !presentationDismissed) Finish(false, "xsolla_payment_view_timeout");
+                    if (!ready && !presentationDismissed) FallbackNative("Payment View not found: initialization timed out");
                 }
                 catch (OperationCanceledException) { Finish(false, "xsolla_session_changed"); }
                 catch (Exception error) { Finish(false, error.Message); }
@@ -318,6 +359,7 @@ namespace Balancy
             {
                 try { Guard(); } catch (OperationCanceledException) { Finish(false, "xsolla_session_changed"); return; }
                 if (!quoteReady) return;
+                if (message.type == "paymentChoiceUnavailable" && !started && !busy) { FallbackNative("Payment View not found or unavailable"); return; }
                 if (message.type == "paymentChoiceReady") { ready = true; return; }
                 if (completed)
                 {
@@ -442,10 +484,18 @@ namespace Balancy
                 Finish(false, message);
                 return true;
             }
+            private void FallbackNative(string error)
+            {
+                if (finished || started || busy || checkoutAttempted) return;
+                Debug.LogError("[Balancy] " + error + "; using the regular purchase flow");
+                Release(); finished = true; if (current == this) current = null;
+                DiscardReservation();
+                try { native(); } catch (Exception failure) { SafeCallback(callback, false, failure.Message); }
+            }
             private void PresentationFailed(string error)
             {
                 if (finished) return;
-                if (!started) { Finish(false, error); return; }
+                if (!started) { FallbackNative("Payment View unavailable: " + error); return; }
                 // A renderer closure is a presentation event, never a payment cancellation.
                 presentationDismissed = true;
                 Release();

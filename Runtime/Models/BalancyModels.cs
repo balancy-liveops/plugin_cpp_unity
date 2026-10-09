@@ -160,6 +160,7 @@ namespace Balancy.Models
         private string name;
         private ObjectType type;
         public string Id => id;
+        public ObjectType Type => type;
         public string Name => name;
 
         public override void InitData()
