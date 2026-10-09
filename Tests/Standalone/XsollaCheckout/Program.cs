@@ -27,7 +27,7 @@ namespace Balancy {
  public static class Constants { public enum BalancyPlatform { Undefined, IosAppStore, AndroidGooglePlay } }
  public class StubConfig { public Constants.BalancyPlatform BalancyPlatform; }
  public static class Controller { public static bool IsReadyToUse; public static StubConfig Config; public static event Action<bool,bool> OnDataUpdated; public static void NotifyProfileChanged()=>OnDataUpdated?.Invoke(false,true); public static void NotifyCmsChanged()=>OnDataUpdated?.Invoke(true,false); }
- public static class RenderViewsManager { public static IDisposable PresentPaymentChoice(Action ready,Action<string> failed) => null; public static void SendMessageToView(string msg) {} }
+ public static class RenderViewsManager { public static IDisposable PresentPaymentChoice(Action ready,Action<string> failed) => null; public static void SendMessageToView(string msg) {} public static bool SendPaymentMessageToView(string msg) => false; }
  public static class CMS { public static T GetModelByUnnyId<T>(string id) where T:class => null; }
  public static class Profiles { public static StubProfile System = new(); }
  public class StubProfile { public StubProfile ShopsInfo => this; public StubProfile SmartInfo => this; public Models.SmartObjects.StoreItem FindShopSlot(string id) => null; public Models.SmartObjects.StoreItem FindOfferInfo(string id) => null; public Models.SmartObjects.StoreItem FindOfferGroupInfo(string id) => null; }
@@ -55,6 +55,7 @@ class Program {
   XsollaPurchasing.Prepare=_=>"{\"eligible\":true,\"ruleId\":\"rule\",\"configVersion\":\"v1\",\"baseProductId\":\"sku\",\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"productId\":\"sku\",\"context\":{\"type\":\"StoreItem\",\"storeItemUnnyId\":\"doc\"}}";
   XsollaPurchasing.Present=(ready,failed)=>{ presentations++; presentationFailed=failed; ready(); return new Lease(); };
   XsollaPurchasing.Send=json=> { var msg=UnityEngine.JsonUtility.FromJson<XsollaPurchasing.PresentationMessage>(json); if(msg.type=="paymentChoiceUpdate")presentationStates.Add(msg.state); if(msg.type=="paymentChoiceShow") { requestId=msg.requestId; unavailableChoice=msg.xsollaUnavailable; shownPresentation=msg.presentation; XsollaPurchasing.ReceivePresentationMessage("{\"type\":\"paymentChoiceReady\",\"requestId\":\""+requestId+"\"}"); } };
+  XsollaPurchasing.SendPayment=json=>{XsollaPurchasing.Send(json);return true;};
   XsollaPurchasing.OpenCheckout=_=>opens++;
   XsollaPurchasing.Persist=()=>Task.CompletedTask;
   XsollaPurchasing.UtcNow=()=>DateTimeOffset.UtcNow;
@@ -150,6 +151,12 @@ class Program {
   Start();XsollaPurchasing.ReceivePresentationMessage("{\"type\":\"paymentChoiceSelected\",\"requestId\":\""+requestId+"\",\"choice\":\"xsolla\",\"popupOpened\":true}");await Wait();
   Check(failedDispatches==0&&complete==0&&!success,"failed checkout URL transport retains blank popup ownership");Choice("cancel");
   Check(failedPopupClosed&&leaseDisposed==1,"cleanup synchronously closes unused popup after failed checkout URL transport");
+  Reset();XsollaPurchasing.BrowserPopup=true;int falseDispatches=0;bool falsePopupClosed=false;
+  XsollaPurchasing.CheckoutDispatched=_=>falseDispatches++;XsollaPurchasing.RemovePopup=_=>falsePopupClosed=true;
+  XsollaPurchasing.SendPayment=_=>false;
+  Start();XsollaPurchasing.ReceivePresentationMessage("{\"type\":\"paymentChoiceSelected\",\"requestId\":\""+requestId+"\",\"choice\":\"xsolla\",\"popupOpened\":true}");await Wait();
+  Check(falseDispatches==0&&complete==0&&!success,"false checkout URL delivery retains blank popup ownership");Choice("cancel");
+  Check(falsePopupClosed&&leaseDisposed==1,"false delivery cleanup closes unused popup synchronously");
   foreach(var prepareFault in new[]{"checkpoint","auth","invalid-contract"}) {
    Reset(); XsollaPurchasing.Prepare=_=>prepareFault=="invalid-contract"?"{}":throw new InvalidOperationException("xsolla_"+prepareFault+"_unavailable");
    Start(); Check(Guid.TryParse(requestId,out _)&&!string.IsNullOrEmpty(unavailableChoice)&&callbackCount==0&&actions.Count==0,"prepare "+prepareFault+" keeps native selector available without checkout IO");

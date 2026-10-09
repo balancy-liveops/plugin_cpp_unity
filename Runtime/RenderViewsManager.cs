@@ -382,6 +382,12 @@ namespace Balancy
             _webView?.SendMessageToWebView(message);
         }
 
+        // Payment popup ownership requires a confirmed transport send.
+        internal static bool SendPaymentMessageToView(string message)
+        {
+            return _webView?.SendMessageToWebView(message) == true;
+        }
+
         private static bool UsePersistentWebViewForLocalViews()
         {
             return _webView != null && _webView.IsPersistentModeEnabled();

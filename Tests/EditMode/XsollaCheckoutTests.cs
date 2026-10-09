@@ -272,26 +272,38 @@ namespace Balancy.Tests
                 for (int i = 0; i < names.Length; i++) Set(names[i], originals[i]);
             }
         }
-        [TestCase(false)]
-        [TestCase(true)]
-        public void WebGlPopupOwnershipIsHandedOffOnlyAfterSuccessfulUrlSend(bool fails)
+        [Test] public void PaymentTransportReturnsFalseWhenNoWebViewIsAvailable()
         {
-            var sendField = Adapter.GetField("Send", BindingFlags.Static | BindingFlags.NonPublic);
+            var manager = typeof(API).Assembly.GetType("Balancy.RenderViewsManager", true);
+            var view = manager.GetField("_webView", BindingFlags.Static | BindingFlags.NonPublic); var original = view.GetValue(null);
+            try
+            {
+                view.SetValue(null, null);
+                Assert.That(manager.GetMethod("SendPaymentMessageToView", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null, new object[] { "{}" }), Is.False);
+            }
+            finally { view.SetValue(null, original); }
+        }
+        [TestCase("success")]
+        [TestCase("throw")]
+        [TestCase("false")]
+        public void WebGlPopupOwnershipIsHandedOffOnlyAfterSuccessfulUrlSend(string outcome)
+        {
+            var sendField = Adapter.GetField("SendPayment", BindingFlags.Static | BindingFlags.NonPublic);
             var dispatchField = Adapter.GetField("CheckoutDispatched", BindingFlags.Static | BindingFlags.NonPublic);
             var oldSend = sendField.GetValue(null); var oldDispatch = dispatchField.GetValue(null);
             int handedOff = 0; bool sent = false;
             try
             {
-                sendField.SetValue(null, (Action<string>)(_ => { if (fails) throw new InvalidOperationException("iframe transport failed"); sent = true; }));
+                sendField.SetValue(null, (Func<string, bool>)(_ => { if (outcome == "throw") throw new InvalidOperationException("iframe transport failed"); if (outcome == "false") return false; sent = true; return true; }));
                 dispatchField.SetValue(null, (Action<string>)(_ => { Assert.That(sent, Is.True); handedOff++; }));
                 var purchaseType = Adapter.GetNestedType("Purchase", BindingFlags.NonPublic);
                 var purchase = Activator.CreateInstance(purchaseType, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
                     null, new object[] { new Actions.BalancyProductInfo((Models.SmartObjects.StoreItem)null), null, null, null, "native-only", null }, null);
                 var update = purchaseType.GetMethod("Update", BindingFlags.Instance | BindingFlags.NonPublic);
                 var arguments = new object[] { "pending", "Waiting for payment", "https://sandbox-secure.xsolla.com/paystation4/?token=fixture" };
-                if (fails) Assert.Throws<TargetInvocationException>(() => update.Invoke(purchase, arguments));
+                if (outcome != "success") Assert.Throws<TargetInvocationException>(() => update.Invoke(purchase, arguments));
                 else update.Invoke(purchase, arguments);
-                Assert.That(handedOff, Is.EqualTo(fails ? 0 : 1));
+                Assert.That(handedOff, Is.EqualTo(outcome == "success" ? 1 : 0));
             }
             finally { sendField.SetValue(null, oldSend); dispatchField.SetValue(null, oldDispatch); }
         }

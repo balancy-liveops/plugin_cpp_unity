@@ -95,6 +95,7 @@ namespace Balancy
         internal static Func<string, Task<string>> Complete = CompleteNative;
         internal static Func<Action, Action<string>, IDisposable> Present = RenderViewsManager.PresentPaymentChoice;
         internal static Action<string> Send = RenderViewsManager.SendMessageToView;
+        internal static Func<string, bool> SendPayment = RenderViewsManager.SendPaymentMessageToView;
         internal static Action<string> OpenCheckout = Application.OpenURL;
         internal static Func<string, string> BonusName = id => CMS.GetModelByUnnyId<Models.SmartObjects.Item>(id)?.Name?.Value;
         // WebGL needs a real IDBFS sync barrier. Refuse to acknowledge without one.
@@ -349,8 +350,13 @@ namespace Balancy
                 object payload = checkoutUrl == null
                     ? new PresentationUpdate { type = "paymentChoiceUpdate", requestId = Id, state = state, message = message }
                     : new PresentationCheckoutUpdate { type = "paymentChoiceUpdate", requestId = Id, state = state, message = message, checkoutUrl = checkoutUrl };
-                Send(JsonUtility.ToJson(payload));
-                if (checkoutUrl != null) CheckoutDispatched(Id); // Hand off only after the URL was sent successfully.
+                var json = JsonUtility.ToJson(payload);
+                if (checkoutUrl == null) Send(json);
+                else
+                {
+                    if (!SendPayment(json)) throw new InvalidOperationException("xsolla_payment_view_unavailable");
+                    CheckoutDispatched(Id); // False delivery and exceptions both retain the blank popup.
+                }
             }
             private async void Run()
             {
