@@ -771,6 +771,8 @@ namespace Balancy
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             internal static extern IntPtr balancyXsollaPreparePurchase(int kind, IntPtr owner, IntPtr storeItem);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            internal static extern IntPtr balancyXsollaPreparePurchaseWithCapability(int kind, IntPtr owner, IntPtr storeItem, [MarshalAs(UnmanagedType.I1)] bool hostAllowed);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             internal static extern void balancyXsollaRequest(string action, string bodyJson, int callbackId, XsollaCallback callback);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             internal static extern void balancyXsollaComplete(string orderId, int callbackId, XsollaCallback callback);

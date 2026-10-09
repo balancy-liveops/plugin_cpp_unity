@@ -10,6 +10,8 @@ namespace Balancy
     public sealed class XsollaOptions
     {
         public bool Enabled;
+        /// <summary>Explicit host/storefront authorization. Missing or false uses the standard provider.</summary>
+        [NonSerialized] public Func<bool> CanOfferAlternativePayment;
         public string Country;
         public string Language = "en";
         public string NativeLabel;
@@ -34,7 +36,21 @@ namespace Balancy
         {
             public string type, storeItemUnnyId, offerInstanceId, offerUnnyId, slotUnnyId;
         }
-        [Serializable] internal class Prepared { public string productId, requestId; public Context context; }
+        [Serializable] internal class Prepared
+        {
+            public bool eligible;
+            public string reason, productId, baseProductId, requestId, ruleId, configVersion, priceUsd;
+            public Context context;
+        }
+        [Serializable] internal class BonusEntry { public string itemUnnyId; public int count; }
+        [Serializable] internal class PriceQuote
+        {
+            public string quoteId, requestId, productId, requestedProductId, ruleId, configVersion, priceUsd, currency, expiresAt;
+            public BonusEntry[] bonus;
+        }
+        [Serializable] internal class DisplayPrice { public string amount, currency; }
+        [Serializable] internal class DisplayBonus { public string name; public int count; }
+        [Serializable] internal class PaymentPresentation { public DisplayPrice price; public DisplayBonus[] bonus; }
         [Serializable] internal class Order
         {
             public string id, state, productId, requestedProductId, requestId, sku, grantId, checkoutUrl, errorCode;
@@ -51,11 +67,14 @@ namespace Balancy
             public Order order;
             public Order[] orders;
             public Grant grant;
+            public PriceQuote quote;
             public string nextBefore, error, grantId;
             public bool applied, requiresPersistence, acknowledged;
         }
         [Serializable] private class PresentationShow
         { public string type, requestId, title, nativeLabel; public bool browserPopup; }
+        [Serializable] private class QuotedPresentationShow : PresentationShow
+        { public PaymentPresentation presentation; }
         [Serializable] private class UnavailablePresentationShow : PresentationShow
         { public string xsollaUnavailable; }
         [Serializable] private class PresentationUpdate
@@ -67,6 +86,7 @@ namespace Balancy
             public string type, requestId, title, nativeLabel, state, message, choice;
             public bool browserPopup, popupOpened;
             public string checkoutUrl, xsollaUnavailable;
+            public PaymentPresentation presentation;
         }
         internal static Func<string> SessionIdentity = () => Copy(LibraryMethods.API.balancyXsollaGetSessionIdentity());
         internal static Func<Actions.BalancyProductInfo, string> Prepare = PrepareNative;
@@ -75,6 +95,7 @@ namespace Balancy
         internal static Func<Action, Action<string>, IDisposable> Present = RenderViewsManager.PresentPaymentChoice;
         internal static Action<string> Send = RenderViewsManager.SendMessageToView;
         internal static Action<string> OpenCheckout = Application.OpenURL;
+        internal static Func<string, string> BonusName = id => CMS.GetModelByUnnyId<Models.SmartObjects.Item>(id)?.Name?.Value;
         // WebGL needs a real IDBFS sync barrier. Refuse to acknowledge without one.
         internal static Func<Task> Persist = () => {
 #if UNITY_WEBGL && !UNITY_EDITOR
@@ -129,7 +150,7 @@ namespace Balancy
                 throw new ArgumentException("Xsolla Language must be a supported language code");
             if (value.NativeLabel != null && (string.IsNullOrWhiteSpace(value.NativeLabel) || value.NativeLabel.Length > 80))
                 throw new ArgumentException("Xsolla NativeLabel must contain between 1 and 80 characters");
-            options = new XsollaOptions { Enabled = true, Country = value.Country, Language = value.Language,
+            options = new XsollaOptions { Enabled = true, CanOfferAlternativePayment = value.CanOfferAlternativePayment, Country = value.Country, Language = value.Language,
                 NativeLabel = value.NativeLabel, PollIntervalMs = Math.Min(60000, Math.Max(250, value.PollIntervalMs)), TimeoutMs = Math.Min(3600000, Math.Max(1000, value.TimeoutMs)) };
             Start();
             if (Controller.IsReadyToUse) Resume();
@@ -166,6 +187,9 @@ namespace Balancy
         internal static bool TryIntercept(Actions.BalancyProductInfo product, Action<bool, string> callback, Action native)
         {
             if (options == null || !options.Enabled) return false;
+            // A country or browser host never proves payment-program authorization.
+            try { if (options.CanOfferAlternativePayment?.Invoke() != true) return false; }
+            catch (Exception error) { Debug.LogWarning("Xsolla host capability: " + error.Message); return false; }
             if (current != null) { SafeCallback(callback, false, "xsolla_purchase_in_progress"); return true; }
             try
             {
@@ -175,7 +199,8 @@ namespace Balancy
                 {
                     if (nativeExportsUnavailable) throw new InvalidOperationException("xsolla_native_api_unavailable");
                     prepared = JsonUtility.FromJson<Prepared>(Prepare(product));
-                    if (prepared == null || string.IsNullOrEmpty(prepared.productId) || !Guid.TryParse(prepared.requestId, out _) || prepared.context == null)
+                    if (prepared != null && !prepared.eligible && !string.IsNullOrEmpty(prepared.reason)) return false;
+                    if (prepared == null || !prepared.eligible || string.IsNullOrEmpty(prepared.ruleId) || string.IsNullOrEmpty(prepared.configVersion) || string.IsNullOrEmpty(prepared.productId) || !Guid.TryParse(prepared.requestId, out _) || prepared.context == null)
                         throw new InvalidOperationException("xsolla_purchase_context_unavailable");
                     session = SessionIdentity();
                     if (string.IsNullOrEmpty(session)) throw new InvalidOperationException("xsolla_session_unavailable");
@@ -211,24 +236,54 @@ namespace Balancy
             internal readonly string Id;
             private readonly Actions.BalancyProductInfo product;
             private readonly Prepared prepared;
-            private readonly string unavailable;
+            private string unavailable;
+            private PaymentPresentation presentation;
             private readonly Action<bool, string> callback;
             private readonly Action native;
             private readonly string session;
             private readonly int epoch = generation;
             private readonly XsollaOptions config = options;
             private IDisposable lease;
-            private bool finished, ready, started, busy, completed, callbackReported, presentationDismissed;
+            private bool finished, ready, started, busy, completed, callbackReported, presentationDismissed, quoteReady;
             private string orderId;
             private bool checkoutAttempted;
             internal Purchase(Actions.BalancyProductInfo product, Prepared prepared, Action<bool, string> callback, Action native, string unavailable, string session)
             { Id = prepared?.requestId ?? Guid.NewGuid().ToString(); this.product = product; this.prepared = prepared; this.callback = callback; this.native = native; this.unavailable = unavailable; this.session = session; }
-            private void Guard() { if (finished || epoch != generation || (unavailable == null && session != SessionIdentity())) throw new OperationCanceledException("xsolla_session_changed"); }
-            internal void Show()
+            private void Guard() { if (finished || epoch != generation || (prepared != null && session != SessionIdentity())) throw new OperationCanceledException("xsolla_session_changed"); }
+            internal async void Show()
             {
-                InstallPopup(Id);
-                var acquired = Present(() => ShowWhenReady(), PresentationFailed);
-                if (finished) acquired?.Dispose(); else lease = acquired;
+                try
+                {
+                    if (prepared != null)
+                    {
+                        Guard();
+                        try
+                        {
+                            await Persist(); // Durable reservation before requesting the authoritative quote.
+                            Guard();
+                            var result = Parse(await Request("quote", "{\"requestId\":" + Quote(Id) + ",\"country\":" + Quote(config.Country) + ",\"language\":" + Quote(config.Language) + "}"));
+                            Guard();
+                            presentation = QuotePresentation(result.quote, prepared);
+                            await Persist(); // The core's verified quote/bonus snapshot must also be durable.
+                            Guard();
+                        }
+                        catch (OperationCanceledException) { throw; }
+                        catch (Exception error)
+                        {
+                            Guard();
+                            presentation = null;
+                            unavailable = "Xsolla checkout is not available right now. You can continue with your regular payment method.";
+                            Debug.LogWarning("Xsolla quote: " + error.Message);
+                        }
+                    }
+                    Guard();
+                    quoteReady = true;
+                    InstallPopup(Id);
+                    var acquired = Present(() => ShowWhenReady(), PresentationFailed);
+                    if (finished) acquired?.Dispose(); else lease = acquired;
+                }
+                catch (OperationCanceledException) { Finish(false, "xsolla_session_changed"); }
+                catch (Exception error) { Finish(false, error.Message); }
             }
             private async void ShowWhenReady()
             {
@@ -237,7 +292,7 @@ namespace Balancy
                     for (int i = 0; i < 50 && !ready && !presentationDismissed; i++)
                     {
                         Guard();
-                        PresentationShow show = unavailable == null ? new PresentationShow() : new UnavailablePresentationShow { xsollaUnavailable = unavailable };
+                        PresentationShow show = unavailable == null ? new QuotedPresentationShow { presentation = presentation } : new UnavailablePresentationShow { xsollaUnavailable = unavailable };
                         show.type = "paymentChoiceShow"; show.requestId = Id; show.title = "Choose how to pay";
                         show.nativeLabel = NativeLabel(config); show.browserPopup = BrowserPopup;
                         Send(JsonUtility.ToJson(show));
@@ -251,6 +306,7 @@ namespace Balancy
             internal void Receive(PresentationMessage message)
             {
                 try { Guard(); } catch (OperationCanceledException) { Finish(false, "xsolla_session_changed"); return; }
+                if (!quoteReady) return;
                 if (message.type == "paymentChoiceReady") { ready = true; return; }
                 if (completed)
                 {
@@ -300,8 +356,7 @@ namespace Balancy
                         await Persist(); // The reservation and reward snapshot must survive closing the app.
                         Guard();
                         checkoutAttempted = true;
-                        var response = await Request("checkout", "{\"requestId\":" + Quote(Id) + ",\"productId\":" + Quote(prepared.productId) +
-                            ",\"country\":" + Quote(config.Country) + ",\"language\":" + Quote(config.Language) + ",\"context\":" + ContextJson(prepared.context) + "}");
+                        var response = await Request("checkout", "{\"requestId\":" + Quote(Id) + ",\"country\":" + Quote(config.Country) + ",\"language\":" + Quote(config.Language) + "}");
                         Guard();
                         var created = Parse(response);
                         ValidateOrder(created.order, null, prepared);
@@ -592,6 +647,27 @@ namespace Balancy
                 !string.IsNullOrEmpty(uri.Fragment) || !System.Text.RegularExpressions.Regex.IsMatch(uri.Query, "(?:^\\?|&)token=[^&#]+"))
                 throw new InvalidOperationException("xsolla_invalid_checkout_url");
         }
+        internal static PaymentPresentation QuotePresentation(PriceQuote quote, Prepared prepared)
+        {
+            if (quote == null || !Guid.TryParse(quote.quoteId, out _) || quote.requestId != prepared.requestId ||
+                quote.ruleId != prepared.ruleId || quote.configVersion != prepared.configVersion || quote.productId != prepared.baseProductId ||
+                quote.requestedProductId != prepared.productId ||
+                quote.currency != "USD" || quote.priceUsd == null || quote.priceUsd.Length > 32 ||
+                !System.Text.RegularExpressions.Regex.IsMatch(quote.priceUsd, @"\A[0-9]+(?:\.[0-9]+)?\z") ||
+                (quote.bonus?.Length ?? 0) > 64)
+                throw new InvalidOperationException("xsolla_invalid_quote");
+            var bonuses = new List<DisplayBonus>();
+            foreach (var bonus in quote.bonus ?? Array.Empty<BonusEntry>())
+            {
+                if (bonus == null || string.IsNullOrEmpty(bonus.itemUnnyId) || bonus.count <= 0)
+                    throw new InvalidOperationException("xsolla_invalid_quote_bonus");
+                var name = BonusName(bonus.itemUnnyId);
+                if (string.IsNullOrWhiteSpace(name)) name = bonus.itemUnnyId;
+                if (name.Length > 128) name = name.Substring(0, 128);
+                bonuses.Add(new DisplayBonus { name = name, count = bonus.count });
+            }
+            return new PaymentPresentation { price = new DisplayPrice { amount = quote.priceUsd, currency = quote.currency }, bonus = bonuses.ToArray() };
+        }
         private static string NativeLabel(XsollaOptions config)
         {
             if (!string.IsNullOrEmpty(config.NativeLabel)) return config.NativeLabel;
@@ -625,7 +701,7 @@ namespace Balancy
                 case Actions.BalancyProductInfo.PurchaseType.OfferGroup: kind = 3; owner = Profiles.System.SmartInfo.FindOfferGroupInfo(product.OfferInstanceId)?.GetRawPointer() ?? IntPtr.Zero; break;
                 default: throw new InvalidOperationException("xsolla_unsupported_context");
             }
-            return Copy(LibraryMethods.API.balancyXsollaPreparePurchase(kind, owner, store));
+            return Copy(LibraryMethods.API.balancyXsollaPreparePurchaseWithCapability(kind, owner, store, true));
         }
         private static string Copy(IntPtr ptr) => ptr == IntPtr.Zero ? "" : Marshal.PtrToStringAnsi(ptr) ?? "";
         private static Task<string> RequestNative(string action, string json) => Dispatch(id => LibraryMethods.API.balancyXsollaRequest(action, json, id, nativeCallback));

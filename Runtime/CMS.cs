@@ -324,6 +324,10 @@ namespace Balancy
         {
             switch (templateName)
             {
+                case "Payments.AlternativePaymentRule": return OnTypeRequested?.Invoke(templateName) ?? new Balancy.Models.Payments.AlternativePaymentRule();
+                case "Payments.PurchaseBonus": return OnTypeRequested?.Invoke(templateName) ?? new Balancy.Models.Payments.PurchaseBonus();
+                case "Payments.PurchaseBonusFixedReward": return OnTypeRequested?.Invoke(templateName) ?? new Balancy.Models.Payments.PurchaseBonusFixedReward();
+                case "Payments.PurchaseBonusPerSpend": return OnTypeRequested?.Invoke(templateName) ?? new Balancy.Models.Payments.PurchaseBonusPerSpend();
                 case "Core.Language": return new Balancy.Models.Core.Language();
                 case "SmartObjects.Analytics.ABTest": return new ABTest();
                 case "SmartObjects.Analytics.ABTestVariant": return new ABTestVariant();

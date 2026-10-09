@@ -13,8 +13,8 @@ namespace Balancy.Tests
         {
             Assert.Throws<ArgumentException>(() => API.Xsolla.Configure(new XsollaOptions { Enabled = true }));
             Assert.Throws<ArgumentException>(() => API.Xsolla.Configure(new XsollaOptions { Enabled = true, Country = "us" }));
-            Assert.Throws<ArgumentException>(() => API.Xsolla.Configure(new XsollaOptions { Enabled = true, Country = "US", Language = "arbitrary" }));
-            Assert.Throws<ArgumentException>(() => API.Xsolla.Configure(new XsollaOptions { Enabled = true, Country = "US", NativeLabel = new string('x', 81) }));
+            Assert.Throws<ArgumentException>(() => API.Xsolla.Configure(new XsollaOptions { Enabled = true, Country = "US", CanOfferAlternativePayment = () => true, Language = "arbitrary" }));
+            Assert.Throws<ArgumentException>(() => API.Xsolla.Configure(new XsollaOptions { Enabled = true, Country = "US", CanOfferAlternativePayment = () => true, NativeLabel = new string('x', 81) }));
         }
         [Test] public void DisabledIntegrationDoesNotCallNewNativeExports()
         {
@@ -22,6 +22,113 @@ namespace Balancy.Tests
             Assert.That(API.Xsolla.RecoverPurchases().IsCompleted, Is.True);
             var intercept = Adapter.GetMethod("TryIntercept", BindingFlags.Static | BindingFlags.NonPublic);
             Assert.That(intercept.Invoke(null, new object[] { new Actions.BalancyProductInfo((Models.SmartObjects.StoreItem)null), null, null }), Is.False);
+        }
+        [TestCase("Payments.AlternativePaymentRule", typeof(Models.Payments.AlternativePaymentRule))]
+        [TestCase("Payments.PurchaseBonus", typeof(Models.Payments.PurchaseBonus))]
+        [TestCase("Payments.PurchaseBonusFixedReward", typeof(Models.Payments.PurchaseBonusFixedReward))]
+        [TestCase("Payments.PurchaseBonusPerSpend", typeof(Models.Payments.PurchaseBonusPerSpend))]
+        public void PaymentModelsAreRegisteredByCanonicalTemplateName(string name, Type expected)
+        {
+            var original = CMS.OnTypeRequested;
+            try
+            {
+                CMS.OnTypeRequested = null;
+                var instance = typeof(CMS).GetMethod("InstantiateByType", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null, new object[] { name });
+                Assert.That(instance, Is.TypeOf(expected));
+                Assert.That(typeof(Models.JsonBasedObject).GetMethod("GetModelClassName").MakeGenericMethod(expected).Invoke(null, null), Is.EqualTo(name));
+            }
+            finally { CMS.OnTypeRequested = original; }
+        }
+        [Test] public void AlternativeRuleUsesInheritedConditionAndPriorityAndPolymorphicBonus()
+        {
+            var rule = typeof(Models.Payments.AlternativePaymentRule);
+            Assert.That(rule.BaseType, Is.EqualTo(typeof(Models.SmartObjects.ConditionalTemplate)));
+            Assert.That(rule.GetProperty("Condition").DeclaringType, Is.EqualTo(rule.BaseType));
+            Assert.That(rule.GetProperty("Priority").DeclaringType, Is.EqualTo(rule.BaseType));
+            Assert.That(rule.GetProperty("IncludedProducts").PropertyType, Is.EqualTo(typeof(Models.UnnyProduct[])));
+            Assert.That(rule.GetProperty("Bonus").PropertyType, Is.EqualTo(typeof(Models.Payments.PurchaseBonus)));
+            Assert.That(rule.GetProperty("ChoiceView").PropertyType, Is.EqualTo(typeof(Models.UnnyObject)));
+            Assert.That(rule.GetProperty("Enabled"), Is.Null); Assert.That(rule.GetProperty("Platforms"), Is.Null);
+            Assert.That((int)Models.Payments.AlternativePaymentProvider.Xsolla, Is.EqualTo(50));
+            Assert.That((int)Models.Payments.AlternativeProductSelection.IncludeOnly, Is.EqualTo(1));
+        }
+        [TestCase(Actions.BalancyProductInfo.PurchaseType.StoreItem, false)]
+        [TestCase(Actions.BalancyProductInfo.PurchaseType.ShopSlot, false)]
+        [TestCase(Actions.BalancyProductInfo.PurchaseType.Offer, false)]
+        [TestCase(Actions.BalancyProductInfo.PurchaseType.OfferGroup, false)]
+        [TestCase(Actions.BalancyProductInfo.PurchaseType.StoreItem, true)]
+        [TestCase(Actions.BalancyProductInfo.PurchaseType.ShopSlot, true)]
+        [TestCase(Actions.BalancyProductInfo.PurchaseType.Offer, true)]
+        [TestCase(Actions.BalancyProductInfo.PurchaseType.OfferGroup, true)]
+        public void EveryHardPurchaseKindPreservesNativeWhenHostOrCurrentRuleUnavailable(Actions.BalancyProductInfo.PurchaseType kind, bool hostAllowed)
+        {
+            var prepareField = Adapter.GetField("Prepare", BindingFlags.Static | BindingFlags.NonPublic);
+            var previousPrepare = prepareField.GetValue(null);
+            var providerField = typeof(Actions.Purchasing).GetField("_hardPurchaseCallback", BindingFlags.Static | BindingFlags.NonPublic);
+            var previousProvider = (Actions.Purchasing.HardPurchaseCallback)providerField.GetValue(null);
+            int preparations = 0, providerCalls = 0, callbacks = 0;
+            try
+            {
+                prepareField.SetValue(null, (Func<Actions.BalancyProductInfo, string>)(_ => { preparations++; return "{\"eligible\":false,\"reason\":\"no_rule\"}"; }));
+                API.Xsolla.Configure(new XsollaOptions { Enabled = true, Country = "US", CanOfferAlternativePayment = hostAllowed ? () => true : (Func<bool>)null });
+                Actions.Purchasing.SetHardPurchaseCallback(_ => providerCalls++);
+                var product = new Actions.BalancyProductInfo((Models.SmartObjects.StoreItem)null) { Type = kind };
+                typeof(API).GetMethod("HardPurchase", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null,
+                    new object[] { product, (Action<bool, string>)((ok, error) => callbacks++) });
+                Assert.That(providerCalls, Is.EqualTo(1)); Assert.That(callbacks, Is.Zero);
+                Assert.That(preparations, Is.EqualTo(hostAllowed ? 1 : 0));
+                Assert.That(Adapter.GetField("current", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null), Is.Null);
+            }
+            finally
+            {
+                API.Xsolla.Configure(null);
+                typeof(API).GetMethod("CleanUpPendingPurchaseCallbacks", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null, null);
+                Actions.Purchasing.SetHardPurchaseCallback(previousProvider); prepareField.SetValue(null, previousPrepare);
+            }
+        }
+        [TestCase("request")]
+        [TestCase("requested")]
+        [TestCase("canonical")]
+        [TestCase("rule")]
+        [TestCase("version")]
+        [TestCase("price")]
+        [TestCase("currency")]
+        [TestCase("count")]
+        public void QuotePresentationRejectsUncorrelatedOrInvalidAuthoritativeData(string invalid)
+        {
+            var preparedType = Adapter.GetNestedType("Prepared", BindingFlags.NonPublic);
+            var quoteType = Adapter.GetNestedType("PriceQuote", BindingFlags.NonPublic);
+            var prepared = UnityEngine.JsonUtility.FromJson("{\"eligible\":true,\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"productId\":\"requested\",\"baseProductId\":\"canonical\",\"ruleId\":\"rule\",\"configVersion\":\"v1\"}", preparedType);
+            var quote = UnityEngine.JsonUtility.FromJson("{\"quoteId\":\"00000000-0000-4000-8000-000000000099\",\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"productId\":\"canonical\",\"requestedProductId\":\"requested\",\"ruleId\":\"rule\",\"configVersion\":\"v1\",\"priceUsd\":\"4.99\",\"currency\":\"USD\",\"bonus\":[{\"itemUnnyId\":\"booster\",\"count\":1}]}", quoteType);
+            var nameField = Adapter.GetField("BonusName", BindingFlags.Static | BindingFlags.NonPublic); var originalName = nameField.GetValue(null);
+            try
+            {
+                nameField.SetValue(null, (Func<string, string>)(_ => "Localized booster"));
+                var method = Adapter.GetMethod("QuotePresentation", BindingFlags.Static | BindingFlags.NonPublic);
+                var presentation = method.Invoke(null, new[] { quote, prepared });
+                var price = presentation.GetType().GetField("price").GetValue(presentation);
+                Assert.That(price.GetType().GetField("amount").GetValue(price), Is.EqualTo("4.99"));
+                var bonus = (Array)presentation.GetType().GetField("bonus").GetValue(presentation);
+                Assert.That(bonus.GetValue(0).GetType().GetField("name").GetValue(bonus.GetValue(0)), Is.EqualTo("Localized booster"));
+                if (invalid == "count")
+                {
+                    var entries = (Array)quoteType.GetField("bonus").GetValue(quote);
+                    entries.GetValue(0).GetType().GetField("count").SetValue(entries.GetValue(0), 0);
+                }
+                else
+                {
+                    var field = invalid == "request" ? "requestId" : invalid == "requested" ? "requestedProductId" : invalid == "canonical" ? "productId" : invalid == "rule" ? "ruleId" : invalid == "version" ? "configVersion" : invalid == "price" ? "priceUsd" : "currency";
+                    quoteType.GetField(field).SetValue(quote, invalid == "price" ? "NaN" : "wrong");
+                }
+                Assert.Throws<TargetInvocationException>(() => method.Invoke(null, new[] { quote, prepared }));
+            }
+            finally { nameField.SetValue(null, originalName); }
+        }
+        [Test] public void CapabilityApiUsesOneByteNativeBoolean()
+        {
+            var native = typeof(API).Assembly.GetType("Balancy.LibraryMethods+API", true).GetMethod("balancyXsollaPreparePurchaseWithCapability", BindingFlags.Static | BindingFlags.NonPublic);
+            Assert.That(native.GetParameters()[3].GetCustomAttribute<System.Runtime.InteropServices.MarshalAsAttribute>().Value,
+                Is.EqualTo(System.Runtime.InteropServices.UnmanagedType.I1));
         }
         [TestCase("http://sandbox-secure.xsolla.com/paystation4/?token=fixture")]
         [TestCase("http://secure.xsolla.com/paystation4/?token=fixture")]
@@ -130,7 +237,7 @@ namespace Balancy.Tests
             try
             {
                 Set("Prepare", (Func<Actions.BalancyProductInfo, string>)(_ => missingPrepare ? throw new EntryPointNotFoundException("prepare") :
-                    "{\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"productId\":\"sku\",\"context\":{\"type\":\"StoreItem\",\"storeItemUnnyId\":\"doc\"}}"));
+                    "{\"eligible\":true,\"ruleId\":\"rule\",\"configVersion\":\"v1\",\"baseProductId\":\"sku\",\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"productId\":\"sku\",\"context\":{\"type\":\"StoreItem\",\"storeItemUnnyId\":\"doc\"}}"));
                 Set("SessionIdentity", (Func<string>)(() => { identityCalls++; throw new EntryPointNotFoundException("identity"); }));
                 Set("Present", (Func<Action, Action<string>, IDisposable>)((ready, failed) => { ready(); return new ChoiceFixtureLease(); }));
                 Set("Send", (Action<string>)(json => {
@@ -140,7 +247,7 @@ namespace Balancy.Tests
                     Adapter.GetMethod("ReceivePresentationMessage", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null,
                         new object[] { "{\"type\":\"paymentChoiceReady\",\"requestId\":\"" + requestId + "\"}" });
                 }));
-                API.Xsolla.Configure(new XsollaOptions { Enabled = true, Country = "US" });
+                API.Xsolla.Configure(new XsollaOptions { Enabled = true, Country = "US", CanOfferAlternativePayment = () => true });
                 Start(); int capturedCalls = identityCalls;
                 Assert.That(Guid.TryParse(requestId, out _), Is.True);
                 Assert.That(unavailable, Is.Not.Empty);
@@ -206,7 +313,7 @@ namespace Balancy.Tests
                     reads.Add(request.orderId);
                     return System.Threading.Tasks.Task.FromResult("{\"order\":" + Order(request.orderId, terminal != "reconciliation" ? "canceled" : "paid", terminal == "reconciliation") + "}");
                 }));
-                API.Xsolla.Configure(new XsollaOptions { Enabled = true, Country = "US" });
+                API.Xsolla.Configure(new XsollaOptions { Enabled = true, Country = "US", CanOfferAlternativePayment = () => true });
                 seed = true;
                 Assert.Throws<InvalidOperationException>(() => API.Xsolla.RecoverPurchases().GetAwaiter().GetResult());
                 Assert.That(completions, Is.EqualTo(70));
@@ -258,7 +365,7 @@ namespace Balancy.Tests
                     acknowledgments++; phase = 3;
                     return System.Threading.Tasks.Task.FromResult("{\"acknowledged\":true,\"grantId\":\"grant\"}");
                 }));
-                API.Xsolla.Configure(new XsollaOptions { Enabled = true, Country = "US" });
+                API.Xsolla.Configure(new XsollaOptions { Enabled = true, Country = "US", CanOfferAlternativePayment = () => true });
                 var order = UnityEngine.JsonUtility.FromJson(orderJson, Adapter.GetNestedType("Order", BindingFlags.NonPublic));
                 var prepared = UnityEngine.JsonUtility.FromJson("{\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"productId\":\"override-sku\"}", Adapter.GetNestedType("Prepared", BindingFlags.NonPublic));
                 int epoch = (int)Adapter.GetField("generation", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
@@ -305,7 +412,7 @@ namespace Balancy.Tests
                     if (seed) return System.Threading.Tasks.Task.FromException<string>(new InvalidOperationException("seed ACK unavailable"));
                     healthyAcks++; return System.Threading.Tasks.Task.FromResult("{\"acknowledged\":true,\"grantId\":\"grant-healthy\"}");
                 }));
-                API.Xsolla.Configure(new XsollaOptions { Enabled = true, Country = "US" });
+                API.Xsolla.Configure(new XsollaOptions { Enabled = true, Country = "US", CanOfferAlternativePayment = () => true });
                 configured = true; seed = true;
                 Assert.Throws<InvalidOperationException>(() => API.Xsolla.RecoverPurchases().GetAwaiter().GetResult());
                 seed = false;

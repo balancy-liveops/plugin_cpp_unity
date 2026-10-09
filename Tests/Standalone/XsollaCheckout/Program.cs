@@ -17,7 +17,7 @@ namespace UnityEngine {
   public static string ToJson(object obj) => JsonSerializer.Serialize(obj, Options);
  }
 }
-namespace Balancy.Models.SmartObjects { public class StoreItem { public IntPtr GetRawPointer() => IntPtr.Zero; } }
+namespace Balancy.Models.SmartObjects { public class Item { public StubLocalizedName Name; } public class StubLocalizedName { public string Value; } public class StoreItem { public IntPtr GetRawPointer() => IntPtr.Zero; } }
 namespace Balancy {
  public class Actions { public class BalancyProductInfo {
   public enum PurchaseType { StoreItem, Offer, OfferGroup, ShopSlot }
@@ -26,7 +26,7 @@ namespace Balancy {
  } }
  public static class Constants { public enum BalancyPlatform { Undefined, IosAppStore, AndroidGooglePlay } }
  public class StubConfig { public Constants.BalancyPlatform BalancyPlatform; }
- public static class Controller { public static bool IsReadyToUse; public static StubConfig Config; public static event Action<bool,bool> OnDataUpdated; public static void NotifyProfileChanged()=>OnDataUpdated?.Invoke(false,true); }
+ public static class Controller { public static bool IsReadyToUse; public static StubConfig Config; public static event Action<bool,bool> OnDataUpdated; public static void NotifyProfileChanged()=>OnDataUpdated?.Invoke(false,true); public static void NotifyCmsChanged()=>OnDataUpdated?.Invoke(true,false); }
  public static class RenderViewsManager { public static IDisposable PresentPaymentChoice(Action ready,Action<string> failed) => null; public static void SendMessageToView(string msg) {} }
  public static class CMS { public static T GetModelByUnnyId<T>(string id) where T:class => null; }
  public static class Profiles { public static StubProfile System = new(); }
@@ -35,38 +35,43 @@ namespace Balancy {
   public delegate void XsollaCallback(int id,bool success,string json);
   public static IntPtr balancyXsollaGetSessionIdentity() => IntPtr.Zero;
   public static IntPtr balancyXsollaPreparePurchase(int kind,IntPtr owner,IntPtr store) => IntPtr.Zero;
+  public static IntPtr balancyXsollaPreparePurchaseWithCapability(int kind,IntPtr owner,IntPtr store,bool allowed) => IntPtr.Zero;
   public static void balancyXsollaRequest(string action,string json,int id,XsollaCallback callback) {}
   public static void balancyXsollaComplete(string orderId,int id,XsollaCallback callback) {}
  } }
 }
 namespace Balancy.Core { public class PaymentInfo { public string ProductId,OrderId,Currency,Receipt; public float Price,PriceUSD; } }
 class Program {
- public static int Reports; public static Actions.BalancyProductInfo LastReportedProduct; public static Balancy.Core.PaymentInfo LastPayment; static int passed, callbackCount, nativeCount, leaseDisposed, ack, complete, opens;
+ public static int Reports; public static Actions.BalancyProductInfo LastReportedProduct; public static Balancy.Core.PaymentInfo LastPayment; static int passed, callbackCount, nativeCount, leaseDisposed, ack, complete, opens, presentations;
  const string ValidAck="{\"acknowledged\":true,\"grantId\":\"grant\"}";
  static List<string> presentationStates = new();
+ static XsollaPurchasing.PaymentPresentation shownPresentation;
  static string requestId, session, unavailableChoice; static Action<string> presentationFailed; static bool success; static List<string> actions = new();
  class Lease:IDisposable { public void Dispose() => leaseDisposed++; }
  static void Check(bool condition,string name) { if(!condition) throw new Exception(name); passed++; Console.WriteLine("PASS "+name); }
  static void Reset() {
-  XsollaPurchasing.Stop(); LastReportedProduct=null; LastPayment=null; Controller.IsReadyToUse=false; requestId = null; unavailableChoice=null; session="player-a"; Reports=callbackCount=nativeCount=leaseDisposed=ack=complete=opens=0; success=false; actions.Clear(); presentationStates.Clear();
+  XsollaPurchasing.Stop(); LastReportedProduct=null; LastPayment=null; Controller.IsReadyToUse=false; requestId = null; unavailableChoice=null; session="player-a"; Reports=callbackCount=nativeCount=leaseDisposed=ack=complete=opens=presentations=0; shownPresentation=null; success=false; actions.Clear(); presentationStates.Clear();
   XsollaPurchasing.SessionIdentity=()=>session;
-  XsollaPurchasing.Prepare=_=>"{\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"productId\":\"sku\",\"context\":{\"type\":\"StoreItem\",\"storeItemUnnyId\":\"doc\"}}";
-  XsollaPurchasing.Present=(ready,failed)=>{ presentationFailed=failed; ready(); return new Lease(); };
-  XsollaPurchasing.Send=json=> { var msg=UnityEngine.JsonUtility.FromJson<XsollaPurchasing.PresentationMessage>(json); if(msg.type=="paymentChoiceUpdate")presentationStates.Add(msg.state); if(msg.type=="paymentChoiceShow") { requestId=msg.requestId; unavailableChoice=msg.xsollaUnavailable; XsollaPurchasing.ReceivePresentationMessage("{\"type\":\"paymentChoiceReady\",\"requestId\":\""+requestId+"\"}"); } };
+  XsollaPurchasing.Prepare=_=>"{\"eligible\":true,\"ruleId\":\"rule\",\"configVersion\":\"v1\",\"baseProductId\":\"sku\",\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"productId\":\"sku\",\"context\":{\"type\":\"StoreItem\",\"storeItemUnnyId\":\"doc\"}}";
+  XsollaPurchasing.Present=(ready,failed)=>{ presentations++; presentationFailed=failed; ready(); return new Lease(); };
+  XsollaPurchasing.Send=json=> { var msg=UnityEngine.JsonUtility.FromJson<XsollaPurchasing.PresentationMessage>(json); if(msg.type=="paymentChoiceUpdate")presentationStates.Add(msg.state); if(msg.type=="paymentChoiceShow") { requestId=msg.requestId; unavailableChoice=msg.xsollaUnavailable; shownPresentation=msg.presentation; XsollaPurchasing.ReceivePresentationMessage("{\"type\":\"paymentChoiceReady\",\"requestId\":\""+requestId+"\"}"); } };
   XsollaPurchasing.OpenCheckout=_=>opens++;
   XsollaPurchasing.Persist=()=>Task.CompletedTask;
-  XsollaPurchasing.BrowserPopup=false;
+  XsollaPurchasing.BrowserPopup=false; XsollaPurchasing.BonusName=id=>id;
   XsollaPurchasing.Request=(action,body)=> {
    using(var envelope=JsonDocument.Parse(body)) {
-    var allowed=action=="checkout"?new[]{"requestId","productId","country","language","context"}:action=="get"?new[]{"orderId"}:action=="ack"?new[]{"orderId","grantId"}:action=="discard"?new[]{"requestId"}:new[]{"before"};
+    var allowed=(action=="checkout"||action=="quote")?new[]{"requestId","country","language"}:action=="get"?new[]{"orderId"}:action=="ack"?new[]{"orderId","grantId"}:action=="discard"?new[]{"requestId"}:new[]{"before"};
     foreach(var property in envelope.RootElement.EnumerateObject()) if(Array.IndexOf(allowed,property.Name)<0)throw new Exception("forbidden route field "+property.Name);
-    if(action=="checkout" && envelope.RootElement.GetProperty("context").EnumerateObject().Count()!=2)throw new Exception("context optional fields were added");
+    if(action=="checkout" && envelope.RootElement.EnumerateObject().Count()!=3)throw new Exception("checkout did not use core-owned reservation");
+    if(action=="quote" && (envelope.RootElement.EnumerateObject().Count()!=3 || envelope.RootElement.GetProperty("country").GetString()!="US" || envelope.RootElement.GetProperty("language").GetString()!="en"))throw new Exception("quote did not freeze configured country and language");
    }
-   actions.Add(action); if(action=="ack") { ack++; return Task.FromResult(ValidAck); }
+   actions.Add(action);
+   if(action=="quote")return Task.FromResult("{\"quote\":{\"quoteId\":\"00000000-0000-4000-8000-000000000099\",\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"ruleId\":\"rule\",\"configVersion\":\"v1\",\"productId\":\"sku\",\"requestedProductId\":\"sku\",\"priceUsd\":\"4.99\",\"currency\":\"USD\",\"expiresAt\":\"2099-01-01T00:00:00Z\",\"bonus\":[]}}");
+   if(action=="ack") { ack++; return Task.FromResult(ValidAck); }
    return Task.FromResult(action=="checkout" ? "{\"order\":{\"id\":\"order\",\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"requestedProductId\":\"sku\",\"productId\":\"sku\",\"state\":\"pending\",\"checkoutUrl\":\"https://sandbox-secure.xsolla.com/paystation4/?token=test\"}}" : "{\"order\":{\"id\":\"order\",\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"requestedProductId\":\"sku\",\"productId\":\"sku\",\"state\":\"paid\"}}");
   };
   XsollaPurchasing.Complete=id=>{ complete++; return Task.FromResult("{\"order\":{\"id\":\"order\",\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"requestedProductId\":\"sku\",\"productId\":\"sku\",\"state\":\"paid\"},\"grant\":{\"grantId\":\"grant\"},\"applied\":true,\"requiresPersistence\":true}"); };
-  API.Xsolla.Configure(new XsollaOptions {Enabled=true,Country="US"});
+  API.Xsolla.Configure(new XsollaOptions {Enabled=true,Country="US",CanOfferAlternativePayment=()=>true});
  }
  static void Start()=>XsollaPurchasing.TryIntercept(new Actions.BalancyProductInfo(null),(ok,error)=>{callbackCount++;success=ok;},()=>nativeCount++);
  static void Choice(string choice,string id=null)=>XsollaPurchasing.ReceivePresentationMessage("{\"type\":\"paymentChoiceSelected\",\"requestId\":\""+(id??requestId)+"\",\"choice\":\""+choice+"\"}");
@@ -81,6 +86,9 @@ class Program {
  static string PendingFixture(params XsollaPurchasing.Order[] orders)=>UnityEngine.JsonUtility.ToJson(new XsollaPurchasing.Result {orders=orders});
  static string OrderFixture(XsollaPurchasing.Order order)=>UnityEngine.JsonUtility.ToJson(new XsollaPurchasing.Result {order=order});
  static async Task RecoverAllowErrors() {try{await API.Xsolla.RecoverPurchases();}catch(InvalidOperationException){} }
+ static XsollaPurchasing.Prepared DefaultPrepared()=>new() {eligible=true,productId="sku",baseProductId="sku",requestId="00000000-0000-4000-8000-000000000001",ruleId="rule",configVersion="v1",context=new XsollaPurchasing.Context{type="StoreItem",storeItemUnnyId="doc"}};
+ static XsollaPurchasing.PriceQuote DefaultPriceQuote()=>new() {quoteId="00000000-0000-4000-8000-000000000099",requestId="00000000-0000-4000-8000-000000000001",productId="sku",requestedProductId="sku",ruleId="rule",configVersion="v1",priceUsd="4.99",currency="USD",expiresAt="2099-01-01T00:00:00Z",bonus=Array.Empty<XsollaPurchasing.BonusEntry>()};
+ static string PriceQuoteFixture(XsollaPurchasing.PriceQuote quote)=>UnityEngine.JsonUtility.ToJson(new XsollaPurchasing.Result{quote=quote});
  public static async Task<string> RunSecondInstanceScenario() {
   Reset();bool accepted=false;
   XsollaPurchasing.Request=(a,b)=>a=="pending"?Task.FromResult(accepted?PendingFixture():PendingFixture(FixtureOrder("replica"))):Task.FromResult("{\"acknowledged\":true,\"grantId\":\"grant-replica\"}");
@@ -91,6 +99,34 @@ class Program {
  }
  static async Task Main() {
   Reset(); API.Xsolla.Configure(null); Check(!XsollaPurchasing.TryIntercept(new Actions.BalancyProductInfo(null),null,null),"disabled preserves native flow");
+  foreach(var policy in new[]{"missing","false","throwing"}) {
+   Reset();int preparationCalls=0; XsollaPurchasing.Prepare=_=>{preparationCalls++;throw new Exception("must not prepare");};
+   API.Xsolla.Configure(new XsollaOptions {Enabled=true,Country="US",CanOfferAlternativePayment=policy=="missing"?null:()=>policy=="throwing"?throw new Exception("capability failed"):false});
+   Check(!XsollaPurchasing.TryIntercept(new Actions.BalancyProductInfo(null),null,null)&&preparationCalls==0&&actions.Count==0&&presentations==0,"host "+policy+" never authorizes by country alone or starts alternate IO");
+  }
+  foreach(var gate in new[]{"no_rule","unsupported_provider","product_excluded","include_empty","below_minimum","unknown_bonus"}) {
+   Reset();XsollaPurchasing.Prepare=_=>"{\"eligible\":false,\"reason\":\""+gate+"\"}";
+   Check(!XsollaPurchasing.TryIntercept(new Actions.BalancyProductInfo(null),null,null)&&actions.Count==0&&presentations==0,"shared core "+gate+" routes directly to standard provider without popup");
+  }
+  Reset();bool activeRule=false;int currentRuleReads=0;var eligiblePrepare=XsollaPurchasing.Prepare;
+  XsollaPurchasing.Prepare=p=>{currentRuleReads++;return activeRule?eligiblePrepare(p):"{\"eligible\":false,\"reason\":\"no_rule\"}";};
+  Check(!XsollaPurchasing.TryIntercept(new Actions.BalancyProductInfo(null),null,null),"initial absent rule needs no activation event");
+  activeRule=true;Start();Check(presentations==1&&shownPresentation.price.amount=="4.99","initially active current rule prepares authoritative price before showing selector");Choice("cancel");
+  activeRule=false;Controller.NotifyCmsChanged();Check(!XsollaPurchasing.TryIntercept(new Actions.BalancyProductInfo(null),null,null)&&currentRuleReads==3&&presentations==1,"CMS reload and removal of last current document never keep old rule");
+  session="player-b";Controller.NotifyProfileChanged();Check(!XsollaPurchasing.TryIntercept(new Actions.BalancyProductInfo(null),null,null)&&currentRuleReads==4,"new profile reevaluates shared current rule instead of old scope state");
+  Reset();var presentationRequest=XsollaPurchasing.Request;var quoted=DefaultPriceQuote();quoted.bonus=new[]{new XsollaPurchasing.BonusEntry{itemUnnyId="booster",count=1}};
+  XsollaPurchasing.BonusName=id=>"Localized booster";XsollaPurchasing.Request=(a,b)=>a=="quote"?Task.FromResult(PriceQuoteFixture(quoted)):presentationRequest(a,b);
+  Start();Check(shownPresentation.price.amount=="4.99"&&shownPresentation.price.currency=="USD"&&shownPresentation.bonus.Single().count==1&&shownPresentation.bonus[0].name=="Localized booster"&&Reports==0,"UI displays verified quote price and localized quoted count without applying rewards");Choice("cancel");
+  foreach(var invalidQuote in new[]{"request","requested","base","rule","version","price","currency","bonus-count"}) {
+   Reset();var validRequest=XsollaPurchasing.Request;var bad=DefaultPriceQuote();
+   if(invalidQuote=="request")bad.requestId="wrong";if(invalidQuote=="requested")bad.requestedProductId="wrong";if(invalidQuote=="base")bad.productId="wrong";if(invalidQuote=="rule")bad.ruleId="wrong";if(invalidQuote=="version")bad.configVersion="wrong";if(invalidQuote=="price")bad.priceUsd="NaN";if(invalidQuote=="currency")bad.currency="EUR";if(invalidQuote=="bonus-count")bad.bonus=new[]{new XsollaPurchasing.BonusEntry{itemUnnyId="booster",count=0}};
+   XsollaPurchasing.Request=(a,b)=>a=="quote"?Task.FromResult(PriceQuoteFixture(bad)):validRequest(a,b);Start();
+   Check(!string.IsNullOrEmpty(unavailableChoice)&&shownPresentation==null&&Reports==0,"invalid quote "+invalidQuote+" offers native-only selector without promising bonus");Choice("xsolla");Check(complete==0&&!actions.Contains("checkout"),"invalid quote "+invalidQuote+" cannot submit alternative checkout");Choice("native");Check(nativeCount==1&&callbackCount==0,"invalid quote "+invalidQuote+" preserves explicit normal provider callback");
+  }
+  Reset();var quoteWait=new TaskCompletionSource<string>();var delayedQuoteRequest=XsollaPurchasing.Request;
+  XsollaPurchasing.Request=(a,b)=>a=="quote"?quoteWait.Task:delayedQuoteRequest(a,b);Start();
+  XsollaPurchasing.ReceivePresentationMessage("{\"type\":\"paymentChoiceReady\",\"requestId\":\"00000000-0000-4000-8000-000000000001\"}");Choice("xsolla","00000000-0000-4000-8000-000000000001");
+  Check(presentations==0&&!actions.Contains("checkout")&&Reports==0,"pending quote cannot show bonus or accept pre-presentation selection");session="player-b";quoteWait.SetResult(PriceQuoteFixture(DefaultPriceQuote()));await Wait();Check(presentations==0&&callbackCount==1&&!success&&Reports==0,"late quote from replaced profile never opens selector or submits checkout");
   foreach(var prepareFault in new[]{"checkpoint","auth","invalid-contract"}) {
    Reset(); XsollaPurchasing.Prepare=_=>prepareFault=="invalid-contract"?"{}":throw new InvalidOperationException("xsolla_"+prepareFault+"_unavailable");
    Start(); Check(Guid.TryParse(requestId,out _)&&!string.IsNullOrEmpty(unavailableChoice)&&callbackCount==0&&actions.Count==0,"prepare "+prepareFault+" keeps native selector available without checkout IO");
@@ -126,7 +162,7 @@ class Program {
   Choice("xsolla"); presentationFailed("renderer closed");
   deferredCheckout.SetResult("{\"order\":{\"id\":\"order\",\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"requestedProductId\":\"sku\",\"productId\":\"sku\",\"state\":\"paid\"}}");
   await Wait(); Check(success&&callbackCount==1&&complete==1&&ack==1&&leaseDisposed==1,"external renderer closure preserves paid tracking and callback");
-  Reset(); Start(); var wait=new TaskCompletionSource<string>(); XsollaPurchasing.Request=(action,body)=>{ actions.Add(action); return wait.Task; }; Choice("xsolla"); Choice("xsolla"); Check(actions.Count==1,"duplicate Xsolla click creates once"); Choice("cancel"); wait.SetResult("{\"order\":{\"id\":\"order\",\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"requestedProductId\":\"sku\",\"productId\":\"sku\",\"state\":\"paid\"}}"); await Wait(); Check(!success&&complete==0&&nativeCount==0,"dismiss pending never falls back or applies late response");
+  Reset(); Start(); var wait=new TaskCompletionSource<string>(); XsollaPurchasing.Request=(action,body)=>{ actions.Add(action); return wait.Task; }; Choice("xsolla"); Choice("xsolla"); Check(actions.Count(a=>a=="checkout")==1,"duplicate Xsolla click creates once"); Choice("cancel"); wait.SetResult("{\"order\":{\"id\":\"order\",\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"requestedProductId\":\"sku\",\"productId\":\"sku\",\"state\":\"paid\"}}"); await Wait(); Check(!success&&complete==0&&nativeCount==0,"dismiss pending never falls back or applies late response");
   Reset(); Start(); XsollaPurchasing.Request=(a,b)=>{session="player-b";return Task.FromResult("{\"order\":{\"id\":\"order\",\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"requestedProductId\":\"sku\",\"productId\":\"sku\",\"state\":\"paid\"}}");}; Choice("xsolla"); await Wait(); Check(complete==0&&ack==0&&Reports==0,"session change prevents completion and callbacks");
   Reset(); Start(); int flushCount=0; XsollaPurchasing.Persist=()=> ++flushCount==1?Task.CompletedTask:Task.FromException(new Exception("disk failure")); Choice("xsolla"); await Wait(); Check(complete==1&&ack==0&&Reports==0&&!success,"storage failure never acknowledges"); Choice("cancel");
   Reset(); XsollaPurchasing.Request=(a,b)=>{ if(a=="pending")return Task.FromResult("{\"orders\":[{\"id\":\"order\",\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"requestedProductId\":\"sku\",\"productId\":\"sku\",\"state\":\"paid\",\"context\":{\"type\":\"StoreItem\"}}]}"); ack++;return Task.FromResult(ValidAck);}; XsollaPurchasing.Complete=id=>{complete++;return Task.FromResult("{\"order\":{\"id\":\"order\",\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"requestedProductId\":\"sku\",\"productId\":\"sku\",\"state\":\"paid\"},\"grant\":{\"grantId\":\"grant\"},\"applied\":false}");}; await API.Xsolla.RecoverPurchases(); Check(complete==1&&ack==1&&Reports==1,"authenticated unacknowledged duplicate reports after verified retry and ack");
@@ -264,9 +300,9 @@ class Program {
   Reset(); var originalProduct=new Actions.BalancyProductInfo(null){ProductId="override-sku",StoreItemUnnyId="original-store"};
   var overrideOrder=FixtureOrder("override");overrideOrder.requestId="00000000-0000-4000-8000-000000000001";overrideOrder.productId="canonical-sku";overrideOrder.requestedProductId="override-sku";overrideOrder.context.storeItemUnnyId="original-store";
   bool overrideAckFail=true;
-  XsollaPurchasing.Prepare=_=>UnityEngine.JsonUtility.ToJson(new XsollaPurchasing.Prepared {requestId=overrideOrder.requestId,productId="override-sku",context=overrideOrder.context});
+  XsollaPurchasing.Prepare=_=>UnityEngine.JsonUtility.ToJson(new XsollaPurchasing.Prepared {eligible=true,ruleId="rule",configVersion="v1",baseProductId="canonical-sku",requestId=overrideOrder.requestId,productId="override-sku",context=overrideOrder.context});
   XsollaPurchasing.Complete=id=>{complete++;return Task.FromResult(CompletionFixture(overrideOrder,complete==1));};
-  XsollaPurchasing.Request=(a,b)=>a=="ack"?(overrideAckFail?Task.FromException<string>(new Exception("ack failed")):Task.FromResult("{\"acknowledged\":true,\"grantId\":\"grant-override\"}")):a=="pending"?Task.FromResult(PendingFixture(overrideOrder)):Task.FromResult(OrderFixture(overrideOrder));
+  XsollaPurchasing.Request=(a,b)=>a=="quote"?Task.FromResult("{\"quote\":{\"quoteId\":\"00000000-0000-4000-8000-000000000099\",\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"ruleId\":\"rule\",\"configVersion\":\"v1\",\"productId\":\"canonical-sku\",\"requestedProductId\":\"override-sku\",\"priceUsd\":\"4.99\",\"currency\":\"USD\",\"bonus\":[]}}"):a=="ack"?(overrideAckFail?Task.FromException<string>(new Exception("ack failed")):Task.FromResult("{\"acknowledged\":true,\"grantId\":\"grant-override\"}")):a=="pending"?Task.FromResult(PendingFixture(overrideOrder)):Task.FromResult(OrderFixture(overrideOrder));
   XsollaPurchasing.TryIntercept(originalProduct,(ok,e)=>{callbackCount++;success=ok;},()=>nativeCount++);Choice("xsolla");await Wait();Choice("cancel");
   Check(complete==1&&Reports==0,"live override descriptor remains pending after verified apply and failed ack");
   overrideAckFail=false;await API.Xsolla.RecoverPurchases();

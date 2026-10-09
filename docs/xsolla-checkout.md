@@ -9,8 +9,12 @@ This branch ships native plugin libraries rebuilt from the matching `balancy_cpp
 Configure the Xsolla platform, API key and webhook secret on the payments server, enable sandbox checkout, and configure signed combined webhooks. No merchant secrets or bearer tokens belong in Unity configuration.
 
 ```csharp
+// Update this flag from your verified host/storefront payment-program integration.
+// Country alone does not establish permission to offer an alternative payment.
+bool alternativePaymentAllowed = false;
 Balancy.API.Xsolla.Configure(new Balancy.XsollaOptions {
     Enabled = true,
+    CanOfferAlternativePayment = () => alternativePaymentAllowed,
     Country = "US", // ISO country needed to create checkout; not an eligibility filter.
     Language = "en",
     // NativeLabel = "Apple App Store", // Optional; otherwise derived from the app platform.
@@ -18,6 +22,14 @@ Balancy.API.Xsolla.Configure(new Balancy.XsollaOptions {
     TimeoutMs = 240000
 });
 ```
+
+`CanOfferAlternativePayment` defaults to false for every host, including Unity WebGL. A missing, false, or throwing callback preserves the standard provider without preparing an Xsolla request or opening the selector. Set it true only when the host/storefront integration has verified that the payment program is available; profile country conditions and `Country` do not provide that verification.
+
+The published system package must contain a currently active `Payments.AlternativePaymentRule` document, derived from `SmartObjects.ConditionalTemplate`. Condition and Priority are inherited, not duplicated. Provider is Xsolla (50); `MinPriceUsd`, All/IncludeOnly product selection, base `IncludedProducts`, and higher-priority `ExcludedProducts` are checked in the shared core. It selects one current document by the normal condition/priority mechanism on each paid init, including the initial value and after profile/config updates. If that selected document is absent or ineligible, the standard provider runs directly; lower-priority rules are not searched for a replacement. Export=false takes effect after deployment and config delivery, not when a draft checkbox changes. Pending orders keep their frozen snapshot and remain recoverable when a campaign ends.
+
+`Bonus` is an ordinary reference to a polymorphic `Payments.PurchaseBonus` component. `PurchaseBonusFixedReward` contains an injected Reward; `PurchaseBonusPerSpend` contains Item and fractional ItemsPerUsd. The shared core/server calculation rounds to the nearest integer with halves rounded up (away from zero for the nonnegative amounts): 0.2 × $4.99 = 0.998 → 1, and 0.7 × $5 = 3.5 → 4. Unknown bonus types and invalid data do not produce a promised bonus. Unity displays the verified quote counts unchanged; it does not independently calculate or grant bonuses.
+
+`ChoiceView` is preserved as a typed nullable View asset field. This stage uses the system selector as the safe fallback; the merchant custom-view/controller binding remains deferred. No new merchant JavaScript controller API is provided in this stage.
 
 Configure before SDK initialization or after readiness. Profile readiness and application resume trigger recovery. Recovery may also be invoked explicitly:
 
@@ -35,7 +47,7 @@ The selector is rendered by the shared bridge. An already open View keeps its ow
 
 Mobile/native Unity opens validated checkout with `Application.OpenURL`. Unity WebGL reserves a browser window synchronously during the selection click through a request-scoped parent opener, then navigates it when checkout is prepared. A blocked popup does not create an order. Retrying reuses the same reserved request/order identity.
 
-An available Xsolla purchase first reserves its exact reward/context in C++ and saves the profile checkpoint. The server determines payment success. If Xsolla preparation is unavailable, the selector disables Xsolla with an explanation and keeps the standard provider and cancellation available; choosing the standard provider remains explicit. The wrapper checks request and order correlation, calls the dedicated verified C++ completion route, waits for durability, then acknowledges the server grant. Success UI and definitive callbacks require `acknowledged: true` with the exact grant ID. Transport, conflict, reconciliation, and malformed acknowledgment errors leave the applied ledger intact and the purchase recoverable; retry confirms that same grant before reporting once. C++ verifies its coherent inventory/grant checkpoint on native platforms; Unity WebGL additionally waits for `FS.syncfs(false)` before checkout and acknowledgment. A storage error leaves the order recoverable and unacknowledged.
+An available Xsolla purchase first reserves its exact reward/context and selected rule/version in C++ and saves the profile checkpoint. Before opening the selector, Unity requests an authenticated quote for that reservation and waits for its durable storage. The readonly selector shows the verified USD amount and localized bonus names/counts. Quote failure keeps an explicit standard-provider choice available without showing an unverified bonus. Checkout sends the reserved request identity, country and language; the native core injects the frozen product/context/quote identity. Main and bonus rewards share the existing verified grant ledger, so retries retain the original promised offer. The server determines payment success. If Xsolla preparation is unavailable, the selector disables Xsolla with an explanation and keeps the standard provider and cancellation available; choosing the standard provider remains explicit. The wrapper checks request and order correlation, calls the dedicated verified C++ completion route, waits for durability, then acknowledges the server grant. Success UI and definitive callbacks require `acknowledged: true` with the exact grant ID. Transport, conflict, reconciliation, and malformed acknowledgment errors leave the applied ledger intact and the purchase recoverable; retry confirms that same grant before reporting once. C++ verifies its coherent inventory/grant checkpoint on native platforms; Unity WebGL additionally waits for `FS.syncfs(false)` before checkout and acknowledgment. A storage error leaves the order recoverable and unacknowledged.
 
 Closing the selector after submitting checkout dismisses its presentation and polling, without canceling the provider transaction or launching the standard provider. The original init callback reports a pending result; resume/explicit recovery processes a later paid order. Changing session or profile prevents a delayed response from granting or reporting for another player.
 
