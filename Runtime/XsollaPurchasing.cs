@@ -422,7 +422,8 @@ namespace Balancy
                     EnsureSession(session, epoch);
                     foreach (var order in result.orders ?? Array.Empty<Order>())
                     {
-                        if (order == null || order.state != "paid" || order.acknowledged || !visited.Add(order.id)) continue;
+                        if (order == null || string.IsNullOrEmpty(order.id) || !visited.Add(order.id)) continue;
+                        if (order.state != "paid" || order.acknowledged) continue;
                         try
                         {
                             if (order.reconciliationRequired) throw new InvalidOperationException("xsolla_reconciliation_required");
@@ -481,7 +482,7 @@ namespace Balancy
             // authenticated unacknowledged orders remain eligible even if applied:false.
             // An acknowledged historical receipt cannot create a new notification.
             bool verifiedUnacknowledged = observedOrder != null && !observedOrder.acknowledged && !completion.order.acknowledged;
-            if ((completion.applied || verifiedUnacknowledged) && product != null && !reportedGrants.Contains(reportKey))
+            if ((completion.applied || verifiedUnacknowledged) && product != null && !reportedGrants.Contains(reportKey) && !deferredReports.ContainsKey(reportKey))
                 deferredReports[reportKey] = product;
             if (!deferredOrders.ContainsKey(orderId)) deferredReadQueue.Enqueue(orderId);
             deferredOrders[orderId] = new DeferredOrder { OrderId = orderId, GrantId = completion.grant.grantId,

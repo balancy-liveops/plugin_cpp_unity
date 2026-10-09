@@ -167,6 +167,7 @@ namespace Balancy.Tests
         }
         [TestCase("canceled")]
         [TestCase("reconciliation")]
+        [TestCase("listed-canceled")]
         public void TerminalDeferredOrdersDoNotStarveHealthyPendingAndReadbackRotates(string terminal)
         {
             var names = new[] { "SessionIdentity", "Request", "Complete", "Persist" };
@@ -189,7 +190,11 @@ namespace Balancy.Tests
                     {
                         var orders = new System.Collections.Generic.List<string>();
                         if (seed) for (int i = 0; i < 70; i++) orders.Add(Order("terminal-" + i));
-                        else if (healthy) orders.Add(Order("healthy"));
+                        else if (healthy)
+                        {
+                            if (terminal == "listed-canceled") for (int i = 0; i < 64; i++) orders.Add(Order("terminal-" + i, "canceled"));
+                            orders.Add(Order("healthy"));
+                        }
                         return System.Threading.Tasks.Task.FromResult("{\"orders\":[" + string.Join(",", orders) + "]}");
                     }
                     var request = UnityEngine.JsonUtility.FromJson<RecoveryOrderFixture>(body);
@@ -199,7 +204,7 @@ namespace Balancy.Tests
                         healthyAcks++; return System.Threading.Tasks.Task.FromResult("{\"acknowledged\":true,\"grantId\":\"grant-healthy\"}");
                     }
                     reads.Add(request.orderId);
-                    return System.Threading.Tasks.Task.FromResult("{\"order\":" + Order(request.orderId, terminal == "canceled" ? "canceled" : "paid", terminal == "reconciliation") + "}");
+                    return System.Threading.Tasks.Task.FromResult("{\"order\":" + Order(request.orderId, terminal != "reconciliation" ? "canceled" : "paid", terminal == "reconciliation") + "}");
                 }));
                 API.Xsolla.Configure(new XsollaOptions { Enabled = true, Country = "US" });
                 seed = true;
@@ -208,16 +213,66 @@ namespace Balancy.Tests
                 seed = false; healthy = true;
                 Assert.Throws<InvalidOperationException>(() => API.Xsolla.RecoverPurchases().GetAwaiter().GetResult());
                 Assert.That(healthyAcks, Is.EqualTo(1)); Assert.That(completions, Is.EqualTo(71));
-                Assert.That(reads.Count, Is.EqualTo(64));
+                Assert.That(reads.Count, Is.EqualTo(terminal == "listed-canceled" ? 6 : 64));
+                if (terminal == "listed-canceled") Assert.That(reads, Does.Not.Contain("terminal-0"));
                 healthy = false;
                 Assert.Throws<InvalidOperationException>(() => API.Xsolla.RecoverPurchases().GetAwaiter().GetResult());
-                Assert.That(reads.Count, Is.EqualTo(128)); Assert.That(reads, Does.Contain("terminal-69"));
+                Assert.That(reads.Count, Is.EqualTo(terminal == "listed-canceled" ? 70 : 128)); Assert.That(reads, Does.Contain("terminal-69"));
                 var deferred = Adapter.GetField("deferredOrders", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
                 Assert.That((int)deferred.GetType().GetProperty("Count").GetValue(deferred), Is.EqualTo(70));
             }
             finally
             {
                 API.Xsolla.Configure(null);
+                for (int i = 0; i < names.Length; i++) Set(names[i], originals[i]);
+            }
+        }
+        [Test] public void RecoveryPreservesOriginalLiveOverrideDescriptorAfterFailedAcknowledgment()
+        {
+            var names = new[] { "SessionIdentity", "Request", "Complete", "Persist" };
+            var originals = new object[names.Length];
+            for (int i = 0; i < names.Length; i++) originals[i] = Adapter.GetField(names[i], BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
+            void Set(string name, object value) => Adapter.GetField(name, BindingFlags.Static | BindingFlags.NonPublic).SetValue(null, value);
+            var originalCallback = Callbacks.OnHardPurchasedStoreItem;
+            var original = new Actions.BalancyProductInfo((Models.SmartObjects.StoreItem)null) { ProductId = "override-sku", StoreItemUnnyId = "original-store" };
+            const string identity = "unity-override-fixture", grantId = "grant";
+            const string orderJson = "{\"id\":\"order\",\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"requestedProductId\":\"override-sku\",\"productId\":\"canonical-sku\",\"state\":\"paid\",\"acknowledged\":false,\"context\":{\"type\":\"StoreItem\",\"storeItemUnnyId\":\"original-store\"}}";
+            int phase = 0, completions = 0, acknowledgments = 0;
+            try
+            {
+                Callbacks.OnHardPurchasedStoreItem = null; // No live CMS required for this adapter contract.
+                Set("SessionIdentity", (Func<string>)(() => identity));
+                Set("Persist", (Func<System.Threading.Tasks.Task>)(() => System.Threading.Tasks.Task.CompletedTask));
+                Set("Complete", (Func<string, System.Threading.Tasks.Task<string>>)(id => {
+                    completions++;
+                    return System.Threading.Tasks.Task.FromResult("{\"order\":" + orderJson + ",\"grant\":{\"grantId\":\"grant\",\"orderId\":\"order\",\"baseProductId\":\"canonical-sku\"},\"applied\":" + (completions == 1 ? "true" : "false") + ",\"requiresPersistence\":true}");
+                }));
+                Set("Request", (Func<string, string, System.Threading.Tasks.Task<string>>)((action, body) => {
+                    if (action == "pending") return System.Threading.Tasks.Task.FromResult(phase == 2 ? "{\"orders\":[" + orderJson + "]}" : "{\"orders\":[]}");
+                    if (phase == 1) return System.Threading.Tasks.Task.FromException<string>(new InvalidOperationException("ACK unavailable"));
+                    var reports = (System.Collections.IDictionary)Adapter.GetField("deferredReports", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
+                    var retained = (Actions.BalancyProductInfo)reports[identity + ":" + grantId];
+                    Assert.That(retained, Is.SameAs(original));
+                    Assert.That(retained.ProductId, Is.EqualTo("override-sku"));
+                    Assert.That(retained.StoreItemUnnyId, Is.EqualTo("original-store"));
+                    acknowledgments++; phase = 3;
+                    return System.Threading.Tasks.Task.FromResult("{\"acknowledged\":true,\"grantId\":\"grant\"}");
+                }));
+                API.Xsolla.Configure(new XsollaOptions { Enabled = true, Country = "US" });
+                var order = UnityEngine.JsonUtility.FromJson(orderJson, Adapter.GetNestedType("Order", BindingFlags.NonPublic));
+                var prepared = UnityEngine.JsonUtility.FromJson("{\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"productId\":\"override-sku\"}", Adapter.GetNestedType("Prepared", BindingFlags.NonPublic));
+                int epoch = (int)Adapter.GetField("generation", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
+                phase = 1;
+                var apply = (System.Threading.Tasks.Task)Adapter.GetMethod("Apply", BindingFlags.Static | BindingFlags.NonPublic).Invoke(null, new[] { (object)"order", original, identity, epoch, prepared, order });
+                Assert.Throws<InvalidOperationException>(() => apply.GetAwaiter().GetResult());
+                phase = 2; API.Xsolla.RecoverPurchases().GetAwaiter().GetResult();
+                Assert.That(completions, Is.EqualTo(2)); Assert.That(acknowledgments, Is.EqualTo(1));
+                var reported = Adapter.GetField("reportedGrants", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
+                Assert.That(reported.GetType().GetMethod("Contains").Invoke(reported, new object[] { identity + ":" + grantId }), Is.True);
+            }
+            finally
+            {
+                API.Xsolla.Configure(null); Callbacks.OnHardPurchasedStoreItem = originalCallback;
                 for (int i = 0; i < names.Length; i++) Set(names[i], originals[i]);
             }
         }

@@ -22,7 +22,7 @@ namespace Balancy {
  public class Actions { public class BalancyProductInfo {
   public enum PurchaseType { StoreItem, Offer, OfferGroup, ShopSlot }
   public string ProductId, StoreItemUnnyId, OfferInstanceId, OfferUnnyId; public PurchaseType Type;
-  public BalancyProductInfo(Models.SmartObjects.StoreItem _) {} public void ReportThePurchase(Core.PaymentInfo info) => Program.Reports++;
+  public BalancyProductInfo(Models.SmartObjects.StoreItem _) {} public void ReportThePurchase(Core.PaymentInfo info) { Program.Reports++; Program.LastReportedProduct=this; Program.LastPayment=info; }
  } }
  public static class Constants { public enum BalancyPlatform { Undefined, IosAppStore, AndroidGooglePlay } }
  public class StubConfig { public Constants.BalancyPlatform BalancyPlatform; }
@@ -41,14 +41,14 @@ namespace Balancy {
 }
 namespace Balancy.Core { public class PaymentInfo { public string ProductId,OrderId,Currency,Receipt; public float Price,PriceUSD; } }
 class Program {
- public static int Reports; static int passed, callbackCount, nativeCount, leaseDisposed, ack, complete, opens;
+ public static int Reports; public static Actions.BalancyProductInfo LastReportedProduct; public static Balancy.Core.PaymentInfo LastPayment; static int passed, callbackCount, nativeCount, leaseDisposed, ack, complete, opens;
  const string ValidAck="{\"acknowledged\":true,\"grantId\":\"grant\"}";
  static List<string> presentationStates = new();
  static string requestId, session, unavailableChoice; static Action<string> presentationFailed; static bool success; static List<string> actions = new();
  class Lease:IDisposable { public void Dispose() => leaseDisposed++; }
  static void Check(bool condition,string name) { if(!condition) throw new Exception(name); passed++; Console.WriteLine("PASS "+name); }
  static void Reset() {
-  XsollaPurchasing.Stop(); Controller.IsReadyToUse=false; requestId = null; unavailableChoice=null; session="player-a"; Reports=callbackCount=nativeCount=leaseDisposed=ack=complete=opens=0; success=false; actions.Clear(); presentationStates.Clear();
+  XsollaPurchasing.Stop(); LastReportedProduct=null; LastPayment=null; Controller.IsReadyToUse=false; requestId = null; unavailableChoice=null; session="player-a"; Reports=callbackCount=nativeCount=leaseDisposed=ack=complete=opens=0; success=false; actions.Clear(); presentationStates.Clear();
   XsollaPurchasing.SessionIdentity=()=>session;
   XsollaPurchasing.Prepare=_=>"{\"requestId\":\"00000000-0000-4000-8000-000000000001\",\"productId\":\"sku\",\"context\":{\"type\":\"StoreItem\",\"storeItemUnnyId\":\"doc\"}}";
   XsollaPurchasing.Present=(ready,failed)=>{ presentationFailed=failed; ready(); return new Lease(); };
@@ -81,6 +81,14 @@ class Program {
  static string PendingFixture(params XsollaPurchasing.Order[] orders)=>UnityEngine.JsonUtility.ToJson(new XsollaPurchasing.Result {orders=orders});
  static string OrderFixture(XsollaPurchasing.Order order)=>UnityEngine.JsonUtility.ToJson(new XsollaPurchasing.Result {order=order});
  static async Task RecoverAllowErrors() {try{await API.Xsolla.RecoverPurchases();}catch(InvalidOperationException){} }
+ public static async Task<string> RunSecondInstanceScenario() {
+  Reset();bool accepted=false;
+  XsollaPurchasing.Request=(a,b)=>a=="pending"?Task.FromResult(accepted?PendingFixture():PendingFixture(FixtureOrder("replica"))):Task.FromResult("{\"acknowledged\":true,\"grantId\":\"grant-replica\"}");
+  XsollaPurchasing.Complete=id=>Task.FromResult(CompletionFixture(FixtureOrder(id),false));
+  await API.Xsolla.RecoverPurchases();accepted=true;await API.Xsolla.RecoverPurchases();
+  if(Reports!=1||LastPayment?.OrderId!="replica")throw new Exception("second SDK instance report contract");
+  XsollaPurchasing.Stop();return Reports+"|"+LastPayment.OrderId;
+ }
  static async Task Main() {
   Reset(); API.Xsolla.Configure(null); Check(!XsollaPurchasing.TryIntercept(new Actions.BalancyProductInfo(null),null,null),"disabled preserves native flow");
   foreach(var prepareFault in new[]{"checkpoint","auth","invalid-contract"}) {
@@ -253,6 +261,37 @@ class Program {
   Reset();XsollaPurchasing.Request=(a,b)=>a=="pending"?Task.FromResult(PendingFixture(FixtureOrder("history"))):Task.FromResult("{\"acknowledged\":true,\"grantId\":\"grant-history\"}");
   XsollaPurchasing.Complete=id=>Task.FromResult(CompletionFixture(FixtureOrder(id,acknowledged:true),false));
   await API.Xsolla.RecoverPurchases();Check(Reports==0,"acknowledged historical completion never creates a new global report despite pending race");
+  Reset(); var originalProduct=new Actions.BalancyProductInfo(null){ProductId="override-sku",StoreItemUnnyId="original-store"};
+  var overrideOrder=FixtureOrder("override");overrideOrder.requestId="00000000-0000-4000-8000-000000000001";overrideOrder.productId="canonical-sku";overrideOrder.requestedProductId="override-sku";overrideOrder.context.storeItemUnnyId="original-store";
+  bool overrideAckFail=true;
+  XsollaPurchasing.Prepare=_=>UnityEngine.JsonUtility.ToJson(new XsollaPurchasing.Prepared {requestId=overrideOrder.requestId,productId="override-sku",context=overrideOrder.context});
+  XsollaPurchasing.Complete=id=>{complete++;return Task.FromResult(CompletionFixture(overrideOrder,complete==1));};
+  XsollaPurchasing.Request=(a,b)=>a=="ack"?(overrideAckFail?Task.FromException<string>(new Exception("ack failed")):Task.FromResult("{\"acknowledged\":true,\"grantId\":\"grant-override\"}")):a=="pending"?Task.FromResult(PendingFixture(overrideOrder)):Task.FromResult(OrderFixture(overrideOrder));
+  XsollaPurchasing.TryIntercept(originalProduct,(ok,e)=>{callbackCount++;success=ok;},()=>nativeCount++);Choice("xsolla");await Wait();Choice("cancel");
+  Check(complete==1&&Reports==0,"live override descriptor remains pending after verified apply and failed ack");
+  overrideAckFail=false;await API.Xsolla.RecoverPurchases();
+  Check(Reports==1&&ReferenceEquals(LastReportedProduct,originalProduct)&&LastReportedProduct.ProductId=="override-sku"&&LastReportedProduct.StoreItemUnnyId=="original-store"&&LastPayment.ProductId=="canonical-sku","recovery preserves original descriptor identity requested SKU and StoreItem while payment uses verified canonical SKU");
+  Reset();bool listedSeed=true;var listedGets=new List<string>();
+  XsollaPurchasing.Complete=id=>Task.FromResult(CompletionFixture(FixtureOrder(id)));
+  XsollaPurchasing.Request=(a,b)=>{
+   if(a=="pending")return Task.FromResult(listedSeed?PendingFixture(FixtureOrder("listed"),FixtureOrder("hidden")):PendingFixture(FixtureOrder("listed","canceled")));
+   if(a=="ack")return Task.FromException<string>(new Exception("lost ack"));
+   var id=JsonDocument.Parse(b).RootElement.GetProperty("orderId").GetString();listedGets.Add(id);return Task.FromResult(OrderFixture(FixtureOrder(id,"canceled")));
+  };
+  await RecoverAllowErrors();listedSeed=false;await RecoverAllowErrors();
+  Check(listedGets.SequenceEqual(new[]{"hidden"}),"valid nonpaid pending IDs are visited and do not consume deferred GET budget");
+  Reset();bool replicaSeed=true,replicaAccepted=false;int replicaCompletions=0;
+  XsollaPurchasing.Request=(a,b)=>a=="pending"?Task.FromResult(replicaSeed?PendingFixture(FixtureOrder("replica")):PendingFixture()):a=="ack"?(replicaAccepted?Task.FromResult("{\"acknowledged\":true,\"grantId\":\"grant-replica\"}"):Task.FromException<string>(new Exception("lost ack"))):Task.FromResult(OrderFixture(FixtureOrder("replica",acknowledged:replicaAccepted)));
+  XsollaPurchasing.Complete=id=>Task.FromResult(CompletionFixture(FixtureOrder(id,acknowledged:replicaAccepted),++replicaCompletions==1));
+  await RecoverAllowErrors();Check(Reports==0,"first instance retains verified descriptor until ack accepted");
+  var secondInstance=new System.Runtime.Loader.AssemblyLoadContext("xsolla-second-instance",true);
+  try {
+   var secondAssembly=secondInstance.LoadFromAssemblyPath(typeof(Program).Assembly.Location);
+   var secondReport=await (Task<string>)secondAssembly.GetType("Program").GetMethod("RunSecondInstanceScenario").Invoke(null,null);
+   Check(secondReport=="1|replica"&&Reports==0,"independent SDK instance may report verified replicated ledger once with stable order ID");
+  } finally {secondInstance.Unload();}
+  replicaSeed=false;replicaAccepted=true;await API.Xsolla.RecoverPurchases();await API.Xsolla.RecoverPurchases();
+  Check(Reports==1&&LastPayment.OrderId=="replica","first instance reports same stable order once; cross-instance consumer must dedupe OrderId");
   Reset(); int pendingReads=0; Controller.IsReadyToUse=true; XsollaPurchasing.Request=(a,b)=>{pendingReads++;return Task.FromResult("{\"orders\":[]}");}; XsollaPurchasing.Resume(); await Wait(); Check(pendingReads==1,"application resume scans recoverable orders");
   Reset(); XsollaPurchasing.Request=(a,b)=>Task.FromResult("{\"orders\":[],\"nextBefore\":\"unchanged\"}"); bool cursorBlocked=false;try{await API.Xsolla.RecoverPurchases();}catch(InvalidOperationException){cursorBlocked=true;} Check(cursorBlocked,"repeated recovery cursor cannot loop forever");
   Reset(); XsollaPurchasing.BrowserPopup=true; Start(); Choice("xsolla"); await Wait(); Check(opens==0&&complete==0&&!actions.Contains("checkout"),"blocked browser popup never creates an order");
