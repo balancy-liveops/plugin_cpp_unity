@@ -46,3 +46,18 @@ The public API still supports one active view; Prepare now has an optional failu
 ## Second pass — 2026-09-15
 
 Native delayed show callbacks are cancelled/generation-guarded and stale navigation callbacks are ignored. Renderer termination resets persistent state even after shell readiness; the new NUnit scenario verifies re-preparation. Android/macOS binaries were rebuilt. The matching TypeScript branch also fixes iframe navigation latency, blob URL ownership and JS disposal; see `packages/bridge/PERFORMANCE_AND_MEMORY.md`. Its standalone headless Chrome GC fixture covers 520 persistent cycles; this does not replace native player profiling.
+
+## Classic reveal gate — 2026-10-09
+
+Android classic pages now open hidden and are revealed by the page's `BalancyIsReady`, an error, or a 30 s timeout. `validate.py` also runs `Balancy.Tests.ClassicRevealGateTests`, which drive the actual `ClassicRevealGate` with a fake clock.
+
+The Android harness checks the native side on a real WebView. Unity's bundled SDK only has build-tools 36.0.0, so pass `--build-tools`:
+
+```sh
+U=/path/to/Editor/Data/PlaybackEngines/AndroidPlayer
+python3 Tests/WebView/native/run-android.py --sdk $U/SDK --java-home $U/OpenJDK --build-tools 36.0.0 --output /tmp/balancy-android-tests --serial <device>
+```
+
+Two passes cover the gate. The first opens a classic page hidden and loads the bridge over the page-finish shim itself, so it doesn't depend on the page loader. The page must stay hidden through page finish, send `BalancyIsReady` while hidden, and be revealed by `showWebView()`. The second reveals a hidden page before it finishes loading, as the timeout can: `onPageFinished` hides it again (alpha 0), and a second `showWebView()` after page finish shows it. That is why Unity shows a view again when its page finishes after an early reveal.
+
+82 checks passed on a REDMAGIC 9 Pro (Android 16, WebView 153), both built from source and with `--aar WebView/Plugins/Android/balancywebview.aar`. The `checks=` count in the result line also includes the timing line.
