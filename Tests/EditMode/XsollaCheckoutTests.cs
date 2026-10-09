@@ -276,6 +276,56 @@ namespace Balancy.Tests
                 for (int i = 0; i < names.Length; i++) Set(names[i], originals[i]);
             }
         }
+        [TestCase("canceled")]
+        [TestCase("reconciliation")]
+        public void SingleKnownTerminalOrderInPendingStillSignalsReconciliationWithoutGet(string terminal)
+        {
+            var names = new[] { "SessionIdentity", "Request", "Complete", "Persist" };
+            var originals = new object[names.Length];
+            for (int i = 0; i < names.Length; i++) originals[i] = Adapter.GetField(names[i], BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
+            void Set(string name, object value) => Adapter.GetField(name, BindingFlags.Static | BindingFlags.NonPublic).SetValue(null, value);
+            var cmsReady = typeof(CMS).GetField("IsReadyToUse", BindingFlags.Static | BindingFlags.NonPublic);
+            var oldCmsReady = cmsReady.GetValue(null);
+            var oldCallback = Callbacks.OnHardPurchasedStoreItem;
+            bool seed = false, configured = false; int gets = 0, completions = 0, healthyAcks = 0, reports = 0; string reportedOrder = null;
+            const string identity = "unity-single-terminal";
+            string Order(string id, string state = "paid", bool reconciliation = false) => "{\"id\":\"" + id + "\",\"requestId\":\"request-" + id + "\",\"requestedProductId\":\"sku-" + id + "\",\"productId\":\"sku-" + id + "\",\"state\":\"" + state + "\",\"reconciliationRequired\":" + (reconciliation ? "true" : "false") + ",\"context\":{\"type\":\"StoreItem\",\"storeItemUnnyId\":\"doc-" + id + "\"}}";
+            try
+            {
+                cmsReady.SetValue(null, false); // Callback receives no model; this test needs no native CMS.
+                Callbacks.OnHardPurchasedStoreItem = (payment, item) => { reports++; reportedOrder = payment.OrderId; };
+                Set("SessionIdentity", (Func<string>)(() => identity));
+                Set("Persist", (Func<System.Threading.Tasks.Task>)(() => System.Threading.Tasks.Task.CompletedTask));
+                Set("Complete", (Func<string, System.Threading.Tasks.Task<string>>)(id => {
+                    completions++; return System.Threading.Tasks.Task.FromResult("{\"order\":" + Order(id) + ",\"grant\":{\"grantId\":\"grant-" + id + "\",\"orderId\":\"" + id + "\"},\"applied\":true,\"requiresPersistence\":true}");
+                }));
+                Set("Request", (Func<string, string, System.Threading.Tasks.Task<string>>)((action, body) => {
+                    if (action == "pending") return System.Threading.Tasks.Task.FromResult(!configured ? "{\"orders\":[]}" : "{\"orders\":[" + (seed ? Order("known") : Order("known", terminal == "canceled" ? "canceled" : "paid", terminal == "reconciliation") + "," + Order("healthy")) + "]}");
+                    if (action == "get") { gets++; return System.Threading.Tasks.Task.FromException<string>(new InvalidOperationException("unexpected GET")); }
+                    if (seed) return System.Threading.Tasks.Task.FromException<string>(new InvalidOperationException("seed ACK unavailable"));
+                    healthyAcks++; return System.Threading.Tasks.Task.FromResult("{\"acknowledged\":true,\"grantId\":\"grant-healthy\"}");
+                }));
+                API.Xsolla.Configure(new XsollaOptions { Enabled = true, Country = "US" });
+                configured = true; seed = true;
+                Assert.Throws<InvalidOperationException>(() => API.Xsolla.RecoverPurchases().GetAwaiter().GetResult());
+                seed = false;
+                var error = Assert.Throws<InvalidOperationException>(() => API.Xsolla.RecoverPurchases().GetAwaiter().GetResult());
+                Assert.That(error.Message, Is.EqualTo("xsolla_recovery_incomplete"));
+                var causes = ((AggregateException)error.InnerException).Flatten().InnerExceptions;
+                Assert.That(causes.Count, Is.EqualTo(1)); Assert.That(causes[0].Message, Is.EqualTo("xsolla_reconciliation_required"));
+                Assert.That(gets, Is.Zero); Assert.That(completions, Is.EqualTo(2)); Assert.That(healthyAcks, Is.EqualTo(1));
+                Assert.That(reports, Is.EqualTo(1)); Assert.That(reportedOrder, Is.EqualTo("healthy"));
+                var debts = (System.Collections.IDictionary)Adapter.GetField("deferredOrders", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
+                Assert.That(debts.Count, Is.EqualTo(1)); Assert.That(debts.Contains("known"), Is.True);
+                var descriptors = (System.Collections.IDictionary)Adapter.GetField("deferredReports", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
+                Assert.That(descriptors.Contains(identity + ":grant-known"), Is.True);
+            }
+            finally
+            {
+                API.Xsolla.Configure(null); cmsReady.SetValue(null, oldCmsReady); Callbacks.OnHardPurchasedStoreItem = oldCallback;
+                for (int i = 0; i < names.Length; i++) Set(names[i], originals[i]);
+            }
+        }
         [Serializable] private class RecoveryOrderFixture { public string orderId; }
         [TestCase("requestId", "RequestId")]
         [TestCase("productId", "ProductId")]

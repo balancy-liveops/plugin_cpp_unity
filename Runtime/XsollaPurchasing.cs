@@ -423,9 +423,17 @@ namespace Balancy
                     foreach (var order in result.orders ?? Array.Empty<Order>())
                     {
                         if (order == null || string.IsNullOrEmpty(order.id) || !visited.Add(order.id)) continue;
-                        if (order.state != "paid" || order.acknowledged) continue;
                         try
                         {
+                            if (deferredOrders.TryGetValue(order.id, out var known))
+                            {
+                                ValidateDeferredOrder(order, known);
+                                // Pending already supplies the terminal state: retain the
+                                // debt and surface reconciliation without spending a GET.
+                                if (order.state == "canceled" || order.reconciliationRequired)
+                                    throw new InvalidOperationException("xsolla_reconciliation_required");
+                            }
+                            if (order.state != "paid" || order.acknowledged) continue;
                             if (order.reconciliationRequired) throw new InvalidOperationException("xsolla_reconciliation_required");
                             await Apply(order.id, Descriptor(order), session, epoch, observedOrder: order);
                         }

@@ -280,6 +280,23 @@ class Program {
   };
   await RecoverAllowErrors();listedSeed=false;await RecoverAllowErrors();
   Check(listedGets.SequenceEqual(new[]{"hidden"}),"valid nonpaid pending IDs are visited and do not consume deferred GET budget");
+  foreach(var listedTerminal in new[]{"canceled","reconciliation"}) {
+   Reset();bool preciseSeed=true;int preciseGets=0,preciseHealthyAck=0;
+   XsollaPurchasing.Complete=id=>{complete++;return Task.FromResult(CompletionFixture(FixtureOrder(id)));};
+   XsollaPurchasing.Request=(a,b)=>{
+    if(a=="pending")return Task.FromResult(preciseSeed?PendingFixture(FixtureOrder("known")):PendingFixture(FixtureOrder("known",listedTerminal=="canceled"?"canceled":"paid",listedTerminal=="reconciliation"),FixtureOrder("healthy")));
+    if(a=="get"){preciseGets++;return Task.FromException<string>(new Exception("unexpected GET"));}
+    if(preciseSeed)return Task.FromException<string>(new Exception("seed ACK unavailable"));
+    preciseHealthyAck++;return Task.FromResult("{\"acknowledged\":true,\"grantId\":\"grant-healthy\"}");
+   };
+   await RecoverAllowErrors();preciseSeed=false;InvalidOperationException preciseError=null;
+   try{await API.Xsolla.RecoverPurchases();}catch(InvalidOperationException error){preciseError=error;}
+   var causes=(preciseError?.InnerException as AggregateException)?.Flatten().InnerExceptions;
+   Check(preciseError?.Message=="xsolla_recovery_incomplete"&&causes?.Count==1&&causes[0].Message=="xsolla_reconciliation_required","single known listed "+listedTerminal+" reports exact reconciliation aggregate without other failures");
+   var debt=(System.Collections.IDictionary)typeof(XsollaPurchasing).GetField("deferredOrders",System.Reflection.BindingFlags.Static|System.Reflection.BindingFlags.NonPublic).GetValue(null);
+   Check(preciseGets==0&&debt.Count==1&&debt.Contains("known"),"single known listed "+listedTerminal+" keeps debt and spends zero GETs");
+   Check(preciseHealthyAck==1&&Reports==1&&LastPayment.OrderId=="healthy"&&complete==2,"healthy following listed "+listedTerminal+" still completes and reports independently");
+  }
   Reset();bool replicaSeed=true,replicaAccepted=false;int replicaCompletions=0;
   XsollaPurchasing.Request=(a,b)=>a=="pending"?Task.FromResult(replicaSeed?PendingFixture(FixtureOrder("replica")):PendingFixture()):a=="ack"?(replicaAccepted?Task.FromResult("{\"acknowledged\":true,\"grantId\":\"grant-replica\"}"):Task.FromException<string>(new Exception("lost ack"))):Task.FromResult(OrderFixture(FixtureOrder("replica",acknowledged:replicaAccepted)));
   XsollaPurchasing.Complete=id=>Task.FromResult(CompletionFixture(FixtureOrder(id,acknowledged:replicaAccepted),++replicaCompletions==1));
