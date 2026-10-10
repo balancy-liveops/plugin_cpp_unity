@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 using UnityEngine;
+using UnityEngine.Profiling;
 
 namespace Balancy.WebView
 {
@@ -20,6 +21,10 @@ namespace Balancy.WebView
     public class BalancyWebView : MonoBehaviour
     {
         private const string BridgeFileName = "balancy-webview-bridge.js";
+#if UNITY_EDITOR
+        private static TextAsset _editorBridgeAsset;
+        private static string _editorBridgeUrl;
+#endif
         private const string IosLocalUrlPrefix = "balancy-local://local/";
         private string _scriptsCode = "";
         private string _scriptsUrl = "";
@@ -40,8 +45,30 @@ namespace Balancy.WebView
         public static void PerformanceLog(string stage, double started, string viewId = null, string detail = null)
         {
             if (!PerformanceLoggingEnabled || started <= 0) return;
+            bool lifecycle = stage == "viewReadyReceived" || stage == "viewClearedReceived"
+                || stage == "classicNavigationComplete";
             Debug.Log("[BalancyPerf] host stage=" + stage + " view=" + (viewId ?? "-") + " ms=" +
-                (PerformanceNow() - started).ToString("F2", System.Globalization.CultureInfo.InvariantCulture) + " " + detail);
+                (PerformanceNow() - started).ToString("F2", System.Globalization.CultureInfo.InvariantCulture) + " " + detail +
+                (lifecycle ? PerformanceMemory() : ""));
+        }
+        private static string PerformanceMemory()
+        {
+            try
+            {
+                const double mb = 1024.0 * 1024.0;
+                var culture = System.Globalization.CultureInfo.InvariantCulture;
+                // Unity counters cover the game process. Android WebView renderer memory
+                // may live in another process, so compare these with bridge snapshots.
+                return " managedMB=" + (GC.GetTotalMemory(false) / mb).ToString("F1", culture) +
+                    " unityAllocatedMB=" + (Profiler.GetTotalAllocatedMemoryLong() / mb).ToString("F1", culture) +
+                    " unityReservedMB=" + (Profiler.GetTotalReservedMemoryLong() / mb).ToString("F1", culture);
+            }
+            catch (Exception) { return " memoryUnavailable=true"; }
+        }
+        private static void PerformanceCloseMemory()
+        {
+            if (PerformanceLoggingEnabled)
+                Debug.Log("[BalancyPerf] host stage=webViewClosed view=-" + PerformanceMemory());
         }
         private double _performanceShellStart, _performanceViewStart, _performanceCloseStart;
 
@@ -157,7 +184,12 @@ namespace Balancy.WebView
         public void OnAndroidRenderProcessGone(string reason)
         {
             if (Persistent.Enabled) Persistent.Fail("Android WebView renderer " + reason);
-            else { CloseWebView(); OnLoadCompleted?.Invoke(false); }
+            else
+            {
+                var failedOpen = _classicReveal?.Fail();
+                CloseWebView(); OnLoadCompleted?.Invoke(false);
+                failedOpen?.Invoke();
+            }
         }
 
         public void OnAndroidLoadCompleted(string successString)
@@ -297,6 +329,15 @@ namespace Balancy.WebView
             () => OnClosed?.Invoke(), id => OnViewReleased?.Invoke(id),
             () => Time.realtimeSinceStartup));
 
+        // Classic Balancy views open hidden on Android and are revealed by the page's ready signal (BalancyIsReady,
+        // sent after the root init settles), as the WebGL host does. The timeout, persistent mode's view timeout, keeps
+        // a silent page from staying hidden.
+        internal const double ClassicRevealTimeoutSeconds = PersistentViewState.ViewTimeoutSeconds;
+        private bool _openHidden;
+        private ClassicRevealGate _classicReveal;
+        private ClassicRevealGate ClassicReveal => _classicReveal ?? (_classicReveal = new ClassicRevealGate(
+            RevealClassicView, () => Time.realtimeSinceStartup));
+
         private bool SendPersistentMessage(string message)
         {
             if (!PerformanceLoggingEnabled) return _balancySendMessage(message);
@@ -316,6 +357,68 @@ namespace Balancy.WebView
         }
 
         [Serializable]
+        private class BridgePerformanceMessage
+        {
+            public string @event, viewId;
+            public float elapsedMs;
+            public BridgePerformanceSnapshot snapshot;
+        }
+
+        [Serializable]
+        private class BridgePerformanceSnapshot
+        {
+            public int domNodes, viewNodes, liveElements, liveComponents, liveInstances;
+            public int pendingPreparations, listeners, timers, viewDisposers, trackedAnimations, activeLottie;
+            public int cachedBanim, cachedLottie, cachedPrefabs, pendingRequests;
+            public int frameCount, updateCalls;
+            public float frameP95Ms;
+            public bool updateLoopRunning;
+        }
+
+        private static void LogBridgePerformance(string message)
+        {
+            if (!PerformanceLoggingEnabled) return;
+            if (Application.platform != RuntimePlatform.Android)
+            {
+                Debug.Log("[BalancyPerf] " + message);
+                return;
+            }
+
+            // Android Logcat truncates long Unity messages. Keep lifecycle snapshots
+            // in one short line so the before/after cleanup counters remain visible.
+            try
+            {
+                var info = JsonUtility.FromJson<BridgePerformanceMessage>(message);
+                if (info == null || (info.@event != "viewReady" && info.@event != "viewWillDispose" && info.@event != "viewDisposed"))
+                    return;
+                var snapshot = info.snapshot;
+                if (snapshot == null)
+                {
+                    Debug.Log("[BalancyPerf] bridge event=" + info.@event + " view=" + info.viewId + " snapshotMissing=true");
+                    return;
+                }
+
+                var culture = System.Globalization.CultureInfo.InvariantCulture;
+                Debug.Log("[BalancyPerf] bridge event=" + info.@event + " view=" + info.viewId +
+                    " elapsedMs=" + info.elapsedMs.ToString("F1", culture) +
+                    " dom=" + snapshot.domNodes + " viewNodes=" + snapshot.viewNodes +
+                    " elements=" + snapshot.liveElements + " components=" + snapshot.liveComponents +
+                    " instances=" + snapshot.liveInstances + " pendingPrep=" + snapshot.pendingPreparations +
+                    " listeners=" + snapshot.listeners + " timers=" + snapshot.timers +
+                    " disposers=" + snapshot.viewDisposers + " animations=" + snapshot.trackedAnimations +
+                    " lottie=" + snapshot.activeLottie + " pendingRequests=" + snapshot.pendingRequests +
+                    " updateLoop=" + snapshot.updateLoopRunning + " updateCalls=" + snapshot.updateCalls +
+                    " frames=" + snapshot.frameCount + " frameP95Ms=" + snapshot.frameP95Ms.ToString("F1", culture) +
+                    " cachedBanim=" + snapshot.cachedBanim + " cachedLottie=" + snapshot.cachedLottie +
+                    " cachedPrefabs=" + snapshot.cachedPrefabs);
+            }
+            catch (Exception error)
+            {
+                Debug.LogWarning("[BalancyPerf] bridge summary failed: " + error.Message);
+            }
+        }
+
+        [Serializable]
         private class PersistentLoadMessage
         {
             public string type = "loadView", viewId, htmlBase64, ownerJsonBase64, additionalInfoBase64, baseUrl, scriptsVersion;
@@ -324,7 +427,11 @@ namespace Balancy.WebView
 
         public bool CanShowPersistentView() => Persistent.CanShow;
         public string CurrentViewId => Persistent.CurrentId;
-        private void Update() => _persistent?.Tick();
+        private void Update()
+        {
+            _persistent?.Tick();
+            _classicReveal?.Tick();
+        }
         private static string Base64(string value) => Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(value ?? ""));
         private static string JsString(string value) => "(" + JsonUtility.ToJson(new StringValue { value = value ?? "" }) + ").value";
         [Serializable] private class StringValue { public string value; }
@@ -421,23 +528,28 @@ namespace Balancy.WebView
 
         private static string GetBridgeUrl()
         {
-#if UNITY_ANDROID && !UNITY_EDITOR
+#if UNITY_EDITOR
+            // StreamingAssets may contain an older player-build copy. In the
+            // Editor the package resource is authoritative and is written once
+            // per imported asset, so repeated View opens do not touch the disk.
+            var bridge = Resources.Load<TextAsset>("balancy-webview-bridge");
+            if (bridge == null) throw new InvalidOperationException("balancy-webview-bridge resource is missing");
+            string directory = System.IO.Path.Combine(Application.persistentDataPath, "Balancy", "EditorWebView");
+            string path = System.IO.Path.Combine(directory, BridgeFileName);
+            if (_editorBridgeAsset != bridge || _editorBridgeUrl == null || !System.IO.File.Exists(path))
+            {
+                System.IO.Directory.CreateDirectory(directory);
+                System.IO.File.WriteAllText(path, bridge.text);
+                _editorBridgeAsset = bridge;
+                _editorBridgeUrl = ToWebViewUrl(path);
+            }
+            return _editorBridgeUrl;
+#elif UNITY_ANDROID
             return "file:///android_asset/Balancy/" + BridgeFileName;
-#elif UNITY_IOS && !UNITY_EDITOR
+#elif UNITY_IOS
             return GetIosBridgeUrl();
 #else
             string path = System.IO.Path.Combine(Application.streamingAssetsPath, "Balancy", BridgeFileName);
-            if (!System.IO.File.Exists(path))
-            {
-                // Editor runs do not execute a player build preprocessor. Materialize the
-                // package resource beside the shell without changing the runtime path.
-                var bridge = Resources.Load<TextAsset>("balancy-webview-bridge");
-                if (bridge == null) throw new InvalidOperationException("balancy-webview-bridge resource is missing");
-                string directory = System.IO.Path.Combine(Application.persistentDataPath, "Balancy", "EditorWebView");
-                System.IO.Directory.CreateDirectory(directory);
-                path = System.IO.Path.Combine(directory, BridgeFileName);
-                System.IO.File.WriteAllText(path, bridge.text);
-            }
             return ToWebViewUrl(path);
 #endif
         }
@@ -634,7 +746,9 @@ namespace Balancy.WebView
             try
             {
                 var plugin = GetPluginInstance();
-                return plugin.Call<bool>("openWebView", url, _instance._ownerJson, width, height);
+                return _instance._openHidden
+                    ? plugin.Call<bool>("openWebView", url, _instance._ownerJson, width, height, true)
+                    : plugin.Call<bool>("openWebView", url, _instance._ownerJson, width, height);
             }
             catch (System.Exception e)
             {
@@ -1024,6 +1138,31 @@ namespace Balancy.WebView
             return false;
         }
         
+        // A Balancy view page sends BalancyIsReady; where the native layer can open hidden, wait for it (ClassicRevealGate).
+        // onShown runs once the view is visible, which for a hidden open is its reveal.
+        internal bool OpenWebView(string url, string ownerJson, string additionalInfo, bool revealWhenReady, Action onShown, Action onFailed)
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            _openHidden = revealWhenReady;
+#endif
+            bool hidden = _openHidden, opened;
+            try { opened = OpenWebView(url, ownerJson, additionalInfo); }
+            finally { _openHidden = false; }
+            if (!opened) return false;
+            if (!hidden) { onShown?.Invoke(); return true; }
+            ClassicReveal.Begin(ClassicRevealTimeoutSeconds, Guarded(onShown), Guarded(onFailed));
+            PerformanceLog("classicOpenHidden", _performanceViewStart);
+            return true;
+        }
+
+        // The gate runs these from Update and page messages: a game callback that throws must not stop the SDK's own
+        // handling (the ready request still has to reach the core).
+        private static Action Guarded(Action callback) => callback == null ? null : () =>
+        {
+            try { callback(); }
+            catch (Exception exception) { Debug.LogException(exception); }
+        };
+
         /// <summary>
         /// Validates a local file URL before attempting to load it
         /// </summary>
@@ -1277,6 +1416,17 @@ namespace Balancy.WebView
             _balancyShowWebView(); _isWebViewOpen = true;
         }
 
+        // The page sent BalancyIsReady: reveal a classic view that was opened hidden.
+        internal void SignalClassicPageReady() => _classicReveal?.PageSignal("ready");
+
+        private void RevealClassicView(string reason)
+        {
+            if (!_isWebViewOpen) return;
+            _balancyShowWebView();
+            PerformanceLog("classicReveal", _performanceViewStart, null, "reason=" + reason +
+                " configuredDelayMs=" + (_showDelay * 1000) + " configuredFadeMs=" + (_animationDuration * 1000));
+        }
+
         public void HideWebView()
         {
             if (!Persistent.Enabled) return;
@@ -1301,6 +1451,7 @@ namespace Balancy.WebView
         /// </summary>
         public void CloseWebView()
         {
+            _classicReveal?.Cancel();
             if (!_isWebViewOpen && !Persistent.Enabled) return;
             Persistent.Reset();
             // Also destroy a prepared but hidden shell.
@@ -1311,6 +1462,7 @@ namespace Balancy.WebView
             // Reset debug logging state to prevent log accumulation
             _debugLogging = false;
             
+            PerformanceCloseMemory();
             OnClosed?.Invoke();
         }
 
@@ -1805,7 +1957,7 @@ namespace Balancy.WebView
                 var parsed = JsonUtility.FromJson<PersistentMessage>(message);
                 if (parsed != null && parsed.type == "webview-performance")
                 {
-                    if (PerformanceLoggingEnabled) Debug.Log("[BalancyPerf] " + message);
+                    LogBridgePerformance(message);
                     return;
                 }
                 if (parsed != null && parsed.type == "shellReady" && Persistent.Preparing && parsed.shellId == Persistent.ShellId)
@@ -1822,6 +1974,8 @@ namespace Balancy.WebView
                     PerformanceLog("viewClearedReceived", _performanceCloseStart, parsed.viewId);
                 if (parsed != null && parsed.type == "viewLoadError" && parsed.viewId == Persistent.CurrentId)
                     Persistent.RequestRestart();
+                if (parsed != null && parsed.type == "shellError" && !Persistent.Enabled)
+                    _classicReveal?.PageSignal("bootstrapError");
                 if (parsed != null && (parsed.type == "viewLoadError" || parsed.type == "shellError"))
                     PerformanceLog(parsed.type, parsed.type == "shellError" ? _performanceShellStart : _performanceViewStart, parsed.viewId ?? parsed.shellId);
                 if (parsed != null && Persistent.Receive(parsed.type, parsed.viewId, parsed.shellId, parsed.error)) return;
@@ -1849,6 +2003,7 @@ namespace Balancy.WebView
         private static void OnLoadCompletedReceived(bool success)
         {
             if (_instance == null) return;
+            bool pageFinished = success;
             bool preparingShell = _instance.Persistent.Preparing;
             if (!preparingShell) PerformanceLog("classicNavigationComplete", _instance._performanceViewStart, null, "success=" + success);
             if (preparingShell) PerformanceLog("shellNavigationComplete", _instance._performanceShellStart, _instance.Persistent.ShellId, "success=" + success);
@@ -1876,6 +2031,10 @@ namespace Balancy.WebView
                 if (!success) _instance.Persistent.Fail("Persistent shell navigation or injection failed");
                 return; // Success is signalled by the bridge's shellReady ACK.
             }
+            // On Android, onPageFinished hides a view opened with startHidden again: repeat a reveal that came before it.
+            bool showAgain = pageFinished && (_instance._classicReveal?.LoadCompleted() ?? false);
+            if (!success) _instance._classicReveal?.Signal("loadFailed");
+            if (showAgain) _instance.RevealClassicView("pageFinished");
             _instance.OnLoadCompleted?.Invoke(success);
         }
 

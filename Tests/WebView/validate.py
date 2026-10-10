@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the persistent-state NUnit fixture without opening Unity.
+"""Run the persistent-state and classic-reveal NUnit fixtures without opening Unity.
 Optional --unity-editor compiles the SDK against the project's generated Unity references.
 """
 import argparse
@@ -18,29 +18,36 @@ parser.add_argument('--nunit', type=Path)
 parser.add_argument('--mcs', default=shutil.which('mcs') or '/Library/Frameworks/Mono.framework/Commands/mcs')
 parser.add_argument('--mono', default=shutil.which('mono') or '/Library/Frameworks/Mono.framework/Commands/mono')
 args = parser.parse_args()
-nunit = args.nunit or next(args.project.glob('Library/PackageCache/com.unity.ext.nunit*/net472/unity-custom/nunit.framework.dll'))
+nunit = args.nunit or next(args.project.glob('Library/PackageCache/com.unity.ext.nunit*/net*/unity-custom/nunit.framework.dll'))
 with tempfile.TemporaryDirectory(prefix='balancy-webview-tests-') as temporary:
     output = Path(temporary)
     runner = output / 'Runner.cs'
     runner.write_text('''using System;
+using NUnit.Framework;
 class Runner {
+ static void Each(object fixture, Type attribute) {
+  foreach (var method in fixture.GetType().GetMethods()) if (Attribute.IsDefined(method, attribute)) method.Invoke(fixture, null);
+ }
  static int Main() {
   int passed = 0, failed = 0;
-  var fixture = new Balancy.Tests.PersistentWebViewTests();
-  foreach (var method in fixture.GetType().GetMethods()) {
-   if (!Attribute.IsDefined(method, typeof(NUnit.Framework.TestAttribute))) continue;
-   fixture.SetUp();
-   try { method.Invoke(fixture, null); Console.WriteLine("PASS " + method.Name); passed++; }
-   catch (Exception e) { Console.WriteLine("FAIL " + method.Name + ": " + (e.InnerException ?? e)); failed++; }
-   finally { fixture.TearDown(); }
+  foreach (var fixture in new object[] { new Balancy.Tests.PersistentWebViewTests(), new Balancy.Tests.ClassicRevealGateTests() }) {
+   foreach (var method in fixture.GetType().GetMethods()) {
+    if (!Attribute.IsDefined(method, typeof(TestAttribute))) continue;
+    string name = fixture.GetType().Name + "." + method.Name;
+    Each(fixture, typeof(SetUpAttribute));
+    try { method.Invoke(fixture, null); Console.WriteLine("PASS " + name); passed++; }
+    catch (Exception e) { Console.WriteLine("FAIL " + name + ": " + (e.InnerException ?? e)); failed++; }
+    finally { Each(fixture, typeof(TearDownAttribute)); }
+   }
   }
   Console.WriteLine(passed + " passed, " + failed + " failed"); return failed > 0 ? 1 : 0;
  }
 }''')
     shutil.copy2(nunit, output / nunit.name)
     subprocess.run([args.mcs, '-r:' + str(nunit), '-out:' + str(output / 'tests.exe'),
-                    str(ROOT / 'WebView/Scripts/PersistentViewState.cs'),
-                    str(ROOT / 'Tests/EditMode/PersistentWebViewTests.cs'), str(runner)], check=True)
+                    str(ROOT / 'WebView/Scripts/PersistentViewState.cs'), str(ROOT / 'WebView/Scripts/ClassicRevealGate.cs'),
+                    str(ROOT / 'Tests/EditMode/PersistentWebViewTests.cs'), str(ROOT / 'Tests/EditMode/ClassicRevealGateTests.cs'),
+                    str(runner)], check=True)
     subprocess.run([args.mono, str(output / 'tests.exe')], check=True)
     if args.unity_editor:
         runtime = args.unity_editor / 'Contents/Resources/Scripting/DotNetSdk'
@@ -69,7 +76,7 @@ class Runner {
             sources = [str(args.project / item.attrib['Include'].replace('\\', '/')) for item in tree.findall('.//m:Compile', namespace)]
             refs = [str(args.project / item.text.replace('\\', '/')) for item in tree.findall('.//m:HintPath', namespace)]
             if name == 'Balancy.WebView':
-                sources += [str(ROOT / 'WebView/Scripts' / file) for file in ['PersistentViewState.cs', 'AssemblyInfo.cs']]
+                sources += [str(ROOT / 'WebView/Scripts' / file) for file in ['PersistentViewState.cs', 'ClassicRevealGate.cs', 'AssemblyInfo.cs']]
             else:
                 refs = [ref for ref in refs if not ref.endswith('/Balancy.WebView.dll')]
                 refs.append(str(output / 'Balancy.WebView.dll'))

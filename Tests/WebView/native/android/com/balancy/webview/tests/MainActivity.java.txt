@@ -21,6 +21,8 @@ public class MainActivity extends Activity {
     int failures;
     int bridgeCycle, imageRequests;
     boolean bridgeStarted;
+    boolean classicReadySeen, classicRevealChecked;
+    String classicError;
     long bridgeOpenStart;
     final ArrayList<Double> bridgeTimes = new ArrayList<>();
     final ArrayList<java.lang.ref.WeakReference<WebView>> retired = new ArrayList<>();
@@ -203,10 +205,96 @@ public class MainActivity extends Activity {
                         int alive = 0; for (java.lang.ref.WeakReference<WebView> reference : retired) if (reference.get() != null) alive++;
                         check("retired native views released", alive == 0);
                         results.add("MEASURE real bridge ready milliseconds " + bridgeTimes);
-                        finishResults();
+                        startHiddenClassic();
                     });
                 });
             }
+        } catch (Throwable error) { fail(error); }
+    }
+    // A classic (non-persistent) page opened hidden, the way Unity's classic reveal gate opens Balancy views. It must
+    // stay hidden through page finish and bridge startup, send BalancyIsReady while hidden, and be revealed by showWebView().
+    void startHiddenClassic() {
+        try {
+            java.io.File page = new java.io.File(getFilesDir(), "classic-hidden.html");
+            try (java.io.FileOutputStream stream = new java.io.FileOutputStream(page)) {
+                stream.write("<!doctype html><html><head></head><body><div id='baked'>baked</div></body></html>".getBytes("UTF-8"));
+            }
+            UnityPlayer.receiver = (method, payload) -> handler.post(() -> hiddenClassicMessage(method, payload));
+            check("classic page opens hidden", plugin.openWebView(android.net.Uri.fromFile(page).toString(), "{}", 0, 0, true));
+        } catch (Throwable error) { fail(error); }
+    }
+    void hiddenClassicMessage(String method, String payload) {
+        try {
+            if (method.equals("OnAndroidLoadCompleted")) {
+                View container = (View)field("webViewContainer"); WebView view = (WebView)field("webView");
+                check("hidden classic page stays hidden through page finish",
+                    payload.equals("true") && container.getVisibility() != View.VISIBLE && view.getAlpha() == 0f);
+                // Load the real bridge over the page-finish shim, as the page loader does, then install a bundle and start it.
+                plugin.injectJavaScript("(function(){var s=document.createElement('script');s.src='file:///android_asset/bridge.js';" +
+                    "s.onload=function(){window.balancy._installScripts('window.hiddenBundleRuns=1;','native-test');window.balancy.initResponseHandler();};" +
+                    "document.head.appendChild(s);})();");
+                later(() -> finishAfterReveal(0));
+                return;
+            }
+            if (!method.equals("OnAndroidMessageReceived")) return;
+            org.json.JSONObject msg = new org.json.JSONObject(payload);
+            String type = msg.optString("type");
+            if (type.equals("shellError")) classicError = payload;
+            if (!type.equals("batch") && !type.equals("request")) return;
+            if (!classicReadySeen && type.equals("request") && msg.optInt("action") == 201) {
+                classicReadySeen = true;
+                View container = (View)field("webViewContainer"); WebView shown = (WebView)field("webView");
+                check("hidden classic page sends BalancyIsReady while still hidden", container.getVisibility() != View.VISIBLE);
+                plugin.showWebView();
+                later(() -> {
+                    check("showWebView reveals the hidden classic page", container.getVisibility() == View.VISIBLE && shown.getAlpha() == 1f);
+                    classicRevealChecked = true;
+                });
+            }
+            org.json.JSONArray requests = type.equals("batch") ? msg.getJSONArray("requests") : new org.json.JSONArray().put(msg);
+            org.json.JSONArray responses = new org.json.JSONArray();
+            for (int i = 0; i < requests.length(); i++) {
+                org.json.JSONObject request = requests.getJSONObject(i); int action = request.getInt("action");
+                String result = "{}";
+                if (action == 10) result = "Localized text";
+                if (action == 11) result = "file://" + new java.io.File(getFilesDir(), "icon.png").getAbsolutePath();
+                responses.put(new org.json.JSONObject().put("id", request.getString("id")).put("result", result));
+            }
+            plugin.sendMessage(new org.json.JSONObject().put("type", "batch-response").put("responses", responses).toString());
+        } catch (Throwable error) { fail(error); }
+    }
+    // The pass ends once BalancyIsReady has revealed the page (checked 250 ms after showWebView).
+    void finishAfterReveal(int attempt) {
+        if (classicRevealChecked || attempt >= 20) {
+            if (!classicRevealChecked) check("hidden classic page sends BalancyIsReady" + (classicError == null ? "" : ": " + classicError), false);
+            startEarlyReveal();
+            return;
+        }
+        later(() -> finishAfterReveal(attempt + 1));
+    }
+    // The gate's timeout can reveal a hidden page before it finishes loading. onPageFinished then hides it again
+    // (startHidden's suppressNextShowAnimation is still set), so Unity shows it a second time once the load completes.
+    void startEarlyReveal() {
+        try {
+            plugin.closeWebView();
+            plugin.setShowDelay(0); plugin.setAnimationDuration(0);
+            java.io.File page = new java.io.File(getFilesDir(), "classic-hidden.html");
+            UnityPlayer.receiver = (method, payload) -> handler.post(() -> earlyRevealMessage(method, payload));
+            check("classic page opens hidden for an early reveal", plugin.openWebView(android.net.Uri.fromFile(page).toString(), "{}", 0, 0, true));
+            plugin.showWebView();
+        } catch (Throwable error) { fail(error); }
+    }
+    void earlyRevealMessage(String method, String payload) {
+        try {
+            if (!method.equals("OnAndroidLoadCompleted")) return;
+            UnityPlayer.receiver = null;
+            View container = (View)field("webViewContainer"); WebView view = (WebView)field("webView");
+            check("page finish hides a classic page revealed before it", container.getVisibility() == View.VISIBLE && view.getAlpha() == 0f);
+            plugin.showWebView();
+            later(() -> {
+                check("a second showWebView after page finish reveals it", container.getVisibility() == View.VISIBLE && view.getAlpha() == 1f);
+                finishResults();
+            });
         } catch (Throwable error) { fail(error); }
     }
     void openBridgeView() throws Exception {
