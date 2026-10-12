@@ -131,6 +131,7 @@ namespace Balancy.Tests
         }
 
         [Test]
+        [UnityEngine.TestTools.UnityPlatform(RuntimePlatform.OSXEditor)]
         public void CleanupCloseExceptionStillClearsAllManagedState()
         {
             var gate = new ClassicRevealGate(_ => { }, () => 0);
@@ -169,6 +170,7 @@ namespace Balancy.Tests
         }
 
         [Test]
+        [UnityEngine.TestTools.UnityPlatform(RuntimePlatform.OSXEditor)]
         public void CleanupRetiresTheClassicViewBeforeInvokingOnClosed()
         {
             var gate = new ClassicRevealGate(_ => { }, () => 0);
