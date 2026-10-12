@@ -131,6 +131,89 @@ namespace Balancy.Tests
         }
 
         [Test]
+        public void CleanupCloseExceptionStillClearsAllManagedState()
+        {
+            var gate = new ClassicRevealGate(_ => { }, () => 0);
+            typeof(BalancyWebView).GetField("_classicReveal", BindingFlags.Instance | BindingFlags.NonPublic)
+                .SetValue(_webView, gate);
+            typeof(BalancyWebView).GetField("_isWebViewOpen", BindingFlags.Instance | BindingFlags.NonPublic)
+                .SetValue(_webView, true);
+            WebViewField.SetValue(null, _webView);
+            LastOwner.SetValue(null, new IntPtr(901));
+            MessageHandler.SetValue(null, new Func<string, bool>(_ => true));
+            var owners = (System.Collections.IDictionary)ManagerType.GetField("ViewOwners", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
+            owners.Add("retired", new IntPtr(901));
+            foreach (var name in new[] { "_prepareRequested", "_dataAvailable", "_scriptsLoaded" })
+                ManagerType.GetField(name, BindingFlags.Static | BindingFlags.NonPublic).SetValue(null, true);
+            ManagerType.GetField("_pendingPrepared", BindingFlags.Static | BindingFlags.NonPublic).SetValue(null, new Action(() => { }));
+            ManagerType.GetField("_pendingPrepareFailed", BindingFlags.Static | BindingFlags.NonPublic).SetValue(null, new Action<string>(_ => { }));
+            var epoch = ManagerType.GetField("_ownerEpoch", BindingFlags.Static | BindingFlags.NonPublic);
+            int oldEpoch = (int)epoch.GetValue(null);
+            gate.Begin(30);
+            _webView.OnClosed += () => throw new InvalidOperationException("game close failed");
+
+            var error = Assert.Throws<TargetInvocationException>(() => CleanUpManagedState.Invoke(null, null));
+            Assert.That(error.InnerException, Is.TypeOf<InvalidOperationException>());
+            Assert.That(error.InnerException.Message, Is.EqualTo("game close failed"));
+            Assert.That(_webView.IsWebViewOpen(), Is.False);
+            Assert.That(WebViewField.GetValue(null), Is.Null);
+            Assert.That(MessageHandler.GetValue(null), Is.Null);
+            Assert.That((IntPtr)LastOwner.GetValue(null), Is.EqualTo(IntPtr.Zero));
+            Assert.That(owners.Count, Is.Zero);
+            Assert.That((int)epoch.GetValue(null), Is.EqualTo(oldEpoch + 1));
+            foreach (var name in new[] { "_prepareRequested", "_dataAvailable", "_scriptsLoaded" })
+                Assert.That(ManagerType.GetField(name, BindingFlags.Static | BindingFlags.NonPublic).GetValue(null), Is.False);
+            foreach (var name in new[] { "_pendingPrepared", "_pendingPrepareFailed" })
+                Assert.That(ManagerType.GetField(name, BindingFlags.Static | BindingFlags.NonPublic).GetValue(null), Is.Null);
+            Assert.That(gate.InProgress, Is.False);
+        }
+
+        [Test]
+        public void CleanupRetiresTheClassicViewBeforeInvokingOnClosed()
+        {
+            var gate = new ClassicRevealGate(_ => { }, () => 0);
+            typeof(BalancyWebView).GetField("_classicReveal", BindingFlags.Instance | BindingFlags.NonPublic)
+                .SetValue(_webView, gate);
+            typeof(BalancyWebView).GetField("_isWebViewOpen", BindingFlags.Instance | BindingFlags.NonPublic)
+                .SetValue(_webView, true);
+            WebViewField.SetValue(null, _webView);
+            gate.Begin(30);
+            int closed = 0;
+            _webView.OnClosed += () =>
+            {
+                ++closed;
+                Assert.That(WebViewField.GetValue(null), Is.Null);
+                Assert.That(RenderViewsManager.OpenView("https://example.invalid"), Is.False);
+            };
+
+            CleanUpManagedState.Invoke(null, null);
+            Assert.That(closed, Is.EqualTo(1));
+            Assert.That(_webView.IsWebViewOpen(), Is.False);
+            Assert.That(gate.InProgress, Is.False);
+        }
+
+        [Test]
+        public void CleanupPreservesSettledClassicViews()
+        {
+            var gate = new ClassicRevealGate(_ => { }, () => 0);
+            typeof(BalancyWebView).GetField("_classicReveal", BindingFlags.Instance | BindingFlags.NonPublic)
+                .SetValue(_webView, gate);
+            var opened = typeof(BalancyWebView).GetField("_isWebViewOpen", BindingFlags.Instance | BindingFlags.NonPublic);
+            opened.SetValue(_webView, true);
+            WebViewField.SetValue(null, _webView);
+            gate.Begin(30); gate.LoadCompleted(); gate.PageSignal("ready");
+            int closed = 0;
+            _webView.OnClosed += () => ++closed;
+            try
+            {
+                CleanUpManagedState.Invoke(null, null);
+                Assert.That(_webView.IsWebViewOpen(), Is.True);
+                Assert.That(closed, Is.Zero);
+            }
+            finally { opened.SetValue(_webView, false); }
+        }
+
+        [Test]
         public void RemovedEventInvalidatesEveryCachedOwnerButUnrelatedEventDoesNot()
         {
             var info = new Balancy.Data.SmartObjects.EventInfo();
