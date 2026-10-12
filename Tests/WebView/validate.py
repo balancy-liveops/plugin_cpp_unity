@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the persistent-state and page-loader NUnit fixtures without opening Unity.
+"""Run the persistent-state, page-loader and classic-reveal NUnit fixtures without opening Unity.
 --update-fixtures regenerates native/classic-bootstrap.js.txt, the loader the JavaScript tests execute.
 Optional --unity-editor compiles the SDK against the project's generated Unity references.
 """
@@ -32,7 +32,7 @@ class Runner {
  }
  static int Main() {
   int passed = 0, failed = 0;
-  foreach (var fixture in new object[] { new Balancy.Tests.PersistentWebViewTests(), new Balancy.Tests.RuntimeBootstrapTests() }) {
+  foreach (var fixture in new object[] { new Balancy.Tests.PersistentWebViewTests(), new Balancy.Tests.RuntimeBootstrapTests(), new Balancy.Tests.ClassicRevealGateTests() }) {
    foreach (var method in fixture.GetType().GetMethods()) {
     if (!Attribute.IsDefined(method, typeof(TestAttribute))) continue;
     string name = fixture.GetType().Name + "." + method.Name;
@@ -47,8 +47,8 @@ class Runner {
 }''')
     shutil.copy2(nunit, output / nunit.name)
     subprocess.run([args.mcs, '-r:' + str(nunit), '-out:' + str(output / 'tests.exe'),
-                    str(ROOT / 'WebView/Scripts/PersistentViewState.cs'), str(ROOT / 'WebView/Scripts/RuntimeBootstrap.cs'),
-                    str(ROOT / 'Tests/EditMode/PersistentWebViewTests.cs'), str(ROOT / 'Tests/EditMode/RuntimeBootstrapTests.cs'),
+                    str(ROOT / 'WebView/Scripts/PersistentViewState.cs'), str(ROOT / 'WebView/Scripts/RuntimeBootstrap.cs'), str(ROOT / 'WebView/Scripts/ClassicRevealGate.cs'),
+                    str(ROOT / 'Tests/EditMode/PersistentWebViewTests.cs'), str(ROOT / 'Tests/EditMode/RuntimeBootstrapTests.cs'), str(ROOT / 'Tests/EditMode/ClassicRevealGateTests.cs'),
                     str(runner)], check=True)
     subprocess.run([args.mono, str(output / 'tests.exe')], check=True,
                    env={**os.environ, **({'BALANCY_UPDATE_FIXTURES': '1'} if args.update_fixtures else {})})
@@ -79,7 +79,7 @@ class Runner {
             sources = [str(args.project / item.attrib['Include'].replace('\\', '/')) for item in tree.findall('.//m:Compile', namespace)]
             refs = [str(args.project / item.text.replace('\\', '/')) for item in tree.findall('.//m:HintPath', namespace)]
             if name == 'Balancy.WebView':
-                sources += [str(ROOT / 'WebView/Scripts' / file) for file in ['PersistentViewState.cs', 'RuntimeBootstrap.cs', 'AssemblyInfo.cs']]
+                sources += [str(ROOT / 'WebView/Scripts' / file) for file in ['PersistentViewState.cs', 'RuntimeBootstrap.cs', 'ClassicRevealGate.cs', 'ClassicReadyRequest.cs', 'AssemblyInfo.cs']]
             else:
                 refs = [ref for ref in refs if not ref.endswith('/Balancy.WebView.dll')]
                 refs.append(str(output / 'Balancy.WebView.dll'))

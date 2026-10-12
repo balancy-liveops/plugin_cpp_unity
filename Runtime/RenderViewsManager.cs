@@ -593,8 +593,7 @@ namespace Balancy
                 onShown?.Invoke();
 #else
             string fileUrl = BalancyWebView.ToWebViewUrl(filePath);
-            if (OpenView(fileUrl, owner, onFailed))
-                onShown?.Invoke();
+            OpenView(fileUrl, owner, onFailed, revealWhenReady: true, onShown);
 #endif
         }
 
@@ -687,7 +686,12 @@ namespace Balancy
             }
         }
         
-        public static bool OpenView(string url, JsonBasedObject owner = null, Action<ViewOpenError> onFailed = null)
+        public static bool OpenView(string url, JsonBasedObject owner = null, Action<ViewOpenError> onFailed = null) =>
+            OpenView(url, owner, onFailed, revealWhenReady: false, onShown: null);
+
+        // revealWhenReady: a Balancy view page that sends BalancyIsReady. Arbitrary URLs never do, so they show at load.
+        // onShown runs once the view is visible: for a page opened hidden, at its reveal.
+        private static bool OpenView(string url, JsonBasedObject owner, Action<ViewOpenError> onFailed, bool revealWhenReady, Action onShown)
         {
             if (string.IsNullOrEmpty(url))
             {
@@ -728,6 +732,7 @@ namespace Balancy
             {
 #if UNITY_EDITOR_OSX
                 success = BalancyWebViewEmbedded.Instance.InitializeEmbeddedWebView(urlToLoad, ownerJson, additionalInfo);
+                if (success) onShown?.Invoke();
 #elif UNITY_EDITOR
                 CreateErrorMessage();
 #endif
@@ -737,7 +742,8 @@ namespace Balancy
                 // Use game view size for popup mode to match embedded mode behavior
                 // Debug.LogWarning("[RenderViewsManager] OpenView " + urlToLoad + " in popup mode.");
                 // Debug.LogWarning("[RenderViewsManager] ownerJson " + ownerJson);
-                success = _webView.OpenWebView(urlToLoad, ownerJson, additionalInfo);
+                success = _webView.OpenWebView(urlToLoad, ownerJson, additionalInfo, revealWhenReady, onShown,
+                    () => onFailed?.Invoke(ViewOpenError.LoadFailed));
                 // Debug.LogWarning("[RenderViewsManager] success " + success);
             }
             
@@ -778,9 +784,23 @@ namespace Balancy
 
         private static void OnMessageReceived(string msg)
         {
+            var view = _webView;
+            if (view != null && view.ClassicPageReadyPending && ClassicReadyRequest.IsRequest(msg, (int)RequestAction.BalancyIsReady))
+            {
+                int ownerEpoch = _ownerEpoch;
+                view.ProcessClassicReadyRequest(() => DispatchWebViewRequest(msg, ownerEpoch));
+            }
+            else DispatchWebViewRequest(msg);
+        }
+
+        private static void DispatchWebViewRequest(string msg, int? readyOwnerEpoch = null)
+        {
             if (_onMessageReceived != null)
             {
                 bool proceed = _onMessageReceived(msg);
+                // The application filter may close/reopen or recreate the profile. Do not forward the old ready,
+                // or its rejection response, into a new context. The reveal gate independently checks its opening.
+                if (readyOwnerEpoch.HasValue && readyOwnerEpoch.Value != _ownerEpoch) return;
                 if (!proceed)
                 {
                     Debug.Log("Message handling was cancelled by external handler: " + msg);

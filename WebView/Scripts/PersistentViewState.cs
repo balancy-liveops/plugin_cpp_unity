@@ -19,6 +19,8 @@ namespace Balancy.WebView
         private readonly Func<double> clock;
         private readonly double timeout;
         private readonly Dictionary<string, double> deadlines = new Dictionary<string, double>();
+        // How long a shell, view or clear may take before it fails; classic views wait as long for their ready signal.
+        internal const double ViewTimeoutSeconds = 30;
         private Action onPrepared, onReady;
         private Action<string> onPrepareFailed, onFailed;
         private Func<string, string> createMessage;
@@ -26,7 +28,7 @@ namespace Balancy.WebView
         private Func<bool> startShell;
 
         internal PersistentViewState(Func<string, bool> send, Action show, Action hide, Action destroy,
-            Action closed, Action<string> released, Func<double> clock, double timeout = 30)
+            Action closed, Action<string> released, Func<double> clock, double timeout = ViewTimeoutSeconds)
         {
             this.send = send; this.show = show; this.hide = hide; this.destroy = destroy;
             this.closed = closed; this.released = released; this.clock = clock; this.timeout = timeout;
