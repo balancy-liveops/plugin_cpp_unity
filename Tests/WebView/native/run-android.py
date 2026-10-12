@@ -33,6 +33,7 @@ with zipfile.ZipFile(apk,'a') as f:
   for lib in libs:f.write(lib,'lib/'+str(lib.relative_to(a.core_libs)))
  f.write(r/'WebView/Resources/balancy-webview-bridge.txt','assets/bridge.js')
  f.write(src.parent/'prefab-fixture.js.txt','assets/prefab-fixture.js')
+ f.write(src.parent/'classic-bootstrap.js.txt','assets/classic-bootstrap.js')
 key=out/'test.keystore'
 if not key.exists():run([java/'keytool','-genkeypair','-keystore',key,'-storepass','android','-keypass','android','-alias','test','-dname','CN=Local SDK Tests','-keyalg','RSA','-validity','30'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
 run([bt/'apksigner','sign','--ks',key,'--ks-pass','pass:android',apk])
