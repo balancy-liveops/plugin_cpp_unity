@@ -1396,8 +1396,14 @@ namespace Balancy.WebView
             _balancyShowWebView(); _isWebViewOpen = true;
         }
 
-        // The page sent BalancyIsReady: reveal a classic view that was opened hidden.
-        internal void SignalClassicPageReady() => _classicReveal?.PageSignal("ready");
+        internal bool ClassicPageReadyPending => _classicReveal?.Pending ?? false;
+
+        // Route the request to core before onShown can change its owner; the gate also guards close/reopen in dispatch.
+        internal void ProcessClassicReadyRequest(Action dispatch)
+        {
+            if (_classicReveal == null) dispatch();
+            else _classicReveal.ProcessReadyRequest(dispatch);
+        }
 
         private void RevealClassicView(string reason)
         {

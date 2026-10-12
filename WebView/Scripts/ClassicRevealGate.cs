@@ -10,6 +10,7 @@ namespace Balancy.WebView
         private readonly Func<double> clock;
         private double deadline = -1;
         private bool loading, revealedWhileLoading;
+        private int opening;
         private Action shown, failed;
 
         internal ClassicRevealGate(Action<string> reveal, Func<double> clock)
@@ -24,6 +25,7 @@ namespace Balancy.WebView
         // closing it first runs neither.
         internal void Begin(double timeoutSeconds, Action shown = null, Action failed = null)
         {
+            ++opening;
             deadline = clock() + timeoutSeconds;
             loading = true;
             revealedWhileLoading = false;
@@ -33,6 +35,7 @@ namespace Balancy.WebView
 
         internal void Cancel()
         {
+            ++opening;
             deadline = -1;
             loading = revealedWhileLoading = false;
             shown = failed = null;
@@ -54,6 +57,15 @@ namespace Balancy.WebView
         internal void PageSignal(string reason)
         {
             if (!loading) Signal(reason);
+        }
+
+        // Dispatch the ready request while it still belongs to this opening. Only then reveal and notify the game.
+        // Core/application callbacks can close or replace the view; their ready must never reveal the next opening.
+        internal void ProcessReadyRequest(Action dispatch)
+        {
+            int receivedOpening = opening;
+            try { dispatch(); }
+            finally { if (receivedOpening == opening) PageSignal("ready"); }
         }
 
         // The view died before its reveal (Android's renderer went away): ends the gate and returns the open's failed
@@ -80,13 +92,5 @@ namespace Balancy.WebView
             return showAgain;
         }
 
-        // A page message that is (or batches) a request with this action; the bridge serializes "action":201.
-        internal static bool IsRequest(string message, int action)
-        {
-            string token = "\"action\":" + action;
-            int at = message?.IndexOf(token, StringComparison.Ordinal) ?? -1;
-            int end = at + token.Length;
-            return at >= 0 && (end >= message.Length || !char.IsDigit(message[end]));
-        }
     }
 }

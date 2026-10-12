@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Balancy.WebView;
 using NUnit.Framework;
@@ -169,19 +170,112 @@ namespace Balancy.Tests
             Assert.That(log, Is.EqualTo(new[] { "ready", "shown" }));
         }
 
+        [Test] public void ReadyDispatchKeepsItsOwnerBeforeShownClosesAndOpensAnotherView()
+        {
+            int owner = 111, dispatchedOwner = 0;
+            gate.Begin(30, () => { gate.Cancel(); owner = 222; gate.Begin(30); });
+            gate.LoadCompleted();
+            gate.ProcessReadyRequest(() => { dispatchedOwner = owner; log.Add("core"); });
+            Assert.That(dispatchedOwner, Is.EqualTo(111));
+            Assert.That(owner, Is.EqualTo(222));
+            Assert.That(log, Is.EqualTo(new[] { "core", "ready" }));
+            Assert.That(gate.Pending, Is.True); // The replacement has not received its own ready.
+        }
+
+        [Test] public void ClosingAndReplacingDuringDispatchDoesNotRevealTheReplacement()
+        {
+            BeginWithCallbacks();
+            gate.LoadCompleted();
+            gate.ProcessReadyRequest(() => {
+                gate.Cancel();
+                gate.Begin(30, () => log.Add("replacement shown"));
+                gate.LoadCompleted();
+            });
+            Assert.That(log, Is.Empty);
+            Assert.That(gate.Pending, Is.True);
+            gate.ProcessReadyRequest(() => log.Add("replacement core"));
+            Assert.That(log, Is.EqualTo(new[] { "replacement core", "ready", "replacement shown" }));
+        }
+
+        [Test] public void ClosingDuringDispatchCancelsTheShownCallback()
+        {
+            BeginWithCallbacks();
+            gate.LoadCompleted();
+            gate.ProcessReadyRequest(() => gate.Cancel());
+            Assert.That(log, Is.Empty);
+            Assert.That(gate.Pending, Is.False);
+        }
+
+        [Test] public void ApplicationRejectionDoesNotLeaveTheCurrentPageHidden()
+        {
+            BeginWithCallbacks();
+            gate.LoadCompleted();
+            gate.ProcessReadyRequest(() => log.Add("rejected"));
+            Assert.That(log, Is.EqualTo(new[] { "rejected", "ready", "shown" }));
+        }
+
+        [Test] public void ApplicationExceptionStillRevealsTheSameOpeningAndPropagates()
+        {
+            BeginWithCallbacks();
+            gate.LoadCompleted();
+            Assert.Throws<InvalidOperationException>(() => gate.ProcessReadyRequest(() => {
+                throw new InvalidOperationException("application failed");
+            }));
+            Assert.That(log, Is.EqualTo(new[] { "ready", "shown" }));
+        }
+
+        [Test] public void NestedReadyDispatchDoesNotRevealAnOpeningCreatedByShown()
+        {
+            gate.Begin(30, () => { log.Add("shown"); gate.Cancel(); gate.Begin(30); gate.LoadCompleted(); });
+            gate.LoadCompleted();
+            gate.ProcessReadyRequest(() => gate.ProcessReadyRequest(() => log.Add("core")));
+            Assert.That(log, Is.EqualTo(new[] { "core", "ready", "shown" }));
+            Assert.That(gate.Pending, Is.True);
+        }
+
+        [Test] public void DispatchBeforeLoadCompletedDoesNotRevealThePage()
+        {
+            BeginWithCallbacks();
+            gate.ProcessReadyRequest(() => log.Add("core"));
+            Assert.That(log, Is.EqualTo(new[] { "core" }));
+            Assert.That(gate.Pending, Is.True);
+        }
+
+#if UNITY_EDITOR
         [Test] public void ReadyRequestIsRecognisedInTheMessagesTheBridgeSends()
         {
             // Captured on Android, SDK 1.9.6: a classic page's request carries no viewId; a persistent view's does.
             const string classic = "{\"type\":\"request\",\"sender\":null,\"id\":\"53\",\"action\":201,\"params\":{\"id\":\"none\"}}";
             const string persistent = "{\"type\":\"request\",\"viewId\":\"262590147493413ca62d207a26b1eb39\",\"sender\":null,\"id\":\"50\",\"action\":201,\"params\":{\"id\":\"none\"}}";
-            Assert.That(ClassicRevealGate.IsRequest(classic, 201), Is.True);
-            Assert.That(ClassicRevealGate.IsRequest(persistent, 201), Is.True);
-            Assert.That(ClassicRevealGate.IsRequest("{\"type\":\"batch\",\"requests\":[{\"id\":\"7\",\"action\":10},{\"id\":\"8\",\"action\":201}]}", 201), Is.True);
-            Assert.That(ClassicRevealGate.IsRequest("{\"type\":\"request\",\"id\":\"9\",\"action\":2010}", 201), Is.False);
-            Assert.That(ClassicRevealGate.IsRequest("{\"type\":\"request\",\"id\":\"9\",\"action\":20}", 201), Is.False);
-            Assert.That(ClassicRevealGate.IsRequest("{\"type\":\"request\",\"id\":\"9\",\"action\":201", 201), Is.True);
-            Assert.That(ClassicRevealGate.IsRequest(null, 201), Is.False);
+            Assert.That(ClassicReadyRequest.IsRequest(classic, 201), Is.True);
+            Assert.That(ClassicReadyRequest.IsRequest(persistent, 201), Is.False); // An old persistent view cannot reveal a classic page.
+            Assert.That(ClassicReadyRequest.IsRequest("{\"type\":\"batch\",\"requests\":[{\"id\":\"7\",\"action\":10},{\"id\":\"8\",\"action\":201}]}", 201), Is.True);
+            Assert.That(ClassicReadyRequest.IsRequest(" { \"action\" : 201, \"id\" : \"9\", \"type\" : \"request\" } ", 201), Is.True);
+            Assert.That(ClassicReadyRequest.IsRequest("{\"type\":\"request\",\"id\":\"9\",\"action\":2010}", 201), Is.False);
+            Assert.That(ClassicReadyRequest.IsRequest("{\"type\":\"request\",\"id\":\"9\",\"action\":20}", 201), Is.False);
+            Assert.That(ClassicReadyRequest.IsRequest(null, 201), Is.False);
         }
+
+        [Test] public void NestedActionsAndOtherMessageTypesCannotRevealThePage()
+        {
+            Assert.That(ClassicReadyRequest.IsRequest("{\"type\":\"request\",\"id\":\"9\",\"action\":1000,\"params\":{\"action\":201}}", 201), Is.False);
+            Assert.That(ClassicReadyRequest.IsRequest("{\"type\":\"request\",\"id\":\"9\",\"action\":1000,\"params\":{\"message\":\"{\\\"action\\\":201}\"}}", 201), Is.False);
+            Assert.That(ClassicReadyRequest.IsRequest("{\"type\":\"custom\",\"id\":\"9\",\"action\":201}", 201), Is.False);
+            Assert.That(ClassicReadyRequest.IsRequest("{\"type\":\"batch\",\"requests\":[{\"id\":\"9\",\"action\":1000,\"params\":{\"action\":201}}]}", 201), Is.False);
+            Assert.That(ClassicReadyRequest.IsRequest("{\"type\":\"batch\",\"requests\":[{\"id\":\"9\",\"action\":201},{\"id\":\"10\",\"action\":20,\"viewId\":\"old-persistent\"}]}", 201), Is.False);
+        }
+
+        [Test] public void MalformedMessagesCannotRevealThePage()
+        {
+            foreach (string json in new[] {
+                "{\"type\":\"request\",\"id\":\"9\",\"action\":201",
+                "{\"type\":\"request\",\"id\":\"9\",\"action\":201} trailing",
+                "{\"type\":\"request\",\"action\":201}",
+                "{\"type\":\"batch\",\"requests\":[null,{\"id\":\"9\",\"action\":201}]}",
+                "{\"type\":\"batch\",\"requests\":[{\"type\":\"batch\",\"id\":\"9\",\"action\":201}]}", "[]", "" })
+                Assert.That(ClassicReadyRequest.IsRequest(json, 201), Is.False, json);
+        }
+#endif
 
         [Test] public void EachOpenGetsItsOwnDeadline()
         {

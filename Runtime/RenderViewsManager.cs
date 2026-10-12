@@ -784,11 +784,23 @@ namespace Balancy
 
         private static void OnMessageReceived(string msg)
         {
-            // BalancyIsReady from the page, before the application filter: visibility does not depend on its decision.
-            if (ClassicRevealGate.IsRequest(msg, (int)RequestAction.BalancyIsReady)) _webView?.SignalClassicPageReady();
+            var view = _webView;
+            if (view != null && view.ClassicPageReadyPending && ClassicReadyRequest.IsRequest(msg, (int)RequestAction.BalancyIsReady))
+            {
+                int ownerEpoch = _ownerEpoch;
+                view.ProcessClassicReadyRequest(() => DispatchWebViewRequest(msg, ownerEpoch));
+            }
+            else DispatchWebViewRequest(msg);
+        }
+
+        private static void DispatchWebViewRequest(string msg, int? readyOwnerEpoch = null)
+        {
             if (_onMessageReceived != null)
             {
                 bool proceed = _onMessageReceived(msg);
+                // The application filter may close/reopen or recreate the profile. Do not forward the old ready,
+                // or its rejection response, into a new context. The reveal gate independently checks its opening.
+                if (readyOwnerEpoch.HasValue && readyOwnerEpoch.Value != _ownerEpoch) return;
                 if (!proceed)
                 {
                     Debug.Log("Message handling was cancelled by external handler: " + msg);

@@ -281,6 +281,8 @@ public class MainActivity extends Activity {
     void startHiddenClassic() {
         try {
             java.io.File page = new java.io.File(getFilesDir(), "classic-hidden.html");
+            java.io.File scripts = new java.io.File(getFilesDir(), "hidden_scripts.js");
+            write(scripts, "window.hiddenBundleRuns=1;");
             try (java.io.FileOutputStream stream = new java.io.FileOutputStream(page)) {
                 stream.write("<!doctype html><html><head></head><body><div id='baked'>baked</div></body></html>".getBytes("UTF-8"));
             }
@@ -294,10 +296,10 @@ public class MainActivity extends Activity {
                 View container = (View)field("webViewContainer"); WebView view = (WebView)field("webView");
                 check("hidden classic page stays hidden through page finish",
                     payload.equals("true") && container.getVisibility() != View.VISIBLE && view.getAlpha() == 0f);
-                // Load the real bridge over the page-finish shim, as the page loader does, then install a bundle and start it.
-                plugin.injectJavaScript("(function(){var s=document.createElement('script');s.src='file:///android_asset/bridge.js';" +
-                    "s.onload=function(){window.balancy._installScripts('window.hiddenBundleRuns=1;','native-test');window.balancy.initResponseHandler();};" +
-                    "document.head.appendChild(s);})();");
+                // Exercise PR17's generated loader together with PR18's native hidden/reveal behavior.
+                String loader = asset("classic-bootstrap.js").replace("__BRIDGE_URL__", "file:///android_asset/bridge.js")
+                    .replace("__SCRIPTS_URL__", android.net.Uri.fromFile(new java.io.File(getFilesDir(), "hidden_scripts.js")).toString());
+                plugin.injectJavaScript(loader);
                 later(() -> finishAfterReveal(0));
                 return;
             }
