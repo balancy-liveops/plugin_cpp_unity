@@ -158,7 +158,15 @@ namespace Balancy
                 });
             });
         }
-        
+
+        private void OnGUI()
+        {
+            if (GUI.Button(new Rect(100, 200, 100, 30), "Reset"))
+            {
+                Profiles.Reset(null);
+            }
+        }
+
         private void Awake()
         {
             _instance = this;
