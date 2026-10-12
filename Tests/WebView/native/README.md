@@ -101,3 +101,19 @@ API. The AAR and rebuilt core binaries must ship together. 79/79 checks passed o
 the emulator, also in an APK built with Gradle 7.5.1 / AGP 7.4.2 / Java 11.
 See `../../Integration/UNITY_2021_COMPATIBILITY.md` for the Unity build results, licensing
 constraints and the limits of these checks.
+
+## Android classic page loader regression (2026-10-08)
+
+Classic (non-persistent) pages have no bridge of their own, so `onPageFinished` runs the legacy shim from
+`injectBalancyBridge()`, which creates `window.balancy` without `_installScripts`. From v1.9.1 to v1.9.6 the page
+loader took any `window.balancy` for the bridge, skipped `balancy-webview-bridge.js` and threw
+`window.balancy._installScripts is not a function`: no View script ran, and because the shim has no
+`_postHostError`, Unity was never told. The fixture now opens a classic page through the production plugin,
+checks that page finish leaves only the shim, injects the loader from `classic-bootstrap.js.txt` (the
+`RuntimeBootstrap` output, kept in sync by `RuntimeBootstrapTests`) and requires the bridge to replace the shim
+and install the scripts without a host error.
+
+Android 16 phone (REDMAGIC 9 Pro, WebView 153): 82 checks passed with the fix; the same run with the v1.9.6
+loader failed only `classic loader replaces the shim with the bridge and installs scripts`. Pass
+`--build-tools 36.0.0` when build-tools 35.0.0 is not installed, and keep the device screen on and unlocked: a run
+started on a sleeping device stalls before the first check.

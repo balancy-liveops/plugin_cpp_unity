@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Run the persistent-state NUnit fixture without opening Unity.
+"""Run the persistent-state and page-loader NUnit fixtures without opening Unity.
+--update-fixtures regenerates native/classic-bootstrap.js.txt, the loader the JavaScript tests execute.
 Optional --unity-editor compiles the SDK against the project's generated Unity references.
 """
 import argparse
@@ -15,33 +16,42 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--project', type=Path, default=ROOT.parents[1])
 parser.add_argument('--unity-editor', type=Path, help='Path to Unity.app (macOS)')
 parser.add_argument('--nunit', type=Path)
+parser.add_argument('--update-fixtures', action='store_true', help='Rewrite native/classic-bootstrap.js.txt from RuntimeBootstrap')
 parser.add_argument('--mcs', default=shutil.which('mcs') or '/Library/Frameworks/Mono.framework/Commands/mcs')
 parser.add_argument('--mono', default=shutil.which('mono') or '/Library/Frameworks/Mono.framework/Commands/mono')
 args = parser.parse_args()
-nunit = args.nunit or next(args.project.glob('Library/PackageCache/com.unity.ext.nunit*/net472/unity-custom/nunit.framework.dll'))
+nunit = args.nunit or next(args.project.glob('Library/PackageCache/com.unity.ext.nunit*/net*/unity-custom/nunit.framework.dll'))
 with tempfile.TemporaryDirectory(prefix='balancy-webview-tests-') as temporary:
     output = Path(temporary)
     runner = output / 'Runner.cs'
     runner.write_text('''using System;
+using NUnit.Framework;
 class Runner {
+ static void Each(object fixture, Type attribute) {
+  foreach (var method in fixture.GetType().GetMethods()) if (Attribute.IsDefined(method, attribute)) method.Invoke(fixture, null);
+ }
  static int Main() {
   int passed = 0, failed = 0;
-  var fixture = new Balancy.Tests.PersistentWebViewTests();
-  foreach (var method in fixture.GetType().GetMethods()) {
-   if (!Attribute.IsDefined(method, typeof(NUnit.Framework.TestAttribute))) continue;
-   fixture.SetUp();
-   try { method.Invoke(fixture, null); Console.WriteLine("PASS " + method.Name); passed++; }
-   catch (Exception e) { Console.WriteLine("FAIL " + method.Name + ": " + (e.InnerException ?? e)); failed++; }
-   finally { fixture.TearDown(); }
+  foreach (var fixture in new object[] { new Balancy.Tests.PersistentWebViewTests(), new Balancy.Tests.RuntimeBootstrapTests() }) {
+   foreach (var method in fixture.GetType().GetMethods()) {
+    if (!Attribute.IsDefined(method, typeof(TestAttribute))) continue;
+    string name = fixture.GetType().Name + "." + method.Name;
+    Each(fixture, typeof(SetUpAttribute));
+    try { method.Invoke(fixture, null); Console.WriteLine("PASS " + name); passed++; }
+    catch (Exception e) { Console.WriteLine("FAIL " + name + ": " + (e.InnerException ?? e)); failed++; }
+    finally { Each(fixture, typeof(TearDownAttribute)); }
+   }
   }
   Console.WriteLine(passed + " passed, " + failed + " failed"); return failed > 0 ? 1 : 0;
  }
 }''')
     shutil.copy2(nunit, output / nunit.name)
     subprocess.run([args.mcs, '-r:' + str(nunit), '-out:' + str(output / 'tests.exe'),
-                    str(ROOT / 'WebView/Scripts/PersistentViewState.cs'),
-                    str(ROOT / 'Tests/EditMode/PersistentWebViewTests.cs'), str(runner)], check=True)
-    subprocess.run([args.mono, str(output / 'tests.exe')], check=True)
+                    str(ROOT / 'WebView/Scripts/PersistentViewState.cs'), str(ROOT / 'WebView/Scripts/RuntimeBootstrap.cs'),
+                    str(ROOT / 'Tests/EditMode/PersistentWebViewTests.cs'), str(ROOT / 'Tests/EditMode/RuntimeBootstrapTests.cs'),
+                    str(runner)], check=True)
+    subprocess.run([args.mono, str(output / 'tests.exe')], check=True,
+                   env={**os.environ, **({'BALANCY_UPDATE_FIXTURES': '1'} if args.update_fixtures else {})})
     if args.unity_editor:
         runtime = args.unity_editor / 'Contents/Resources/Scripting/DotNetSdk'
         compiler = next(runtime.glob('sdk/*/Roslyn/bincore/csc.dll'), None)
@@ -69,7 +79,7 @@ class Runner {
             sources = [str(args.project / item.attrib['Include'].replace('\\', '/')) for item in tree.findall('.//m:Compile', namespace)]
             refs = [str(args.project / item.text.replace('\\', '/')) for item in tree.findall('.//m:HintPath', namespace)]
             if name == 'Balancy.WebView':
-                sources += [str(ROOT / 'WebView/Scripts' / file) for file in ['PersistentViewState.cs', 'AssemblyInfo.cs']]
+                sources += [str(ROOT / 'WebView/Scripts' / file) for file in ['PersistentViewState.cs', 'RuntimeBootstrap.cs', 'AssemblyInfo.cs']]
             else:
                 refs = [ref for ref in refs if not ref.endswith('/Balancy.WebView.dll')]
                 refs.append(str(output / 'Balancy.WebView.dll'))

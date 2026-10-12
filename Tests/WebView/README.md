@@ -11,7 +11,24 @@ The same fixture can run without starting the editor using installed Mono and th
 ```sh
 python3 Tests/WebView/validate.py
 node --test Tests/WebView/webgl-plugin.test.cjs
+node --test Tests/WebView/classic-bootstrap.test.cjs
 ```
+
+`validate.py` also runs `Balancy.Tests.RuntimeBootstrapTests`, which keep `native/classic-bootstrap.js.txt` identical to the page loader `RuntimeBootstrap` builds. `classic-bootstrap.test.cjs` and the Android harness execute that file, so after changing the loader run `python3 Tests/WebView/validate.py --update-fixtures`, then both. Unity's bundled Mono works when no system Mono is installed: `--mcs <Editor>/Data/MonoBleedingEdge/bin/mcs --mono <Editor>/Data/MonoBleedingEdge/bin/mono`.
+
+The classic loader also preserves the native legacy shim's `owner`, `sendMessageToUnity` and inbound receiver.
+`onMessage` replacements made through either the old cached object or the new bridge remain visible. Modern responses
+are handled first, and exceptions in the legacy receiver are logged without breaking modern request settlement.
+The Node bootstrap tests cover these contracts, repeated injection, and reuse of an existing persistent bridge.
+To additionally execute the generated loader with the shipped production bridge, provide a jsdom module path:
+
+```sh
+BALANCY_JSDOM_PATH=/path/to/node_modules/jsdom node --test Tests/WebView/classic-bootstrap-production.test.cjs
+```
+
+The production test is skipped without this optional dependency. It checks owner access during script installation,
+legacy outbound/inbound messaging and real correlated request settlement, including a throwing legacy callback.
+It uses a shell document to avoid backend-dependent view initialization; it does not replace an Android/Unity player test.
 
 Optional compiler checks use an existing Unity project's generated `Balancy.csproj` and `Balancy.WebView.csproj` references:
 
