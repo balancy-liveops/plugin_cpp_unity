@@ -19,17 +19,18 @@ function androidShim() {
 }
 // A page whose window is the global, so the shim's bare `balancy` and the loader's `window.balancy` are one object.
 function page(...steps) {
-  const scripts = [], requests = [], errors = [], hostErrors = [], installs = [];
+  const scripts = [], requests = [], errors = [], hostErrors = [], installs = [], received = [], sent = [];
   const context = vm.createContext({ console: { log() {}, warn() {}, error: error => errors.push(String(error)) }, Promise, JSON,
-    BalancyWebView: { sendMessageToUnity() {} },
+    BalancyWebView: { sendMessageToUnity: message => sent.push(message) },
     document: { createElement: () => ({}), head: { appendChild: script => scripts.push(script) } },
     XMLHttpRequest: function () { requests.push(this); this.open = (method, url) => { this.url = url; }; this.send = () => {}; } });
   context.window = vm.runInContext('globalThis', context);
   // Loading balancy-webview-bridge.js assigns window.balancy unconditionally, replacing any shim.
   const loadBridge = () => { context.window.balancy = { _installScripts: (code, version) => { installs.push(version); vm.runInContext(code, context); },
-    initResponseHandler() { context.window.handlerStarted = true; }, _postHostError: error => hostErrors.push(String(error)) }; };
+    initResponseHandler() { context.window.handlerStarted = true; }, _postHostError: error => hostErrors.push(String(error)),
+    _receiveMessageFromUnity: message => received.push(message) }; };
   for (const step of steps) step === 'bridge' ? loadBridge() : vm.runInContext(step, context);
-  return { context, scripts, requests, errors, hostErrors, installs, loadBridge };
+  return { context, scripts, requests, errors, hostErrors, installs, received, sent, loadBridge };
 }
 function finishLoading(p) {
   if (p.scripts.length) { p.loadBridge(); p.scripts[0].onload(); }
@@ -62,6 +63,76 @@ test('page without a shim (iOS): the loader loads the bridge', () => {
   assert.deepEqual(p.scripts.map(script => script.src), [BRIDGE]);
   finishLoading(p);
   assert.equal(p.context.window.bundleRuns, 1);
+});
+test('classic upgrade preserves owner and the legacy outbound transport', () => {
+  const p = page(androidShim(), 'balancy.owner = { value: "Привет \\\\ \\\" 🎁" }; window.oldApi = balancy;', LOADER);
+  const owner = p.context.window.oldApi.owner;
+  finishLoading(p);
+  assert.notEqual(p.context.window.balancy, p.context.window.oldApi);
+  assert.equal(p.context.window.balancy.owner, owner);
+  p.context.window.balancy.sendMessageToUnity('legacy request');
+  p.context.window.oldApi.sendMessageToUnity('cached legacy request');
+  assert.deepEqual(p.sent, ['legacy request', 'cached legacy request']);
+  p.context.window.balancy.owner = { value: 'updated' };
+  assert.equal(p.context.window.oldApi.owner.value, 'updated');
+});
+test('classic upgrade delivers each inbound message to the real bridge and the existing legacy handler', () => {
+  const p = page(androidShim(), 'window.legacyMessages = []; balancy.onMessage = function(message) { legacyMessages.push(message); window.callbackOwner = this.owner; }; balancy.owner = { value: 42 };', LOADER);
+  finishLoading(p);
+  p.context.window.balancy._receiveMessageFromUnity('response');
+  assert.deepEqual(p.received, ['response']);
+  assert.deepEqual([...p.context.window.legacyMessages], ['response']);
+  assert.equal(p.context.window.callbackOwner.value, 42);
+});
+test('late handler replacement and removal through either API reference are preserved', () => {
+  const p = page(androidShim(), 'window.oldApi = balancy; window.legacyMessages = [];', LOADER);
+  finishLoading(p);
+  vm.runInContext('oldApi.onMessage = message => legacyMessages.push("old:" + message);', p.context);
+  p.context.window.balancy._receiveMessageFromUnity('one');
+  vm.runInContext('balancy.onMessage = message => legacyMessages.push("new:" + message);', p.context);
+  p.context.window.balancy._receiveMessageFromUnity('two');
+  p.context.window.balancy.onMessage = null;
+  p.context.window.balancy._receiveMessageFromUnity('three');
+  assert.deepEqual([...p.context.window.legacyMessages], ['old:one', 'new:two']);
+  assert.equal(p.context.window.oldApi.onMessage, null);
+  assert.deepEqual(p.received, ['one', 'two', 'three']);
+});
+test('a throwing legacy handler cannot prevent modern response delivery or later messages', () => {
+  const p = page(androidShim(), 'balancy.onMessage = () => { throw new Error("legacy callback failed"); };', LOADER);
+  finishLoading(p);
+  p.context.window.balancy._receiveMessageFromUnity('one');
+  p.context.window.balancy._receiveMessageFromUnity('two');
+  assert.deepEqual(p.received, ['one', 'two']);
+  assert.equal(p.errors.length, 2);
+  assert.match(p.errors[0], /legacy callback failed/);
+  assert.deepEqual(p.hostErrors, []);
+});
+test('a custom legacy receiver keeps its original state and does not replace the modern receiver', () => {
+  const p = page('window.balancy = { count: 0, _receiveMessageFromUnity(message) { this.count++; this.lastMessage = message; } }; window.oldApi = balancy;', androidShim(), LOADER);
+  finishLoading(p);
+  p.context.window.balancy._receiveMessageFromUnity('response');
+  assert.equal(p.context.window.oldApi.count, 1);
+  assert.equal(p.context.window.oldApi.lastMessage, 'response');
+  assert.deepEqual(p.received, ['response']);
+});
+test('reinjecting the loader does not wrap the legacy receiver twice', () => {
+  const p = page(androidShim(), 'window.legacyMessages = []; balancy.onMessage = message => legacyMessages.push(message);', LOADER);
+  finishLoading(p);
+  const receive = p.context.window.balancy._receiveMessageFromUnity;
+  vm.runInContext(LOADER, p.context);
+  assert.equal(p.scripts.length, 1);
+  assert.equal(p.context.window.balancy._receiveMessageFromUnity, receive);
+  p.context.window.balancy._receiveMessageFromUnity('response');
+  assert.deepEqual(p.received, ['response']);
+  assert.deepEqual([...p.context.window.legacyMessages], ['response']);
+});
+test('a persistent bridge retains its API and receiver without classic compatibility wrapping', () => {
+  const p = page('bridge', androidShim());
+  const api = p.context.window.balancy, receive = api._receiveMessageFromUnity;
+  vm.runInContext(LOADER, p.context);
+  finishLoading(p);
+  assert.equal(p.context.window.balancy, api);
+  assert.equal(api._receiveMessageFromUnity, receive);
 });
 test('a loader that trusts any window.balancy fails on the Android shim (v1.9.1-v1.9.6), so the cases above catch it', () => {
   assert.ok(LOADER.includes(FIXED_GUARD), 'guard text changed; update FIXED_GUARD');
