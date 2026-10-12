@@ -63,3 +63,43 @@ The public API still supports one active view; Prepare now has an optional failu
 ## Second pass — 2026-09-15
 
 Native delayed show callbacks are cancelled/generation-guarded and stale navigation callbacks are ignored. Renderer termination resets persistent state even after shell readiness; the new NUnit scenario verifies re-preparation. Android/macOS binaries were rebuilt. The matching TypeScript branch also fixes iframe navigation latency, blob URL ownership and JS disposal; see `packages/bridge/PERFORMANCE_AND_MEMORY.md`. Its standalone headless Chrome GC fixture covers 520 persistent cycles; this does not replace native player profiling.
+
+## Classic reveal gate — 2026-10-09
+
+Android classic pages now open hidden and are revealed by the page's `BalancyIsReady`, an error, or a 30 s timeout. `validate.py` also runs `Balancy.Tests.ClassicRevealGateTests`, which drive the actual `ClassicRevealGate` with a fake clock.
+
+The Android harness checks the native side on a real WebView. Unity's bundled SDK only has build-tools 36.0.0, so pass `--build-tools`:
+
+```sh
+U=/path/to/Editor/Data/PlaybackEngines/AndroidPlayer
+python3 Tests/WebView/native/run-android.py --sdk $U/SDK --java-home $U/OpenJDK --build-tools 36.0.0 --output /tmp/balancy-android-tests --serial <device>
+```
+
+The harness first checks the generated classic loader on a normal page, then uses that same loader on a hidden
+classic page. The page must stay hidden through page finish, send `BalancyIsReady` while hidden, and be revealed by
+`showWebView()`. A final pass reveals a hidden page before it finishes loading, as the timeout can:
+`onPageFinished` hides it again (alpha 0), and a second `showWebView()` after page finish shows it.
+That is why Unity shows a view again when its page finishes after an early reveal.
+
+82 checks passed on a REDMAGIC 9 Pro (Android 16, WebView 153), both built from source and with `--aar WebView/Plugins/Android/balancywebview.aar`. The `checks=` count in the result line also includes the timing line.
+
+## Ready request routing regression — 2026-10-12
+
+The classic ready request is dispatched before `onShown` can change its owner. The gate records the opening before
+dispatch and only reveals that same opening afterward. If an application filter closes/reopens the view or recreates
+the profile, its old ready and rejection response are discarded instead of reaching the replacement. A rejection
+without a context change still reveals the same page. Close before reveal continues to cancel both opening callbacks;
+the existing 30-second fallback, input behavior and persistent/iOS/WebGL paths are retained.
+
+`ClassicReadyRequest` uses Unity's JSON parser and inspects the request's own action (or batch members), so nested
+payload fields and requests tagged with a persistent `viewId` cannot reveal the page. Run `Balancy.Tests.ClassicRevealGateTests` in Unity EditMode for the actual
+parser tests, including whitespace, malformed input, nested actions and request batches. Those editor tests are
+excluded from the standalone Mono fixture, which runs the gate's state/routing tests without loading Unity.
+
+```sh
+python3 Tests/WebView/ready-routing.test.py
+```
+
+This additionally executes the actual routing methods extracted from `RenderViewsManager` and the component, with
+fake native transport and known classifier outcomes. It checks owner selection, application rejection, close/reopen
+from callbacks and duplicate ready delivery. It does not execute the C++ backend or emulate Unity's JSON parser.
