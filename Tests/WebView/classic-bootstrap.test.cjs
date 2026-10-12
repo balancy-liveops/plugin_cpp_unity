@@ -58,6 +58,36 @@ test('persistent shell: the loader reuses the bridge the shell loaded before pag
   assert.deepEqual(p.installs, ['golden-version']);
   assert.equal(p.context.window.bundleRuns, 1);
 });
+test('a bridge download error reaches Unity through the Android shim transport', () => {
+  const p = page(androidShim(), LOADER);
+  p.scripts[0].onerror();
+  assert.equal(p.sent.length, 1);
+  const message = JSON.parse(p.sent[0]);
+  assert.equal(message.type, 'shellError');
+  assert.equal(message.shellId, 'golden-shell');
+  assert.match(message.error, /Failed to load Balancy bridge/);
+  assert.equal(p.requests.length, 0);
+  assert.equal(p.errors.length, 1);
+});
+test('a throwing bridge error reporter falls back to the native transport once', () => {
+  const p = page('bridge', 'balancy._postHostError = () => { throw new Error("reporter failed"); };', LOADER);
+  p.requests[0].onerror();
+  assert.equal(p.sent.length, 1);
+  assert.equal(JSON.parse(p.sent[0]).type, 'shellError');
+  assert.match(JSON.parse(p.sent[0]).error, /Failed to load scripts file/);
+});
+test('a bridge download failure can use a custom legacy transport without the Android native object', () => {
+  const p = page('window.rawErrors = []; window.BalancyWebView = undefined; window.balancy = { sendMessageToUnity(message) { rawErrors.push(message); } };', LOADER);
+  p.scripts[0].onerror();
+  assert.equal(p.context.window.rawErrors.length, 1);
+  assert.equal(JSON.parse(p.context.window.rawErrors[0]).type, 'shellError');
+});
+test('a broken raw transport does not throw from the bridge error handler', () => {
+  const p = page(androidShim(), 'BalancyWebView.sendMessageToUnity = () => { throw new Error("transport failed"); };', LOADER);
+  assert.doesNotThrow(() => p.scripts[0].onerror());
+  assert.equal(p.errors.length, 1);
+  assert.match(p.errors[0], /Failed to load Balancy bridge/);
+});
 test('page without a shim (iOS): the loader loads the bridge', () => {
   const p = page(LOADER);
   assert.deepEqual(p.scripts.map(script => script.src), [BRIDGE]);

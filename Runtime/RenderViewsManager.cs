@@ -112,11 +112,14 @@ namespace Balancy
 
             if (_webView != null)
             {
+                // Retire an unfinished hidden open too: cancelling its timeout alone would strand the native window.
+                bool closeView = _webView.IsPersistentModeEnabled() || _webView.ClassicRevealInProgress;
+                _webView.CancelClassicReveal();
                 _webView.OnMessage -= OnMessageReceived;
                 _webView.OnLoadCompleted -= HandleLoadCompleted;
                 _webView.OnClosed -= HandleWebViewClosed;
                 _webView.OnViewReleased -= HandleViewReleased;
-                if (_webView.IsPersistentModeEnabled()) _webView.CloseWebView();
+                if (closeView) _webView.CloseWebView();
             }
 
             _prepareRequested = _dataAvailable = _scriptsLoaded = false;
@@ -593,7 +596,11 @@ namespace Balancy
                 onShown?.Invoke();
 #else
             string fileUrl = BalancyWebView.ToWebViewUrl(filePath);
+#if UNITY_ANDROID && !UNITY_EDITOR
             OpenView(fileUrl, owner, onFailed, revealWhenReady: true, onShown);
+#else
+            if (OpenView(fileUrl, owner, onFailed)) onShown?.Invoke();
+#endif
 #endif
         }
 

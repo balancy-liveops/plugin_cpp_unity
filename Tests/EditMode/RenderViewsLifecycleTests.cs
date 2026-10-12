@@ -63,6 +63,74 @@ namespace Balancy.Tests
         }
 
         [Test]
+        public void CleanupCancelsPendingClassicRevealAndReleasesCallbacks()
+        {
+            int callbacks = 0;
+            double now = 0;
+            var gate = new ClassicRevealGate(_ => ++callbacks, () => now);
+            typeof(BalancyWebView).GetField("_classicReveal", BindingFlags.Instance | BindingFlags.NonPublic)
+                .SetValue(_webView, gate);
+            WebViewField.SetValue(null, _webView);
+            gate.Begin(30, () => ++callbacks, () => ++callbacks);
+
+            CleanUpManagedState.Invoke(null, null);
+            now = 100;
+            gate.LoadCompleted();
+            gate.PageSignal("ready");
+            gate.Tick();
+            Assert.That(gate.Fail(), Is.Null);
+            Assert.That(gate.Pending, Is.False);
+            Assert.That(callbacks, Is.Zero);
+        }
+
+        [Test]
+        public void CleanupInsideReadyFilterDoesNotRevealTheRetiredView()
+        {
+            int callbacks = 0;
+            var gate = new ClassicRevealGate(_ => ++callbacks, () => 0);
+            typeof(BalancyWebView).GetField("_classicReveal", BindingFlags.Instance | BindingFlags.NonPublic)
+                .SetValue(_webView, gate);
+            WebViewField.SetValue(null, _webView);
+            gate.Begin(30, () => ++callbacks);
+            gate.LoadCompleted();
+            MessageHandler.SetValue(null, new Func<string, bool>(_ =>
+            {
+                CleanUpManagedState.Invoke(null, null);
+                return true;
+            }));
+
+            OnMessageReceived.Invoke(null, new object[] { "{\"type\":\"request\",\"id\":\"cleanup\",\"action\":201}" });
+            Assert.That(WebViewField.GetValue(null), Is.Null);
+            Assert.That(gate.Pending, Is.False);
+            Assert.That(callbacks, Is.Zero);
+        }
+
+        [Test]
+        public void ClassicLoadFailureDoesNotNotifyTheViewOpenedByShown()
+        {
+            int loads = 0, reveals = 0;
+            var gate = new ClassicRevealGate(_ => ++reveals, () => 0);
+            typeof(BalancyWebView).GetField("_classicReveal", BindingFlags.Instance | BindingFlags.NonPublic)
+                .SetValue(_webView, gate);
+            _webView.OnLoadCompleted += _ => ++loads;
+            gate.Begin(30, () => { gate.Cancel(); gate.Begin(30); });
+
+            // EditMode does not run this component's Awake; target the same instance as the native callback.
+            var instance = typeof(BalancyWebView).GetField("_instance", BindingFlags.Static | BindingFlags.NonPublic);
+            var previous = instance.GetValue(null);
+            try
+            {
+                instance.SetValue(null, _webView);
+                typeof(BalancyWebView).GetMethod("OnLoadCompletedReceived", BindingFlags.Static | BindingFlags.NonPublic)
+                    .Invoke(null, new object[] { false });
+                Assert.That(reveals, Is.EqualTo(1));
+                Assert.That(gate.Pending, Is.True);
+                Assert.That(loads, Is.Zero);
+            }
+            finally { instance.SetValue(null, previous); }
+        }
+
+        [Test]
         public void RemovedEventInvalidatesEveryCachedOwnerButUnrelatedEventDoesNot()
         {
             var info = new Balancy.Data.SmartObjects.EventInfo();
