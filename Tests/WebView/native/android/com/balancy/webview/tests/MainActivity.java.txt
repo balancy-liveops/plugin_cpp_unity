@@ -21,6 +21,8 @@ public class MainActivity extends Activity {
     int failures;
     int bridgeCycle, imageRequests;
     boolean bridgeStarted;
+    boolean classicReadySeen, classicRevealChecked;
+    String classicError;
     long bridgeOpenStart;
     final ArrayList<Double> bridgeTimes = new ArrayList<>();
     final ArrayList<java.lang.ref.WeakReference<WebView>> retired = new ArrayList<>();
@@ -203,10 +205,163 @@ public class MainActivity extends Activity {
                         int alive = 0; for (java.lang.ref.WeakReference<WebView> reference : retired) if (reference.get() != null) alive++;
                         check("retired native views released", alive == 0);
                         results.add("MEASURE real bridge ready milliseconds " + bridgeTimes);
-                        finishResults();
+                        startClassic();
                     });
                 });
             }
+        } catch (Throwable error) { fail(error); }
+    }
+    void answer(org.json.JSONObject msg, String type) throws Exception {
+        org.json.JSONArray requests = type.equals("batch") ? msg.getJSONArray("requests") : new org.json.JSONArray().put(msg);
+        org.json.JSONArray responses = new org.json.JSONArray();
+        for (int i = 0; i < requests.length(); i++) {
+            org.json.JSONObject request = requests.getJSONObject(i); int action = request.getInt("action");
+            String result = "{}";
+            if (action == 10) result = "Localized text";
+            if (action == 11) { imageRequests++; result = "file://" + new java.io.File(getFilesDir(), "icon.png").getAbsolutePath(); }
+            responses.put(new org.json.JSONObject().put("id", request.getString("id")).put("result", result));
+        }
+        plugin.sendMessage(new org.json.JSONObject().put("type", "batch-response").put("responses", responses).toString());
+    }
+    // Classic (non-persistent) page: onPageFinished runs the legacy shim, then Unity injects the RuntimeBootstrap
+    // loader (classic-bootstrap.js). The loader must replace the shim with the bridge and install the scripts.
+    void startClassic() {
+        try {
+            java.io.File directory = new java.io.File(getFilesDir(), "classic");
+            check("classic directory created", directory.mkdirs() || directory.isDirectory());
+            java.io.File page = new java.io.File(directory, "index.html"), scripts = new java.io.File(directory, "scripts_combined.js");
+            write(page, "<!doctype html><html><head></head><body><div id='baked'>baked</div></body></html>");
+            write(scripts, "window.classicBundleRuns=(window.classicBundleRuns||0)+1;");
+            String loader = asset("classic-bootstrap.js").replace("__BRIDGE_URL__", "file:///android_asset/bridge.js")
+                .replace("__SCRIPTS_URL__", android.net.Uri.fromFile(scripts).toString());
+            UnityPlayer.receiver = (method, payload) -> handler.post(() -> classicMessage(method, payload, loader));
+            check("classic page opens", plugin.openWebView(android.net.Uri.fromFile(page).toString(), "{\"unnyIdGameEvent\":\"42\"}", 0, 0, false));
+        } catch (Throwable error) { fail(error); }
+    }
+    void classicMessage(String method, String payload, String loader) {
+        try {
+            if (method.equals("OnAndroidLoadCompleted")) {
+                check("classic page load completed", payload.equals("true"));
+                WebView view = (WebView)field("webView");
+                view.evaluateJavascript("typeof window.balancy + ':' + typeof window.balancy._installScripts", value -> {
+                    check("page finish leaves only the legacy shim on a classic page", "\"object:undefined\"".equals(value));
+                    plugin.injectJavaScript(loader);
+                    later(() -> pollClassic(view, 0));
+                });
+                return;
+            }
+            if (!method.equals("OnAndroidMessageReceived")) return;
+            org.json.JSONObject msg = new org.json.JSONObject(payload);
+            String type = msg.optString("type");
+            if (type.equals("shellError")) classicError = payload;
+            else if (type.equals("batch") || type.equals("request")) answer(msg, type);
+        } catch (Throwable error) { fail(error); }
+    }
+    void pollClassic(WebView view, int attempt) {
+        view.evaluateJavascript("typeof window.balancy._installScripts === 'function' && window.classicBundleRuns === 1", value -> {
+            if (!"true".equals(value) && classicError == null && attempt < 20) { later(() -> pollClassic(view, attempt + 1)); return; }
+            check("classic loader replaces the shim with the bridge and installs scripts", "true".equals(value));
+            check("classic loader reports no host error" + (classicError == null ? "" : ": " + classicError), classicError == null);
+            plugin.closeWebView(); UnityPlayer.receiver = null;
+            startHiddenClassic();
+        });
+    }
+    void write(java.io.File file, String text) throws Exception {
+        try (java.io.FileOutputStream stream = new java.io.FileOutputStream(file)) { stream.write(text.getBytes("UTF-8")); }
+    }
+    String asset(String name) throws Exception {
+        try (java.io.InputStream input = getAssets().open(name)) {
+            java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream(); byte[] buf = new byte[8192]; int n;
+            while ((n = input.read(buf)) != -1) bytes.write(buf, 0, n);
+            return bytes.toString("UTF-8");
+        }
+    }
+    // A classic (non-persistent) page opened hidden, the way Unity's classic reveal gate opens Balancy views. It must
+    // stay hidden through page finish and bridge startup, send BalancyIsReady while hidden, and be revealed by showWebView().
+    void startHiddenClassic() {
+        try {
+            java.io.File page = new java.io.File(getFilesDir(), "classic-hidden.html");
+            java.io.File scripts = new java.io.File(getFilesDir(), "hidden_scripts.js");
+            write(scripts, "window.hiddenBundleRuns=1;");
+            try (java.io.FileOutputStream stream = new java.io.FileOutputStream(page)) {
+                stream.write("<!doctype html><html><head></head><body><div id='baked'>baked</div></body></html>".getBytes("UTF-8"));
+            }
+            UnityPlayer.receiver = (method, payload) -> handler.post(() -> hiddenClassicMessage(method, payload));
+            check("classic page opens hidden", plugin.openWebView(android.net.Uri.fromFile(page).toString(), "{}", 0, 0, true));
+        } catch (Throwable error) { fail(error); }
+    }
+    void hiddenClassicMessage(String method, String payload) {
+        try {
+            if (method.equals("OnAndroidLoadCompleted")) {
+                View container = (View)field("webViewContainer"); WebView view = (WebView)field("webView");
+                check("hidden classic page stays hidden through page finish",
+                    payload.equals("true") && container.getVisibility() != View.VISIBLE && view.getAlpha() == 0f);
+                // Exercise PR17's generated loader together with PR18's native hidden/reveal behavior.
+                String loader = asset("classic-bootstrap.js").replace("__BRIDGE_URL__", "file:///android_asset/bridge.js")
+                    .replace("__SCRIPTS_URL__", android.net.Uri.fromFile(new java.io.File(getFilesDir(), "hidden_scripts.js")).toString());
+                plugin.injectJavaScript(loader);
+                later(() -> finishAfterReveal(0));
+                return;
+            }
+            if (!method.equals("OnAndroidMessageReceived")) return;
+            org.json.JSONObject msg = new org.json.JSONObject(payload);
+            String type = msg.optString("type");
+            if (type.equals("shellError")) classicError = payload;
+            if (!type.equals("batch") && !type.equals("request")) return;
+            if (!classicReadySeen && type.equals("request") && msg.optInt("action") == 201) {
+                classicReadySeen = true;
+                View container = (View)field("webViewContainer"); WebView shown = (WebView)field("webView");
+                check("hidden classic page sends BalancyIsReady while still hidden", container.getVisibility() != View.VISIBLE);
+                plugin.showWebView();
+                later(() -> {
+                    check("showWebView reveals the hidden classic page", container.getVisibility() == View.VISIBLE && shown.getAlpha() == 1f);
+                    classicRevealChecked = true;
+                });
+            }
+            org.json.JSONArray requests = type.equals("batch") ? msg.getJSONArray("requests") : new org.json.JSONArray().put(msg);
+            org.json.JSONArray responses = new org.json.JSONArray();
+            for (int i = 0; i < requests.length(); i++) {
+                org.json.JSONObject request = requests.getJSONObject(i); int action = request.getInt("action");
+                String result = "{}";
+                if (action == 10) result = "Localized text";
+                if (action == 11) result = "file://" + new java.io.File(getFilesDir(), "icon.png").getAbsolutePath();
+                responses.put(new org.json.JSONObject().put("id", request.getString("id")).put("result", result));
+            }
+            plugin.sendMessage(new org.json.JSONObject().put("type", "batch-response").put("responses", responses).toString());
+        } catch (Throwable error) { fail(error); }
+    }
+    // The pass ends once BalancyIsReady has revealed the page (checked 250 ms after showWebView).
+    void finishAfterReveal(int attempt) {
+        if (classicRevealChecked || attempt >= 20) {
+            if (!classicRevealChecked) check("hidden classic page sends BalancyIsReady" + (classicError == null ? "" : ": " + classicError), false);
+            startEarlyReveal();
+            return;
+        }
+        later(() -> finishAfterReveal(attempt + 1));
+    }
+    // The gate's timeout can reveal a hidden page before it finishes loading. onPageFinished then hides it again
+    // (startHidden's suppressNextShowAnimation is still set), so Unity shows it a second time once the load completes.
+    void startEarlyReveal() {
+        try {
+            plugin.closeWebView();
+            plugin.setShowDelay(0); plugin.setAnimationDuration(0);
+            java.io.File page = new java.io.File(getFilesDir(), "classic-hidden.html");
+            UnityPlayer.receiver = (method, payload) -> handler.post(() -> earlyRevealMessage(method, payload));
+            check("classic page opens hidden for an early reveal", plugin.openWebView(android.net.Uri.fromFile(page).toString(), "{}", 0, 0, true));
+            plugin.showWebView();
+        } catch (Throwable error) { fail(error); }
+    }
+    void earlyRevealMessage(String method, String payload) {
+        try {
+            if (!method.equals("OnAndroidLoadCompleted")) return;
+            UnityPlayer.receiver = null;
+            View container = (View)field("webViewContainer"); WebView view = (WebView)field("webView");
+            check("page finish hides a classic page revealed before it", container.getVisibility() == View.VISIBLE && view.getAlpha() == 0f);
+            plugin.showWebView();
+            later(() -> {
+                check("a second showWebView after page finish reveals it", container.getVisibility() == View.VISIBLE && view.getAlpha() == 1f);
+                finishResults();
+            });
         } catch (Throwable error) { fail(error); }
     }
     void openBridgeView() throws Exception {

@@ -118,23 +118,34 @@ namespace Balancy
             Balancy.Callbacks.OnLocalizationChanged -= HandleLocalizationChanged;
             Balancy.Callbacks.OnDataUpdated -= HandleContentUpdated;
 
-            if (_webView != null)
+            var retiringView = _webView;
+            _webView = null; // OnClosed must not reopen into the context being retired.
+            try
             {
-                _webView.OnMessage -= OnMessageReceived;
-                _webView.OnLoadCompleted -= HandleLoadCompleted;
-                _webView.OnClosed -= HandleWebViewClosed;
-                _webView.OnPaymentBackgroundClosed -= HandleWebViewClosed;
-                _webView.OnViewReleased -= HandleViewReleased;
-                if (_webView.IsPersistentModeEnabled()) _webView.CloseWebView();
+                if (retiringView != null)
+                {
+                    // Retire an unfinished hidden open too: cancelling its timeout alone would strand the native window.
+                    bool closeView = retiringView.IsPersistentModeEnabled() || retiringView.ClassicRevealInProgress;
+                    retiringView.CancelClassicReveal();
+                    retiringView.OnMessage -= OnMessageReceived;
+                    retiringView.OnLoadCompleted -= HandleLoadCompleted;
+                    retiringView.OnClosed -= HandleWebViewClosed;
+                    retiringView.OnPaymentBackgroundClosed -= HandleWebViewClosed;
+                    retiringView.OnViewReleased -= HandleViewReleased;
+                    if (closeView) retiringView.CloseWebView();
+                }
             }
-
-            _prepareRequested = _dataAvailable = _scriptsLoaded = false;
-            _pendingPrepared = null; _pendingPrepareFailed = null;
-            ++_ownerEpoch;
-            ViewOwners.Clear();
-            _onMessageReceived = null;
-            m_LastOpenedOwnerPtr = IntPtr.Zero;
-            _webView = null;
+            finally
+            {
+                // Native close or a game OnClosed handler may throw. Controller.Stop still retires the native profile.
+                _prepareRequested = _dataAvailable = _scriptsLoaded = false;
+                _pendingPrepared = null; _pendingPrepareFailed = null;
+                ++_ownerEpoch;
+                ViewOwners.Clear();
+                _onMessageReceived = null;
+                m_LastOpenedOwnerPtr = IntPtr.Zero;
+                _webView = null;
+            }
         }
 
         /// <summary>Opt-in timing summaries in Unity logs. Enable before Prepare/Open.</summary>
@@ -608,8 +619,11 @@ namespace Balancy
                 onShown?.Invoke();
 #else
             string fileUrl = BalancyWebView.ToWebViewUrl(filePath);
-            if (OpenView(fileUrl, owner, onFailed))
-                onShown?.Invoke();
+#if UNITY_ANDROID && !UNITY_EDITOR
+            OpenView(fileUrl, owner, onFailed, revealWhenReady: true, onShown);
+#else
+            if (OpenView(fileUrl, owner, onFailed)) onShown?.Invoke();
+#endif
 #endif
         }
 
@@ -702,7 +716,12 @@ namespace Balancy
             }
         }
         
-        public static bool OpenView(string url, JsonBasedObject owner = null, Action<ViewOpenError> onFailed = null)
+        public static bool OpenView(string url, JsonBasedObject owner = null, Action<ViewOpenError> onFailed = null) =>
+            OpenView(url, owner, onFailed, revealWhenReady: false, onShown: null);
+
+        // revealWhenReady: a Balancy view page that sends BalancyIsReady. Arbitrary URLs never do, so they show at load.
+        // onShown runs once the view is visible: for a page opened hidden, at its reveal.
+        private static bool OpenView(string url, JsonBasedObject owner, Action<ViewOpenError> onFailed, bool revealWhenReady, Action onShown)
         {
             if (string.IsNullOrEmpty(url))
             {
@@ -743,6 +762,7 @@ namespace Balancy
             {
 #if UNITY_EDITOR_OSX
                 success = BalancyWebViewEmbedded.Instance.InitializeEmbeddedWebView(urlToLoad, ownerJson, additionalInfo);
+                if (success) onShown?.Invoke();
 #elif UNITY_EDITOR
                 CreateErrorMessage();
 #endif
@@ -752,7 +772,8 @@ namespace Balancy
                 // Use game view size for popup mode to match embedded mode behavior
                 // Debug.LogWarning("[RenderViewsManager] OpenView " + urlToLoad + " in popup mode.");
                 // Debug.LogWarning("[RenderViewsManager] ownerJson " + ownerJson);
-                success = _webView.OpenWebView(urlToLoad, ownerJson, additionalInfo);
+                success = _webView.OpenWebView(urlToLoad, ownerJson, additionalInfo, revealWhenReady, onShown,
+                    () => onFailed?.Invoke(ViewOpenError.LoadFailed));
                 // Debug.LogWarning("[RenderViewsManager] success " + success);
             }
             
@@ -794,9 +815,23 @@ namespace Balancy
         private static void OnMessageReceived(string msg)
         {
             if (XsollaPurchasing.ReceivePresentationMessage(msg)) return;
+            var view = _webView;
+            if (view != null && view.ClassicPageReadyPending && ClassicReadyRequest.IsRequest(msg, (int)RequestAction.BalancyIsReady))
+            {
+                int ownerEpoch = _ownerEpoch;
+                view.ProcessClassicReadyRequest(() => DispatchWebViewRequest(msg, ownerEpoch));
+            }
+            else DispatchWebViewRequest(msg);
+        }
+
+        private static void DispatchWebViewRequest(string msg, int? readyOwnerEpoch = null)
+        {
             if (_onMessageReceived != null)
             {
                 bool proceed = _onMessageReceived(msg);
+                // The application filter may close/reopen or recreate the profile. Do not forward the old ready,
+                // or its rejection response, into a new context. The reveal gate independently checks its opening.
+                if (readyOwnerEpoch.HasValue && readyOwnerEpoch.Value != _ownerEpoch) return;
                 if (!proceed)
                 {
                     Debug.Log("Message handling was cancelled by external handler: " + msg);

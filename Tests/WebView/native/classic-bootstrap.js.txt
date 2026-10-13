@@ -1,0 +1,38 @@
+window.balancyPerformanceEnabled = false;
+window.balancyShellId = ({"value":"golden-shell"}).value;
+window.balancyViewOwner = JSON.parse(({"value":"{\"unnyIdGameEvent\":\"42\"}"}).value);
+window.balancySettings = JSON.parse(({"value":"{\"trackWebViewEvents\":false}"}).value);
+(function() {
+function fail(error) {
+var api = window.balancy, reported = false;
+try { if (api && typeof api._postHostError === 'function') { api._postHostError(error); reported = true; } } catch (_) {}
+if (!reported) { try { var message = JSON.stringify({ type: 'shellError', shellId: window.balancyShellId || '', error: String(error) });
+if (window.BalancyWebView && typeof window.BalancyWebView.sendMessageToUnity === 'function') window.BalancyWebView.sendMessageToUnity(message);
+else if (api && typeof api.sendMessageToUnity === 'function') api.sendMessageToUnity(message);
+} catch (_) {} } console.error(error);
+}
+function restoreLegacy(api) {
+var previous = legacy; if (!previous || previous === api || (typeof previous !== 'object' && typeof previous !== 'function')) return; legacy = null;
+['owner', 'onMessage', 'sendMessageToUnity'].forEach(function(name) {
+if (name in api || (name !== 'onMessage' && !(name in previous))) return;
+Object.defineProperty(api, name, { configurable: true, enumerable: true, get: function() { return previous[name]; }, set: function(value) { previous[name] = value; } });
+});
+var receive = api._receiveMessageFromUnity, legacyReceive = previous._receiveMessageFromUnity;
+api._receiveMessageFromUnity = function(message) {
+var result = receive.apply(this, arguments);
+try { if (typeof legacyReceive === 'function') legacyReceive.call(previous, message); else if (typeof previous.onMessage === 'function') previous.onMessage(message); } catch (error) { console.error(error); }
+return result;
+};
+}
+function install(code) { try { window.balancy._installScripts(code, ({"value":"golden-version"}).value); Promise.resolve(window.balancy.initResponseHandler()).catch(fail); } catch (error) { fail(error); } }
+function start() { try { if (!window.balancy) throw new Error('Balancy bridge did not initialize'); restoreLegacy(window.balancy); var request = new XMLHttpRequest();
+request.open('GET', ({"value":"__SCRIPTS_URL__"}).value, true);
+request.onload = function() { if (request.status === 0 || (request.status >= 200 && request.status < 300)) install(request.responseText); else fail(new Error('Scripts file HTTP ' + request.status)); };
+request.onerror = function() { fail(new Error('Failed to load scripts file')); };
+request.send();
+ } catch (error) { fail(error); } }
+if (window.balancy && typeof window.balancy._installScripts === 'function') { start(); return; }
+var legacy = window.balancy;
+var bridge = document.createElement('script'); bridge.src = ({"value":"__BRIDGE_URL__"}).value; bridge.onload = start; bridge.onerror = function() { fail(new Error('Failed to load Balancy bridge')); }; (document.head || document.documentElement).appendChild(bridge);
+})();
+true;
