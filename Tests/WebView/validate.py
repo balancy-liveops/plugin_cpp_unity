@@ -95,8 +95,9 @@ class Runner {
             sources = [str(args.project / item.attrib['Include'].replace('\\', '/')) for item in tree.findall('.//m:Compile', namespace)]
             refs = [str(args.project / item.text.replace('\\', '/')) for item in tree.findall('.//m:HintPath', namespace)]
             if name == 'Balancy.WebView':
-                sources += [str(ROOT / 'WebView/Scripts' / file) for file in ['PersistentViewState.cs', 'RuntimeBootstrap.cs', 'ClassicRevealGate.cs', 'ClassicReadyRequest.cs', 'AssemblyInfo.cs']]
+                sources += [str(p) for p in (ROOT / 'WebView/Scripts').glob('*.cs')]
             else:
+                sources += [str(p) for p in (ROOT / 'Runtime').rglob('*.cs')]
                 refs = [ref for ref in refs if not ref.endswith('/Balancy.WebView.dll')]
                 refs.append(str(output / 'Balancy.WebView.dll'))
             sources = list(dict.fromkeys(sources))

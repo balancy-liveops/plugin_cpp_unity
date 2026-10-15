@@ -42,6 +42,7 @@ namespace Balancy.Network
         // Active requests tracking
         private Dictionary<int, UnityWebRequest> _activeRequests = new Dictionary<int, UnityWebRequest>();
         private bool _resourcesCleaned;
+        internal static bool LocalBackendEnabled;
 
         private static volatile bool _isStopped = false;
         private static int _generation;
@@ -229,7 +230,7 @@ namespace Balancy.Network
                 }
                 
                 // Create a new client with the specified timeout
-                client = new HttpClient
+                client = new HttpClient(new HttpClientHandler { AllowAutoRedirect = !LocalBackendEnabled })
                 {
                     Timeout = normalizedTimeout
                 };
@@ -381,6 +382,7 @@ namespace Balancy.Network
         {
             // Create the request
             UnityWebRequest webRequest = new UnityWebRequest(url, method);
+            if (LocalBackendEnabled) webRequest.redirectLimit = 0;
 
             // Set timeout
             webRequest.timeout = NormalizeUnityTimeout(timeoutSeconds);
@@ -562,6 +564,7 @@ namespace Balancy.Network
         {
             // Create the request
             UnityWebRequest webRequest = UnityWebRequest.Get(url);
+            if (LocalBackendEnabled) webRequest.redirectLimit = 0;
             
             // Set timeout
             webRequest.timeout = NormalizeUnityTimeout(timeoutSeconds);

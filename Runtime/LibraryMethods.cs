@@ -28,6 +28,12 @@ namespace Balancy
 
         public static class General
         {
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            [return: MarshalAs(UnmanagedType.I1)]
+            public static extern bool balancyConfigureLocalBackend(string apiUrl, string cdnUrl, string cacheNamespace);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            [return: MarshalAs(UnmanagedType.I1)]
+            public static extern bool balancyIsLocalBackendEnabled();
             [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
             public delegate void LogCallback(int level, string message);
             

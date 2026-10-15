@@ -62,6 +62,18 @@ namespace Balancy
             }
 #endif
 
+            try
+            {
+                var local = appConfig.LocalBackend;
+                if (local != null && appConfig.Environment != Constants.Environment.Development)
+                    throw new InvalidOperationException("Local backend requires Development");
+                if (!LibraryMethods.General.balancyConfigureLocalBackend(local?.ApiUrl ?? "", local?.CdnUrl ?? "", local?.CacheNamespace ?? ""))
+                    throw new InvalidOperationException("Local backend could not be configured; refusing SDK initialization");
+                Balancy.Network.UnityWebRequestBridge.LocalBackendEnabled = local != null;
+            }
+            catch (EntryPointNotFoundException) when (appConfig.LocalBackend == null) { /* Legacy production plugin. */ }
+            catch (Exception error) { Debug.LogError(error.Message); return; }
+
             _isReadyToUse = false;
             _isInitialized = true;
             int generation = ++_lifecycleGeneration;

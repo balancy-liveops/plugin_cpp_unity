@@ -16,6 +16,14 @@ namespace Balancy
     public delegate void DownloadCompleteCallback(bool success, string message);
 
 
+    [Serializable]
+    public sealed class LocalBackendProfile
+    {
+        public string ApiUrl = "http://127.0.0.1:3040";
+        public string CdnUrl = "http://127.0.0.1:3040/cdn/";
+        public string CacheNamespace = "xo-test";
+    }
+
     [Flags]
     public enum LaunchType
     {
@@ -94,6 +102,7 @@ namespace Balancy
     
     public class AppConfig
     {
+        public LocalBackendProfile LocalBackend;
         public string ApiGameId;
         public string PublicKey;
         
