@@ -55,6 +55,7 @@ namespace Balancy.Editor
         
         private static DownloadCompleteCallback _downloadCompleteCallback;
         private static ProgressUpdateCallback _progressUpdateCallback;
+        private static System.Diagnostics.Stopwatch _downloadTimer;
 
         public static void Launch()
         {
@@ -194,6 +195,9 @@ namespace Balancy.Editor
         public static void DownloadContent(DownloadCompleteCallback onReadyCallback, ProgressUpdateCallback onProgressCallback)
         {
             Launch();
+            _downloadTimer = System.Diagnostics.Stopwatch.StartNew();
+            Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null,
+                "[Balancy][Download Data] editor-pipeline=2; Unity {0}; download started", Application.unityVersion);
             _downloadCompleteCallback = onReadyCallback;
             _progressUpdateCallback = onProgressCallback;
             LibraryMethods.Editor.balancyConfigDownloadContentToResources(OnDownloadCompleted, OnProgressUpdate);
@@ -211,6 +215,14 @@ namespace Balancy.Editor
         {
             try
             {
+                if (_downloadTimer != null)
+                {
+                    _downloadTimer.Stop();
+                    Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null,
+                        "[Balancy][Download Data] editor-pipeline=2; content finished in {0:F2}s; success={1}",
+                        _downloadTimer.Elapsed.TotalSeconds, success);
+                    _downloadTimer = null;
+                }
                 _downloadCompleteCallback?.Invoke(success, message);
             }
             catch (Exception e)
@@ -242,6 +254,7 @@ namespace Balancy.Editor
         public static void Close()
         {
             _isInitialized = false;
+            _downloadTimer = null;
             Balancy.Network.UnityWebRequestBridge.Clear();
             Balancy.UnzipBridge.Cleanup();
             LibraryMethods.Editor.balancyConfigClose();

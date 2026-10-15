@@ -1109,7 +1109,10 @@ namespace Balancy.Editor
             if (_assetsNeedRefresh && !_downloading)
             {
                 _assetsNeedRefresh = false;
+                var importTimer = System.Diagnostics.Stopwatch.StartNew();
                 AssetDatabase.Refresh();
+                Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null,
+                    "[Balancy][Download Data] asset import finished in {0:F2}s", importTimer.Elapsed.TotalSeconds);
             }
             if (!string.IsNullOrEmpty(_errorMessage))
             {
