@@ -255,9 +255,14 @@ namespace Balancy.Editor
         {
             _isInitialized = false;
             _downloadTimer = null;
-            Balancy.Network.UnityWebRequestBridge.Clear();
-            Balancy.UnzipBridge.Cleanup();
-            LibraryMethods.Editor.balancyConfigClose();
+            _downloadCompleteCallback = null;
+            _progressUpdateCallback = null;
+            try { Balancy.Network.UnityWebRequestBridge.Clear(); }
+            finally
+            {
+                try { Balancy.UnzipBridge.Cleanup(); }
+                finally { LibraryMethods.Editor.balancyConfigClose(); }
+            }
         }
         
         private enum Level {

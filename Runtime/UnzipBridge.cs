@@ -26,12 +26,54 @@ namespace Balancy
         private static UnityMainThreadDispatcher _dispatcher;
         private static volatile bool _isStopped = false;
         private static int _generation;
+        private static readonly object ExtractionLock = new object();
+        private static readonly List<Task> ExtractionTasks = new List<Task>();
+        private static CancellationTokenSource _extractionCancellation = new CancellationTokenSource();
+
+        private static bool IsCurrentSession(int generation) =>
+            !_isStopped && generation == Volatile.Read(ref _generation);
+
+        private static void StartSession()
+        {
+            Cleanup();
+            lock (ExtractionLock)
+            {
+                _extractionCancellation = new CancellationTokenSource();
+                Interlocked.Increment(ref _generation);
+                _isStopped = false;
+            }
+        }
+
+        private static Task<ExtractResult> StartExtraction(int generation, Func<CancellationToken, ExtractResult> extract)
+        {
+            lock (ExtractionLock)
+            {
+                if (!IsCurrentSession(generation))
+                    return Task.FromResult(new ExtractResult { Canceled = true });
+                var cancellation = _extractionCancellation.Token;
+                // Only filesystem workers are joined on cleanup; none needs a Unity tick.
+                ExtractionTasks.RemoveAll(task => task.IsCompleted);
+                var worker = Task.Run(() =>
+                {
+                    try
+                    {
+                        cancellation.ThrowIfCancellationRequested();
+                        return extract(cancellation);
+                    }
+                    catch (OperationCanceledException) { return new ExtractResult { Canceled = true }; }
+                    catch (Exception exception) { return new ExtractResult { Error = exception.ToString() }; }
+                });
+                ExtractionTasks.Add(worker);
+                return worker;
+            }
+        }
 
         // Keep the native-registered delegates rooted for the lifetime of the domain.
         private static readonly LibraryMethods.General.ExtractZipFromMemoryCallback _extractZipCallback = OnExtractZipFromMemory;
         private static readonly LibraryMethods.General.ReleaseExtractedZipCallback _releaseExtractedZipCallback = OnReleaseExtractedZip;
 
 #if UNITY_WEBGL && !UNITY_EDITOR
+        private static int _webGLRequestIndex;
         // WebGL: DllImport to JavaScript unzip function
         [DllImport("__Internal")]
         private static extern void BalancyUnzipFile(string id, string zipFilePath);
@@ -42,8 +84,7 @@ namespace Balancy
         /// </summary>
         public static void Initialize()
         {
-            _isStopped = false;
-            ++_generation;
+            StartSession();
             _dispatcher = UnityMainThreadDispatcher.Instance();
             LibraryMethods.General.balancySetUnzipCallback(OnUnzipRequest);
             LibraryMethods.General.balancySetExtractZipFromMemoryCallback(_extractZipCallback);
@@ -141,32 +182,39 @@ namespace Balancy
         [AOT.MonoPInvokeCallback(typeof(OnUnzipRequestDelegate))]
         private static void OnUnzipRequest(string id, string zipFilePath)
         {
+            int generation = Volatile.Read(ref _generation);
+            if (!IsCurrentSession(generation)) return;
 #if UNITY_WEBGL && !UNITY_EDITOR
-            // WebGL: Use JavaScript-side unzipping
+            // JS echoes this opaque id; old-session replies cannot match a new request.
+            string requestId = generation + ":" + Interlocked.Increment(ref _webGLRequestIndex);
+            _pendingRequests[requestId] = path =>
+            {
+                if (IsCurrentSession(generation)) NotifyUnzipCompleted(id, path, generation);
+            };
             try
             {
-                BalancyUnzipFile(id, zipFilePath);
+                BalancyUnzipFile(requestId, zipFilePath);
             }
             catch (Exception ex)
             {
+                _pendingRequests.Remove(requestId);
                 Debug.LogError($"[Balancy] Failed to call JavaScript unzip: {ex.Message}");
-                NotifyUnzipCompleted(id, string.Empty);
+                if (IsCurrentSession(generation)) NotifyUnzipCompleted(id, string.Empty, generation);
             }
 #else
             // Other platforms: Use C# unzipping
             if (_dispatcher == null)
             {
                 Debug.LogError("[Balancy][UnzipBridge] ERROR: UnzipBridge not initialized! Call Initialize() first.");
-                NotifyUnzipCompleted(id, string.Empty);
+                NotifyUnzipCompleted(id, string.Empty, generation);
                 return;
             }
 
             // File downloads complete on a serialized worker. Hop back before
             // touching Coroutine/Unity APIs; extraction itself returns to a worker below.
-            int generation = _generation;
             UnityMainThreadDispatcher.EnqueueFromAnyThread(() =>
             {
-                if (_isStopped || generation != _generation) return;
+                if (!IsCurrentSession(generation)) return;
 #if UNITY_EDITOR
                 if (!Application.isPlaying)
                 {
@@ -177,19 +225,22 @@ namespace Balancy
                 }
 #endif
                 if (_dispatcher != null)
-                    _dispatcher.StartCoroutine(UnzipAsync(id, zipFilePath));
+                    _dispatcher.StartCoroutine(UnzipAsync(id, zipFilePath, generation));
                 else
-                    NotifyUnzipCompleted(id, string.Empty);
+                    NotifyUnzipCompleted(id, string.Empty, generation);
             });
 #endif
         }
 
-#if UNITY_WEBGL && !UNITY_EDITOR
         /// <summary>
         /// Called by JavaScript when unzip completes (via Module.BalancyUnzipCompleted)
         /// Message format: "id|resultPath"
         /// </summary>
-        public static void OnWebGLUnzipCompleted(string message)
+#if UNITY_WEBGL && !UNITY_EDITOR
+        public static void OnWebGLUnzipCompleted(string message) => CompleteWebGLReply(message);
+#endif
+
+        private static void CompleteWebGLReply(string message)
         {
             var parts = message.Split('|');
             if (parts.Length != 2)
@@ -201,25 +252,27 @@ namespace Balancy
             string id = parts[0];
             string resultPath = parts[1];
 
-            Debug.Log($"[Balancy] WebGL unzip completed: id={id}, path={resultPath}");
-            NotifyUnzipCompleted(id, resultPath);
+            if (!_pendingRequests.TryGetValue(id, out var completion)) return;
+            _pendingRequests.Remove(id);
+            completion(resultPath);
         }
-#endif
         
         private sealed class ExtractResult
         {
             internal bool Success;
+            internal bool Canceled;
             internal string Folder;
             internal string Error;
         }
 
         private static readonly SemaphoreSlim UnzipGate = new SemaphoreSlim(1, 1);
 
-        private static ExtractResult ExtractArchive(ZipArchive archive, string destinationFolder)
+        private static ExtractResult ExtractArchive(ZipArchive archive, string destinationFolder, CancellationToken cancellation)
         {
             var result = new ExtractResult { Folder = destinationFolder };
             try
             {
+                cancellation.ThrowIfCancellationRequested();
                 if (Directory.Exists(destinationFolder))
                     Directory.Delete(destinationFolder, true);
                 Directory.CreateDirectory(destinationFolder);
@@ -230,6 +283,7 @@ namespace Balancy
 
                 foreach (var entry in archive.Entries)
                 {
+                    cancellation.ThrowIfCancellationRequested();
                     if (string.IsNullOrEmpty(entry.Name) && entry.FullName.EndsWith("/"))
                         continue;
 
@@ -245,12 +299,13 @@ namespace Balancy
                     // source asset jumping back to its publication date.
                     using (var input = entry.Open())
                     using (var output = File.Create(destinationPath))
-                        input.CopyTo(output);
+                        CopyWithCancellation(input, output, cancellation);
                 }
                 result.Success = true;
             }
             catch (Exception exception)
             {
+                result.Canceled = exception is OperationCanceledException;
                 result.Error = exception.Message + "\n" + exception.StackTrace;
                 try
                 {
@@ -262,13 +317,26 @@ namespace Balancy
             return result;
         }
 
-        private static ExtractResult ExtractFileOnWorker(string zipFilePath, string destinationFolder)
+        private static void CopyWithCancellation(Stream input, Stream output, CancellationToken cancellation)
         {
-            UnzipGate.Wait();
+            var buffer = new byte[64 * 1024];
+            for (;;)
+            {
+                cancellation.ThrowIfCancellationRequested();
+                int count = input.Read(buffer, 0, buffer.Length);
+                if (count == 0) return;
+                cancellation.ThrowIfCancellationRequested();
+                output.Write(buffer, 0, count);
+            }
+        }
+
+        private static ExtractResult ExtractFileOnWorker(string zipFilePath, string destinationFolder, CancellationToken cancellation)
+        {
+            UnzipGate.Wait(cancellation);
             try
             {
                 using (var archive = ZipFile.OpenRead(zipFilePath))
-                    return ExtractArchive(archive, destinationFolder);
+                    return ExtractArchive(archive, destinationFolder, cancellation);
             }
             finally
             {
@@ -276,14 +344,14 @@ namespace Balancy
             }
         }
 
-        private static ExtractResult ExtractBytesOnWorker(byte[] zipData, string destinationFolder)
+        private static ExtractResult ExtractBytesOnWorker(byte[] zipData, string destinationFolder, CancellationToken cancellation)
         {
-            UnzipGate.Wait();
+            UnzipGate.Wait(cancellation);
             try
             {
                 using (var memoryStream = new MemoryStream(zipData, false))
                 using (var archive = new ZipArchive(memoryStream, ZipArchiveMode.Read))
-                    return ExtractArchive(archive, destinationFolder);
+                    return ExtractArchive(archive, destinationFolder, cancellation);
             }
             finally
             {
@@ -299,8 +367,8 @@ namespace Balancy
             {
                 string destinationFolder = Path.Combine(Path.GetDirectoryName(zipFilePath),
                     Path.GetFileNameWithoutExtension(zipFilePath));
-                result = await Task.Run(() => ExtractFileOnWorker(zipFilePath, destinationFolder))
-                    .ConfigureAwait(false);
+                result = await StartExtraction(generation,
+                    cancellation => ExtractFileOnWorker(zipFilePath, destinationFolder, cancellation)).ConfigureAwait(false);
             }
             catch (Exception exception)
             {
@@ -309,20 +377,24 @@ namespace Balancy
 
             UnityMainThreadDispatcher.EnqueueFromAnyThread(() =>
             {
-                if (_isStopped || generation != _generation) return;
+                if (!IsCurrentSession(generation)) return;
                 if (!result.Success)
                     Debug.LogError("[Balancy] Failed to unzip " + id + ": " + result.Error);
                 string folder = result.Success ? result.Folder : string.Empty;
                 if (!string.IsNullOrEmpty(folder) && !folder.EndsWith("/")) folder += "/";
-                NotifyUnzipCompleted(id, folder);
+                NotifyUnzipCompleted(id, folder, generation);
             });
         }
 #endif
 
-        private static IEnumerator AwaitExtraction(string id, Task<ExtractResult> task)
+        private static IEnumerator AwaitExtraction(string id, Task<ExtractResult> task, int generation)
         {
             while (!task.IsCompleted)
+            {
+                if (!IsCurrentSession(generation)) yield break;
                 yield return null;
+            }
+            if (!IsCurrentSession(generation)) yield break;
 
             ExtractResult result;
             if (task.IsCanceled)
@@ -338,19 +410,20 @@ namespace Balancy
             string folder = result.Success ? result.Folder : string.Empty;
             if (!string.IsNullOrEmpty(folder) && !folder.EndsWith("/"))
                 folder += "/";
-            NotifyUnzipCompleted(id, folder);
+            NotifyUnzipCompleted(id, folder, generation);
         }
 
         /// <summary>
         /// Read platform data on the Unity thread when required, but perform all
         /// filesystem and decompression work on one bounded worker.
         /// </summary>
-        private static IEnumerator UnzipAsync(string id, string zipFilePath)
+        private static IEnumerator UnzipAsync(string id, string zipFilePath, int generation)
         {
+            if (!IsCurrentSession(generation)) yield break;
 #if UNITY_ANDROID && !UNITY_EDITOR
             if (zipFilePath.Contains("/android_asset/"))
             {
-                yield return UnzipFromAndroidStreamingAssets(id, zipFilePath);
+                yield return UnzipFromAndroidStreamingAssets(id, zipFilePath, generation);
                 yield break;
             }
 #endif
@@ -358,7 +431,7 @@ namespace Balancy
             if (!File.Exists(zipFilePath))
             {
                 Debug.LogError("[Balancy] ZIP file not found: " + zipFilePath);
-                NotifyUnzipCompleted(id, string.Empty);
+                NotifyUnzipCompleted(id, string.Empty, generation);
                 yield break;
             }
 
@@ -366,12 +439,13 @@ namespace Balancy
                 Path.GetDirectoryName(zipFilePath),
                 Path.GetFileNameWithoutExtension(zipFilePath));
 
-            var task = Task.Run(() => ExtractFileOnWorker(zipFilePath, destinationFolder));
-            yield return AwaitExtraction(id, task);
+            var task = StartExtraction(generation,
+                cancellation => ExtractFileOnWorker(zipFilePath, destinationFolder, cancellation));
+            yield return AwaitExtraction(id, task, generation);
         }
 
 #if UNITY_ANDROID && !UNITY_EDITOR
-        private static IEnumerator UnzipFromAndroidStreamingAssets(string id, string zipFilePath)
+        private static IEnumerator UnzipFromAndroidStreamingAssets(string id, string zipFilePath, int generation)
         {
             string assetPath = zipFilePath;
             if (zipFilePath.StartsWith("/android_asset/"))
@@ -383,10 +457,11 @@ namespace Balancy
             using (var request = UnityWebRequest.Get(assetPath))
             {
                 yield return request.SendWebRequest();
+                if (!IsCurrentSession(generation)) yield break;
                 if (request.result != UnityWebRequest.Result.Success)
                 {
                     Debug.LogError("[Balancy] Failed to read ZIP from APK: " + request.error + ", URL: " + assetPath);
-                    NotifyUnzipCompleted(id, string.Empty);
+                    NotifyUnzipCompleted(id, string.Empty, generation);
                     yield break;
                 }
 
@@ -411,8 +486,9 @@ namespace Balancy
                 string destinationFolder = Path.Combine(
                     Application.persistentDataPath, "Balancy", "Models", extractedRelativePath);
 
-                var task = Task.Run(() => ExtractBytesOnWorker(zipData, destinationFolder));
-                yield return AwaitExtraction(id, task);
+                var task = StartExtraction(generation,
+                    cancellation => ExtractBytesOnWorker(zipData, destinationFolder, cancellation));
+                yield return AwaitExtraction(id, task, generation);
             }
         }
 #endif
@@ -422,9 +498,9 @@ namespace Balancy
         /// <summary>
         /// Notify C++ that unzipping is complete
         /// </summary>
-        private static void NotifyUnzipCompleted(string id, string extractedFolderPath)
+        private static void NotifyUnzipCompleted(string id, string extractedFolderPath, int generation)
         {
-            if (_isStopped) return;
+            if (!IsCurrentSession(generation)) return;
 
             try
             {
@@ -503,9 +579,29 @@ namespace Balancy
         /// </summary>
         public static void Cleanup()
         {
-            _isStopped = true;
-            ++_generation;
-            _pendingRequests.Clear();
+            Task[] workers;
+            CancellationTokenSource cancellation;
+            lock (ExtractionLock)
+            {
+                _isStopped = true;
+                Interlocked.Increment(ref _generation);
+                cancellation = _extractionCancellation;
+                _extractionCancellation = null;
+                workers = ExtractionTasks.ToArray();
+                ExtractionTasks.Clear();
+            }
+            // Do not release the editor's import guard while any worker can still
+            // delete or write an extracted file. Workers never wait on the UI queue.
+            try { cancellation?.Cancel(); }
+            finally
+            {
+                try { if (workers.Length != 0) Task.WaitAll(workers); }
+                finally
+                {
+                    cancellation?.Dispose();
+                    _pendingRequests.Clear();
+                }
+            }
         }
     }
 }

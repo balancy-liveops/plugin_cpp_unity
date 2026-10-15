@@ -273,6 +273,8 @@ namespace Balancy.Editor
                 GUI.enabled = true;
                 var rect = EditorGUILayout.GetControlRect(false, EditorGUIUtility.singleLineHeight);
                 EditorGUI.ProgressBar(rect, _downloadingProgress, _downloadingFileName);
+                if (_autoRefreshBlocked && GUILayout.Button("Cancel"))
+                    CancelDownload();
                 GUI.enabled = false;
             }
             else
@@ -301,7 +303,7 @@ namespace Balancy.Editor
 
             BeginAssetWrite();
             try { EditorUtils.GenerateCode(OnDownloadCompleted); }
-            catch { _downloading = false; EndAssetWrite(); throw; }
+            catch { CancelDownload(); throw; }
         }
         
         private void StartDownloading()
@@ -311,7 +313,7 @@ namespace Balancy.Editor
 
             BeginAssetWrite();
             try { EditorUtils.DownloadContent(OnDownloadCompleted, OnProgressUpdate); }
-            catch { _downloading = false; EndAssetWrite(); throw; }
+            catch { CancelDownload(); throw; }
         }
 
         private void StartSynchingAddressables()
@@ -1054,7 +1056,7 @@ namespace Balancy.Editor
         
         private void OnDisable()
         {
-            EndAssetWrite();
+            if (_autoRefreshBlocked) CancelDownload();
             EditorApplication.update -= update;
             EditorApplication.playModeStateChanged -= OnPlayModeStateChanged;
         }
@@ -1083,9 +1085,32 @@ namespace Balancy.Editor
         private void EndAssetWrite()
         {
             if (!_autoRefreshBlocked) return;
-            _autoRefreshBlocked = false;
             AssetDatabase.AllowAutoRefresh();
+            _autoRefreshBlocked = false;
         }
+        private void CancelDownload()
+        {
+            if (!_autoRefreshBlocked) return;
+            // Close invalidates HTTP completions and joins canceled unzip writers.
+            // Keep import disabled until that cleanup has actually finished.
+            try { EditorUtils.Close(); }
+            finally
+            {
+                // Close always drains writers, even if another cleanup step fails.
+                EndAssetWrite();
+                _downloading = false;
+                _downloadingFileName = "";
+                _downloadingProgress = 0;
+                _assetsNeedRefresh = true;
+                _needRefresh = true;
+                // Native branch metadata belongs to the closed configuration session.
+                _gamesInfo = null;
+                _loadingGames = false;
+                _loadGamesFailed = false;
+                _loadingBranches = false;
+            }
+        }
+
         private void update()
         {
             // Check if we entered play mode and close the window if we did

@@ -42,6 +42,7 @@ namespace Balancy.Tests
         public void SetUp()
         {
             ClearQueue();
+            typeof(UnzipBridge).GetMethod("StartSession", StaticPrivate).Invoke(null, null);
             _root = Path.Combine(Path.GetTempPath(), "balancy-editor-download-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(_root);
         }
@@ -49,6 +50,7 @@ namespace Balancy.Tests
         [TearDown]
         public void TearDown()
         {
+            UnzipBridge.Cleanup();
             ClearQueue();
             Directory.Delete(_root, true);
         }
@@ -77,7 +79,7 @@ namespace Balancy.Tests
             {
                 SynchronizationContext.SetSynchronizationContext(context);
                 extraction = (Task)typeof(UnzipBridge).GetMethod("UnzipInEditor", StaticPrivate)
-                    .Invoke(null, new object[] { "test-view", archive, -123 });
+                    .Invoke(null, new object[] { "test-view", archive, UnzipGeneration() });
                 Assert.That(extraction.Wait(TimeSpan.FromSeconds(5)), Is.True,
                     "Extraction must finish without a coroutine or player-loop tick");
             }
@@ -95,7 +97,7 @@ namespace Balancy.Tests
         {
             var archive = CreateArchive("../escape.json");
             var result = typeof(UnzipBridge).GetMethod("ExtractFileOnWorker", StaticPrivate)
-                .Invoke(null, new object[] { archive, Path.Combine(_root, "view") });
+                .Invoke(null, new object[] { archive, Path.Combine(_root, "view"), CancellationToken.None });
             Assert.That(result.GetType().GetField("Success", BindingFlags.Instance | BindingFlags.NonPublic)
                 .GetValue(result), Is.False);
             Assert.That(File.Exists(Path.Combine(_root, "escape.json")), Is.False);
@@ -132,6 +134,163 @@ namespace Balancy.Tests
                 UnityEngine.Object.DestroyImmediate(window);
                 AssetDatabase.DeleteAsset(marker);
                 if (File.Exists(marker)) File.Delete(marker);
+            }
+        }
+
+        private static int UnzipGeneration() => (int)typeof(UnzipBridge)
+            .GetField("_generation", StaticPrivate).GetValue(null);
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void CancelOrCloseWaitsForFinalWriteBeforeAllowingImport(bool closeWindow)
+        {
+            var type = Type.GetType("Balancy.Editor.BalancyConfigEditor, Balancy.Editor", true);
+            var window = (EditorWindow)ScriptableObject.CreateInstance(type);
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            var blocked = type.GetField("_autoRefreshBlocked", flags);
+            var started = new ManualResetEventSlim(false);
+            var marker = Path.Combine(_root, "last-write.txt");
+            bool importBlockedDuringFinalWrite = false;
+            try
+            {
+                type.GetMethod("BeginAssetWrite", flags).Invoke(window, null);
+                type.GetField("_downloading", flags).SetValue(window, true);
+                var cancellation = (CancellationTokenSource)typeof(UnzipBridge)
+                    .GetField("_extractionCancellation", StaticPrivate).GetValue(null);
+                var token = cancellation.Token;
+                var writer = Task.Run(() =>
+                {
+                    started.Set();
+                    if (!token.WaitHandle.WaitOne(TimeSpan.FromSeconds(5)))
+                        throw new TimeoutException("Cancel did not reach the writer");
+                    // Model the filesystem work still finishing after cancellation.
+                    importBlockedDuringFinalWrite = (bool)blocked.GetValue(window);
+                    File.WriteAllText(marker, "finished");
+                });
+                var sync = typeof(UnzipBridge).GetField("ExtractionLock", StaticPrivate).GetValue(null);
+                var workers = (System.Collections.Generic.List<Task>)typeof(UnzipBridge)
+                    .GetField("ExtractionTasks", StaticPrivate).GetValue(null);
+                lock (sync) workers.Add(writer);
+                Assert.That(started.Wait(TimeSpan.FromSeconds(2)), Is.True);
+
+                if (closeWindow) UnityEngine.Object.DestroyImmediate(window);
+                else type.GetMethod("CancelDownload", flags).Invoke(window, null);
+
+                Assert.That(writer.IsCompleted, Is.True, "Cancel/close must join actual writers");
+                Assert.That(importBlockedDuringFinalWrite, Is.True,
+                    "Import must stay blocked while a canceled worker can still write");
+                Assert.That((bool)blocked.GetValue(window), Is.False);
+                Assert.That(File.ReadAllText(marker), Is.EqualTo("finished"));
+                Assert.That(type.GetField("_downloading", flags).GetValue(window), Is.False);
+            }
+            finally
+            {
+                if (window != null) UnityEngine.Object.DestroyImmediate(window);
+                started.Dispose();
+            }
+        }
+
+        [Test]
+        public void CancelBalancesImportEvenWhenACompletedWorkerFailed()
+        {
+            var type = Type.GetType("Balancy.Editor.BalancyConfigEditor, Balancy.Editor", true);
+            var window = (EditorWindow)ScriptableObject.CreateInstance(type);
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            try
+            {
+                type.GetMethod("BeginAssetWrite", flags).Invoke(window, null);
+                type.GetField("_downloading", flags).SetValue(window, true);
+                var workers = (System.Collections.Generic.List<Task>)typeof(UnzipBridge)
+                    .GetField("ExtractionTasks", StaticPrivate).GetValue(null);
+                var failure = new TaskCompletionSource<bool>();
+                failure.SetException(new IOException("Failed writer"));
+                workers.Add(failure.Task);
+                Assert.Throws<TargetInvocationException>(() => type.GetMethod("CancelDownload", flags).Invoke(window, null));
+                Assert.That(type.GetField("_autoRefreshBlocked", flags).GetValue(window), Is.False);
+                Assert.That(type.GetField("_downloading", flags).GetValue(window), Is.False);
+                Assert.That(workers.Count, Is.Zero);
+            }
+            finally { UnityEngine.Object.DestroyImmediate(window); }
+        }
+
+        [Test]
+        public void CleanupCancelsExtractionWaitingForTheZipGate()
+        {
+            var archive = CreateArchive();
+            var gate = (SemaphoreSlim)typeof(UnzipBridge).GetField("UnzipGate", StaticPrivate).GetValue(null);
+            gate.Wait();
+            try
+            {
+                var extraction = (Task)typeof(UnzipBridge).GetMethod("UnzipInEditor", StaticPrivate)
+                    .Invoke(null, new object[] { "canceled-view", archive, UnzipGeneration() });
+                UnzipBridge.Cleanup();
+                Assert.That(extraction.Wait(TimeSpan.FromSeconds(2)), Is.True,
+                    "Cleanup must cancel workers waiting on the gate without a Unity tick");
+                Assert.That(Directory.Exists(Path.Combine(_root, "view")), Is.False);
+            }
+            finally { gate.Release(); }
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void OldRuntimeCoroutineStopsAfterSessionRestart(bool completedAfterRestart)
+        {
+            var resultType = typeof(UnzipBridge).GetNestedType("ExtractResult", BindingFlags.NonPublic);
+            var completionType = typeof(TaskCompletionSource<>).MakeGenericType(resultType);
+            var completion = Activator.CreateInstance(completionType);
+            var task = completionType.GetProperty("Task").GetValue(completion);
+            var coroutine = (IEnumerator)typeof(UnzipBridge).GetMethod("AwaitExtraction", StaticPrivate)
+                .Invoke(null, new[] { (object)"old-view", task, UnzipGeneration() });
+            Assert.That(coroutine.MoveNext(), Is.True, "The current session waits for extraction");
+            typeof(UnzipBridge).GetMethod("StartSession", StaticPrivate).Invoke(null, null);
+            if (completedAfterRestart)
+                completionType.GetMethod("SetResult").Invoke(completion, new[] { Activator.CreateInstance(resultType, true) });
+            Assert.That(coroutine.MoveNext(), Is.False,
+                "A previous session must exit before waiting or notifying the new native session");
+        }
+
+        [Test]
+        public void OldWebGLReplyCannotCompleteANewSessionRequest()
+        {
+            var requests = (System.Collections.Generic.Dictionary<string, Action<string>>)typeof(UnzipBridge)
+                .GetField("_pendingRequests", StaticPrivate).GetValue(null);
+            int oldCalls = 0, newCalls = 0;
+            requests["old-session-request"] = path => ++oldCalls;
+            typeof(UnzipBridge).GetMethod("StartSession", StaticPrivate).Invoke(null, null);
+            requests["new-session-request"] = path => ++newCalls;
+            var reply = typeof(UnzipBridge).GetMethod("CompleteWebGLReply", StaticPrivate);
+            reply.Invoke(null, new object[] { "old-session-request|/old/" });
+            reply.Invoke(null, new object[] { "new-session-request|/new/" });
+            reply.Invoke(null, new object[] { "new-session-request|/new/" });
+            Assert.That(oldCalls, Is.Zero);
+            Assert.That(newCalls, Is.EqualTo(1));
+        }
+
+        private sealed class CancelOnReadStream : MemoryStream
+        {
+            private readonly CancellationTokenSource _cancellation;
+            public CancelOnReadStream(CancellationTokenSource cancellation) : base(new byte[256 * 1024])
+            { _cancellation = cancellation; }
+            public override int Read(byte[] buffer, int offset, int count)
+            {
+                int read = base.Read(buffer, offset, count);
+                _cancellation.Cancel();
+                return read;
+            }
+        }
+
+        [Test]
+        public void CancellationInterruptsCopyInsideALargeZipEntry()
+        {
+            using (var cancellation = new CancellationTokenSource())
+            using (var input = new CancelOnReadStream(cancellation))
+            using (var output = new MemoryStream())
+            {
+                var copy = typeof(UnzipBridge).GetMethod("CopyWithCancellation", StaticPrivate);
+                var exception = Assert.Throws<TargetInvocationException>(() => copy.Invoke(null,
+                    new object[] { input, output, cancellation.Token }));
+                Assert.That(exception.InnerException, Is.InstanceOf<OperationCanceledException>());
+                Assert.That(output.Length, Is.Zero, "Canceled data must not continue writing the entry");
             }
         }
 
