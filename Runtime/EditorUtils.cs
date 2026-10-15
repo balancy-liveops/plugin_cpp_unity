@@ -243,6 +243,7 @@ namespace Balancy.Editor
         {
             _isInitialized = false;
             Balancy.Network.UnityWebRequestBridge.Clear();
+            Balancy.UnzipBridge.Cleanup();
             LibraryMethods.Editor.balancyConfigClose();
         }
         

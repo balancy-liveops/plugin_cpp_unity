@@ -25,6 +25,7 @@ namespace Balancy
         private static readonly Dictionary<string, Action<string>> _pendingRequests = new Dictionary<string, Action<string>>();
         private static UnityMainThreadDispatcher _dispatcher;
         private static volatile bool _isStopped = false;
+        private static int _generation;
 
         // Keep the native-registered delegates rooted for the lifetime of the domain.
         private static readonly LibraryMethods.General.ExtractZipFromMemoryCallback _extractZipCallback = OnExtractZipFromMemory;
@@ -42,6 +43,7 @@ namespace Balancy
         public static void Initialize()
         {
             _isStopped = false;
+            ++_generation;
             _dispatcher = UnityMainThreadDispatcher.Instance();
             LibraryMethods.General.balancySetUnzipCallback(OnUnzipRequest);
             LibraryMethods.General.balancySetExtractZipFromMemoryCallback(_extractZipCallback);
@@ -161,9 +163,20 @@ namespace Balancy
 
             // File downloads complete on a serialized worker. Hop back before
             // touching Coroutine/Unity APIs; extraction itself returns to a worker below.
+            int generation = _generation;
             UnityMainThreadDispatcher.EnqueueFromAnyThread(() =>
             {
-                if (!_isStopped && _dispatcher != null)
+                if (_isStopped || generation != _generation) return;
+#if UNITY_EDITOR
+                if (!Application.isPlaying)
+                {
+                    // MonoBehaviour coroutines do not have a dependable Edit Mode
+                    // player loop. Complete via the EditorApplication.update queue.
+                    _ = UnzipInEditor(id, zipFilePath, generation);
+                    return;
+                }
+#endif
+                if (_dispatcher != null)
                     _dispatcher.StartCoroutine(UnzipAsync(id, zipFilePath));
                 else
                     NotifyUnzipCompleted(id, string.Empty);
@@ -227,7 +240,12 @@ namespace Balancy
                     string directoryPath = Path.GetDirectoryName(destinationPath);
                     if (!string.IsNullOrEmpty(directoryPath))
                         Directory.CreateDirectory(directoryPath);
-                    entry.ExtractToFile(destinationPath, true);
+                    // ExtractToFile restores the ZIP entry's historical timestamp.
+                    // Stream into a newly written file so Unity never observes a
+                    // source asset jumping back to its publication date.
+                    using (var input = entry.Open())
+                    using (var output = File.Create(destinationPath))
+                        input.CopyTo(output);
                 }
                 result.Success = true;
             }
@@ -272,6 +290,34 @@ namespace Balancy
                 UnzipGate.Release();
             }
         }
+
+#if UNITY_EDITOR
+        private static async Task UnzipInEditor(string id, string zipFilePath, int generation)
+        {
+            ExtractResult result;
+            try
+            {
+                string destinationFolder = Path.Combine(Path.GetDirectoryName(zipFilePath),
+                    Path.GetFileNameWithoutExtension(zipFilePath));
+                result = await Task.Run(() => ExtractFileOnWorker(zipFilePath, destinationFolder))
+                    .ConfigureAwait(false);
+            }
+            catch (Exception exception)
+            {
+                result = new ExtractResult { Error = exception.ToString() };
+            }
+
+            UnityMainThreadDispatcher.EnqueueFromAnyThread(() =>
+            {
+                if (_isStopped || generation != _generation) return;
+                if (!result.Success)
+                    Debug.LogError("[Balancy] Failed to unzip " + id + ": " + result.Error);
+                string folder = result.Success ? result.Folder : string.Empty;
+                if (!string.IsNullOrEmpty(folder) && !folder.EndsWith("/")) folder += "/";
+                NotifyUnzipCompleted(id, folder);
+            });
+        }
+#endif
 
         private static IEnumerator AwaitExtraction(string id, Task<ExtractResult> task)
         {
@@ -458,6 +504,7 @@ namespace Balancy
         public static void Cleanup()
         {
             _isStopped = true;
+            ++_generation;
             _pendingRequests.Clear();
         }
     }

@@ -243,9 +243,36 @@ namespace Balancy.Network
         private static TimeSpan NormalizeHttpTimeout(int timeoutSeconds) =>
             timeoutSeconds <= 0 ? System.Threading.Timeout.InfiniteTimeSpan : TimeSpan.FromSeconds(timeoutSeconds);
 
-        // Process web request with HttpClient for Editor mode
+        // Editor I/O must not capture UnitySynchronizationContext: its continuations
+        // can wait for a player-loop tick even while EditorApplication.update runs.
+        // Native callbacks explicitly return through our Edit Mode dispatcher.
+        private static void QueueEditorCompletion(int generation, Action callback)
+        {
+            UnityMainThreadDispatcher.EnqueueFromAnyThread(() =>
+            {
+                if (!_isStopped && generation == _generation)
+                    callback();
+            });
+        }
+
+        private static void WithEditorResponseData(byte[] data, Action<IntPtr, int> callback)
+        {
+            int size = data?.Length ?? 0;
+            IntPtr pointer = size > 0 ? Marshal.AllocHGlobal(size) : IntPtr.Zero;
+            try
+            {
+                if (size > 0) Marshal.Copy(data, 0, pointer, size);
+                InvokeNative(() => callback(pointer, size));
+            }
+            finally
+            {
+                if (pointer != IntPtr.Zero) Marshal.FreeHGlobal(pointer);
+            }
+        }
+
         private async void ProcessWebRequestWithHttpClient(int requestId, string url, string method, string body, string headersJson, int timeoutSeconds)
         {
+            int generation = _generation;
             try
             {
                 var httpClient = GetHttpClient(timeoutSeconds);
@@ -257,13 +284,10 @@ namespace Balancy.Network
 
                     if (!string.IsNullOrEmpty(headersJson))
                     {
-                        Dictionary<string, string> headers = ParseHeaders(headersJson);
-                        foreach (var header in headers)
+                        foreach (var header in ParseHeaders(headersJson))
                         {
-                            if (string.Equals(header.Key, "content-type",
-                                    StringComparison.OrdinalIgnoreCase) && request.Content != null)
+                            if (string.Equals(header.Key, "content-type", StringComparison.OrdinalIgnoreCase) && request.Content != null)
                                 continue;
-
                             if (!header.Key.StartsWith("Content-", StringComparison.OrdinalIgnoreCase))
                                 request.Headers.TryAddWithoutValidation(header.Key, header.Value);
                             else if (request.Content != null)
@@ -271,108 +295,49 @@ namespace Balancy.Network
                         }
                     }
 
-                    using (var response = await httpClient.SendAsync(request))
+                    using (var response = await httpClient.SendAsync(request).ConfigureAwait(false))
                     {
-                        if (_isStopped) return;
-
-                        byte[] data = await response.Content.ReadAsByteArrayAsync();
+                        byte[] data = await response.Content.ReadAsByteArrayAsync().ConfigureAwait(false);
                         bool success = response.IsSuccessStatusCode;
                         int errorCode = (int)response.StatusCode;
-                        IntPtr dataPtr = IntPtr.Zero;
-                        int dataSize = 0;
-                        if (data != null && data.Length > 0)
-                        {
-                            dataSize = data.Length;
-                            dataPtr = Marshal.AllocHGlobal(dataSize);
-                            Marshal.Copy(data, 0, dataPtr, dataSize);
-                        }
-
-                        try
-                        {
-                            if (!_isStopped)
-                                InvokeNative(() => balancyHandleWebRequestComplete(requestId, success, errorCode, dataPtr, dataSize));
-                        }
-                        finally
-                        {
-                            if (dataPtr != IntPtr.Zero)
-                                Marshal.FreeHGlobal(dataPtr);
-                        }
+                        QueueEditorCompletion(generation, () => WithEditorResponseData(data,
+                            (pointer, size) => balancyHandleWebRequestComplete(requestId, success, errorCode, pointer, size)));
                     }
                 }
             }
-            catch (Exception ex)
+            catch (Exception exception)
             {
-                if (_isStopped) return;
-
-                Debug.LogError($"HTTP request failed: {ex.Message}");
-
-                // Create error message as byte array
-                string errorMessage = JsonUtility.ToJson(new WebRequestError { error = ex.Message });
-                byte[] errorData = Encoding.UTF8.GetBytes(errorMessage);
-
-                // Convert to native pointer
-                IntPtr dataPtr = Marshal.AllocHGlobal(errorData.Length);
-                Marshal.Copy(errorData, 0, dataPtr, errorData.Length);
-
-                try
+                QueueEditorCompletion(generation, () =>
                 {
-                    // Send failure back to native plugin
-                    if (!_isStopped)
-                        InvokeNative(() => balancyHandleWebRequestComplete(requestId, false, 0, dataPtr, errorData.Length));
-                }
-                finally
-                {
-                    // Clean up
-                    Marshal.FreeHGlobal(dataPtr);
-                }
+                    Debug.LogError("HTTP request failed: " + exception.Message);
+                    ReportWebRequestFailure(requestId, exception.Message);
+                });
             }
         }
 
-        // Process file load with HttpClient for Editor mode
         private async void ProcessFileLoadWithHttpClient(int requestId, string url, int timeoutSeconds)
         {
+            int generation = _generation;
             try
             {
                 var httpClient = GetHttpClient(timeoutSeconds);
-                using (var response = await httpClient.GetAsync(url))
+                using (var response = await httpClient.GetAsync(url).ConfigureAwait(false))
                 {
-                    if (_isStopped) return;
-
-                    byte[] data = await response.Content.ReadAsByteArrayAsync();
+                    byte[] data = await response.Content.ReadAsByteArrayAsync().ConfigureAwait(false);
                     bool success = response.IsSuccessStatusCode;
                     int errorCode = (int)response.StatusCode;
                     string contentType = response.Content.Headers.ContentType?.MediaType ?? "";
-                    IntPtr dataPtr = IntPtr.Zero;
-                    int dataSize = 0;
-                    if (data != null && data.Length > 0)
-                    {
-                        dataSize = data.Length;
-                        dataPtr = Marshal.AllocHGlobal(dataSize);
-                        Marshal.Copy(data, 0, dataPtr, dataSize);
-                    }
-
-                    try
-                    {
-                        if (!_isStopped)
-                            InvokeNative(() => balancyHandleFileLoadComplete(requestId, success, errorCode,
-                                dataPtr, dataSize, contentType));
-                    }
-                    finally
-                    {
-                        if (dataPtr != IntPtr.Zero)
-                            Marshal.FreeHGlobal(dataPtr);
-                    }
+                    QueueEditorCompletion(generation, () => WithEditorResponseData(data,
+                        (pointer, size) => balancyHandleFileLoadComplete(requestId, success, errorCode, pointer, size, contentType)));
                 }
             }
-            catch (Exception ex)
+            catch (Exception exception)
             {
-                if (_isStopped) return;
-
-                Debug.LogError($"File download failed: {ex.Message}");
-
-                // Send failure back to native plugin
-                if (!_isStopped)
+                QueueEditorCompletion(generation, () =>
+                {
+                    Debug.LogError("File download failed: " + exception.Message);
                     InvokeNative(() => balancyHandleFileLoadComplete(requestId, false, 0, IntPtr.Zero, 0, ""));
+                });
             }
         }
 #endif
