@@ -53,7 +53,7 @@ Closing the selector after submitting checkout dismisses its presentation and po
 
 The selector keeps its success state visible until **Done**. A purchased offer closing its game View releases that background owner without hiding the payment overlay; Done then restores the hidden shell or closes a transient renderer. External renderer closure during checkout dismisses presentation while paid tracking continues. Closing the pending selector deliberately stops that watch; recovery remains available.
 
-Successful live completion preserves existing `OnHardPurchased*` callbacks. A live retry after a persistence error reports once after successful persistence. Authenticated unacknowledged recovery can report a verified `applied:false` grant after a prior checkpoint or acknowledgment failure. An already acknowledged historical receipt does not create a new report. Reporting is deduplicated per active SDK scope, not across devices, processes, or separately initialized SDK instances. Two instances with the same replicated applied ledger may each emit their local `OnHardPurchased*` completion notification after acknowledgment. These wrapper notifications do not apply inventory or invoke built-in revenue analytics; consumers aggregating purchases or revenue must deduplicate by the stable `PaymentInfo.OrderId`. Original init callbacks are never revived by recovery. Callback delivery itself is not guaranteed across a process crash. Refunds requiring correction remain a reconciliation case; the SDK does not subtract already spent rewards automatically.
+Successful live completion preserves existing `OnHardPurchased*` callbacks. A live retry after a persistence error reports once after successful persistence. Authenticated unacknowledged recovery can report a verified `applied:false` grant after a prior checkpoint or acknowledgment failure. An already acknowledged historical receipt does not create a new report. Reporting is deduplicated per active SDK scope, not across devices, processes, or separately initialized SDK instances. Two instances with the same replicated applied ledger may each emit their local `OnHardPurchased*` completion notification after acknowledgment. These wrapper notifications do not apply inventory or invoke built-in revenue analytics; consumers aggregating purchases or revenue must deduplicate by the stable `PaymentInfo.OrderId`. Original init callbacks are never revived by recovery. Callback delivery itself is not guaranteed across a process crash. Legacy refunds without an original receipt remain reconciliation cases. New opted-in full refunds use the original receipt and can create item debt, as described below.
 
 `RecoverPurchases()` processes independent paid orders before bounded deferred readback and isolates individual order failures. If one or more attempted orders fail, it rejects with `InvalidOperationException("xsolla_recovery_incomplete")`; the inner `AggregateException` contains their individual errors. The top-level error message no longer equals a single underlying provider error. Automatic recovery logs this summary; applications can inspect the inner errors for diagnostics. SDK stop or session changes still abort recovery immediately.
 
@@ -71,3 +71,44 @@ The TypeScript Node adapter enables durable Xsolla payment snapshots on POSIX (m
 A chooser held open past the verified quote expiry cannot submit checkout. Unity rechecks expiry before the attempt and after its asynchronous storage flush, closes the unused popup, discards and flushes the reservation, and reports `Offer expired; start the purchase again`. Start a new purchase to obtain a fresh quote. Existing submitted orders and recovery continue using their frozen snapshot independently of quote expiry.
 
 WebGL retains each reserved blank popup in the Unity parent host and closes it synchronously before removing a transient iframe. Once a verified checkout URL is dispatched, the window belongs to Pay Station and closing the game overlay does not close it. Run `node scripts/check-xsolla-webgl.cjs` for popup ownership checks. On macOS, after Unity compiles the SDK, `sh scripts/check-xsolla-native-abi.sh` exercises the packaged native library through the actual compiled SDK P/Invoke declarations without initializing a user or sending payment requests. This checks ABI compatibility, not an on-device paid transaction.
+
+
+## Full refunds and profile restoration
+
+New core reservations opt in with refundSnapshotVersion1. The actual granted
+items, including the Balancy bonus, are retained in the durable grant ledger and
+ACKed to the existing server order. Recovery verifies the canceled order and its
+immutable receipt, compensates inventory once, persists the ledger/profile and
+only then sends refund ACK. Spent items can become negative refund debt; ordinary
+new grants repay it. No original purchase callback is revived by a refund.
+Legacy purchases/reservations without that receipt are not backfilled. Missing
+original profile/items or an inconsistent receipt require support; partial
+refunds and original analytics/limit counters are outside this implementation.
+
+After local profile loss, restore the current cloud profile for the same account,
+including its payment ledger. Do not replay acknowledged consumables from paid
+history: they may already have been spent. The TypeScript local acceptance
+smokes also exercise this shared C++ inventory/ledger behavior against real local
+Saves, including restoration of refund debt. Concurrent-device settlement and
+loss of the cloud state/account identity are not covered by that guarantee.
+
+The server currently supports plain USD catalog pricing and Balancy rule bonuses;
+enabled Xsolla-side promotions are rejected before a NEW quote/order until an
+authenticated personalized-price flow is implemented. Existing order recovery
+continues. Live checkout is still disabled.
+
+### Mobile artifact validation
+
+The iOS device/simulator archives and Android shipping ABIs were rebuilt from the
+current Xsolla core on2026-10-19. Run:
+
+```sh
+node scripts/check-xsolla-mobile-artifacts.cjs /path/to/android/ndk
+```
+
+This checks iOS arm64 plus simulator arm64/x86_64, Android arm64-v8a,
+armeabi-v7a and x86_64, the five Xsolla exports, ELF bitness and16KiB LOAD segment
+alignment. It does not execute a Unity player, WebView, payment or3DS challenge.
+iOS SDK27 emitted a libc++ warning for the retained iOS13 deployment target;
+the minimum was not silently raised. Validate the supported minimum OS/toolchain
+and run the actual platform payment acceptance before release.
