@@ -410,6 +410,26 @@ class Program {
   Reset(); Action<Actions.Purchasing.HardProductInfo> latePrice=null; Actions.Purchasing.GetInfo=(sku,callback)=>latePrice=callback;
   var missingPrice=XsollaPurchasing.NativePresentationPrice("sku"); Check(await missingPrice==null,"unanswered native metadata hook is bounded");
   latePrice(new Actions.Purchasing.HardProductInfo { LocalizedPrice=9.99f, IsoCurrencyCode="USD" }); Check(await missingPrice==null,"late native metadata cannot replace an already completed price lookup");
+  Reset();var refundSequence=new List<string>();
+  var refundOrder=FixtureOrder("refund-test","canceled",true);refundOrder.refundPending=true;refundOrder.grantId="grant-refund-test";
+  var refundOrderJson=UnityEngine.JsonUtility.ToJson(refundOrder);
+  XsollaPurchasing.Persist=()=>{refundSequence.Add("flush");return Task.CompletedTask;};
+  XsollaPurchasing.Request=(a,b)=>{refundSequence.Add(a);return Task.FromResult(a=="pending"?"{\"orders\":["+refundOrderJson+"]}":a=="refund"?"{\"order\":"+refundOrderJson+",\"refund\":{\"refundId\":\"grant-refund-test\",\"grantId\":\"grant-refund-test\"},\"requiresPersistence\":true}":"{\"refunded\":true,\"refundId\":\"grant-refund-test\",\"grantId\":\"grant-refund-test\"}");};
+  await API.Xsolla.RecoverPurchases();
+  Check(string.Join(",",refundSequence)=="pending,refund,flush,refund-ack"&&Reports==0,"full refund saves before ACK without purchase notification");
+  foreach(var fault in new[]{"persist","ack","binding","scope"}) {
+   Reset();var refundFaultOrder=FixtureOrder("refund-fault","canceled",true);refundFaultOrder.refundPending=true;refundFaultOrder.grantId="grant-refund-fault";
+   string serializedRefundOrder=UnityEngine.JsonUtility.ToJson(refundFaultOrder);int refundAcks=0;bool failRefund=true;
+   XsollaPurchasing.Persist=()=>{if(fault=="scope")session="player-b";return fault=="persist"&&failRefund?Task.FromException(new Exception("disk failure")):Task.CompletedTask;};
+   XsollaPurchasing.Request=(a,b)=>{
+    if(a=="pending")return Task.FromResult("{\"orders\":["+serializedRefundOrder+"]}");
+    if(a=="refund")return Task.FromResult("{\"order\":"+(fault=="binding"&&failRefund?serializedRefundOrder.Replace("refund-fault","wrong-refund"):serializedRefundOrder)+",\"refund\":{\"grantId\":\"grant-refund-fault\",\"refundId\":\"grant-refund-fault\"},\"requiresPersistence\":true}");
+    refundAcks++;return fault=="ack"&&failRefund?Task.FromException<string>(new Exception("lost refund ACK")):Task.FromResult("{\"refunded\":true,\"grantId\":\"grant-refund-fault\",\"refundId\":\"grant-refund-fault\"}");
+   };
+   bool refundFaultSeen=false;try{await API.Xsolla.RecoverPurchases();}catch(Exception){refundFaultSeen=true;}
+   Check(refundFaultSeen&&Reports==0&&(fault=="ack"||refundAcks==0),"refund "+fault+" fault cannot ACK an unverified or unsaved debit");
+   if(fault!="scope"){failRefund=false;await API.Xsolla.RecoverPurchases();Check(Reports==0&&refundAcks>0,"refund "+fault+" retry uses recovery without purchase event");}
+  }
   XsollaPurchasing.Stop(); Console.WriteLine(passed+" adapter scenarios passed");
  }
 }

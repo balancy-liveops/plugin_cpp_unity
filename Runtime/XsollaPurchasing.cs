@@ -56,7 +56,7 @@ namespace Balancy
         [Serializable] internal class Order
         {
             public string id, state, productId, requestedProductId, requestId, sku, grantId, checkoutUrl, errorCode;
-            public bool sandbox, acknowledged, reconciliationRequired;
+            public bool sandbox, acknowledged, reconciliationRequired, refundPending, refundProcessed;
             public Context context;
         }
         [Serializable] internal class Grant
@@ -64,14 +64,16 @@ namespace Balancy
             public string grantId, baseProductId, orderId;
             public float priceUSD, priceBalancy;
         }
+        [Serializable] internal class Refund { public string refundId,grantId; }
         [Serializable] internal class Result
         {
             public Order order;
             public Order[] orders;
             public Grant grant;
+            public Refund refund;
             public PriceQuote quote;
-            public string nextBefore, error, grantId;
-            public bool applied, requiresPersistence, acknowledged;
+            public string nextBefore, error, grantId, refundId;
+            public bool applied, requiresPersistence, acknowledged, refunded;
         }
         internal sealed class PaymentView { public string Html, ScriptsCode; }
         [Serializable] private class PresentationShow
@@ -575,6 +577,7 @@ namespace Balancy
                         if (order == null || string.IsNullOrEmpty(order.id) || !visited.Add(order.id)) continue;
                         try
                         {
+                            if (order.state=="canceled" && order.refundPending) { await ApplyRefund(order,session,epoch); continue; }
                             if (deferredOrders.TryGetValue(order.id, out var known))
                             {
                                 ValidateDeferredOrder(order, known);
@@ -611,6 +614,7 @@ namespace Balancy
                     var status = Parse(await Request("get", "{\"orderId\":" + Quote(orderId) + "}"));
                     EnsureSession(session, epoch);
                     ValidateDeferredOrder(status.order, deferred);
+                    if (status.order.state=="canceled" && status.order.refundPending) { await ApplyRefund(status.order,session,epoch); continue; }
                     if (status.order.state != "paid" || status.order.reconciliationRequired)
                         throw new InvalidOperationException("xsolla_reconciliation_required");
                     await Apply(orderId, Descriptor(status.order), session, epoch, observedOrder: status.order);
@@ -618,6 +622,21 @@ namespace Balancy
                 catch (Exception error) { EnsureSession(session, epoch); errors.Add(error); }
             }
             if (errors.Count > 0) throw new InvalidOperationException("xsolla_recovery_incomplete", new AggregateException(errors));
+        }
+        private static async Task ApplyRefund(Order order,string session,int epoch)
+        {
+            EnsureSession(session,epoch);
+            var completion=Parse(await Request("refund","{\"orderId\":"+Quote(order.id)+"}"));
+            EnsureSession(session,epoch);
+            if (completion.order==null || completion.order.id!=order.id || completion.order.state!="canceled" || completion.refund==null ||
+                string.IsNullOrEmpty(completion.refund.grantId) || completion.refund.grantId!=order.grantId || completion.refund.refundId!=completion.refund.grantId)
+                throw new InvalidOperationException("xsolla_refund_mismatch");
+            await Persist();EnsureSession(session,epoch);
+            var ack=Parse(await Request("refund-ack","{\"orderId\":"+Quote(order.id)+",\"grantId\":"+Quote(completion.refund.grantId)+",\"refundId\":"+Quote(completion.refund.refundId)+"}"));
+            EnsureSession(session,epoch);
+            if (!ack.refunded || ack.grantId!=completion.refund.grantId || ack.refundId!=completion.refund.refundId)
+                throw new InvalidOperationException("xsolla_refund_ack_pending");
+            deferredOrders.Remove(order.id);deferredReports.Remove(session+":"+completion.refund.grantId);
         }
         private static async Task Apply(string orderId, Actions.BalancyProductInfo product, string session, int epoch, Prepared livePurchase = null, Order observedOrder = null)
         {
