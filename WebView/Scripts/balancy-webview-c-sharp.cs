@@ -1397,6 +1397,10 @@ namespace Balancy.WebView
         }
 
         internal bool ClassicPageReadyPending => _classicReveal?.Pending ?? false;
+        internal bool ClassicRevealInProgress => _classicReveal?.InProgress ?? false;
+
+        // Cleanup retires the managed context even when it preserves the classic native window.
+        internal void CancelClassicReveal() => _classicReveal?.Cancel();
 
         // Route the request to core before onShown can change its owner; the gate also guards close/reopen in dispatch.
         internal void ProcessClassicReadyRequest(Action dispatch)
@@ -1989,6 +1993,9 @@ namespace Balancy.WebView
         private static void OnLoadCompletedReceived(bool success)
         {
             if (_instance == null) return;
+            var loadedInstance = _instance;
+            var classicGate = loadedInstance._classicReveal;
+            int opening = classicGate?.Opening ?? 0;
             bool pageFinished = success;
             bool preparingShell = _instance.Persistent.Preparing;
             if (!preparingShell) PerformanceLog("classicNavigationComplete", _instance._performanceViewStart, null, "success=" + success);
@@ -2018,10 +2025,13 @@ namespace Balancy.WebView
                 return; // Success is signalled by the bridge's shellReady ACK.
             }
             // On Android, onPageFinished hides a view opened with startHidden again: repeat a reveal that came before it.
-            bool showAgain = pageFinished && (_instance._classicReveal?.LoadCompleted() ?? false);
-            if (!success) _instance._classicReveal?.Signal("loadFailed");
-            if (showAgain) _instance.RevealClassicView("pageFinished");
-            _instance.OnLoadCompleted?.Invoke(success);
+            if (_instance != loadedInstance || (classicGate != null && classicGate.Opening != opening)) return;
+            bool showAgain = pageFinished && (classicGate?.LoadCompleted() ?? false);
+            if (!success) classicGate?.Signal("loadFailed");
+            // onShown may close, replace or clean up this opening. Its load result belongs only to this page.
+            if (_instance != loadedInstance || (classicGate != null && classicGate.Opening != opening)) return;
+            if (showAgain) loadedInstance.RevealClassicView("pageFinished");
+            loadedInstance.OnLoadCompleted?.Invoke(success);
         }
 
         private static void InjectFileFromResources(string fileName)

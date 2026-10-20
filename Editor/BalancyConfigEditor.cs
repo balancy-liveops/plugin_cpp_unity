@@ -273,6 +273,8 @@ namespace Balancy.Editor
                 GUI.enabled = true;
                 var rect = EditorGUILayout.GetControlRect(false, EditorGUIUtility.singleLineHeight);
                 EditorGUI.ProgressBar(rect, _downloadingProgress, _downloadingFileName);
+                if (_autoRefreshBlocked && GUILayout.Button("Cancel"))
+                    CancelDownload();
                 GUI.enabled = false;
             }
             else
@@ -299,7 +301,9 @@ namespace Balancy.Editor
             _downloading = true;
             _downloadingProgress = 0.5f;
 
-            EditorUtils.GenerateCode(OnDownloadCompleted);
+            BeginAssetWrite();
+            try { EditorUtils.GenerateCode(OnDownloadCompleted); }
+            catch { CancelDownload(); throw; }
         }
         
         private void StartDownloading()
@@ -307,7 +311,9 @@ namespace Balancy.Editor
             _downloading = true;
             _downloadingProgress = 0;
 
-            EditorUtils.DownloadContent(OnDownloadCompleted, OnProgressUpdate);
+            BeginAssetWrite();
+            try { EditorUtils.DownloadContent(OnDownloadCompleted, OnProgressUpdate); }
+            catch { CancelDownload(); throw; }
         }
 
         private void StartSynchingAddressables()
@@ -391,6 +397,7 @@ namespace Balancy.Editor
                 _errorMessage = message;
             }
 
+            _assetsNeedRefresh = true;
             _needRefresh = true;
         }
 
@@ -404,6 +411,8 @@ namespace Balancy.Editor
                 CreateBalancyFilesManifest();
             }
             _downloading = false;
+            EndAssetWrite();
+            _assetsNeedRefresh = true;
             _needRefresh = true;
         }
 
@@ -1047,6 +1056,7 @@ namespace Balancy.Editor
         
         private void OnDisable()
         {
+            if (_autoRefreshBlocked) CancelDownload();
             EditorApplication.update -= update;
             EditorApplication.playModeStateChanged -= OnPlayModeStateChanged;
         }
@@ -1059,7 +1069,48 @@ namespace Balancy.Editor
             }
         }
 
+        // Progress/auth updates repaint the window; only completed file writes
+        // need an asset import. Importing during ZIP extraction races timestamps.
         private bool _needRefresh = false;
+        private bool _assetsNeedRefresh;
+        private bool _autoRefreshBlocked;
+
+        private void BeginAssetWrite()
+        {
+            if (_autoRefreshBlocked) return;
+            AssetDatabase.DisallowAutoRefresh();
+            _autoRefreshBlocked = true;
+        }
+
+        private void EndAssetWrite()
+        {
+            if (!_autoRefreshBlocked) return;
+            AssetDatabase.AllowAutoRefresh();
+            _autoRefreshBlocked = false;
+        }
+        private void CancelDownload()
+        {
+            if (!_autoRefreshBlocked) return;
+            // Close invalidates HTTP completions and joins canceled unzip writers.
+            // Keep import disabled until that cleanup has actually finished.
+            try { EditorUtils.Close(); }
+            finally
+            {
+                // Close always drains writers, even if another cleanup step fails.
+                EndAssetWrite();
+                _downloading = false;
+                _downloadingFileName = "";
+                _downloadingProgress = 0;
+                _assetsNeedRefresh = true;
+                _needRefresh = true;
+                // Native branch metadata belongs to the closed configuration session.
+                _gamesInfo = null;
+                _loadingGames = false;
+                _loadGamesFailed = false;
+                _loadingBranches = false;
+            }
+        }
+
         private void update()
         {
             // Check if we entered play mode and close the window if we did
@@ -1076,11 +1127,18 @@ namespace Balancy.Editor
                 Repaint();
             }
             
-            if (!_needRefresh)
+            if (!_needRefresh && !_assetsNeedRefresh)
                 return;
 
             _needRefresh = false;
-            AssetDatabase.Refresh();
+            if (_assetsNeedRefresh && !_downloading)
+            {
+                _assetsNeedRefresh = false;
+                var importTimer = System.Diagnostics.Stopwatch.StartNew();
+                AssetDatabase.Refresh();
+                Debug.LogFormat(LogType.Log, LogOption.NoStacktrace, null,
+                    "[Balancy][Download Data] asset import finished in {0:F2}s", importTimer.Elapsed.TotalSeconds);
+            }
             if (!string.IsNullOrEmpty(_errorMessage))
             {
                 EditorUtility.DisplayDialog("Error", _errorMessage, "Ok");
