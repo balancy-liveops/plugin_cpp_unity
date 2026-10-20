@@ -827,6 +827,10 @@ namespace Balancy
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyAuth_Nutaku(string userId, string token, int callbackId, ResponseCallback callback);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyAuth_PrepareHoolipay(string origin, [MarshalAs(UnmanagedType.I1)] bool loginOnly, int callbackId, ResponseCallback callback);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyAuth_Hoolipay(string ticket, int callbackId, ResponseCallback callback);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyAuth_Steam(string userId, string token, int callbackId, ResponseCallback callback);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyAuth_AsGuest(int callbackId, ResponseCallback callback);

@@ -691,6 +691,18 @@ namespace Balancy
                 Balancy.LibraryMethods.API.balancyAuth_Nutaku(userId, token, callbackResult.CallbackId, callbackResult.StaticCallback);
             }
 
+            /// <summary>Prepare a short-lived Hooli popup URL for the currently authenticated player.</summary>
+            public static void PrepareHoolipay(string origin, bool loginOnly, Balancy.Core.ResponseCallback<Balancy.Core.Responses.CloudDataResponseData> callback) {
+                var result = ProtectedFromGCCallback(callback);
+                Balancy.LibraryMethods.API.balancyAuth_PrepareHoolipay(origin, loginOnly, result.CallbackId, result.StaticCallback);
+            }
+
+            /// <summary>Consume a Hooli ticket and apply the linked or selected Balancy session.</summary>
+            public static void WithHoolipayTicket(string ticket, Balancy.Core.ResponseCallback<Balancy.Core.Responses.AuthResponseData> callback) {
+                var result = ProtectedFromGCCallback(callback);
+                Balancy.LibraryMethods.API.balancyAuth_Hoolipay(ticket, result.CallbackId, result.StaticCallback);
+            }
+
             public static void WithSteam(string userId, string token, Balancy.Core.ResponseCallback<Balancy.Core.Responses.AuthResponseData> callback) {
                 var callbackResult = ProtectedFromGCCallback(callback);
                 Balancy.LibraryMethods.API.balancyAuth_Steam(userId, token, callbackResult.CallbackId, callbackResult.StaticCallback);
