@@ -176,7 +176,8 @@ namespace Balancy
                     _cachedProfiles.Clear();
                 }
                 
-                AllBaseDataSubscriptions?.Clear();
+                lock (_subscriptionsLock)
+                    AllBaseDataSubscriptions.Clear();
                 lock (_resetLock)
                 {
                     _userResetCallbacks.Clear();
@@ -189,152 +190,153 @@ namespace Balancy
             }
         }
 
-        class BaseDataSubscriptions
+        // Native destruction can arrive on a worker thread. Retire its subscription
+        // entry immediately, before the allocator can reuse the native address.
+        // Never invoke game callbacks while holding this lock.
+        private static readonly object _subscriptionsLock = new object();
+        private static readonly Dictionary<IntPtr, BaseDataSubscriptions> AllBaseDataSubscriptions = new Dictionary<IntPtr, BaseDataSubscriptions>();
+
+        private sealed class BaseDataSubscriptions
         {
-            class ParamSubscriptions
-            {
-                public event Action OnUpdated;
-
-                public void Invoke()
-                {
-                    if (OnUpdated == null)
-                        return;
-
-                    foreach (Action callback in OnUpdated.GetInvocationList())
-                    {
-                        try
-                        {
-                            callback.Invoke();
-                        }
-                        catch (Exception exception)
-                        {
-                            UnityEngine.Debug.LogException(exception);
-                        }
-                    }
-                }
-            }
-
-            private readonly Dictionary<string, ParamSubscriptions> _activeSubscriptions = new Dictionary<string, ParamSubscriptions>();
-            private event Action<string> _onAnyParamChanged;
+            private readonly Dictionary<string, Action> _activeSubscriptions = new Dictionary<string, Action>();
+            private Action<string> _onAnyParamChanged;
 
             public void AddParamSubscription(string paramName, Action callback)
             {
-                if (!_activeSubscriptions.TryGetValue(paramName, out var subs))
-                {
-                    subs = new ParamSubscriptions();
-                    _activeSubscriptions.Add(paramName, subs);
-                }
-
-                subs.OnUpdated += callback;
-            }
-
-            public void AddWildcardSubscription(Action<string> callback)
-            {
-                _onAnyParamChanged += callback;
-            }
-
-            public void RemoveWildcardSubscription(Action<string> callback)
-            {
-                _onAnyParamChanged -= callback;
-            }
-
-            public void OnBaseDataParamChanged(string paramName)
-            {
-                if (_activeSubscriptions.TryGetValue(paramName, out var subs))
-                    subs.Invoke();
-
-                if (_onAnyParamChanged == null)
-                    return;
-
-                foreach (Action<string> callback in _onAnyParamChanged.GetInvocationList())
-                {
-                    try
-                    {
-                        callback.Invoke(paramName);
-                    }
-                    catch (Exception exception)
-                    {
-                        UnityEngine.Debug.LogException(exception);
-                    }
-                }
+                _activeSubscriptions.TryGetValue(paramName, out var subscribers);
+                _activeSubscriptions[paramName] = subscribers + callback;
             }
 
             public void RemoveDataSubscription(string paramName, Action callback)
             {
-                if (_activeSubscriptions.TryGetValue(paramName, out var subs))
-                    subs.OnUpdated -= callback;
+                if (_activeSubscriptions.TryGetValue(paramName, out var subscribers))
+                    _activeSubscriptions[paramName] = subscribers - callback;
             }
+
+            public void AddWildcardSubscription(Action<string> callback) => _onAnyParamChanged += callback;
+            public void RemoveWildcardSubscription(Action<string> callback) => _onAnyParamChanged -= callback;
+
+            public Delegate[] GetParamCallbacks(string paramName)
+            {
+                return _activeSubscriptions.TryGetValue(paramName, out var subscribers)
+                    ? subscribers?.GetInvocationList() : null;
+            }
+
+            public Delegate[] GetWildcardCallbacks() => _onAnyParamChanged?.GetInvocationList();
         }
 
-        private static readonly Dictionary<IntPtr, BaseDataSubscriptions> AllBaseDataSubscriptions = new Dictionary<IntPtr, BaseDataSubscriptions>();
-
-        internal static void AddDataSubscription(IntPtr ptr, string paramName, Action callback)
+        private static BaseDataSubscriptions GetOrCreateSubscriptions(IntPtr ptr)
         {
+            // Caller holds _subscriptionsLock.
             if (!AllBaseDataSubscriptions.TryGetValue(ptr, out var subs))
             {
                 subs = new BaseDataSubscriptions();
                 AllBaseDataSubscriptions.Add(ptr, subs);
             }
+            return subs;
+        }
 
-            subs.AddParamSubscription(paramName, callback);
+        internal static void AddDataSubscription(IntPtr ptr, string paramName, Action callback)
+        {
+            lock (_subscriptionsLock)
+                GetOrCreateSubscriptions(ptr).AddParamSubscription(paramName, callback);
         }
 
         internal static void RemoveDataSubscription(IntPtr ptr, string paramName, Action callback)
         {
-            if (AllBaseDataSubscriptions.TryGetValue(ptr, out var subs))
-                subs.RemoveDataSubscription(paramName, callback);
+            lock (_subscriptionsLock)
+            {
+                if (AllBaseDataSubscriptions.TryGetValue(ptr, out var subs))
+                    subs.RemoveDataSubscription(paramName, callback);
+            }
         }
 
         internal static void AddWildcardSubscription(IntPtr ptr, Action<string> callback)
         {
-            if (!AllBaseDataSubscriptions.TryGetValue(ptr, out var subs))
-            {
-                subs = new BaseDataSubscriptions();
-                AllBaseDataSubscriptions.Add(ptr, subs);
-            }
-
-            subs.AddWildcardSubscription(callback);
+            lock (_subscriptionsLock)
+                GetOrCreateSubscriptions(ptr).AddWildcardSubscription(callback);
         }
 
         internal static void RemoveWildcardSubscription(IntPtr ptr, Action<string> callback)
         {
-            if (AllBaseDataSubscriptions.TryGetValue(ptr, out var subs))
-                subs.RemoveWildcardSubscription(callback);
+            lock (_subscriptionsLock)
+            {
+                if (AllBaseDataSubscriptions.TryGetValue(ptr, out var subs))
+                    subs.RemoveWildcardSubscription(callback);
+            }
         }
 
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.Data.ParamChangedCallback))]
         private static void OnBaseDataParamChanged(IntPtr baseData, string paramName)
         {
-            if (Thread.CurrentThread.ManagedThreadId != _mainThreadId)
+            BaseDataSubscriptions subs;
+            lock (_subscriptionsLock)
             {
-                UnityMainThreadDispatcher.EnqueueFromAnyThread(() => OnBaseDataParamChanged(baseData, paramName));
-                return;
+                if (!AllBaseDataSubscriptions.TryGetValue(baseData, out subs))
+                    return;
             }
 
-            if (AllBaseDataSubscriptions.TryGetValue(baseData, out var subs))
-                subs.OnBaseDataParamChanged(paramName);
+            // Capture the entry, not just its address: an old queued notification
+            // must never be delivered to a replacement object at that address.
+            if (Thread.CurrentThread.ManagedThreadId != _mainThreadId)
+            {
+                UnityMainThreadDispatcher.EnqueueFromAnyThread(() => DispatchParamChanged(baseData, paramName, subs));
+                return;
+            }
+            DispatchParamChanged(baseData, paramName, subs);
         }
-        
+
+        private static bool IsCurrentSubscription(IntPtr baseData, BaseDataSubscriptions subs)
+        {
+            lock (_subscriptionsLock)
+                return AllBaseDataSubscriptions.TryGetValue(baseData, out var current) && ReferenceEquals(current, subs);
+        }
+
+        private static void DispatchParamChanged(IntPtr baseData, string paramName, BaseDataSubscriptions subs)
+        {
+            Delegate[] callbacks;
+            lock (_subscriptionsLock)
+            {
+                if (!AllBaseDataSubscriptions.TryGetValue(baseData, out var current) || !ReferenceEquals(current, subs))
+                    return;
+                callbacks = subs.GetParamCallbacks(paramName);
+            }
+            if (callbacks != null)
+            {
+                foreach (Action callback in callbacks)
+                {
+                    if (!IsCurrentSubscription(baseData, subs))
+                        return;
+                    try { callback.Invoke(); }
+                    catch (Exception exception) { UnityEngine.Debug.LogException(exception); }
+                }
+            }
+
+            lock (_subscriptionsLock)
+            {
+                // A field callback may itself destroy or replace this object.
+                if (!AllBaseDataSubscriptions.TryGetValue(baseData, out var current) || !ReferenceEquals(current, subs))
+                    return;
+                callbacks = subs.GetWildcardCallbacks();
+            }
+            if (callbacks != null)
+            {
+                foreach (Action<string> callback in callbacks)
+                {
+                    if (!IsCurrentSubscription(baseData, subs))
+                        return;
+                    try { callback.Invoke(paramName); }
+                    catch (Exception exception) { UnityEngine.Debug.LogException(exception); }
+                }
+            }
+        }
+
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.Data.DataDestroyedCallback))]
         private static void OnBaseDataDestroyed(IntPtr baseData)
         {
-            // The native object at this pointer is being destroyed RIGHT NOW
-            // (this callback fires from ~BaseData, possibly on a worker thread).
-            // Null out _pointer on every live C# wrapper referencing it
-            // immediately and thread-safely, so a wrapper captured in a
-            // background timer/coroutine delegate stops dereferencing freed
-            // memory without waiting for the next main-thread frame.
             JsonBasedObject.InvalidateByPointer(baseData);
-
-            // Subscription bookkeeping touches main-thread-only structures, so
-            // marshal just that part to the main thread.
-            if (Thread.CurrentThread.ManagedThreadId != _mainThreadId)
-            {
-                UnityMainThreadDispatcher.EnqueueFromAnyThread(() => AllBaseDataSubscriptions.Remove(baseData));
-                return;
-            }
-
-            AllBaseDataSubscriptions.Remove(baseData);
+            lock (_subscriptionsLock)
+                AllBaseDataSubscriptions.Remove(baseData);
         }
     }
 }
