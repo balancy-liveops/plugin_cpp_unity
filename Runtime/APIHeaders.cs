@@ -703,6 +703,31 @@ namespace Balancy
                 Balancy.LibraryMethods.API.balancyAuth_Hoolipay(ticket, result.CallbackId, result.StaticCallback);
             }
 
+            /// <summary>Embedded Hooli portal: consume the HApps launch token (the SDK signature) and apply the linked or selected Balancy session.
+            /// <paramref name="action"/> is the portal auth action (sign_up, linked, login) and <paramref name="utmJson"/> the UTM fields of the iframe URL; both may be empty.</summary>
+            public static void WithHoolipayPortalSignature(string signature, string action, string utmJson, Balancy.Core.ResponseCallback<Balancy.Core.Responses.AuthResponseData> callback) {
+                var result = ProtectedFromGCCallback(callback);
+                Balancy.LibraryMethods.API.balancyAuth_HoolipayPortal(signature, action ?? string.Empty, utmJson ?? string.Empty, result.CallbackId, result.StaticCallback);
+            }
+
+            /// <summary>Embedded Hooli portal: refresh the verification state of the current player's portal identity. Data holds the raw JSON body.</summary>
+            public static void HoolipayPortalProfile(Balancy.Core.ResponseCallback<Balancy.Core.Responses.CloudDataResponseData> callback) {
+                var result = ProtectedFromGCCallback(callback);
+                Balancy.LibraryMethods.API.balancyHoolipayPortal_Profile(result.CallbackId, result.StaticCallback);
+            }
+
+            /// <summary>Embedded Hooli portal: create a session link for the current player's portal identity. Data holds {url, expiresIn}.</summary>
+            public static void HoolipayPortalSessionLink(Balancy.Core.ResponseCallback<Balancy.Core.Responses.CloudDataResponseData> callback) {
+                var result = ProtectedFromGCCallback(callback);
+                Balancy.LibraryMethods.API.balancyHoolipayPortal_SessionLink(result.CallbackId, result.StaticCallback);
+            }
+
+            /// <summary>Embedded Hooli portal: claim the one-time signup reward flag. Data holds {claimed}.</summary>
+            public static void HoolipayPortalClaimReward(Balancy.Core.ResponseCallback<Balancy.Core.Responses.CloudDataResponseData> callback) {
+                var result = ProtectedFromGCCallback(callback);
+                Balancy.LibraryMethods.API.balancyHoolipayPortal_ClaimReward(result.CallbackId, result.StaticCallback);
+            }
+
             public static void WithSteam(string userId, string token, Balancy.Core.ResponseCallback<Balancy.Core.Responses.AuthResponseData> callback) {
                 var callbackResult = ProtectedFromGCCallback(callback);
                 Balancy.LibraryMethods.API.balancyAuth_Steam(userId, token, callbackResult.CallbackId, callbackResult.StaticCallback);

@@ -179,6 +179,28 @@ namespace Balancy
             LibraryMethods.API.balancyHoolipayPending(itemId, platform, callbackResult.CallbackId, callbackResult.StaticCallback);
         }
 
+        /// <summary>
+        /// Embedded Hooli portal: create a Bridge order for a product. Data is the server JSON {orderId, requestId}
+        /// (orderId for HApps MakePayment, requestId for status/claim); the Hoolipay module parses it.
+        /// </summary>
+        public static void HoolipayPortalPending(string itemId, Balancy.Core.ResponseCallback<Balancy.Core.Responses.CloudDataResponseData> callback)
+        {
+            var callbackResult = ProtectedFromGCCallback(callback);
+
+            LibraryMethods.API.balancyHoolipayPortalPending(itemId, callbackResult.CallbackId, callbackResult.StaticCallback);
+        }
+
+        /// <summary>
+        /// Embedded Hooli portal: read the state of an order. Data is the server JSON
+        /// {status: pending|approved|denied, requestId, orderId, ...}; the Hoolipay module parses it.
+        /// </summary>
+        public static void HoolipayPortalStatus(string requestId, Balancy.Core.ResponseCallback<Balancy.Core.Responses.CloudDataResponseData> callback)
+        {
+            var callbackResult = ProtectedFromGCCallback(callback);
+
+            LibraryMethods.API.balancyHoolipayPortalStatus(requestId, callbackResult.CallbackId, callbackResult.StaticCallback);
+        }
+
         public static void HoolipayClaim(string orderId, Balancy.Core.ResponseCallback<Balancy.Core.Responses.CompletePurchaseResponseData> callback)
         {
             Balancy.Core.ResponseCallback<Balancy.Core.Responses.InteropCompletePurchaseResponseData> resCallback = data =>
@@ -592,6 +614,30 @@ namespace Balancy
         public static void SetVisualScriptingAnalyticsEnabled(bool enabled)
         {
             LibraryMethods.General.balancySetVisualScriptingAnalyticsEnabled(enabled);
+        }
+
+        /// <summary>
+        /// Embedded Hooli portal mode. Set it before initialization when the game runs inside the
+        /// Hooli portal iframe; analytics events then carry isPortal (API requests are unchanged).
+        /// </summary>
+        public static void SetPortalMode(bool enabled)
+        {
+            LibraryMethods.General.balancySetPortalMode(enabled);
+        }
+
+        public static bool IsPortalMode()
+        {
+            return LibraryMethods.General.balancyIsPortalMode();
+        }
+
+        /// <summary>
+        /// Send a Hooli portal analytics event (signup, signup:portal, portal_linked, reg/login, pay_complete, ...)
+        /// through the Balancy analytics pipeline. propertiesJson is a JSON object or empty.
+        /// </summary>
+        public static void TrackHoolipayPortalEvent(string eventName, string propertiesJson)
+        {
+            if (string.IsNullOrEmpty(eventName)) return;
+            LibraryMethods.API.balancyHoolipayPortal_TrackEvent(eventName, propertiesJson ?? string.Empty);
         }
 
         /// <summary>
