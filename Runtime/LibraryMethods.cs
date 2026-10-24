@@ -169,6 +169,14 @@ namespace Balancy
 
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancySetVisualScriptingAnalyticsEnabled([MarshalAs(UnmanagedType.I1)] bool enabled);
+
+            // Embedded Hooli portal mode: marks every request and analytics envelope with isPortal.
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancySetPortalMode([MarshalAs(UnmanagedType.I1)] bool enabled);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            [return: MarshalAs(UnmanagedType.I1)]
+            public static extern bool balancyIsPortalMode();
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyInitUnityFileHelper(string persistentDataPath, string resourcesPath, string codePath);
@@ -780,6 +788,15 @@ namespace Balancy
             public static extern void balancyHoolipayClaim(string orderId, int callbackId, ResponseCallback callback);
 
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyHoolipayPortalPending(string itemId, int callbackId, ResponseCallback callback);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyHoolipayPortalStatus(string requestId, int callbackId, ResponseCallback callback);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyHoolipayPortal_TrackEvent(string eventName, string propertiesJson);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancySteamInit(string userId, string itemId, string description, int callbackId, ResponseCallback callback);
 
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
@@ -826,6 +843,18 @@ namespace Balancy
             
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyAuth_Nutaku(string userId, string token, int callbackId, ResponseCallback callback);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyAuth_PrepareHoolipay(string origin, [MarshalAs(UnmanagedType.I1)] bool loginOnly, int callbackId, ResponseCallback callback);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyAuth_Hoolipay(string ticket, int callbackId, ResponseCallback callback);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyAuth_HoolipayPortal(string signature, string action, string utmJson, int callbackId, ResponseCallback callback);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyHoolipayPortal_Profile(int callbackId, ResponseCallback callback);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyHoolipayPortal_SessionLink(int callbackId, ResponseCallback callback);
+            [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+            public static extern void balancyHoolipayPortal_ClaimReward(int callbackId, ResponseCallback callback);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
             public static extern void balancyAuth_Steam(string userId, string token, int callbackId, ResponseCallback callback);
             [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
