@@ -3,7 +3,14 @@ window.balancyShellId = ({"value":"golden-shell"}).value;
 window.balancyViewOwner = JSON.parse(({"value":"{\"unnyIdGameEvent\":\"42\"}"}).value);
 window.balancySettings = JSON.parse(({"value":"{\"trackWebViewEvents\":false}"}).value);
 (function() {
-function fail(error) { try { if (window.balancy) window.balancy._postHostError(error); } catch (_) {} console.error(error); }
+function fail(error) {
+var api = window.balancy, reported = false;
+try { if (api && typeof api._postHostError === 'function') { api._postHostError(error); reported = true; } } catch (_) {}
+if (!reported) { try { var message = JSON.stringify({ type: 'shellError', shellId: window.balancyShellId || '', error: String(error) });
+if (window.BalancyWebView && typeof window.BalancyWebView.sendMessageToUnity === 'function') window.BalancyWebView.sendMessageToUnity(message);
+else if (api && typeof api.sendMessageToUnity === 'function') api.sendMessageToUnity(message);
+} catch (_) {} } console.error(error);
+}
 function restoreLegacy(api) {
 var previous = legacy; if (!previous || previous === api || (typeof previous !== 'object' && typeof previous !== 'function')) return; legacy = null;
 ['owner', 'onMessage', 'sendMessageToUnity'].forEach(function(name) {

@@ -20,6 +20,8 @@ namespace Balancy.WebView
         }
 
         internal bool Pending => deadline >= 0;
+        internal bool InProgress => Pending || loading;
+        internal int Opening => opening;
 
         // As in persistent mode, shown runs when the view becomes visible and failed when it dies before that;
         // closing it first runs neither.

@@ -110,22 +110,33 @@ namespace Balancy
             Balancy.Callbacks.OnLocalizationChanged -= HandleLocalizationChanged;
             Balancy.Callbacks.OnDataUpdated -= HandleContentUpdated;
 
-            if (_webView != null)
+            var retiringView = _webView;
+            _webView = null; // OnClosed must not reopen into the context being retired.
+            try
             {
-                _webView.OnMessage -= OnMessageReceived;
-                _webView.OnLoadCompleted -= HandleLoadCompleted;
-                _webView.OnClosed -= HandleWebViewClosed;
-                _webView.OnViewReleased -= HandleViewReleased;
-                if (_webView.IsPersistentModeEnabled()) _webView.CloseWebView();
+                if (retiringView != null)
+                {
+                    // Retire an unfinished hidden open too: cancelling its timeout alone would strand the native window.
+                    bool closeView = retiringView.IsPersistentModeEnabled() || retiringView.ClassicRevealInProgress;
+                    retiringView.CancelClassicReveal();
+                    retiringView.OnMessage -= OnMessageReceived;
+                    retiringView.OnLoadCompleted -= HandleLoadCompleted;
+                    retiringView.OnClosed -= HandleWebViewClosed;
+                    retiringView.OnViewReleased -= HandleViewReleased;
+                    if (closeView) retiringView.CloseWebView();
+                }
             }
-
-            _prepareRequested = _dataAvailable = _scriptsLoaded = false;
-            _pendingPrepared = null; _pendingPrepareFailed = null;
-            ++_ownerEpoch;
-            ViewOwners.Clear();
-            _onMessageReceived = null;
-            m_LastOpenedOwnerPtr = IntPtr.Zero;
-            _webView = null;
+            finally
+            {
+                // Native close or a game OnClosed handler may throw. Controller.Stop still retires the native profile.
+                _prepareRequested = _dataAvailable = _scriptsLoaded = false;
+                _pendingPrepared = null; _pendingPrepareFailed = null;
+                ++_ownerEpoch;
+                ViewOwners.Clear();
+                _onMessageReceived = null;
+                m_LastOpenedOwnerPtr = IntPtr.Zero;
+                _webView = null;
+            }
         }
 
         /// <summary>Opt-in timing summaries in Unity logs. Enable before Prepare/Open.</summary>
@@ -593,7 +604,11 @@ namespace Balancy
                 onShown?.Invoke();
 #else
             string fileUrl = BalancyWebView.ToWebViewUrl(filePath);
+#if UNITY_ANDROID && !UNITY_EDITOR
             OpenView(fileUrl, owner, onFailed, revealWhenReady: true, onShown);
+#else
+            if (OpenView(fileUrl, owner, onFailed)) onShown?.Invoke();
+#endif
 #endif
         }
 

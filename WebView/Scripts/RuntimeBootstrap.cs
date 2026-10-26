@@ -24,7 +24,15 @@ namespace Balancy.WebView
                 "window.balancyViewOwner = JSON.parse(" + jsString(owner) + ");\n" +
                 "window.balancySettings = JSON.parse(" + jsString(settings) + ");\n" +
                 "(function() {\n" +
-                "function fail(error) { try { if (window.balancy) window.balancy._postHostError(error); } catch (_) {} console.error(error); }\n" +
+                "function fail(error) {\n" +
+                "var api = window.balancy, reported = false;\n" +
+                "try { if (api && typeof api._postHostError === 'function') { api._postHostError(error); reported = true; } } catch (_) {}\n" +
+                // A failed bridge download leaves only the native shim. Report through its raw transport.
+                "if (!reported) { try { var message = JSON.stringify({ type: 'shellError', shellId: window.balancyShellId || '', error: String(error) });\n" +
+                "if (window.BalancyWebView && typeof window.BalancyWebView.sendMessageToUnity === 'function') window.BalancyWebView.sendMessageToUnity(message);\n" +
+                "else if (api && typeof api.sendMessageToUnity === 'function') api.sendMessageToUnity(message);\n" +
+                "} catch (_) {} } console.error(error);\n" +
+                "}\n" +
                 // Upgrade the native shim without losing legacy owner/transport or callbacks, including cached references.
                 // Keep the real receiver first: a legacy callback must not prevent modern responses from settling.
                 "function restoreLegacy(api) {\n" +

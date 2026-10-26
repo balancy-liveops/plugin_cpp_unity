@@ -51,6 +51,19 @@ namespace Balancy.Tests
             Assert.That(log, Is.Empty);
         }
 
+        [Test] public void CleanupRetiresAnEarlyRevealStillWaitingForPageFinish()
+        {
+            gate.Begin(3);
+            Assert.That(gate.InProgress, Is.True);
+            now = 4; gate.Tick();
+            Assert.That(gate.Pending, Is.False);
+            Assert.That(gate.InProgress, Is.True);
+            gate.LoadCompleted();
+            Assert.That(gate.InProgress, Is.False);
+            gate.Begin(3); gate.Cancel();
+            Assert.That(gate.InProgress, Is.False);
+        }
+
         [Test] public void ClosingBeforeTheSignalCancelsTheReveal()
         {
             gate.Begin(3);

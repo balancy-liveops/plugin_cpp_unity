@@ -195,6 +195,124 @@ namespace Balancy.Tests
             Assert.That(wildcardCalls, Is.EqualTo(1));
         }
 
+        [Test]
+        public void ReusedNativeAddressKeepsReplacementFieldAndWildcardSubscriptions()
+        {
+            var pointer = new IntPtr(901);
+            var oldObject = new TestProfile();
+            oldObject.SetData(pointer);
+            var oldCalls = 0;
+            oldObject.SubscribeForParamChange("completedStageRowInx", () => oldCalls++);
+            oldObject.SubscribeForChanges(_ => oldCalls++);
+
+            RunOnWorker(() => DataDestroyed.Invoke(null, new object[] { pointer }));
+            Assert.That(oldObject.IsValid, Is.False);
+
+            // A new native object may reuse the address before Unity pumps its queue.
+            var replacement = new TestProfile();
+            replacement.SetData(pointer);
+            var nativeStage = 0;
+            var cachedStage = 0;
+            var fieldCalls = 0;
+            var wildcardCalls = 0;
+            replacement.SubscribeForParamChange("completedStageRowInx", () =>
+            {
+                cachedStage = nativeStage;
+                fieldCalls++;
+            });
+            replacement.SubscribeForChanges(_ => wildcardCalls++);
+
+            nativeStage = 1;
+            ParamChanged.Invoke(null, new object[] { pointer, "completedStageRowInx" });
+            Assert.That(cachedStage, Is.EqualTo(1));
+            ProcessQueue.Invoke(_dispatcher, null);
+            nativeStage = 2;
+            ParamChanged.Invoke(null, new object[] { pointer, "completedStageRowInx" });
+
+            Assert.That(replacement.IsValid, Is.True);
+            Assert.That(cachedStage, Is.EqualTo(2), "The cached DTO field must follow native writes after queue processing");
+            Assert.That(fieldCalls, Is.EqualTo(2));
+            Assert.That(wildcardCalls, Is.EqualTo(2));
+            Assert.That(oldCalls, Is.Zero, "Destroyed objects must never receive replacement-object changes");
+            replacement.SetData(IntPtr.Zero);
+        }
+
+        [Test]
+        public void QueuedChangeFromDestroyedObjectDoesNotReachReusedAddress()
+        {
+            var pointer = new IntPtr(902);
+            var oldCalls = 0;
+            AddParamSubscription.Invoke(null, new object[] { pointer, "level", (Action)(() => oldCalls++) });
+            RunOnWorker(() =>
+            {
+                ParamChanged.Invoke(null, new object[] { pointer, "level" });
+                DataDestroyed.Invoke(null, new object[] { pointer });
+            });
+            var replacementCalls = 0;
+            AddParamSubscription.Invoke(null, new object[] { pointer, "level", (Action)(() => replacementCalls++) });
+
+            ProcessQueue.Invoke(_dispatcher, null);
+
+            Assert.That(oldCalls, Is.Zero);
+            Assert.That(replacementCalls, Is.Zero, "A queued notification belongs to the destroyed object, not its replacement");
+            ParamChanged.Invoke(null, new object[] { pointer, "level" });
+            Assert.That(replacementCalls, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void WorkerChangeWithoutSubscribersDoesNotReachLaterSubscription()
+        {
+            var pointer = new IntPtr(903);
+            RunOnWorker(() => ParamChanged.Invoke(null, new object[] { pointer, "level" }));
+            var calls = 0;
+            AddParamSubscription.Invoke(null, new object[] { pointer, "level", (Action)(() => calls++) });
+
+            ProcessQueue.Invoke(_dispatcher, null);
+
+            Assert.That(calls, Is.Zero, "A late subscriber must not receive an earlier native notification");
+            RunOnWorker(() => ParamChanged.Invoke(null, new object[] { pointer, "level" }));
+            Assert.That(calls, Is.Zero, "Game callbacks must still run on the main thread");
+            ProcessQueue.Invoke(_dispatcher, null);
+            Assert.That(calls, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void DestructionInsideFieldCallbackRetiresRemainingCallbacksWithoutHoldingLock()
+        {
+            var pointer = new IntPtr(904);
+            var oldCalls = 0;
+            var replacementCalls = 0;
+            AddParamSubscription.Invoke(null, new object[] { pointer, "level", (Action)(() =>
+            {
+                // Joining the worker also checks that game code runs outside the
+                // subscription lock; destruction must be able to take that lock.
+                RunOnWorker(() => DataDestroyed.Invoke(null, new object[] { pointer }));
+                AddParamSubscription.Invoke(null, new object[] { pointer, "level", (Action)(() => replacementCalls++) });
+            }) });
+            AddParamSubscription.Invoke(null, new object[] { pointer, "level", (Action)(() => oldCalls++) });
+            AddWildcardSubscription.Invoke(null, new object[] { pointer, (Action<string>)(_ => oldCalls++) });
+
+            ParamChanged.Invoke(null, new object[] { pointer, "level" });
+
+            Assert.That(oldCalls, Is.Zero, "Callbacks must stop once their native object is destroyed");
+            Assert.That(replacementCalls, Is.Zero, "A replacement must not receive the old object's notification");
+            ParamChanged.Invoke(null, new object[] { pointer, "level" });
+            Assert.That(replacementCalls, Is.EqualTo(1));
+        }
+
+        private static void RunOnWorker(Action action)
+        {
+            Exception failure = null;
+            var worker = new Thread(() =>
+            {
+                try { action(); }
+                catch (Exception exception) { failure = exception; }
+            });
+            worker.Start();
+            Assert.That(worker.Join(5000), Is.True, "Worker callback must not deadlock");
+            Assert.That(failure, Is.Null);
+        }
+
         private static TestProfile CacheProfile(string name, IntPtr pointer)
         {
             var profile = new TestProfile();
