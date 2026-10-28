@@ -703,7 +703,9 @@ namespace Balancy
                 Balancy.LibraryMethods.API.balancyAuth_Hoolipay(ticket, result.CallbackId, result.StaticCallback);
             }
 
-            /// <summary>Embedded Hooli portal: consume the HApps launch token (the SDK signature) and apply the linked or selected Balancy session.
+            /// <summary>Embedded Hooli portal: consume the HApps launch token (the SDK signature) and apply the resulting Balancy session. With a
+            /// session the current player is linked to the portal identity (or the SDK switches to the player that owns it); without one (AutoLogin=false,
+            /// no Auth.* call yet) the server selects that owner or creates a new player, so this works as the first sign-in too.
             /// <paramref name="action"/> is the portal auth action (sign_up, linked, login) and <paramref name="utmJson"/> the UTM fields of the iframe URL; both may be empty.</summary>
             public static void WithHoolipayPortalSignature(string signature, string action, string utmJson, Balancy.Core.ResponseCallback<Balancy.Core.Responses.AuthResponseData> callback) {
                 var result = ProtectedFromGCCallback(callback);

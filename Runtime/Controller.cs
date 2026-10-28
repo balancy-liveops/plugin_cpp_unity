@@ -331,7 +331,9 @@ namespace Balancy
                     case BuildTarget.WebGL:
                         return Constants.DevicePlatform.WebGLPlayer;
                     case BuildTarget.WSAPlayer:
-                        break;
+                        // UWP players report WSAPlayerX64 (x64) or WSAPlayerARM (ARM64) at runtime;
+                        // mirror the common x64 profile while playing in the Editor.
+                        return Constants.DevicePlatform.WSAPlayerX64;
                     case BuildTarget.StandaloneLinux64:
                         return Constants.DevicePlatform.LinuxPlayer;
                 }

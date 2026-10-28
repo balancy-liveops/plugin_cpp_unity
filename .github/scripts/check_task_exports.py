@@ -22,6 +22,7 @@ ARTIFACTS = [
     ('iOS/BalancyCore.xcframework/ios-arm64_x86_64-simulator/libBalancyCore.a', ['arm64', 'x86_64']),
     ('WebGL/libBalancyCore.a', [None]),
     ('Windows/x86_64/libBalancyCore.dll', [None]),
+    ('WSA/x64/libBalancyCore.dll', [None]),
 ]
 
 def main():
