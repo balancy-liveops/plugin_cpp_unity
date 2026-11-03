@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
 namespace Balancy
@@ -16,6 +17,12 @@ namespace Balancy
         private static GCHandle _subscribeHandle;
         private static GCHandle _unsubscribeHandle;
         private static bool _registered;
+        private static bool _unregistering;
+        private static int _subscriptionGeneration;
+        // Keep the actual subscribed instance: CMS may be unavailable or may
+        // resolve the same ID to a replacement when native teardown arrives.
+        private static readonly Dictionary<string, Models.SmartObjects.Conditions.Custom> Subscriptions =
+            new Dictionary<string, Models.SmartObjects.Conditions.Custom>();
 
         /// <summary>
         /// Registers the handlers with the C++ core. Called automatically during SDK initialization.
@@ -30,7 +37,7 @@ namespace Balancy
 
         private static void RegisterCore(Action registerCanPass, Action registerSubscriptions, Action rollback)
         {
-            if (_registered)
+            if (_registered || _unregistering)
                 return;
 
             if (!_canPassHandle.IsAllocated)
@@ -53,6 +60,7 @@ namespace Balancy
                 try { rollback(); }
                 catch (Exception rollbackException) { UnityEngine.Debug.LogException(rollbackException); }
                 _registered = false;
+                UnregisterCore(() => { });
                 throw;
             }
         }
@@ -67,15 +75,41 @@ namespace Balancy
 
         private static void UnregisterCore(Action unregister)
         {
-            if (!_registered)
+            if (_unregistering)
                 return;
 
-            try { unregister(); }
+            _unregistering = true;
+            ++_subscriptionGeneration;
+            try
+            {
+                try
+                {
+                    if (_registered)
+                        unregister();
+                }
+                finally
+                {
+                    _registered = false;
+                    // Remove ownership before invoking game code: Unsubscribe
+                    // may reenter Stop or deliver another native unsubscribe.
+                    var subscriptions = new List<KeyValuePair<string, Models.SmartObjects.Conditions.Custom>>(Subscriptions);
+                    Subscriptions.Clear();
+                    foreach (var subscription in subscriptions)
+                        UnsubscribeCondition(subscription.Key, subscription.Value);
+                }
+            }
             finally
             {
-                // A failed native cleanup must never poison the next init by
-                // making Register believe the old native session is still wired.
-                _registered = false;
+                _unregistering = false;
+            }
+        }
+
+        private static void UnsubscribeCondition(string unnyId, Models.SmartObjects.Conditions.Custom condition)
+        {
+            try { condition.Unsubscribe(); }
+            catch (Exception ex)
+            {
+                UnityEngine.Debug.LogError($"[Balancy.CustomConditions] Exception in Unsubscribe for {unnyId}: {ex}");
             }
         }
 
@@ -118,10 +152,39 @@ namespace Balancy
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.CustomConditions.CustomConditionSubscribeCallback))]
         private static void OnSubscribeCallback(string unnyId)
         {
+            if (_unregistering)
+                return;
+
             try
             {
+                var generation = _subscriptionGeneration;
                 var condition = CMS.GetModelByUnnyId<Models.SmartObjects.Conditions.Custom>(unnyId);
-                condition?.Subscribe();
+                if (condition == null)
+                    return;
+
+                if (Subscriptions.TryGetValue(unnyId, out var previous))
+                {
+                    if (ReferenceEquals(previous, condition))
+                        return;
+                    Subscriptions.Remove(unnyId);
+                    UnsubscribeCondition(unnyId, previous);
+                    if (generation != _subscriptionGeneration || _unregistering || Subscriptions.ContainsKey(unnyId))
+                        return;
+                }
+
+                // Publish before calling game code so a reentrant Stop also
+                // closes a subscription created inside Subscribe itself.
+                Subscriptions.Add(unnyId, condition);
+                try { condition.Subscribe(); }
+                catch
+                {
+                    if (Subscriptions.TryGetValue(unnyId, out var current) && ReferenceEquals(current, condition))
+                    {
+                        Subscriptions.Remove(unnyId);
+                        UnsubscribeCondition(unnyId, condition);
+                    }
+                    throw;
+                }
             }
             catch (Exception ex)
             {
@@ -132,14 +195,10 @@ namespace Balancy
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.CustomConditions.CustomConditionSubscribeCallback))]
         private static void OnUnsubscribeCallback(string unnyId)
         {
-            try
+            if (unnyId != null && Subscriptions.TryGetValue(unnyId, out var condition))
             {
-                var condition = CMS.GetModelByUnnyId<Models.SmartObjects.Conditions.Custom>(unnyId);
-                condition?.Unsubscribe();
-            }
-            catch (Exception ex)
-            {
-                UnityEngine.Debug.LogError($"[Balancy.CustomConditions] Exception in Unsubscribe for {unnyId}: {ex}");
+                Subscriptions.Remove(unnyId);
+                UnsubscribeCondition(unnyId, condition);
             }
         }
     }
