@@ -177,9 +177,11 @@ namespace Balancy
             RunCleanupStep(RenderViewsManager.CleanUp);
             RunCleanupStep(Balancy.Dictionaries.DataObjectsManager.CleanUp);
             RunCleanupStep(CustomTasks.Unregister);
+            // Game Unsubscribe implementations may still need CMS and profile
+            // data. Close custom subscriptions before disposing those wrappers.
+            RunCleanupStep(CustomConditions.Unregister);
             RunCleanupStep(Profiles.CleanUp);
             RunCleanupStep(CMS.CleanUp);
-            RunCleanupStep(CustomConditions.Unregister);
             lock (_deferredNativeCallbacksLock)
                 _deferredNativeCallbacks.Clear();
             RunCleanupStep(UnityMainThreadDispatcher.ClearPendingActions);
