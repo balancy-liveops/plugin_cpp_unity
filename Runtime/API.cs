@@ -636,8 +636,8 @@ namespace Balancy
         /// </summary>
         public static void TrackHoolipayPortalEvent(string eventName, string propertiesJson)
         {
-            if (string.IsNullOrEmpty(eventName)) return;
-            LibraryMethods.API.balancyHoolipayPortal_TrackEvent(eventName, propertiesJson ?? string.Empty);
+            // if (string.IsNullOrEmpty(eventName)) return;
+            // LibraryMethods.API.balancyHoolipayPortal_TrackEvent(eventName, propertiesJson ?? string.Empty);
         }
 
         /// <summary>

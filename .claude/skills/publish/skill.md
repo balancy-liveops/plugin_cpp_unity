@@ -46,6 +46,7 @@ A Unity plugin release may include artifacts from two upstream repos. Ask the us
 - `Plugins/Android/{arm64-v8a,armeabi-v7a,x86_64}/libBalancyCore.so`
 - `Plugins/WebGL/libBalancyCore.a`
 - `Plugins/Windows/x86_64/libBalancyCore.dll`
+- `Plugins/WSA/x64/libBalancyCore.dll` (UWP, built by `build_unity_uwp.bat`)
 - `Plugins/iOS/libBalancyCore.a`
 - `Plugins/macOS/libBalancyCore.dylib`
 
