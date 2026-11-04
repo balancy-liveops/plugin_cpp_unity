@@ -21,8 +21,14 @@ namespace Balancy
         private static int _subscriptionGeneration;
         // Keep the actual subscribed instance: CMS may be unavailable or may
         // resolve the same ID to a replacement when native teardown arrives.
-        private static readonly Dictionary<string, Models.SmartObjects.Conditions.Custom> Subscriptions =
-            new Dictionary<string, Models.SmartObjects.Conditions.Custom>();
+        private sealed class Subscription
+        {
+            public Models.SmartObjects.Conditions.Custom Condition;
+            public int NativeCount;
+        }
+
+        private static readonly Dictionary<string, Subscription> Subscriptions =
+            new Dictionary<string, Subscription>();
 
         /// <summary>
         /// Registers the handlers with the C++ core. Called automatically during SDK initialization.
@@ -92,10 +98,11 @@ namespace Balancy
                     _registered = false;
                     // Remove ownership before invoking game code: Unsubscribe
                     // may reenter Stop or deliver another native unsubscribe.
-                    var subscriptions = new List<KeyValuePair<string, Models.SmartObjects.Conditions.Custom>>(Subscriptions);
+                    var subscriptions = new List<KeyValuePair<string, Subscription>>(Subscriptions);
                     Subscriptions.Clear();
                     foreach (var subscription in subscriptions)
-                        UnsubscribeCondition(subscription.Key, subscription.Value);
+                        if (subscription.Value.Condition != null)
+                            UnsubscribeCondition(subscription.Key, subscription.Value.Condition);
                 }
             }
             finally
@@ -158,29 +165,36 @@ namespace Balancy
             try
             {
                 var generation = _subscriptionGeneration;
+                if (!Subscriptions.TryGetValue(unnyId, out var subscription))
+                {
+                    subscription = new Subscription();
+                    Subscriptions.Add(unnyId, subscription);
+                }
+                // Original and override-clone native instances can share an ID;
+                // each sends its own balanced subscribe/unsubscribe pair.
+                ++subscription.NativeCount;
                 var condition = CMS.GetModelByUnnyId<Models.SmartObjects.Conditions.Custom>(unnyId);
-                if (condition == null)
+                if (condition == null || ReferenceEquals(subscription.Condition, condition))
                     return;
 
-                if (Subscriptions.TryGetValue(unnyId, out var previous))
-                {
-                    if (ReferenceEquals(previous, condition))
-                        return;
-                    Subscriptions.Remove(unnyId);
+                var previous = subscription.Condition;
+                subscription.Condition = null;
+                if (previous != null)
                     UnsubscribeCondition(unnyId, previous);
-                    if (generation != _subscriptionGeneration || _unregistering || Subscriptions.ContainsKey(unnyId))
-                        return;
-                }
+                if (generation != _subscriptionGeneration || _unregistering ||
+                    !Subscriptions.TryGetValue(unnyId, out var current) || !ReferenceEquals(current, subscription) ||
+                    subscription.Condition != null)
+                    return;
 
-                // Publish before calling game code so a reentrant Stop also
-                // closes a subscription created inside Subscribe itself.
-                Subscriptions.Add(unnyId, condition);
+                // Publish before game code so a reentrant Stop also closes it.
+                subscription.Condition = condition;
                 try { condition.Subscribe(); }
                 catch
                 {
-                    if (Subscriptions.TryGetValue(unnyId, out var current) && ReferenceEquals(current, condition))
+                    if (Subscriptions.TryGetValue(unnyId, out current) && ReferenceEquals(current, subscription) &&
+                        ReferenceEquals(subscription.Condition, condition))
                     {
-                        Subscriptions.Remove(unnyId);
+                        subscription.Condition = null;
                         UnsubscribeCondition(unnyId, condition);
                     }
                     throw;
@@ -195,11 +209,11 @@ namespace Balancy
         [AOT.MonoPInvokeCallback(typeof(LibraryMethods.CustomConditions.CustomConditionSubscribeCallback))]
         private static void OnUnsubscribeCallback(string unnyId)
         {
-            if (unnyId != null && Subscriptions.TryGetValue(unnyId, out var condition))
-            {
-                Subscriptions.Remove(unnyId);
-                UnsubscribeCondition(unnyId, condition);
-            }
+            if (unnyId == null || !Subscriptions.TryGetValue(unnyId, out var subscription) || --subscription.NativeCount > 0)
+                return;
+            Subscriptions.Remove(unnyId);
+            if (subscription.Condition != null)
+                UnsubscribeCondition(unnyId, subscription.Condition);
         }
     }
 }

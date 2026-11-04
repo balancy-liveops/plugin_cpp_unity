@@ -72,6 +72,7 @@ namespace Balancy.Tests
             // Also remove leaked callbacks when running against the broken SDK.
             Game.Reset();
             Models.Remove(Id);
+            Models.Remove(Id + "-second");
             CmsReady.SetValue(null, false);
             EditorSettings.enterPlayModeOptions = _originalOptions;
             EditorSettings.enterPlayModeOptionsEnabled = _originalOptionsEnabled;
@@ -141,11 +142,14 @@ namespace Balancy.Tests
             Assert.That(Game.LocalData.Count, Is.EqualTo(1));
 
             Unsubscribe.Invoke(null, new object[] { Id });
+            Assert.That(condition.Unsubscribes, Is.Zero, "A second native observer still owns the subscription");
+            Game.Fire();
+            Assert.That(Game.LocalData.Count, Is.EqualTo(2));
             Unsubscribe.Invoke(null, new object[] { Id });
             Main.Stop();
             Assert.That(condition.Unsubscribes, Is.EqualTo(1));
             Game.Fire();
-            Assert.That(Game.LocalData.Count, Is.EqualTo(1));
+            Assert.That(Game.LocalData.Count, Is.EqualTo(2));
         }
 
         [Test]
@@ -174,6 +178,37 @@ namespace Balancy.Tests
             Assert.That(Game.LocalData.Count, Is.EqualTo(1));
             Main.Stop();
             Assert.That(replacement.Unsubscribes, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void OldNativeUnsubscribeKeepsReplacementUntilTheLastObserverLeaves()
+        {
+            var original = StartSubscribedSession();
+            var replacement = new ProbeCondition();
+            Models[Id] = replacement;
+            Subscribe.Invoke(null, new object[] { Id });
+            Unsubscribe.Invoke(null, new object[] { Id });
+            Assert.That(original.Unsubscribes, Is.EqualTo(1));
+            Assert.That(replacement.Unsubscribes, Is.Zero);
+            Game.Fire();
+            Assert.That(Game.LocalData.Count, Is.EqualTo(1));
+            Unsubscribe.Invoke(null, new object[] { Id });
+            Assert.That(replacement.Unsubscribes, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void NativeOwnershipSurvivesSubscribeBeforeCmsIsAvailable()
+        {
+            var condition = StartSubscribedSession();
+            Unsubscribe.Invoke(null, new object[] { Id });
+            CmsReady.SetValue(null, false);
+            Subscribe.Invoke(null, new object[] { Id });
+            CmsReady.SetValue(null, true);
+            Subscribe.Invoke(null, new object[] { Id });
+            Unsubscribe.Invoke(null, new object[] { Id });
+            Assert.That(condition.Unsubscribes, Is.EqualTo(1));
+            Unsubscribe.Invoke(null, new object[] { Id });
+            Assert.That(condition.Unsubscribes, Is.EqualTo(2));
         }
 
         [Test]
