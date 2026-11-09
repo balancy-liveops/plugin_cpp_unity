@@ -158,6 +158,18 @@ namespace Balancy
             LibraryMethods.API.balancyNutakuComplete(userId, orderId, callbackResult.CallbackId, callbackResult.StaticCallback);
         }
 
+        /// <summary>
+        /// Nutaku: list the purchases the server still holds as pending for this user (paid on the Nutaku page, but
+        /// never completed by the client, e.g. the app was killed while the browser was open). Data is the server JSON
+        /// array [{guid, status, orderId, items}]; the Nutaku module parses it and completes each entry.
+        /// </summary>
+        public static void NutakuPendingPurchases(Balancy.Core.ResponseCallback<Balancy.Core.Responses.CloudDataResponseData> callback)
+        {
+            var callbackResult = ProtectedFromGCCallback(callback);
+
+            LibraryMethods.API.balancyNutakuPendingPurchases(callbackResult.CallbackId, callbackResult.StaticCallback);
+        }
+
         public static void HoolipayPending(string itemId, int platform, Balancy.Core.ResponseCallback<Balancy.Core.Responses.HoolipayPendingResponseData> callback)
         {
             Balancy.Core.ResponseCallback<Balancy.Core.Responses.InteropCompletePurchaseResponseData> resCallback = data =>
