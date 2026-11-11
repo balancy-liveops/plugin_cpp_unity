@@ -126,23 +126,19 @@ namespace Balancy.Tests
         [Test]
         public void ConsumerExceptionOnMailboxFailureDoesNotEscapeTheApi()
         {
-            bool previous = UnityEngine.TestTools.LogAssert.ignoreFailingMessages;
-            UnityEngine.TestTools.LogAssert.ignoreFailingMessages = true;
             int calls = 0;
-            try
+            MailboxResponse received = null;
+            UnityEngine.TestTools.LogAssert.Expect(UnityEngine.LogType.Exception,
+                new System.Text.RegularExpressions.Regex("Expected consumer callback failure"));
+            Assert.DoesNotThrow(() => API.Mailbox.Sync(response =>
             {
-                Assert.DoesNotThrow(() => API.Mailbox.Sync(response =>
-                {
-                    ++calls;
-                    Assert.That(response.Success, Is.False);
-                    throw new InvalidOperationException("Expected consumer callback failure");
-                }));
-                Assert.That(calls, Is.EqualTo(1));
-            }
-            finally
-            {
-                UnityEngine.TestTools.LogAssert.ignoreFailingMessages = previous;
-            }
+                ++calls;
+                received = response;
+                throw new InvalidOperationException("Expected consumer callback failure");
+            }));
+            Assert.That(calls, Is.EqualTo(1));
+            Assert.That(received, Is.Not.Null);
+            Assert.That(received.Success, Is.False);
         }
 
         [Test]
@@ -167,6 +163,18 @@ namespace Balancy.Tests
                 IntPtr message = memory.Allocate(28 + 7 * IntPtr.Size);
                 memory.Message(message, MailMessageKind.Raw, MailParseStatus.Parsed, MailMessageType.Raw, "\"hello\"", "hello");
                 Marshal.WriteInt32(message, 20 + 7 * IntPtr.Size, -1);
+                Assert.Throws<TargetInvocationException>(() => Read(memory.Response(1, message)));
+            }
+        }
+
+        [Test]
+        public void RejectsNonEmptyNativeTextWithNullPointer()
+        {
+            using (var memory = new Buffer())
+            {
+                IntPtr message = memory.Allocate(28 + 7 * IntPtr.Size);
+                memory.Message(message, MailMessageKind.Raw, MailParseStatus.Parsed, MailMessageType.Raw, "\"hello\"", "hello");
+                Marshal.WriteIntPtr(message, 20 + 6 * IntPtr.Size, IntPtr.Zero);
                 Assert.Throws<TargetInvocationException>(() => Read(memory.Response(1, message)));
             }
         }
