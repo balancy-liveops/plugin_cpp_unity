@@ -16,8 +16,13 @@ namespace Balancy
                 MailboxResponse response;
                 try { response = MailboxInterop.Read(pointer); }
                 catch (Exception error) { response = new MailboxResponse { Success = false, ErrorCode = -1, ErrorMessage = error.Message }; }
-                callback?.Invoke(response);
+                InvokeMailboxCallback(callback, response);
             }
+        }
+        private static void InvokeMailboxCallback(ResponseCallback<MailboxResponse> callback, MailboxResponse response)
+        {
+            try { callback?.Invoke(response); }
+            catch (Exception error) { UnityEngine.Debug.LogException(error); }
         }
         /// <summary>Explicit mailbox operations. No method grants items or changes the game save.</summary>
         public static class Mailbox
@@ -47,7 +52,7 @@ namespace Balancy
                 {
                     bool ownsCallback;
                     lock (_callbackLock) ownsCallback = _callbackStorage.Remove(registration.CallbackId);
-                    if (ownsCallback) callback?.Invoke(new MailboxResponse {Success = false, ErrorCode = -1,
+                    if (ownsCallback) InvokeMailboxCallback(callback, new MailboxResponse {Success = false, ErrorCode = -1,
                         ErrorMessage = error is EntryPointNotFoundException ? "Native Balancy library must be rebuilt with mailbox support" : error.Message});
                 }
             }

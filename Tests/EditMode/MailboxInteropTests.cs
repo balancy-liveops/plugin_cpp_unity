@@ -106,6 +106,72 @@ namespace Balancy.Tests
             }
         }
         [Test]
+        public void PreservesPayloadJsonWhenEscapingMakesItLargerThanTwoMiB()
+        {
+            const int count = 350000;
+            string text = new string('\0', count);
+            string payload = "\"" + text.Replace("\0", "\\u0000") + "\"";
+            MailboxResponse response;
+            using (var memory = new Buffer())
+            {
+                IntPtr message = memory.Allocate(28 + 7 * IntPtr.Size);
+                memory.Message(message, MailMessageKind.Raw, MailParseStatus.Parsed, MailMessageType.Raw, payload, text);
+                response = Read(memory.Response(1, message));
+            }
+            Assert.That(response.Message.PayloadJson, Is.EqualTo(payload));
+            Assert.That(((RawMailMessage)response.Message).TryGetText(out var copied), Is.True);
+            Assert.That(copied, Is.EqualTo(text));
+        }
+
+        [Test]
+        public void ConsumerExceptionOnMailboxFailureDoesNotEscapeTheApi()
+        {
+            bool previous = UnityEngine.TestTools.LogAssert.ignoreFailingMessages;
+            UnityEngine.TestTools.LogAssert.ignoreFailingMessages = true;
+            int calls = 0;
+            try
+            {
+                Assert.DoesNotThrow(() => API.Mailbox.Sync(response =>
+                {
+                    ++calls;
+                    Assert.That(response.Success, Is.False);
+                    throw new InvalidOperationException("Expected consumer callback failure");
+                }));
+                Assert.That(calls, Is.EqualTo(1));
+            }
+            finally
+            {
+                UnityEngine.TestTools.LogAssert.ignoreFailingMessages = previous;
+            }
+        }
+
+        [Test]
+        public void CopiesLargeNativeTextWithoutAnIndependentManagedLimit()
+        {
+            string text = new string('x', 2097153);
+            using (var memory = new Buffer())
+            {
+                IntPtr message = memory.Allocate(28 + 7 * IntPtr.Size);
+                memory.Message(message, MailMessageKind.Raw, MailParseStatus.Parsed, MailMessageType.Raw, "\"" + text + "\"", text);
+                var raw = (RawMailMessage)Read(memory.Response(1, message)).Message;
+                Assert.That(raw.TryGetText(out var copied), Is.True);
+                Assert.That(copied, Is.EqualTo(text));
+            }
+        }
+
+        [Test]
+        public void RejectsNegativeNativeTextLength()
+        {
+            using (var memory = new Buffer())
+            {
+                IntPtr message = memory.Allocate(28 + 7 * IntPtr.Size);
+                memory.Message(message, MailMessageKind.Raw, MailParseStatus.Parsed, MailMessageType.Raw, "\"hello\"", "hello");
+                Marshal.WriteInt32(message, 20 + 7 * IntPtr.Size, -1);
+                Assert.Throws<TargetInvocationException>(() => Read(memory.Response(1, message)));
+            }
+        }
+
+        [Test]
         public void ReadsAllNumericStatusesAsEnums()
         {
             using (var memory = new Buffer())

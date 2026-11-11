@@ -8,16 +8,21 @@ namespace Balancy.Mail
     // Explicit packed reads also work with IL2CPP/Wasm32, without PtrToStructure.
     internal static class MailboxInterop
     {
-        internal const int MaxTextBytes = 2097152;
-        private static string Utf8(IntPtr pointer, int length = -1)
+        private static string Utf8(IntPtr pointer)
         {
             if (pointer == IntPtr.Zero) return null;
-            if (length < 0)
-            {
-                length = 0;
-                while (length <= MaxTextBytes && Marshal.ReadByte(pointer, length) != 0) ++length;
-            }
-            if (length > MaxTextBytes || length < 0) throw new InvalidOperationException("Invalid mail text length");
+            int length = 0;
+            // The native response owns these terminated UTF-8 strings. JSON
+            // escaping can expand payloadJson beyond the decoded text size.
+            while (Marshal.ReadByte(pointer, length) != 0)
+                length = checked(length + 1);
+            return Utf8(pointer, length);
+        }
+        private static string Utf8(IntPtr pointer, int length)
+        {
+            if (length < 0 || (length > 0 && pointer == IntPtr.Zero))
+                throw new InvalidOperationException("Invalid mail text length");
+            if (length == 0) return string.Empty;
             var bytes = new byte[length];
             Marshal.Copy(pointer, bytes, 0, length);
             return Encoding.UTF8.GetString(bytes);
