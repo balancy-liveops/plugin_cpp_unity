@@ -4,8 +4,8 @@ using Balancy.Core;
 
 namespace Balancy.Mail
 {
-    public enum MailMessageKind { Raw = 0, NutakuDailyReward = 1 }
-    public enum MailMessageType { Raw = 0, NutakuDailyReward = 1 }
+    public enum MailMessageKind { Raw = 0, NutakuDailyReward = 1, XOffersReward = 2 }
+    public enum MailMessageType { Raw = 0, NutakuDailyReward = 1, XOffersReward = 2 }
     public enum MailParseStatus { Parsed = 0, UnsupportedType = 1, UnsupportedVersion = 2, InvalidPayload = 3 }
     public enum MailMessageStatus { Unread = 0, Read = 1, Processed = 2 }
     public abstract class MailMessage

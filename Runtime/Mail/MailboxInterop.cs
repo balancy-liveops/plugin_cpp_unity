@@ -69,6 +69,7 @@ namespace Balancy.Mail
                 int textLength = Int(current, ref field), hasText = Int(current, ref field);
                 MailMessage message;
                 if (kind == MailMessageKind.NutakuDailyReward) message = new NutakuDailyRewardMessage { RewardId = rewardId };
+                else if (kind == MailMessageKind.XOffersReward) message = new XOffersRewardMessage(payload);
                 else if (kind == MailMessageKind.Raw) message = new RawMailMessage { HasText = hasText == 1, Text = hasText == 1 ? Utf8(text, textLength) : null };
                 else throw new InvalidOperationException("Unsupported native mail kind");
                 message.Id = id; message.Type = type; message.PayloadVersion = version; message.PayloadJson = payload;
