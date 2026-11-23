@@ -95,6 +95,62 @@ namespace Balancy.Tests
             }
         }
         [Test]
+        public void V4PageKeepsOrdinaryMailAndTypedRewardsAndFallsBackForUnknownKinds()
+        {
+            const string common = "\"grantId\":\"grant\",\"assignmentId\":\"assignment\",\"offerId\":\"offer\"," +
+                "\"campaignId\":null,\"sourceGameId\":\"game\",\"completedAt\":\"2026-11-23T00:00:00Z\",";
+            string currency = "{" + common + "\"reward\":{\"type\":\"currency\",\"currencyId\":\"coins\",\"amount\":9007199254740991}," +
+                "\"content\":{\"locale\":\"en\",\"title\":\"Привет 🌍\",\"description\":\"\",\"rewardText\":null}}";
+            string package = "{" + common + "\"reward\":{\"type\":\"package\",\"packageId\":\"bundle\"},\"content\":null}";
+            MailboxResponse response;
+            using (var memory = new Buffer())
+            {
+                int stride = 28 + 7 * IntPtr.Size;
+                IntPtr messages = memory.Allocate(5 * stride);
+                memory.Message(messages, MailMessageKind.Raw, MailParseStatus.Parsed, MailMessageType.Raw, "{}");
+                memory.Message(IntPtr.Add(messages, stride), MailMessageKind.XOffersReward, MailParseStatus.Parsed, MailMessageType.XOffersReward, currency);
+                memory.Message(IntPtr.Add(messages, 2 * stride), MailMessageKind.XOffersReward, MailParseStatus.Parsed, MailMessageType.XOffersReward, package);
+                memory.Message(IntPtr.Add(messages, 3 * stride), MailMessageKind.XOffersReward, MailParseStatus.Parsed, MailMessageType.XOffersReward, "{}");
+                memory.Message(IntPtr.Add(messages, 4 * stride), (MailMessageKind)42, MailParseStatus.Parsed, (MailMessageType)42, "{}");
+                response = Read(memory.Response(5, messages));
+            }
+            Assert.That(response.Success, Is.True);
+            Assert.That(response.Messages.Count, Is.EqualTo(5));
+            Assert.That(response.Messages[0], Is.InstanceOf<RawMailMessage>());
+            var coins = (XOffersRewardMessage)response.Messages[1];
+            Assert.That(coins.Reward.Type, Is.EqualTo(XOffersRewardType.Currency));
+            Assert.That(coins.Reward.Amount, Is.EqualTo(9007199254740991L));
+            Assert.That(coins.Content.Title, Is.EqualTo("Привет 🌍"));
+            Assert.That(coins.Content.RewardText, Is.Null.Or.Empty);
+            Assert.That(coins.CampaignId, Is.Null);
+            var bundle = (XOffersRewardMessage)response.Messages[2];
+            Assert.That(bundle.Reward.Type, Is.EqualTo(XOffersRewardType.Package));
+            Assert.That(bundle.Reward.PackageId, Is.EqualTo("bundle"));
+            Assert.That(bundle.Content, Is.Null);
+            Assert.That(response.Messages[3].ParseStatus, Is.EqualTo(MailParseStatus.InvalidPayload));
+            Assert.That(response.Messages[4].ParseStatus, Is.EqualTo(MailParseStatus.UnsupportedType));
+            Assert.That(response.Messages[4].Type, Is.EqualTo((MailMessageType)42));
+        }
+
+        [Test]
+        public void XOffersCopiesPackedUtf8ResponseBeforeNativeMemoryIsFreed()
+        {
+            var copy = typeof(XOffersResponse).GetMethod("Copy", BindingFlags.Static | BindingFlags.NonPublic);
+            XOffersResponse response;
+            using (var memory = new Buffer())
+            {
+                IntPtr pointer = memory.Allocate(5 + 3 * IntPtr.Size);
+                Marshal.WriteByte(pointer, 1);
+                Marshal.WriteIntPtr(pointer, 5 + IntPtr.Size, memory.Text("{\"label\":\"Привет 🌍\"}"));
+                Marshal.WriteIntPtr(pointer, 5 + 2 * IntPtr.Size, memory.Text("{\"locale\":\"en\"}"));
+                response = (XOffersResponse)copy.Invoke(null, new object[] { pointer });
+            }
+            Assert.That(response.Success, Is.True);
+            Assert.That(response.DataJson, Is.EqualTo("{\"label\":\"Привет 🌍\"}"));
+            Assert.That(response.ContextJson, Is.EqualTo("{\"locale\":\"en\"}"));
+        }
+
+        [Test]
         public void CopiesTextByLengthIncludingEmbeddedNull()
         {
             using (var memory = new Buffer())

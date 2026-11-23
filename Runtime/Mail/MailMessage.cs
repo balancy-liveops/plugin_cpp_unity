@@ -4,8 +4,8 @@ using Balancy.Core;
 
 namespace Balancy.Mail
 {
-    public enum MailMessageKind { Raw = 0, NutakuDailyReward = 1 }
-    public enum MailMessageType { Raw = 0, NutakuDailyReward = 1 }
+    public enum MailMessageKind { Raw = 0, NutakuDailyReward = 1, XOffersReward = 2 }
+    public enum MailMessageType { Raw = 0, NutakuDailyReward = 1, XOffersReward = 2 }
     public enum MailParseStatus { Parsed = 0, UnsupportedType = 1, UnsupportedVersion = 2, InvalidPayload = 3 }
     public enum MailMessageStatus { Unread = 0, Read = 1, Processed = 2 }
     public abstract class MailMessage
@@ -32,6 +32,33 @@ namespace Balancy.Mail
     {
         public override MailMessageKind Kind => MailMessageKind.NutakuDailyReward;
         public string RewardId { get; internal set; }
+    }
+    public enum XOffersRewardType { Package = 0, Currency = 1 }
+    public sealed class XOffersReward
+    {
+        public XOffersRewardType Type { get; internal set; }
+        public string PackageId { get; internal set; }
+        public string CurrencyId { get; internal set; }
+        public long Amount { get; internal set; }
+    }
+    public sealed class XOffersOfferContent
+    {
+        public string Locale { get; internal set; }
+        public string Title { get; internal set; }
+        public string Description { get; internal set; }
+        public string RewardText { get; internal set; }
+    }
+    public sealed class XOffersRewardMessage : MailMessage
+    {
+        public override MailMessageKind Kind => MailMessageKind.XOffersReward;
+        public string GrantId { get; internal set; }
+        public string AssignmentId { get; internal set; }
+        public string OfferId { get; internal set; }
+        public string CampaignId { get; internal set; }
+        public string SourceGameId { get; internal set; }
+        public string CompletedAt { get; internal set; }
+        public XOffersReward Reward { get; internal set; }
+        public XOffersOfferContent Content { get; internal set; }
     }
     /// <summary>All data is copied from native memory before invoking game code.</summary>
     public sealed class MailboxResponse : Responses.ResponseData
