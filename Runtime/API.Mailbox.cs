@@ -44,8 +44,9 @@ namespace Balancy
                 var registration = ProtectedFromGCCallback(callback, cb => new MailboxCallbackWrapper(cb));
                 try
                 {
-                    if (Native.GetInteropVersion() != 3)
-                        throw new InvalidOperationException("Native Balancy library must be rebuilt with numeric mailbox type and status support");
+                    int version = Native.GetInteropVersion();
+                    if (version != 3 && version != 4)
+                        throw new InvalidOperationException("Native Balancy library must support mailbox interop version 3 or 4");
                     start(registration.CallbackId, registration.StaticCallback);
                 }
                 catch (Exception error)
